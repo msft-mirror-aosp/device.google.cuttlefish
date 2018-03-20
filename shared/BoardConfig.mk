@@ -50,6 +50,11 @@ BOARD_USERDATAIMAGE_PARTITION_SIZE := 4294967296
 BOARD_CACHEIMAGE_PARTITION_SIZE := 67108864
 BOARD_CACHEIMAGE_FILE_SYSTEM_TYPE := ext4
 
+BOARD_DRM_HWCOMPOSER_BUFFER_IMPORTER := minigbm
+BOARD_USES_DRM_HWCOMPOSER := true
+BOARD_USES_MINIGBM := true
+BOARD_GPU_DRIVERS := virgl
+
 # Minimum size of the final bootable disk image: 10G
 # GCE will pad disk images out to 10G. Our disk images should be at least as
 # big to avoid warnings about partition table oddities.
