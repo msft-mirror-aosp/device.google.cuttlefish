@@ -28,7 +28,6 @@ PRODUCT_PROPERTY_OVERRIDES += \
     ro.carrier=unknown \
     ro.com.android.dataroaming=false \
     ro.com.google.locationfeatures=1 \
-    ro.debuggable=1 \
     ro.hardware.virtual_device=1 \
     ro.logd.size=1M \
     ro.opengles.version=131072 \
@@ -103,12 +102,11 @@ PRODUCT_AAPT_CONFIG := normal large xlarge hdpi xhdpi
 #
 PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/config/audio_policy_configuration.xml:$(TARGET_COPY_OUT_VENDOR)/etc/audio_policy_configuration.xml \
-    device/google/cuttlefish/shared/config/camera_v1.json:vendor/etc/config/camera.json \
-    device/google/cuttlefish/shared/config/init.vsoc.rc:root/init.vsoc.rc \
+    device/google/cuttlefish/shared/config/camera_v1.json:$(TARGET_COPY_OUT_VENDOR)/etc/config/camera.json \
+    device/google/cuttlefish/shared/config/init.vsoc.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/hw/init.vsoc.rc \
     device/google/cuttlefish/shared/config/media_codecs.xml:system/etc/media_codecs.xml \
     device/google/cuttlefish/shared/config/media_codecs_performance.xml:system/etc/media_codecs_performance.xml \
     device/google/cuttlefish/shared/config/media_profiles.xml:system/etc/media_profiles.xml \
-    device/google/cuttlefish/shared/config/profile.root:root/profile \
     device/google/cuttlefish/shared/config/fstab.vsoc:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.vsoc \
     frameworks/av/media/libeffects/data/audio_effects.conf:system/etc/audio_effects.conf \
     frameworks/av/media/libstagefright/data/media_codecs_google_audio.xml:system/etc/media_codecs_google_audio.xml \
