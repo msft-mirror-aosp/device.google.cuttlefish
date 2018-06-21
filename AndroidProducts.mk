@@ -17,12 +17,16 @@
 PRODUCT_MAKEFILES := \
 	aosp_cf_x86_64a:$(LOCAL_DIR)/vsoc_x86_64/auto/device.mk \
 	aosp_cf_x86_64p:$(LOCAL_DIR)/vsoc_x86_64/phone/device.mk \
+	aosp_cf_x86_64_gp:$(LOCAL_DIR)/vsoc_x86_64/go_phone/device.mk \
+	aosp_cf_x86_64_g5p:$(LOCAL_DIR)/vsoc_x86_64/go_512_phone/device.mk \
 	aosp_cf_x86_64t:$(LOCAL_DIR)/vsoc_x86_64/tablet/device.mk \
 	aosp_cf_x86_64t_3g:$(LOCAL_DIR)/vsoc_x86_64/tablet_3g/device.mk \
 	aosp_cf_x86_64t:$(LOCAL_DIR)/vsoc_x86_64/tv/device.mk \
 	aosp_cf_x86_64w:$(LOCAL_DIR)/vsoc_x86_64/wear/device.mk \
 	aosp_cf_x86_auto:$(LOCAL_DIR)/vsoc_x86/auto/device.mk \
 	aosp_cf_x86_phone:$(LOCAL_DIR)/vsoc_x86/phone/device.mk \
+	aosp_cf_x86_go_phone:$(LOCAL_DIR)/vsoc_x86/go_phone/device.mk \
+	aosp_cf_x86_go_512_phone:$(LOCAL_DIR)/vsoc_x86/go_512_phone/device.mk \
 	aosp_cf_x86_tablet:$(LOCAL_DIR)/vsoc_x86/tablet/device.mk \
 	aosp_cf_x86_tablet_3g:$(LOCAL_DIR)/vsoc_x86/tablet_3g/device.mk \
 	aosp_cf_x86_tv:$(LOCAL_DIR)/vsoc_x86/tv/device.mk \
