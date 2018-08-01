@@ -17,6 +17,9 @@
 ################################################
 # Begin GCE specific configurations
 
+DEVICE_MANIFEST_FILE += device/google/cuttlefish/shared/config/manifest.xml
+DEVICE_MANIFEST_FILE += device/google/cuttlefish/shared/auto/manifest-extra.xml
+
 $(call inherit-product, $(SRC_TARGET_DIR)/product/aosp_base_telephony.mk)
 $(call inherit-product, device/google/cuttlefish/shared/device.mk)
 
