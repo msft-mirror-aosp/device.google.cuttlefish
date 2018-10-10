@@ -55,6 +55,12 @@ BOARD_USES_DRM_HWCOMPOSER := true
 BOARD_USES_MINIGBM := true
 BOARD_GPU_DRIVERS := virgl
 
+# Enable goldfish's encoder.
+# TODO(b/113617962) Remove this if we decide to use
+# device/generic/opengl-transport to generate the encoder
+BUILD_EMULATOR_OPENGL_DRIVER := false
+BUILD_EMULATOR_OPENGL := true
+
 # Minimum size of the final bootable disk image: 10G
 # GCE will pad disk images out to 10G. Our disk images should be at least as
 # big to avoid warnings about partition table oddities.
