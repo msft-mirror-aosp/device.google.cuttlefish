@@ -295,6 +295,16 @@ PRODUCT_PACKAGES += \
     android.hardware.power@1.0-service
 
 #
+# NeuralNetworks HAL
+#
+PRODUCT_PACKAGES += \
+    android.hardware.neuralnetworks@1.1-service-sample-all \
+    android.hardware.neuralnetworks@1.1-service-sample-float-fast \
+    android.hardware.neuralnetworks@1.1-service-sample-float-slow \
+    android.hardware.neuralnetworks@1.1-service-sample-minimal \
+    android.hardware.neuralnetworks@1.1-service-sample-quant
+
+#
 # USB
 PRODUCT_PACKAGES += \
     android.hardware.usb@1.0-service

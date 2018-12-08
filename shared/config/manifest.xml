@@ -179,6 +179,15 @@
         </interface>
     </hal>
     <hal format="hidl">
+        <name>android.hardware.neuralnetworks</name>
+        <transport>hwbinder</transport>
+        <fqname>@1.1::IDevice/sample-all</fqname>
+        <fqname>@1.1::IDevice/sample-float-fast</fqname>
+        <fqname>@1.1::IDevice/sample-float-slow</fqname>
+        <fqname>@1.1::IDevice/sample-minimal</fqname>
+        <fqname>@1.1::IDevice/sample-quant</fqname>
+    </hal>
+    <hal format="hidl">
         <name>android.hardware.power</name>
         <transport>hwbinder</transport>
         <version>1.0</version>
