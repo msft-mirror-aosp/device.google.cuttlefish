@@ -113,11 +113,12 @@ PRODUCT_PACKAGES += \
     libGLESv1_CM_locking_wrapper \
     libGLESv2_locking_wrapper
 
-# GLES encoder, reused from goldfish
-PRODUCT_PACKAGES += \
-    libEGL_emulation \
-    libGLESv1_CM_emulation \
-    libGLESv2_emulation \
+# # GLES encoder, reused from goldfish
+# Disabled to prevent a potential race that would disable ASAN b/120988351
+# PRODUCT_PACKAGES += \
+#     libEGL_emulation \
+#     libGLESv1_CM_emulation \
+#     libGLESv2_emulation \
 
 DEVICE_PACKAGE_OVERLAYS := device/google/cuttlefish/shared/overlay
 PRODUCT_AAPT_CONFIG := normal large xlarge hdpi xhdpi
