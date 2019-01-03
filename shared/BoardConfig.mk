@@ -138,3 +138,11 @@ BOARD_VNDK_VERSION := current
 
 # TODO(b/73078796): remove
 BOARD_PROPERTY_OVERRIDES_SPLIT_ENABLED := true
+
+TARGET_NO_RECOVERY ?= true
+TARGET_RECOVERY_PIXEL_FORMAT := ABGR_8888
+ifeq ($(TARGET_BUILD_SYSTEM_ROOT_IMAGE),true)
+TARGET_RECOVERY_FSTAB := device/google/cuttlefish/shared/config/fstab.dtb
+else
+TARGET_RECOVERY_FSTAB := device/google/cuttlefish/shared/config/fstab.initrd
+endif
