@@ -45,3 +45,8 @@ cc_defaults {
         "libicuuc",
     ],
 }
+
+cc_defaults {
+    name: "cuttlefish_health_storage",
+    defaults: ["enabled_on_q_and_later"],
+}
