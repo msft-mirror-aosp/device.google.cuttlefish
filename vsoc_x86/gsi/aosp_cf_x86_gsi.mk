@@ -14,9 +14,23 @@
 # limitations under the License.
 #
 
-$(call inherit-product, build/target/product/go_defaults_512.mk)
+$(call inherit-product, device/google/cuttlefish/shared/gsi/device.mk)
 
-# By default, enable zram; experiment can toggle the flag,
-# which takes effect on boot
-PRODUCT_PROPERTY_OVERRIDES += \
-    persist.sys.zram_enabled=1
+PRODUCT_NAME := aosp_cf_x86_gsi
+PRODUCT_DEVICE := vsoc_x86
+PRODUCT_MODEL := Cuttlefish x86 GSI
+
+# Enable A/B update
+AB_OTA_UPDATER := true
+AB_OTA_PARTITIONS := system
+PRODUCT_PACKAGES += \
+    update_engine \
+    update_verifier
+
+# Needed by Pi newly launched device to pass VtsTrebleSysProp on GSI
+#PRODUCT_COMPATIBLE_PROPERTY_OVERRIDE := true
+
+# Support addtional P vendor interface
+PRODUCT_EXTRA_VNDK_VERSIONS := 28
+
+PRODUCT_PACKAGE_OVERLAYS := device/google/cuttlefish/vsoc_x86/phone/overlay
