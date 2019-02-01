@@ -282,6 +282,23 @@ PRODUCT_PACKAGES += \
     android.hardware.power@1.0-impl \
     android.hardware.power@1.0-service
 
+
+#
+# PowerStats HAL
+#
+PRODUCT_PACKAGES += \
+    android.hardware.power.stats@1.0-service.mock
+
+#
+# NeuralNetworks HAL
+#
+PRODUCT_PACKAGES += \
+    android.hardware.neuralnetworks@1.2-service-sample-all \
+    android.hardware.neuralnetworks@1.2-service-sample-float-fast \
+    android.hardware.neuralnetworks@1.2-service-sample-float-slow \
+    android.hardware.neuralnetworks@1.2-service-sample-minimal \
+    android.hardware.neuralnetworks@1.2-service-sample-quant
+
 #
 # USB
 PRODUCT_PACKAGES += \
