@@ -196,6 +196,7 @@ PRODUCT_COPY_FILES += \
 #
 PRODUCT_PACKAGES += \
     hwcomposer.drm \
+    hwcomposer.cutf_cvm \
     hwcomposer.cutf_ivsh \
     hwcomposer-stats \
     android.hardware.graphics.composer@2.1-impl \
