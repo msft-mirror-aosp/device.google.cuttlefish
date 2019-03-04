@@ -97,10 +97,6 @@ PRODUCT_PACKAGES += \
 # Packages for the OpenGL implementation
 #
 
-# Placeholder to ensure that /vendor/lib/egl exists
-PRODUCT_COPY_FILES += \
-    device/google/cuttlefish/shared/config/README_egl.md:$(TARGET_COPY_OUT_VENDOR)/lib/egl/README.md
-
 # SwiftShader provides a software-only implementation that is not thread-safe
 PRODUCT_PACKAGES += \
     libEGL_swiftshader \

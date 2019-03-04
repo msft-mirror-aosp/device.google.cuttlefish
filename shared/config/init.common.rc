@@ -46,27 +46,6 @@ on post-fs
     setrlimit 8 8388608 8388608
 
 on post-fs-data
-    # On ASAN these bindmounts need to happen after /data is mounted.
-    # The problem: zygote also starts in post-fs-data
-    # Fix the ASAN directories first. If zygote wins the race and tries to
-    # initialize OpenGL before these succeed it will crash and retry until
-    # it can find an OpenGL implementation.
-    #
-    # If we were to bind vendor first and zygote were to win the race, it
-    # would fail to find OpenGL in /data/asan. However, it would then go on to
-    # check vendor, find OpenGL, and map it. This would silently disable ASAN.
-    #
-    # Note: this also works for non-ASAN and non-64bit builds because the
-    # mounts just fail for the unneeded directories.
-    #
-    mkdir /data/asan/vendor/lib/egl 0555 root root
-    mount none /data/asan/vendor/lib/gl_impl/swiftshader /data/asan/vendor/lib/egl bind rec
-    mkdir /data/asan/vendor/lib64/egl 0555 root root
-    mount none /data/asan/vendor/lib64/gl_impl/swiftshader /data/asan/vendor/lib64/egl bind rec
-    # Now bind vendor so that zygote can initialize OpenGL
-    mount none /vendor/lib64/gl_impl/swiftshader /vendor/lib64/egl bind rec
-    mount none /vendor/lib/gl_impl/swiftshader /vendor/lib/egl bind rec
-
     mkdir /data/dalvik-cache 0771 root root
     mkdir /data/dalvik-cache/x86 0771 root system
     mkdir /data/misc/dhcp-6.8.2 0755 dhcp root
