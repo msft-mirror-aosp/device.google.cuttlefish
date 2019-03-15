@@ -34,9 +34,11 @@ service vsoc_guest_region_e2e_test /vendor/bin/vsoc_guest_region_e2e_test
     group shell
     oneshot
 
-
+# The group for /dev/uinput  changes to uhid after pie. In older branches we
+# need to use bluetooth.
+# Reference: aosp/I53524738db1a5d3ba962b9bec35ef322ed3028f2
 service vsoc_input_service /vendor/bin/vsoc_input_service
-    group root uhid
+    group root bluetooth
     oneshot
 
 
