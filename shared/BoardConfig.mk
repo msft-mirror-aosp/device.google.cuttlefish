@@ -99,6 +99,8 @@ VSOC_TEST_LIBRARIES := libgmock_main_host libgtest_host libgmock_host
 VSOC_LIBCXX_STATIC := libc++_static
 VSOC_PROTOBUF_SHARED_LIB := libprotobuf-cpp-full
 
+CUTTLEFISH_LIBRIL_NAME := libril
+
 # TODO(ender): Remove all these once we stop depending on GCE code.
 GCE_VERSION_CFLAGS := -DGCE_PLATFORM_SDK_VERSION=${PLATFORM_SDK_VERSION}
 GCE_STLPORT_INCLUDES := $(VSOC_STLPORT_INCLUDES)
