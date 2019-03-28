@@ -22,8 +22,6 @@ $(call inherit-product, device/google/cuttlefish/shared/device.mk)
 
 PRODUCT_CHARACTERISTICS := tablet,nosdcard
 
-PRODUCT_COMPATIBLE_PROPERTY_OVERRIDE := true
-
 PRODUCT_PROPERTY_OVERRIDES += \
     keyguard.no_require_sim=true \
     ro.cdma.home.operator.alpha=Android \

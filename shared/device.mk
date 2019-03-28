@@ -16,7 +16,8 @@
 
 PRODUCT_COPY_FILES += device/google/cuttlefish_kernel/4.4-x86_64/kernel:kernel
 
-PRODUCT_SHIPPING_API_LEVEL := 26
+PRODUCT_SHIPPING_API_LEVEL := 28
+TARGET_USES_MKE2FS := true
 
 DISABLE_RILD_OEM_HOOK := true
 

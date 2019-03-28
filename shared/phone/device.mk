@@ -24,8 +24,6 @@ TARGET_BUILD_SYSTEM_ROOT_IMAGE ?= true
 
 PRODUCT_CHARACTERISTICS := nosdcard
 
-PRODUCT_COMPATIBLE_PROPERTY_OVERRIDE := true
-
 PRODUCT_PROPERTY_OVERRIDES += \
     keyguard.no_require_sim=true \
     ro.cdma.home.operator.alpha=Android \
