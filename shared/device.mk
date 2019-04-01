@@ -185,8 +185,8 @@ PRODUCT_COPY_FILES += \
 #
 PRODUCT_PACKAGES += \
     hwcomposer.drm \
-    hwcomposer.cutf_cvm \
-    hwcomposer.cutf_ivsh \
+    hwcomposer.cutf_cvm_ashmem \
+    hwcomposer.cutf_ivsh_ashmem \
     hwcomposer-stats \
     android.hardware.graphics.composer@2.1-impl \
     android.hardware.graphics.composer@2.1-service
@@ -196,7 +196,7 @@ PRODUCT_PACKAGES += \
 #
 PRODUCT_PACKAGES += \
     gralloc.minigbm \
-    gralloc.cutf \
+    gralloc.cutf_ashmem \
     android.hardware.graphics.mapper@2.0-impl \
     android.hardware.graphics.allocator@2.0-impl \
     android.hardware.graphics.allocator@2.0-service
