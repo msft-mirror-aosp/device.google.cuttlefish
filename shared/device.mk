@@ -28,6 +28,7 @@ PRODUCT_PRODUCT_PROPERTIES := \
     persist.adb.tcp.port=5555 \
     persist.traced.enable=1 \
     ro.com.google.locationfeatures=1 \
+    ro.setupwizard.mode=DISABLED \
  
 # Explanation of specific properties:
 #   debug.hwui.swap_with_damage avoids boot failure on M http://b/25152138
