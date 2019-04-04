@@ -184,7 +184,7 @@ PRODUCT_COPY_FILES += \
 # Hardware Composer HAL
 #
 PRODUCT_PACKAGES += \
-    hwcomposer.drm \
+    hwcomposer.drm_minigbm \
     hwcomposer.cutf_cvm_ashmem \
     hwcomposer.cutf_ivsh_ashmem \
     hwcomposer-stats \
