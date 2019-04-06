@@ -27,7 +27,6 @@ DISABLE_RILD_OEM_HOOK := true
 PRODUCT_PRODUCT_PROPERTIES := \
     persist.adb.tcp.port=5555 \
     persist.traced.enable=1 \
-    persist.heapprofd.enable=1 \
     ro.com.google.locationfeatures=1 \
  
 # Explanation of specific properties:
@@ -354,3 +353,7 @@ endif
 
 # Host packages to install
 PRODUCT_HOST_PACKAGES += socket_forward_proxy socket_vsock_proxy
+
+# cuttlefish supports updating of APEXes
+PRODUCT_PROPERTY_OVERRIDES += \
+    ro.apex.updatable=true
