@@ -189,6 +189,12 @@ PRODUCT_PACKAGES += \
     android.hardware.atrace@1.0-service
 
 #
+# Authsecret HAL
+#
+PRODUCT_PACKAGES += \
+    android.hardware.authsecret@1.0-service
+
+#
 # Hardware Composer HAL
 #
 PRODUCT_PACKAGES += \
@@ -231,8 +237,8 @@ PRODUCT_PACKAGES += \
 # Drm HAL
 #
 PRODUCT_PACKAGES += \
-    android.hardware.drm@1.0-impl \
-    android.hardware.drm@1.0-service
+    android.hardware.drm@1.2-impl \
+    android.hardware.drm@1.2-service
 
 #
 # Dumpstate HAL
@@ -299,8 +305,8 @@ PRODUCT_PACKAGES += \
 # Keymaster HAL
 #
 PRODUCT_PACKAGES += \
-     android.hardware.keymaster@3.0-impl \
-     android.hardware.keymaster@3.0-service
+     android.hardware.keymaster@4.0-impl \
+     android.hardware.keymaster@4.0-service
 
 #
 # Power HAL
