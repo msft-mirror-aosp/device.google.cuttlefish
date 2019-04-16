@@ -78,7 +78,7 @@ cvd_host_shared_libraries := \
     libicui18n-host.so \
     libandroidicu-host.so \
     libopus.so \
-
+    libcuttlefish_device_config.so \
 
 cvd_host_configs := \
     system-root.dtb \
