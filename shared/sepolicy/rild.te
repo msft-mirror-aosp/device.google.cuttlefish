@@ -1,3 +1,5 @@
-type cuttlefish_ril_prop, property_type;
+type cuttlefish_config_server_port_prop, property_type;
 
-get_prop(rild, cuttlefish_ril_prop)
+get_prop(rild, cuttlefish_config_server_port_prop)
+
+allow rild self:{ socket vsock_socket } create_socket_perms_no_ioctl;
