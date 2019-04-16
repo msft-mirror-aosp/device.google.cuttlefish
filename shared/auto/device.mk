@@ -18,7 +18,7 @@
 # Begin GCE specific configurations
 
 DEVICE_MANIFEST_FILE += device/google/cuttlefish/shared/config/manifest.xml
-DEVICE_MANIFEST_FILE += device/google/cuttlefish/shared/auto/manifest-extra.xml
+DEVICE_MANIFEST_FILE += device/google/cuttlefish/shared/auto/manifest.xml
 
 $(call inherit-product, $(SRC_TARGET_DIR)/product/aosp_base_telephony.mk)
 $(call inherit-product, device/google/cuttlefish/shared/device.mk)
@@ -53,14 +53,9 @@ PRODUCT_COPY_FILES += \
 
 PRODUCT_PROPERTY_OVERRIDES += \
     keyguard.no_require_sim=true \
-    rild.libpath=libvsoc-ril.so \
     ro.cdma.home.operator.alpha=Android \
     ro.cdma.home.operator.numeric=302780 \
-    ro.gsm.home.operator.alpha=Android \
-    ro.gsm.home.operator.numeric=302780 \
-    gsm.sim.operator.numeric=302780 \
-    gsm.sim.operator.alpha=Android \
-    gsm.sim.operator.iso-country=us
+    vendor.rild.libpath=libcuttlefish-ril.so \
 
 # vehicle HAL
 PRODUCT_PACKAGES += android.hardware.automotive.vehicle@2.0-service
@@ -70,13 +65,12 @@ PRODUCT_PACKAGES += android.hardware.broadcastradio@2.0-service
 
 # DRM HAL
 PRODUCT_PACKAGES += \
-    android.hardware.drm@1.0-impl \
-    android.hardware.drm@1.0-service
+    android.hardware.drm@1.1-impl \
+    android.hardware.drm@1.1-service
 
 # GPS HAL
 PRODUCT_PACKAGES += \
-    gps.vsoc_x86 \
-    android.hardware.gnss@1.0-impl
+    android.hardware.gnss@1.1-service
 
 # Cell network connection
 PRODUCT_PACKAGES += \
@@ -85,7 +79,7 @@ PRODUCT_PACKAGES += \
     PhoneService \
     Telecom \
     TeleService \
-    libvsoc-ril \
+    libcuttlefish-ril \
     rild \
 
 # DRM Properities
