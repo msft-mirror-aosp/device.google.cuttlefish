@@ -14,8 +14,6 @@
 # limitations under the License.
 #
 
-PRODUCT_COPY_FILES += device/google/cuttlefish_kernel/4.14-x86_64/kernel:kernel
-
 PRODUCT_SHIPPING_API_LEVEL := 28
 TARGET_USES_MKE2FS := true
 
