@@ -204,8 +204,8 @@ PRODUCT_PACKAGES += \
     hwcomposer.cutf_ivsh \
     hwcomposer.cutf_cvm \
     hwcomposer-stats \
-    android.hardware.graphics.composer@2.1-impl \
-    android.hardware.graphics.composer@2.1-service
+    android.hardware.graphics.composer@2.2-impl \
+    android.hardware.graphics.composer@2.2-service
 
 #
 # Gralloc HAL
@@ -213,7 +213,7 @@ PRODUCT_PACKAGES += \
 PRODUCT_PACKAGES += \
     gralloc.minigbm \
     gralloc.cutf \
-    android.hardware.graphics.mapper@2.0-impl \
+    android.hardware.graphics.mapper@2.0-impl-2.1 \
     android.hardware.graphics.allocator@2.0-impl \
     android.hardware.graphics.allocator@2.0-service
 
@@ -239,8 +239,7 @@ PRODUCT_PACKAGES += \
 # Drm HAL
 #
 PRODUCT_PACKAGES += \
-    android.hardware.drm@1.2-impl \
-    android.hardware.drm@1.2-service
+    android.hardware.drm@1.2-service.clearkey
 
 #
 # Dumpstate HAL
