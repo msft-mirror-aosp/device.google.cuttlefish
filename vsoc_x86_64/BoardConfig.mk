@@ -14,12 +14,21 @@
 # limitations under the License.
 #
 
-PRODUCT_MAKEFILES := \
-	aosp_cf_arm64_phone:$(LOCAL_DIR)/vsoc_arm64/phone/device.mk \
-	aosp_cf_x86_64_phone:$(LOCAL_DIR)/vsoc_x86_64/phone/device.mk \
-	aosp_cf_x86_auto:$(LOCAL_DIR)/vsoc_x86/auto/device.mk \
-	aosp_cf_x86_pasan:$(LOCAL_DIR)/vsoc_x86/pasan/device.mk \
-	aosp_cf_x86_phone:$(LOCAL_DIR)/vsoc_x86/phone/device.mk \
-	aosp_cf_x86_go_phone:$(LOCAL_DIR)/vsoc_x86/go_phone/device.mk \
-	aosp_cf_x86_gsi:$(LOCAL_DIR)/vsoc_x86/gsi/aosp_cf_x86_gsi.mk \
-	aosp_cf_x86_tv:$(LOCAL_DIR)/vsoc_x86/tv/device.mk \
+#
+# x86_64  target for Cuttlefish
+#
+
+-include device/google/cuttlefish/shared/BoardConfig.mk
+
+TARGET_BOARD_PLATFORM := vsoc_x86_64
+TARGET_ARCH := x86_64
+TARGET_ARCH_VARIANT := silvermont
+TARGET_CPU_ABI := x86_64
+TARGET_CPU_ABI_LIST_32_BIT := x86
+TARGET_2ND_ARCH := x86
+TARGET_2ND_CPU_ABI := x86
+TARGET_2ND_CPU_ABI2 := x86
+TARGET_2ND_ARCH_VARIANT := silvermont
+TARGET_2ND_CPU_VARIANT := silvermont
+TARGET_TRANSLATE_2ND_ARCH := false
+
