@@ -27,7 +27,6 @@ on fs
     # works around framework netiface enumeration issue
     start rename_eth1
 
-
     # TODO(ender): Find better way to talk to serial port.
     chmod 622 /dev/kmsg
 
@@ -95,6 +94,18 @@ on property:vendor.ser.cf-logcat=*
 
 service seriallogging /system/bin/logcat -b all -v threadtime -f /dev/cf-logcat *:V
     class main
+    user root
+    disabled
+
+
+on property:ro.boot.tombstone_transmit=1
+    enable tombstone_transmit
+
+
+service tombstone_transmit /product/bin/tombstone_transmit
+    # Start tombstone_transmit after /data is mounted.
+    class late_start
+    group system
     user root
     disabled
 
