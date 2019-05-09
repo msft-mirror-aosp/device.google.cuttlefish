@@ -107,6 +107,7 @@ PRODUCT_AAPT_CONFIG := normal large xlarge hdpi xhdpi
 # General files
 #
 PRODUCT_COPY_FILES += \
+    external/libdrm/data/amdgpu.ids:$(TARGET_COPY_OUT_VENDOR)/etc/hwdata/amdgpu.ids \
     device/google/cuttlefish/shared/config/audio_policy.conf:$(TARGET_COPY_OUT_VENDOR)/etc/audio_policy.conf \
     device/google/cuttlefish/shared/config/camera_v3.json:$(TARGET_COPY_OUT_VENDOR)/etc/config/camera.json \
     device/google/cuttlefish/shared/config/init.common.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/hw/init.common.rc \
