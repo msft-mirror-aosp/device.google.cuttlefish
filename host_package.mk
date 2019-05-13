@@ -66,14 +66,6 @@ cvd_host_shared_libraries := \
     libicui18n-host.so \
     libandroidicu-host.so \
     libopus.so \
-    libvirglrenderer_cuttlefish.so \
-    libEGL_swiftshader.so \
-    libGLESv1_CM_swiftshader.so \
-    libGLESv2_swiftshader.so \
-    crosvm/libepoxy.so.0 \
-    crosvm/libgbm.so.1 \
-    crosvm/libminijail.so \
-    crosvm/libvirglrenderer.so.0 \
 
 
 cvd_host_configs := \
