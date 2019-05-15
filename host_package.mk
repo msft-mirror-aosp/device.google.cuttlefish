@@ -32,7 +32,6 @@ cvd_host_executables := \
     socket_vsock_proxy \
     adb_connector \
     stop_cvd \
-    stream_audio \
     vnc_server \
     record_audio \
     cf_qemu.sh \
@@ -78,7 +77,6 @@ cvd_host_shared_libraries := \
     libnl.so \
     libc++.so \
     libicuuc-host.so \
-    libopus.so \
     libcuttlefish_device_config.so \
 
 
