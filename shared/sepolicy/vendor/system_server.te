@@ -6,3 +6,4 @@
 # allow execmem rule were added here.
 permissive system_server;
 dontaudit system_server self:process execmem;
+virgl_access(system_server)
