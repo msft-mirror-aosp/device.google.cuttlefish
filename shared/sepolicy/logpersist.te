@@ -1,3 +1,0 @@
-# Output to virtual serial console. Needed because seriallogging daemon
-# runs logcat and directs its output to /dev/vport0p1.
-allow logpersist virtual_serial_device:chr_file { open getattr append };

@@ -18,8 +18,11 @@
 # Begin GCE specific configurations
 
 DEVICE_MANIFEST_FILE += device/google/cuttlefish/shared/config/manifest.xml
-DEVICE_MANIFEST_FILE += device/google/cuttlefish/shared/auto/manifest-extra.xml
+DEVICE_MANIFEST_FILE += device/google/cuttlefish/shared/auto/manifest.xml
 
+TARGET_BUILD_SYSTEM_ROOT_IMAGE ?= true
+
+$(call inherit-product, $(SRC_TARGET_DIR)/product/aosp_base_telephony.mk)
 $(call inherit-product, device/google/cuttlefish/shared/device.mk)
 
 ################################################
@@ -28,6 +31,10 @@ $(call inherit-product, device/google/cuttlefish/shared/device.mk)
 PRODUCT_COPY_FILES += \
     packages/services/Car/car_product/init/init.bootstat.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/hw//init.bootstat.rc \
     packages/services/Car/car_product/init/init.car.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/hw//init.car.rc
+
+
+PRODUCT_COPY_FILES += \
+    frameworks/native/data/etc/android.hardware.telephony.gsm.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.telephony.gsm.xml
 
 # Auto core hardware permissions
 PRODUCT_COPY_FILES += \
@@ -47,7 +54,10 @@ PRODUCT_COPY_FILES += \
     frameworks/native/data/etc/android.hardware.broadcastradio.xml:system/etc/permissions/android.hardware.broadcastradio.xml
 
 PRODUCT_PROPERTY_OVERRIDES += \
-    android.car.hvac.demo=true
+    keyguard.no_require_sim=true \
+    ro.cdma.home.operator.alpha=Android \
+    ro.cdma.home.operator.numeric=302780 \
+    vendor.rild.libpath=libcuttlefish-ril.so \
 
 # vehicle HAL
 PRODUCT_PACKAGES += android.hardware.automotive.vehicle@2.0-service
@@ -56,23 +66,26 @@ PRODUCT_PACKAGES += android.hardware.automotive.vehicle@2.0-service
 PRODUCT_PACKAGES += android.hardware.broadcastradio@2.0-service
 
 # DRM HAL
-PRODUCT_PACKAGES += \
-    android.hardware.drm@1.0-impl \
-    android.hardware.drm@1.0-service
+PRODUCT_PACKAGES += android.hardware.drm@1.1-service.clearkey
 
 # GPS HAL
 PRODUCT_PACKAGES += \
     gps.vsoc_x86 \
     android.hardware.gnss@1.0-impl
 
+# Cell network connection
+PRODUCT_PACKAGES += \
+    MmsService \
+    Phone \
+    PhoneService \
+    Telecom \
+    TeleService \
+    libcuttlefish-ril \
+    rild \
+
 # DRM Properities
 PRODUCT_PROPERTY_OVERRIDES += \
     drm.service.enabled=true
-
-# Add car related sepolicy
-# TODO: Now use sepolicies from car emulator for test. Create a separate one for GCE
-BOARD_SEPOLICY_DIRS += \
-    device/generic/car/common/sepolicy \
 
 BOARD_IS_AUTOMOTIVE := true
 

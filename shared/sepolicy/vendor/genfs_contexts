@@ -1,0 +1,6 @@
+genfscon sysfs /devices/pnp0/00:00/rtc  u:object_r:sysfs_rtc:s0
+genfscon sysfs /devices/pci0000:00/0000:00:0d.0/device u:object_r:sysfs_gpu:s0
+genfscon sysfs /devices/pci0000:00/0000:00:0d.0/subsystem_device u:object_r:sysfs_gpu:s0
+genfscon sysfs /devices/pci0000:00/0000:00:0d.0/subsystem_vendor u:object_r:sysfs_gpu:s0
+genfscon sysfs /devices/pci0000:00/0000:00:0d.0/uevent u:object_r:sysfs_gpu:s0
+genfscon sysfs /devices/pci0000:00/0000:00:0d.0/vendor u:object_r:sysfs_gpu:s0
