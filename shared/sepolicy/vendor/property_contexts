@@ -1,4 +1,6 @@
 bt.rootcanal_test_console  u:object_r:hal_bluetooth_sim_prop:s0
+hwc.drm.device u:object_r:drm_hwcomposer_prop:s0
+hwc.drm.use_overlay_planes u:object_r:drm_hwcomposer_prop:s0
 qemu.sf.back_camera_caps  u:object_r:hal_camera_prop:s0
 qemu.sf.front_camera_caps  u:object_r:hal_camera_prop:s0
 ro.boot.cuttlefish_config_server_port  u:object_r:cuttlefish_config_server_port_prop:s0
