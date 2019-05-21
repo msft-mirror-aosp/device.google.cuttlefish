@@ -14,11 +14,14 @@
 # limitations under the License.
 #
 
+# Enable updating of APEXes
+$(call inherit-product, $(SRC_TARGET_DIR)/product/updatable_apex.mk)
+
 PRODUCT_COPY_FILES += device/google/cuttlefish_kernel/4.14-x86_64/kernel:kernel
 
 PRODUCT_SHIPPING_API_LEVEL := 29
 PRODUCT_OTA_ENFORCE_VINTF_KERNEL_REQUIREMENTS := false
-
+PRODUCT_BUILD_BOOT_IMAGE := true
 DISABLE_RILD_OEM_HOOK := true
 
 # Properties that are not vendor-specific. These will go in the product
@@ -162,6 +165,13 @@ PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/config/fstab.dtb:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.cutf_ivsh \
     device/google/cuttlefish/shared/config/fstab.dtb:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.cutf_cvm \
 
+else ifeq ($(TARGET_USE_DYNAMIC_PARTITIONS),true)
+PRODUCT_COPY_FILES += \
+    device/google/cuttlefish/shared/config/fstab.initrd-dynamic-partitions:$(TARGET_COPY_OUT_RAMDISK)/fstab.cutf_ivsh \
+    device/google/cuttlefish/shared/config/fstab.initrd-dynamic-partitions:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.cutf_ivsh \
+    device/google/cuttlefish/shared/config/fstab.initrd-dynamic-partitions:$(TARGET_COPY_OUT_RAMDISK)/fstab.cutf_cvm \
+    device/google/cuttlefish/shared/config/fstab.initrd-dynamic-partitions:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.cutf_cvm \
+
 else
 PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/config/fstab.initrd:$(TARGET_COPY_OUT_RAMDISK)/fstab.cutf_ivsh \
@@ -200,8 +210,8 @@ PRODUCT_PACKAGES += \
     hwcomposer.cutf_ivsh \
     hwcomposer.cutf_cvm \
     hwcomposer-stats \
-    android.hardware.graphics.composer@2.1-impl \
-    android.hardware.graphics.composer@2.1-service
+    android.hardware.graphics.composer@2.2-impl \
+    android.hardware.graphics.composer@2.2-service
 
 #
 # Gralloc HAL
@@ -209,7 +219,7 @@ PRODUCT_PACKAGES += \
 PRODUCT_PACKAGES += \
     gralloc.minigbm \
     gralloc.cutf \
-    android.hardware.graphics.mapper@2.0-impl \
+    android.hardware.graphics.mapper@2.0-impl-2.1 \
     android.hardware.graphics.allocator@2.0-impl \
     android.hardware.graphics.allocator@2.0-service
 
@@ -235,8 +245,7 @@ PRODUCT_PACKAGES += \
 # Drm HAL
 #
 PRODUCT_PACKAGES += \
-    android.hardware.drm@1.1-impl \
-    android.hardware.drm@1.1-service
+    android.hardware.drm@1.1-service.clearkey
 
 #
 # Dumpstate HAL
@@ -283,12 +292,6 @@ PRODUCT_PACKAGES += \
     sensors.cutf \
     android.hardware.sensors@1.0-impl \
     android.hardware.sensors@1.0-service
-#
-# Thermal (mock)
-#
-PRODUCT_PACKAGES += \
-    android.hardware.thermal@1.0-impl \
-    android.hardware.thermal@1.0-service
 
 #
 # Lights
@@ -336,7 +339,6 @@ PRODUCT_PACKAGES += \
     android.hardware.usb@1.0-service
 
 # TODO vibrator HAL
-# TODO thermal
 
 PRODUCT_PACKAGES += \
     cuttlefish_dtb
@@ -357,7 +359,3 @@ endif
 
 # Host packages to install
 PRODUCT_HOST_PACKAGES += socket_forward_proxy socket_vsock_proxy
-
-# cuttlefish supports updating of APEXes
-PRODUCT_PROPERTY_OVERRIDES += \
-    ro.apex.updatable=true
