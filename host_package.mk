@@ -82,6 +82,7 @@ cvd_host_shared_libraries := \
 
 cvd_host_configs := \
     system-root.dtb \
+    composite-system-root.dtb \
     initrd-root.dtb \
     gsi.fstab \
     composite-gsi.fstab \
