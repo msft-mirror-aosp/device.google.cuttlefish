@@ -27,6 +27,7 @@ cvd_host_executables := \
     vnc_server \
     record_audio \
     cf_qemu.sh \
+    cf_bpttool \
     ivserver \
     virtual_usb_manager \
     kernel_log_monitor \
@@ -76,8 +77,10 @@ cvd_host_shared_libraries := \
 
 cvd_host_configs := \
     system-root.dtb \
+    composite-system-root.dtb \
     initrd-root.dtb \
     gsi.fstab \
+    composite-gsi.fstab \
 
 cvd_host_package_files := \
      $(addprefix config/,$(cvd_host_configs)) \
