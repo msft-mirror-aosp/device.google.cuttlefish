@@ -30,6 +30,11 @@ PRODUCT_ENFORCE_ARTIFACT_PATH_REQUIREMENTS := relaxed
 # from the whitelist when Q is released. See b/131162245 for some details.
 PRODUCT_ARTIFACT_PATH_REQUIREMENT_WHITELIST += \
     system/apex/com.android.apex.cts.shim.apex \
+    system/app/messaging/messaging.apk \
+    system/lib/libframesequence.so \
+    system/lib/libgiftranscode.so \
+    system/lib64/libframesequence.so \
+    system/lib64/libgiftranscode.so \
 
 #
 # All components inherited here go to product image (same as GSI product)
@@ -41,9 +46,13 @@ $(call inherit-product, device/google/cuttlefish/shared/phone/aosp_product.mk)
 #
 $(call inherit-product, device/google/cuttlefish/shared/phone/device_vendor.mk)
 
+#
+# Special settings for the target
+#
 DEVICE_PACKAGE_OVERLAYS += device/google/cuttlefish/vsoc_x86_64/phone/overlay
 
 $(call inherit-product, device/google/cuttlefish/vsoc_x86_64/device.mk)
+
 
 PRODUCT_NAME := aosp_cf_x86_64_phone
 PRODUCT_DEVICE := vsoc_x86_64

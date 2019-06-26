@@ -14,44 +14,23 @@
 # limitations under the License.
 #
 
-#
-# All components here go to product image (same as GSI product)
-#
-
-# GSI includes all AOSP product packages and placed under /system/product
+# Includes all AOSP product packages
 $(call inherit-product, $(SRC_TARGET_DIR)/product/handheld_product.mk)
 $(call inherit-product, $(SRC_TARGET_DIR)/product/telephony_product.mk)
 
 # Default AOSP sounds
 $(call inherit-product-if-exists, frameworks/base/data/sounds/AllAudio.mk)
 
-# TODO(b/133643923): Clean up the mainline whitelist
-PRODUCT_ARTIFACT_PATH_REQUIREMENT_WHITELIST += \
-    system/app/messaging/messaging.apk \
-    system/app/WAPPushManager/WAPPushManager.apk \
-    system/bin/healthd \
-    system/etc/init/healthd.rc \
-    system/etc/seccomp_policy/crash_dump.%.policy \
-    system/etc/seccomp_policy/mediacodec.policy \
-    system/etc/vintf/manifest/manifest_healthd.xml \
-    system/lib/libframesequence.so \
-    system/lib/libgiftranscode.so \
-    system/lib64/libframesequence.so \
-    system/lib64/libgiftranscode.so \
-
-# Some GSI builds enable dexpreopt, whitelist these preopt files
-PRODUCT_ARTIFACT_PATH_REQUIREMENT_WHITELIST += %.odex %.vdex %.art
-
 # Additional settings used in all AOSP builds
-PRODUCT_PROPERTY_OVERRIDES += \
+PRODUCT_PRODUCT_PROPERTIES += \
     ro.config.ringtone=Ring_Synth_04.ogg \
+    ro.config.notification_sound=pixiedust.ogg \
     ro.com.android.dataroaming=true \
 
-# Default AOSP packages
+# More AOSP packages
 PRODUCT_PACKAGES += \
     messaging \
     PhotoTable \
-    WAPPushManager \
     WallpaperPicker \
 
 # Telephony:
