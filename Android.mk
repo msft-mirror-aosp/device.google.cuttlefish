@@ -15,6 +15,9 @@ ifneq ($(filter vsoc_arm vsoc_arm64 vsoc_x86 vsoc_x86_64 vsoc_x86_noapex, $(TARG
 LOCAL_PATH:= $(call my-dir)
 
 include $(CLEAR_VARS)
+include $(LOCAL_PATH)/fetcher.mk
+
+include $(CLEAR_VARS)
 include $(LOCAL_PATH)/host_package.mk
 
 include $(call first-makefiles-under,$(LOCAL_PATH))
