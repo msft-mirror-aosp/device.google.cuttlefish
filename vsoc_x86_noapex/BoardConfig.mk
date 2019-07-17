@@ -1,5 +1,5 @@
 #
-# Copyright 2017 The Android Open-Source Project
+# Copyright 2019 The Android Open-Source Project
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,11 +14,10 @@
 # limitations under the License.
 #
 
-ifneq ($(filter $(TARGET_DEVICE), vsoc_arm vsoc_arm64 vsoc_x86 vsoc_x86_64 vsoc_x86_noapex),)
-LOCAL_PATH:= $(call my-dir)
+#
+# x86 target for Cuttlefish that doesn't support APEX.
+#
 
-include $(CLEAR_VARS)
-include $(LOCAL_PATH)/host_package.mk
+include device/google/cuttlefish/vsoc_x86/BoardConfig.mk
 
-include $(call all-makefiles-under,$(LOCAL_PATH))
-endif
+TARGET_FLATTEN_APEX := true
