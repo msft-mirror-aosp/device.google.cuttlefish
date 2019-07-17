@@ -45,6 +45,7 @@
 /vendor/bin/hw/android\.hardware\.bluetooth@1\.0-service\.sim  u:object_r:hal_bluetooth_sim_exec:s0
 /vendor/bin/hw/android\.hardware\.drm@1\.1-service\.clearkey  u:object_r:hal_drm_default_exec:s0
 /vendor/bin/hw/android\.hardware\.dumpstate@1\.0-service\.cuttlefish  u:object_r:hal_dumpstate_impl_exec:s0
+/vendor/bin/hw/android\.hardware\.gatekeeper@1\.0-service\.software  u:object_r:hal_gatekeeper_default_exec:s0
 /vendor/bin/hw/android\.hardware\.health@2\.0-service.cuttlefish  u:object_r:hal_health_default_exec:s0
 /vendor/bin/hw/android\.hardware\.health\.storage@1\.0-service.cuttlefish  u:object_r:hal_health_storage_default_exec:s0
 /vendor/bin/hw/android\.hardware\.neuralnetworks@1\.2-service-sample-.*   u:object_r:hal_neuralnetworks_sample_exec:s0
@@ -55,6 +56,6 @@
 /vendor/lib(64)?/cuttlefish_auto_resources.so  u:object_r:same_process_hal_file:s0
 /vendor/lib(64)?/hw/android\.hardware\.graphics\.mapper@2\.0-impl-2\.1\.so u:object_r:same_process_hal_file:s0
 /vendor/lib(64)?/hw/gralloc.vsoc.so  u:object_r:same_process_hal_file:s0
-/vendor/lib(64)?/hw/gralloc.cutf.so  u:object_r:same_process_hal_file:s0
+/vendor/lib(64)?/hw/gralloc.cutf_ashmem.so  u:object_r:same_process_hal_file:s0
 /vendor/lib(64)?/libcuttlefish_fs.so  u:object_r:same_process_hal_file:s0
 /vendor/lib(64)?/vsoc_lib.so  u:object_r:same_process_hal_file:s0
