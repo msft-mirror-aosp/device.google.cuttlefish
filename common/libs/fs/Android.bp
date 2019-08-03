@@ -17,6 +17,7 @@ cc_library_shared {
     name: "libcuttlefish_fs",
     srcs: [
         "gce_fs.cpp",
+        "shared_buf.cc",
         "shared_fd.cpp",
     ],
     shared_libs: [
@@ -34,6 +35,7 @@ cc_library_static {
     ],
     srcs: [
         "gce_fs.cpp",
+        "shared_buf.cc",
         "shared_fd.cpp",
     ],
     shared_libs: [
