@@ -13,3 +13,6 @@ qemu.sf.front_camera_caps  u:object_r:hal_camera_prop:s0
 ro.boot.hardware.gralloc u:object_r:cf_graphics_config_prop:s0 exact string
 ro.boot.hardware.hwcomposer u:object_r:cf_graphics_config_prop:s0 exact string
 ro.boot.lcd_density u:object_r:cf_graphics_config_prop:s0 exact int
+hwc.drm.device u:object_r:cf_graphics_config_prop:s0 exact string
+hwc.drm.exclude_non_hwfb_imports u:object_r:cf_graphics_config_prop:s0 exact int
+hwc.drm.use_overlay_planes u:object_r:cf_graphics_config_prop:s0 exact int
