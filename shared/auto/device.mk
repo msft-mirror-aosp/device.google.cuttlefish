@@ -20,8 +20,6 @@
 DEVICE_MANIFEST_FILE += device/google/cuttlefish/shared/config/manifest.xml
 DEVICE_MANIFEST_FILE += device/google/cuttlefish/shared/auto/manifest.xml
 
-TARGET_BUILD_SYSTEM_ROOT_IMAGE ?= true
-
 $(call inherit-product, $(SRC_TARGET_DIR)/product/aosp_base_telephony.mk)
 $(call inherit-product, device/google/cuttlefish/shared/device.mk)
 
@@ -58,6 +56,9 @@ PRODUCT_PROPERTY_OVERRIDES += \
     ro.cdma.home.operator.alpha=Android \
     ro.cdma.home.operator.numeric=302780 \
     vendor.rild.libpath=libcuttlefish-ril.so \
+    ro.lmk.kill_heaviest_task=true \
+    ro.lmk.kill_timeout_ms=100 \
+    ro.lmk.use_minfree_levels=true \
 
 # vehicle HAL
 PRODUCT_PACKAGES += android.hardware.automotive.vehicle@2.0-service
@@ -94,3 +95,11 @@ $(call inherit-product, packages/services/Car/car_product/build/car.mk)
 
 # Placed here due to b/110784510
 PRODUCT_BRAND := generic
+
+TARGET_USE_DYNAMIC_PARTITIONS ?= true
+ifeq ($(TARGET_USE_DYNAMIC_PARTITIONS),true)
+  PRODUCT_USE_DYNAMIC_PARTITIONS := true
+  TARGET_BUILD_SYSTEM_ROOT_IMAGE := false
+else
+  TARGET_BUILD_SYSTEM_ROOT_IMAGE ?= true
+endif

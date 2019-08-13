@@ -24,7 +24,7 @@
 				compatible = "android,fstab";
 				vendor {
 					compatible = "android,vendor";
-					dev = "/dev/block/vde";
+					dev = "/dev/block/by-name/vendor";
 					type = "ext4";
 					mnt_flags = "noatime,ro,errors=panic";
 					fsmgr_flags = "wait";
@@ -32,15 +32,7 @@
 
 				product {
 					compatible = "android,product";
-					dev = "/dev/block/vdf";
-					type = "ext4";
-					mnt_flags = "noatime,ro,errors=panic";
-					fsmgr_flags = "wait";
-				};
-
-				system_ext {
-					compatible = "android,system_ext";
-					dev = "/dev/block/vdg";
+					dev = "/dev/block/by-name/product";
 					type = "ext4";
 					mnt_flags = "noatime,ro,errors=panic";
 					fsmgr_flags = "wait";

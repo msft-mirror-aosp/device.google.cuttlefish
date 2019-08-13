@@ -29,7 +29,7 @@ PRODUCT_PRODUCT_PROPERTIES := \
     persist.adb.tcp.port=5555 \
     persist.traced.enable=1 \
     ro.com.google.locationfeatures=1 \
- 
+
 # Explanation of specific properties:
 #   debug.hwui.swap_with_damage avoids boot failure on M http://b/25152138
 #   ro.opengles.version OpenGLES 3.0
@@ -43,6 +43,7 @@ PRODUCT_PROPERTY_OVERRIDES += \
     ro.logd.size=1M \
     ro.opengles.version=196608 \
     wifi.interface=wlan0 \
+    persist.sys.zram_enabled=1 \
 
 # Below is a list of properties we probably should get rid of.
 PRODUCT_PROPERTY_OVERRIDES += \
@@ -96,8 +97,8 @@ PRODUCT_PACKAGES += \
     libGLESv2_swiftshader
 
 DEVICE_PACKAGE_OVERLAYS := device/google/cuttlefish/shared/overlay
-PRODUCT_AAPT_CONFIG := normal large xlarge hdpi xhdpi
-# PRODUCT_AAPT_PREF_CONFIG is intentionally not set to pick up every density resources.
+# PRODUCT_AAPT_CONFIG and PRODUCT_AAPT_PREF_CONFIG are intentionally not set to
+# pick up every density resources.
 
 #
 # General files
@@ -156,6 +157,8 @@ ifeq ($(TARGET_BUILD_SYSTEM_ROOT_IMAGE),true)
 PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/config/fstab.dtb:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.cutf_ivsh \
     device/google/cuttlefish/shared/config/fstab.dtb:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.cutf_cvm \
+    device/google/cuttlefish/shared/config/composite-fstab.dtb:$(TARGET_COPY_OUT_VENDOR)/etc/composite-fstab.cutf_ivsh \
+    device/google/cuttlefish/shared/config/composite-fstab.dtb:$(TARGET_COPY_OUT_VENDOR)/etc/composite-fstab.cutf_cvm \
 
 else ifeq ($(TARGET_USE_DYNAMIC_PARTITIONS),true)
 PRODUCT_COPY_FILES += \
@@ -163,6 +166,8 @@ PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/config/fstab.initrd-dynamic-partitions:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.cutf_ivsh \
     device/google/cuttlefish/shared/config/fstab.initrd-dynamic-partitions:$(TARGET_COPY_OUT_RAMDISK)/fstab.cutf_cvm \
     device/google/cuttlefish/shared/config/fstab.initrd-dynamic-partitions:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.cutf_cvm \
+    device/google/cuttlefish/shared/config/composite-fstab.initrd-dynamic-partitions:$(TARGET_COPY_OUT_VENDOR)/etc/composite-fstab.cutf_ivsh \
+    device/google/cuttlefish/shared/config/composite-fstab.initrd-dynamic-partitions:$(TARGET_COPY_OUT_VENDOR)/etc/composite-fstab.cutf_cvm \
 
 else
 PRODUCT_COPY_FILES += \
@@ -302,6 +307,7 @@ PRODUCT_PACKAGES += \
 # Power HAL
 #
 PRODUCT_PACKAGES += \
+    power.cutf \
     android.hardware.power@1.0-impl \
     android.hardware.power@1.0-service
 
@@ -345,6 +351,12 @@ PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/config/init.recovery.cutf_cvm.rc:recovery/root/init.recovery.cutf_cvm.rc \
 
 endif
+
+#
+# Shell script Vendor Module Loading
+#
+PRODUCT_COPY_FILES += \
+   $(LOCAL_PATH)/config/init.insmod.sh:$(TARGET_COPY_OUT_VENDOR)/bin/init.insmod.sh \
 
 # Host packages to install
 PRODUCT_HOST_PACKAGES += socket_forward_proxy socket_vsock_proxy
