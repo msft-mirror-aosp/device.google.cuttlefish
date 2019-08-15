@@ -16,6 +16,7 @@
 
 $(call inherit-product, $(SRC_TARGET_DIR)/product/core_64_bit.mk)
 $(call inherit-product, device/google/cuttlefish/shared/phone/device.mk)
+$(call inherit-product, device/google/cuttlefish/vsoc_x86_64/device.mk)
 
 PRODUCT_NAME := aosp_cf_x86_64_phone
 PRODUCT_DEVICE := vsoc_x86_64
