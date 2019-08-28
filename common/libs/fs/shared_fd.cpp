@@ -17,6 +17,8 @@
 
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/mman.h>
+#include <sys/syscall.h>
 #include <cstddef>
 #include <errno.h>
 #include <fcntl.h>
@@ -52,6 +54,29 @@ void CheckMarked(fd_set* in_out_mask, SharedFDSet* in_out_set) {
     }
   }
 }
+
+/*
+ * Android currently has host prebuilts of glibc 2.15 and 2.17, but
+ * memfd_create was only added in glibc 2.27. It was defined in Linux 3.17,
+ * so we consider it safe to use the low-level arbitrary syscall wrapper.
+ */
+#ifndef __NR_memfd_create
+# if defined(__x86_64__)
+#  define __NR_memfd_create 319
+# elif defined(__i386__)
+#  define __NR_memfd_create 356
+# elif defined(__aarch64__)
+#  define __NR_memfd_create 279
+# else
+/* No interest in other architectures. */
+#  error "Unknown architecture."
+# endif
+#endif
+
+int memfd_create_wrapper(const char* name, unsigned int flags) {
+  return syscall(__NR_memfd_create, name, flags);
+}
+
 }  // namespace
 
 namespace cvd {
@@ -251,6 +276,12 @@ SharedFD SharedFD::Event(int initval, int flags) {
 SharedFD SharedFD::Epoll(int flags) {
   int fd = epoll_create1(flags);
   return std::shared_ptr<FileInstance>(new FileInstance(fd, errno));
+}
+
+SharedFD SharedFD::MemfdCreate(const char* name, unsigned int flags) {
+  int fd = memfd_create_wrapper(name, flags);
+  int error_num = errno;
+  return std::shared_ptr<FileInstance>(new FileInstance(fd, error_num));
 }
 
 bool SharedFD::SocketPair(int domain, int type, int protocol,
