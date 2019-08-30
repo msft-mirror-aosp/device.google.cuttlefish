@@ -25,13 +25,8 @@ PRODUCT_PRODUCT_PROPERTIES += \
     ro.lmk.kill_timeout_ms=100 \
     ro.lmk.use_minfree_levels=true \
 
-TARGET_USE_DYNAMIC_PARTITIONS ?= true
-ifeq ($(TARGET_USE_DYNAMIC_PARTITIONS),true)
-  PRODUCT_USE_DYNAMIC_PARTITIONS := true
-  TARGET_BUILD_SYSTEM_ROOT_IMAGE := false
-else
-  TARGET_BUILD_SYSTEM_ROOT_IMAGE ?= true
-endif
+# HDMI CEC HAL
+PRODUCT_PACKAGES += android.hardware.tv.cec@1.0-service.mock
 
 # Enabling managed profiles
 PRODUCT_COPY_FILES += frameworks/native/data/etc/android.software.managed_users.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.managed_users.xml
