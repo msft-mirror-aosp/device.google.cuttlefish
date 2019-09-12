@@ -45,10 +45,11 @@ cvd_host_executables := \
     x86_64-linux-gnu/libgbm.so.1 \
     x86_64-linux-gnu/libminijail.so \
     x86_64-linux-gnu/libvirglrenderer.so.0 \
-    logcat_receiver \
     config_server \
     tombstone_receiver \
     console_forwarder \
+    assemble_cvd \
+    run_cvd \
 
 cvd_host_tests := \
     auto_free_buffer_test \
