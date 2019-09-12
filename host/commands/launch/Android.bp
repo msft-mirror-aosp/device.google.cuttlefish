@@ -36,5 +36,8 @@ cc_binary_host {
         "libcuttlefish_vm_manager",
         "libgflags",
     ],
+    required: [
+        "mkenvimage",
+    ],
     defaults: ["cuttlefish_host_only", "cuttlefish_libicuuc"],
 }

@@ -20,6 +20,7 @@
 
 #include "common/libs/utils/environment.h"
 #include "common/libs/utils/files.h"
+#include "host/commands/assemble_cvd/boot_config.h"
 #include "host/commands/assemble_cvd/boot_image_unpacker.h"
 #include "host/commands/assemble_cvd/image_aggregator.h"
 #include "host/commands/assemble_cvd/assembler_defs.h"
@@ -117,6 +118,9 @@ DEFINE_string(super_image, "", "Location of the super partition image.");
 DEFINE_string(misc_image, "",
               "Location of the misc partition image. If the image does not "
               "exist, a blank new misc partition image is created.");
+DEFINE_string(boot_env_image, "",
+              "Location of the boot environment image. If the image does not "
+              "exist, a default boot environment image is created.");
 
 DEFINE_bool(deprecated_boot_completed, false, "Log boot completed message to"
             " host kernel. This is only used during transition of our clients."
@@ -306,6 +310,9 @@ bool ResolveInstanceFiles() {
                                           + "/vbmeta_system.img";
   SetCommandLineOptionWithMode("vbmeta_system_image",
                                default_vbmeta_system_image.c_str(),
+                               google::FlagSettingMode::SET_FLAGS_DEFAULT);
+  std::string default_boot_env_image = FLAGS_system_image_dir + "/env.img";
+  SetCommandLineOptionWithMode("boot_env_image", default_boot_env_image.c_str(),
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
 
   return true;
@@ -998,6 +1005,14 @@ namespace {
 
 std::vector<ImagePartition> disk_config() {
   std::vector<ImagePartition> partitions;
+
+  // Note that if the positions of env or misc change, the environment for
+  // u-boot must be updated as well (see boot_config.cc and
+  // configs/cf-x86_defconfig in external/u-boot).
+  partitions.push_back(ImagePartition {
+    .label = "env",
+    .image_file_path = FLAGS_boot_env_image,
+  });
   partitions.push_back(ImagePartition {
     .label = "misc",
     .image_file_path = FLAGS_misc_image,
@@ -1294,6 +1309,11 @@ const cuttlefish::CuttlefishConfig* InitFilesystemAndCreateConfig(
 
   // Create data if necessary
   if (!ApplyDataImagePolicy(*config, FLAGS_data_image)) {
+    exit(cuttlefish::kCuttlefishConfigurationInitError);
+  }
+
+  // Create boot_config if necessary
+  if (!InitBootloaderEnvPartition(*config, FLAGS_boot_env_image)) {
     exit(cuttlefish::kCuttlefishConfigurationInitError);
   }
 
