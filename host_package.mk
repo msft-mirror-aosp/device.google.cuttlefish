@@ -91,6 +91,7 @@ cvd_host_shared_libraries := \
     libcuttlefish_device_config.so \
     cdisk_spec.so \
     libprotobuf-cpp-full.so \
+    libziparchive.so \
 
 cvd_host_package_files := \
      $(addprefix $(bin_path)/,$(cvd_host_executables)) \
