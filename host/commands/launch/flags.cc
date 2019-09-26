@@ -223,6 +223,10 @@ DEFINE_int32(keyboard_server_port, GetPerInstanceDefault(5540),
              "The port on which the vsock keyboard server should listen");
 DEFINE_int32(touch_server_port, GetPerInstanceDefault(5640),
              "The port on which the vsock touch server should listen");
+DEFINE_string(boot_slot, "", "Force booting into the given slot. If empty, "
+             "the slot will be chosen based on the misc partition if using a "
+             "bootloader. It will default to 'a' if empty and not using a "
+             "bootloader.");
 
 namespace {
 
@@ -353,10 +357,6 @@ bool InitializeCuttlefishConfiguration(
 
   tmp_config_obj.add_kernel_cmdline(boot_image_unpacker.kernel_cmdline());
 
-  if (!use_ramdisk) {
-    tmp_config_obj.add_kernel_cmdline("root=/dev/vda1");
-  }
-
   tmp_config_obj.add_kernel_cmdline("init=/init");
   tmp_config_obj.add_kernel_cmdline(
       concat("androidboot.serialno=", FLAGS_serial_number));
@@ -469,6 +469,26 @@ bool InitializeCuttlefishConfiguration(
                                              FLAGS_touch_server_port));
     tmp_config_obj.add_kernel_cmdline(concat("androidboot.vsock_keyboard_port=",
                                              FLAGS_keyboard_server_port));
+  }
+
+  if (!FLAGS_boot_slot.empty()) {
+      tmp_config_obj.set_boot_slot(FLAGS_boot_slot);
+  }
+
+  std::string slot_suffix;
+  if (FLAGS_boot_slot.empty()) {
+    slot_suffix = "_a";
+  } else {
+    slot_suffix = "_" + FLAGS_boot_slot;
+  }
+  tmp_config_obj.add_kernel_cmdline("androidboot.slot_suffix=" + slot_suffix);
+
+  if (!use_ramdisk) {
+    if (slot_suffix == "_a") {
+      tmp_config_obj.add_kernel_cmdline("root=/dev/vda1");
+    } else {
+      tmp_config_obj.add_kernel_cmdline("root=/dev/vda2");
+    }
   }
 
   tmp_config_obj.set_cuttlefish_env_path(GetCuttlefishEnvPath());

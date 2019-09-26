@@ -277,6 +277,9 @@ class CuttlefishConfig {
   void set_frames_vsock_port(int port);
   int frames_vsock_port() const;
 
+  void set_boot_slot(const std::string& boot_slot);
+  std::string boot_slot() const;
+
   std::string touch_socket_path() const;
   std::string keyboard_socket_path() const;
 

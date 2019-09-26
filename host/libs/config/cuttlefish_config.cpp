@@ -151,6 +151,7 @@ const char* kConfigServerBinary = "config_server_binary";
 const char* kTouchSocketPort = "touch_socket_port";
 const char* kKeyboardSocketPort = "keyboard_socket_port";
 
+const char* kBootSlot = "boot_slot";
 }  // namespace
 
 namespace vsoc {
@@ -775,6 +776,14 @@ std::string CuttlefishConfig::keyboard_socket_path() const {
 
 void CuttlefishConfig::set_touch_socket_port(int port) {
   (*dictionary_)[kTouchSocketPort] = port;
+}
+
+void CuttlefishConfig::set_boot_slot(const std::string& boot_slot) {
+  (*dictionary_)[kBootSlot] = boot_slot;
+}
+
+std::string CuttlefishConfig::boot_slot() const {
+  return (*dictionary_)[kBootSlot].asString();
 }
 
 int CuttlefishConfig::touch_socket_port() const {
