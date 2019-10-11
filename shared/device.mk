@@ -24,6 +24,16 @@ PRODUCT_BUILD_BOOT_IMAGE := true
 PRODUCT_USE_DYNAMIC_PARTITIONS := true
 DISABLE_RILD_OEM_HOOK := true
 
+AB_OTA_UPDATER := true
+AB_OTA_PARTITIONS += \
+    odm \
+    product \
+    system \
+    vendor
+
+PRODUCT_PACKAGES += \
+    update_engine
+
 # Properties that are not vendor-specific. These will go in the product
 # partition, instead of the vendor partition, and do not need vendor
 # sepolicy
