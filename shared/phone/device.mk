@@ -27,9 +27,6 @@ PRODUCT_PROPERTY_OVERRIDES += \
     ro.cdma.home.operator.alpha=Android \
     ro.cdma.home.operator.numeric=302780 \
     vendor.rild.libpath=libcuttlefish-ril.so \
-    ro.lmk.kill_heaviest_task=true \
-    ro.lmk.kill_timeout_ms=100 \
-    ro.lmk.use_minfree_levels=true \
 
 PRODUCT_PACKAGES += \
     MmsService \
@@ -46,11 +43,3 @@ PRODUCT_COPY_FILES += \
 # These flags are important for the GSI, but break auto
 PRODUCT_ENFORCE_RRO_TARGETS := framework-res
 PRODUCT_ENFORCE_RRO_EXCLUDED_OVERLAYS := device/google/cuttlefish/shared/overlay
-
-TARGET_USE_DYNAMIC_PARTITIONS ?= true
-ifeq ($(TARGET_USE_DYNAMIC_PARTITIONS),true)
-  PRODUCT_USE_DYNAMIC_PARTITIONS := true
-  TARGET_BUILD_SYSTEM_ROOT_IMAGE := false
-else
-  TARGET_BUILD_SYSTEM_ROOT_IMAGE ?= true
-endif

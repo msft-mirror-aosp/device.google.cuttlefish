@@ -51,9 +51,6 @@ PRODUCT_PROPERTY_OVERRIDES += \
     ro.cdma.home.operator.alpha=Android \
     ro.cdma.home.operator.numeric=302780 \
     vendor.rild.libpath=libcuttlefish-ril.so \
-    ro.lmk.kill_heaviest_task=true \
-    ro.lmk.kill_timeout_ms=100 \
-    ro.lmk.use_minfree_levels=true \
 
 # vehicle HAL
 PRODUCT_PACKAGES += android.hardware.automotive.vehicle@2.0-service
@@ -62,11 +59,11 @@ PRODUCT_PACKAGES += android.hardware.automotive.vehicle@2.0-service
 PRODUCT_PACKAGES += android.hardware.broadcastradio@2.0-service
 
 # DRM HAL
-PRODUCT_PACKAGES += android.hardware.drm@1.1-service.clearkey
+PRODUCT_PACKAGES += android.hardware.drm@1.2-service.clearkey
 
 # GPS HAL
 PRODUCT_PACKAGES += \
-    android.hardware.gnss@1.1-service
+    android.hardware.gnss@2.0-service
 
 # DRM Properities
 PRODUCT_PROPERTY_OVERRIDES += \
@@ -81,12 +78,7 @@ $(call inherit-product, packages/services/Car/car_product/build/car.mk)
 # Placed here due to b/110784510
 PRODUCT_BRAND := generic
 
-TARGET_USE_DYNAMIC_PARTITIONS ?= true
-TARGET_NO_TELEPHONY := true
+PRODUCT_ENFORCE_RRO_TARGETS := framework-res
+PRODUCT_ENFORCE_RRO_EXCLUDED_OVERLAYS := device/google/cuttlefish/shared/overlay
 
-ifeq ($(TARGET_USE_DYNAMIC_PARTITIONS),true)
-  PRODUCT_USE_DYNAMIC_PARTITIONS := true
-  TARGET_BUILD_SYSTEM_ROOT_IMAGE := false
-else
-  TARGET_BUILD_SYSTEM_ROOT_IMAGE ?= true
-endif
+TARGET_NO_TELEPHONY := true
