@@ -1,3 +1,3 @@
-/dev/block/pci/pci0000:00/0000:00:01.0/by-name/vendor /vendor ext4 noatime,ro,errors=panic wait
-/dev/block/pci/pci0000:00/0000:00:01.0/by-name/product /product ext4 noatime,ro,errors=panic wait
-/dev/block/pci/pci0000:00/0000:00:01.0/by-name/system_ext /system_ext ext4 noatime,ro,errors=panic wait
+/dev/block/pci/pci0000:00/0000:00:01.0/by-name/vendor /vendor ext4 noatime,ro,errors=panic wait,slotselect
+/dev/block/pci/pci0000:00/0000:00:01.0/by-name/product /product ext4 noatime,ro,errors=panic wait,slotselect
+/dev/block/pci/pci0000:00/0000:00:01.0/by-name/system_ext /system_ext ext4 noatime,ro,errors=panic wait,slotselect

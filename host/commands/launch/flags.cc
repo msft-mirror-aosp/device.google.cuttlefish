@@ -668,7 +668,11 @@ namespace {
 std::vector<ImagePartition> disk_config() {
   std::vector<ImagePartition> partitions;
   partitions.push_back(ImagePartition {
-    .label = "system",
+    .label = "system_a",
+    .image_file_path = FLAGS_system_image,
+  });
+  partitions.push_back(ImagePartition {
+    .label = "system_b",
     .image_file_path = FLAGS_system_image,
   });
   partitions.push_back(ImagePartition {
@@ -684,11 +688,19 @@ std::vector<ImagePartition> disk_config() {
     .image_file_path = FLAGS_metadata_image,
   });
   partitions.push_back(ImagePartition {
-    .label = "vendor",
+    .label = "vendor_a",
     .image_file_path = FLAGS_vendor_image,
   });
   partitions.push_back(ImagePartition {
-    .label = "product",
+    .label = "vendor_b",
+    .image_file_path = FLAGS_vendor_image,
+  });
+  partitions.push_back(ImagePartition {
+    .label = "product_a",
+    .image_file_path = FLAGS_product_image,
+  });
+  partitions.push_back(ImagePartition {
+    .label = "product_b",
     .image_file_path = FLAGS_product_image,
   });
   partitions.push_back(ImagePartition {
@@ -696,11 +708,19 @@ std::vector<ImagePartition> disk_config() {
     .image_file_path = FLAGS_misc_image
   });
   partitions.push_back(ImagePartition {
-    .label = "odm",
+    .label = "odm_a",
     .image_file_path = FLAGS_odm_image,
   });
   partitions.push_back(ImagePartition {
-    .label = "system_ext",
+    .label = "odm_b",
+    .image_file_path = FLAGS_odm_image,
+  });
+  partitions.push_back(ImagePartition {
+    .label = "system_ext_a",
+    .image_file_path = FLAGS_system_ext_image,
+  });
+  partitions.push_back(ImagePartition {
+    .label = "system_ext_b",
     .image_file_path = FLAGS_system_ext_image,
   });
   partitions.push_back(ImagePartition {
