@@ -66,9 +66,9 @@ TARGET_USES_HWC2 := true
 # The compiler will occasionally generate movaps, etc.
 BOARD_MALLOC_ALIGNMENT := 16
 
-BOARD_SYSTEMIMAGE_PARTITION_SIZE := 5637144576 # 5.25 GB
-# Make the userdata partition 4G to accomodate ASAN and CTS
-BOARD_USERDATAIMAGE_PARTITION_SIZE := 4294967296
+BOARD_SYSTEMIMAGE_PARTITION_SIZE := 5368709120 # 5 GB
+# Make the userdata partition 4.25G to accommodate ASAN and CTS
+BOARD_USERDATAIMAGE_PARTITION_SIZE := 4563402752
 
 # Cache partition size: 64M
 BOARD_CACHEIMAGE_PARTITION_SIZE := 67108864
