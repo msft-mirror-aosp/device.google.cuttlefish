@@ -140,7 +140,7 @@ TARGET_RECOVERY_PIXEL_FORMAT := ABGR_8888
 
 TARGET_RECOVERY_FSTAB ?= device/google/cuttlefish/shared/config/fstab
 
-BOARD_SUPER_PARTITION_SIZE := 6174015488
+BOARD_SUPER_PARTITION_SIZE := 12348030976
 BOARD_SUPER_PARTITION_GROUPS := google_dynamic_partitions
 BOARD_GOOGLE_DYNAMIC_PARTITIONS_PARTITION_LIST := system vendor product system_ext
 BOARD_GOOGLE_DYNAMIC_PARTITIONS_SIZE := 6174015488
@@ -151,3 +151,10 @@ TARGET_RELEASETOOLS_EXTENSIONS := device/google/cuttlefish/shared
 # To see full logs from init, disable ratelimiting.
 # The default is 5 messages per second amortized, with a burst of up to 10.
 BOARD_KERNEL_CMDLINE += printk.devkmsg=on
+
+BOARD_INCLUDE_DTB_IN_BOOTIMG := true
+BOARD_BOOT_HEADER_VERSION := 3
+BOARD_USES_RECOVERY_AS_BOOT := true
+BOARD_MKBOOTIMG_ARGS += --header_version $(BOARD_BOOT_HEADER_VERSION)
+PRODUCT_COPY_FILES += device/google/cuttlefish/dtb.img:dtb.img
+BOARD_BUILD_SYSTEM_ROOT_IMAGE := false

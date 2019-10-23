@@ -22,6 +22,16 @@ PRODUCT_BUILD_BOOT_IMAGE := true
 PRODUCT_USE_DYNAMIC_PARTITIONS := true
 DISABLE_RILD_OEM_HOOK := true
 
+AB_OTA_UPDATER := true
+AB_OTA_PARTITIONS += \
+    product \
+    system \
+    system_ext \
+    vendor
+
+# Enable Virtual A/B
+$(call inherit-product, $(SRC_TARGET_DIR)/product/virtual_ab_ota.mk)
+
 # Properties that are not vendor-specific. These will go in the product
 # partition, instead of the vendor partition, and do not need vendor
 # sepolicy
@@ -152,8 +162,12 @@ PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/config/fstab:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.cutf_ivsh \
     device/google/cuttlefish/shared/config/fstab:$(TARGET_COPY_OUT_RAMDISK)/fstab.cutf_cvm \
     device/google/cuttlefish/shared/config/fstab:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.cutf_cvm \
+    device/google/cuttlefish/shared/config/fstab:$(TARGET_COPY_OUT_RECOVERY)/root/first_stage_ramdisk/fstab.cutf_ivsh \
+    device/google/cuttlefish/shared/config/fstab:$(TARGET_COPY_OUT_RECOVERY)/root/first_stage_ramdisk/fstab.cutf_cvm \
     device/google/cuttlefish/shared/config/fstab.composite:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.composite.cutf_ivsh \
     device/google/cuttlefish/shared/config/fstab.composite:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.composite.cutf_cvm \
+    device/google/cuttlefish/shared/config/fstab.composite:$(TARGET_COPY_OUT_RECOVERY)/root/first_stage_ramdisk/fstab.composite.cutf_ivsh \
+    device/google/cuttlefish/shared/config/fstab.composite:$(TARGET_COPY_OUT_RECOVERY)/root/first_stage_ramdisk/fstab.composite.cutf_cvm \
 
 #
 # USB Specific
@@ -322,8 +336,11 @@ PRODUCT_PACKAGES += \
 PRODUCT_PACKAGES += \
     android.hardware.vibrator@1.x-service.example
 
+# BootControl HAL
 PRODUCT_PACKAGES += \
-    cuttlefish_dtb
+    android.hardware.boot@1.1-impl \
+    android.hardware.boot@1.1-impl.recovery \
+    android.hardware.boot@1.1-service
 
 # WLAN driver configuration files
 PRODUCT_COPY_FILES += \
