@@ -163,6 +163,10 @@ const char* kConfigServerBinary = "config_server_binary";
 const char* kRunTombstoneReceiver = "enable_tombstone_logger";
 const char* kTombstoneReceiverPort = "tombstone_logger_port";
 const char* kTombstoneReceiverBinary = "tombstone_receiver_binary";
+
+const char* kTouchSocketPort = "touch_socket_port";
+const char* kKeyboardSocketPort = "keyboard_socket_port";
+
 }  // namespace
 
 namespace vsoc {
@@ -894,6 +898,22 @@ std::string CuttlefishConfig::touch_socket_path() const {
 
 std::string CuttlefishConfig::keyboard_socket_path() const {
   return PerInstancePath("keyboard.sock");
+}
+
+void CuttlefishConfig::set_touch_socket_port(int port) {
+  (*dictionary_)[kTouchSocketPort] = port;
+}
+
+int CuttlefishConfig::touch_socket_port() const {
+  return (*dictionary_)[kTouchSocketPort].asInt();
+}
+
+void CuttlefishConfig::set_keyboard_socket_port(int port) {
+  (*dictionary_)[kKeyboardSocketPort] = port;
+}
+
+int CuttlefishConfig::keyboard_socket_port() const {
+  return (*dictionary_)[kKeyboardSocketPort].asInt();
 }
 
 // Creates the (initially empty) config object and populates it with values from
