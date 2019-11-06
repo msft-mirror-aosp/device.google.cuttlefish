@@ -22,6 +22,16 @@ PRODUCT_BUILD_BOOT_IMAGE := true
 PRODUCT_USE_DYNAMIC_PARTITIONS := true
 DISABLE_RILD_OEM_HOOK := true
 
+AB_OTA_UPDATER := true
+AB_OTA_PARTITIONS += \
+    product \
+    system \
+    system_ext \
+    vendor
+
+# Enable Virtual A/B
+$(call inherit-product, $(SRC_TARGET_DIR)/product/virtual_ab_ota.mk)
+
 # Properties that are not vendor-specific. These will go in the product
 # partition, instead of the vendor partition, and do not need vendor
 # sepolicy
@@ -152,8 +162,12 @@ PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/config/fstab:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.cutf_ivsh \
     device/google/cuttlefish/shared/config/fstab:$(TARGET_COPY_OUT_RAMDISK)/fstab.cutf_cvm \
     device/google/cuttlefish/shared/config/fstab:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.cutf_cvm \
+    device/google/cuttlefish/shared/config/fstab:$(TARGET_COPY_OUT_RECOVERY)/root/first_stage_ramdisk/fstab.cutf_ivsh \
+    device/google/cuttlefish/shared/config/fstab:$(TARGET_COPY_OUT_RECOVERY)/root/first_stage_ramdisk/fstab.cutf_cvm \
     device/google/cuttlefish/shared/config/fstab.composite:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.composite.cutf_ivsh \
     device/google/cuttlefish/shared/config/fstab.composite:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.composite.cutf_cvm \
+    device/google/cuttlefish/shared/config/fstab.composite:$(TARGET_COPY_OUT_RECOVERY)/root/first_stage_ramdisk/fstab.composite.cutf_ivsh \
+    device/google/cuttlefish/shared/config/fstab.composite:$(TARGET_COPY_OUT_RECOVERY)/root/first_stage_ramdisk/fstab.composite.cutf_cvm \
 
 #
 # USB Specific
@@ -220,7 +234,8 @@ PRODUCT_PACKAGES += \
 PRODUCT_PACKAGES += \
     android.hardware.drm@1.0-impl \
     android.hardware.drm@1.0-service \
-    android.hardware.drm@1.2-service.clearkey
+    android.hardware.drm@1.2-service.clearkey \
+    android.hardware.drm@1.2-service.widevine
 
 #
 # Dumpstate HAL
@@ -252,7 +267,8 @@ PRODUCT_PACKAGES += \
 
 # Health
 PRODUCT_PACKAGES += \
-    android.hardware.health@2.0-service.cuttlefish
+    android.hardware.health@2.1-impl-cuttlefish \
+    android.hardware.health@2.1-service
 
 # Health Storage
 PRODUCT_PACKAGES += \
@@ -307,11 +323,11 @@ PRODUCT_PACKAGES += \
 # NeuralNetworks HAL
 #
 PRODUCT_PACKAGES += \
-    android.hardware.neuralnetworks@1.2-service-sample-all \
-    android.hardware.neuralnetworks@1.2-service-sample-float-fast \
-    android.hardware.neuralnetworks@1.2-service-sample-float-slow \
-    android.hardware.neuralnetworks@1.2-service-sample-minimal \
-    android.hardware.neuralnetworks@1.2-service-sample-quant
+    android.hardware.neuralnetworks@1.3-service-sample-all \
+    android.hardware.neuralnetworks@1.3-service-sample-float-fast \
+    android.hardware.neuralnetworks@1.3-service-sample-float-slow \
+    android.hardware.neuralnetworks@1.3-service-sample-minimal \
+    android.hardware.neuralnetworks@1.3-service-sample-quant
 
 #
 # USB
@@ -320,10 +336,13 @@ PRODUCT_PACKAGES += \
 
 # Vibrator HAL
 PRODUCT_PACKAGES += \
-    android.hardware.vibrator@1.3-service.example
+    android.hardware.vibrator-service.example
 
+# BootControl HAL
 PRODUCT_PACKAGES += \
-    cuttlefish_dtb
+    android.hardware.boot@1.1-impl \
+    android.hardware.boot@1.1-impl.recovery \
+    android.hardware.boot@1.1-service
 
 # WLAN driver configuration files
 PRODUCT_COPY_FILES += \
@@ -347,3 +366,5 @@ PRODUCT_COPY_FILES += \
 
 # Host packages to install
 PRODUCT_HOST_PACKAGES += socket_forward_proxy socket_vsock_proxy
+
+PRODUCT_EXTRA_VNDK_VERSIONS := 28 29

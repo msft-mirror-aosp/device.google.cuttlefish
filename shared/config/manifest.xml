@@ -84,17 +84,6 @@
             <instance>default</instance>
         </interface>
     </hal>
-    <!-- TODO (b/130078382):
-    <hal format="hidl">
-        <name>android.hardware.boot</name>
-        <transport>hwbinder</transport>
-        <version>1.0</version>
-        <interface>
-            <name>IBootControl</name>
-            <instance>default</instance>
-        </interface>
-    </hal>
-    -->
     <!-- TODO (b/130078384): -->
     <hal format="hidl">
         <name>android.hardware.camera.provider</name>
@@ -180,15 +169,6 @@
         <version>2.1</version>
         <interface>
             <name>IMapper</name>
-            <instance>default</instance>
-        </interface>
-    </hal>
-    <hal format="hidl">
-        <name>android.hardware.health</name>
-        <transport>hwbinder</transport>
-        <version>2.0</version>
-        <interface>
-            <name>IHealth</name>
             <instance>default</instance>
         </interface>
     </hal>
@@ -280,7 +260,7 @@
     <hal format="hidl">
         <name>android.hardware.radio</name>
         <transport>hwbinder</transport>
-        <version>1.4</version>
+        <version>1.5</version>
         <interface>
             <name>IRadio</name>
             <instance>slot1</instance>
