@@ -34,7 +34,6 @@ cvd_host_executables := \
     record_audio \
     cf_qemu.sh \
     cf_bpttool \
-    ivserver \
     kernel_log_monitor \
     extract-vmlinux \
     crosvm \
