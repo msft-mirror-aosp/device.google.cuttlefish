@@ -8,7 +8,6 @@
 #include "common/libs/fs/shared_fd.h"
 #include "common/libs/utils/files.h"
 #include "common/libs/utils/size_utils.h"
-#include "common/vsoc/shm/screen_layout.h"
 #include "host/commands/launch/launcher_defs.h"
 #include "host/commands/launch/pre_launch_initializers.h"
 #include "host/libs/vm_manager/crosvm_manager.h"

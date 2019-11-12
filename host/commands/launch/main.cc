@@ -45,8 +45,6 @@
 #include "common/libs/utils/files.h"
 #include "common/libs/utils/subprocess.h"
 #include "common/libs/utils/size_utils.h"
-#include "common/vsoc/lib/vsoc_memory.h"
-#include "common/vsoc/shm/screen_layout.h"
 #include "host/commands/launch/boot_image_unpacker.h"
 #include "host/commands/launch/data_image.h"
 #include "host/commands/launch/flags.h"
