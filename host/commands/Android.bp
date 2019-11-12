@@ -18,7 +18,6 @@ subdirs = [
     "launch",
     "stop_cvd",
     "ivserver",
-    "record_audio",
     "kernel_log_monitor",
     "config_server",
     "console_forwarder",

@@ -31,7 +31,6 @@ cvd_host_executables := \
     adb_connector \
     stop_cvd \
     vnc_server \
-    record_audio \
     cf_qemu.sh \
     cf_bpttool \
     kernel_log_monitor \
