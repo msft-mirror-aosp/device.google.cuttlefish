@@ -10,7 +10,6 @@ int GetHostPort();
 bool AdbUsbEnabled(const vsoc::CuttlefishConfig& config);
 void ValidateAdbModeFlag(const vsoc::CuttlefishConfig& config);
 
-cvd::Command GetIvServerCommand(const vsoc::CuttlefishConfig& config);
 std::vector <cvd::SharedFD> LaunchKernelLogMonitor(
     const vsoc::CuttlefishConfig& config,
     cvd::ProcessMonitor* process_monitor,
@@ -32,7 +31,5 @@ void LaunchSocketForwardProxyIfEnabled(cvd::ProcessMonitor* process_monitor,
                                  const vsoc::CuttlefishConfig& config);
 void LaunchSocketVsockProxyIfEnabled(cvd::ProcessMonitor* process_monitor,
                                  const vsoc::CuttlefishConfig& config);
-void LaunchIvServerIfEnabled(cvd::ProcessMonitor* process_monitor,
-                             const vsoc::CuttlefishConfig& config);
 void LaunchTombstoneReceiverIfEnabled(const vsoc::CuttlefishConfig& config,
                                       cvd::ProcessMonitor* process_monitor);

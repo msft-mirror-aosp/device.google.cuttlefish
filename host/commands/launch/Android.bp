@@ -32,8 +32,6 @@ cc_binary_host {
     name: "launch_cvd",
     srcs: [
         "main.cc",
-        "screen_region_handler.cc",
-        "vsoc_shared_memory.cc",
         "boot_image_unpacker.cc",
         "process_monitor.cc",
         "launch.cc",
@@ -58,7 +56,6 @@ cc_binary_host {
     static_libs: [
         "libcuttlefish_host_config",
         "libcuttlefish_vm_manager",
-        "libivserver",
         "libgflags",
         "libxml2",
         "libjsoncpp",

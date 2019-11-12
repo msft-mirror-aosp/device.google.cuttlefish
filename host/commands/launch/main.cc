@@ -53,7 +53,6 @@
 #include "host/commands/launch/launch.h"
 #include "host/commands/launch/launcher_defs.h"
 #include "host/commands/launch/process_monitor.h"
-#include "host/commands/launch/vsoc_shared_memory.h"
 #include "host/libs/config/cuttlefish_config.h"
 #include "host/commands/kernel_log_monitor/kernel_log_server.h"
 #include <host/libs/vm_manager/crosvm_manager.h>
@@ -402,7 +401,6 @@ int main(int argc, char** argv) {
 
   LaunchTombstoneReceiverIfEnabled(*config, &process_monitor);
 
-  LaunchIvServerIfEnabled(&process_monitor, *config);
   // Launch the e2e tests after the ivserver is ready
   LaunchE2eTestIfEnabled(&process_monitor, boot_state_machine, *config);
 
