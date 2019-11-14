@@ -26,7 +26,6 @@ cvd_host_executables := \
     adbshell \
     host_region_e2e_test \
     launch_cvd \
-    socket_forward_proxy \
     socket_vsock_proxy \
     adb_connector \
     stop_cvd \
