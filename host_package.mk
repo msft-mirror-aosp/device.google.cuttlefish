@@ -27,7 +27,6 @@ cvd_host_executables := \
     launch_cvd \
     lpmake \
     lpunpack \
-    socket_forward_proxy \
     socket_vsock_proxy \
     adb_connector \
     stop_cvd \
