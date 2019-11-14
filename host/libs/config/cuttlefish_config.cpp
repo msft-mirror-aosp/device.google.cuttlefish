@@ -132,10 +132,6 @@ const char* kEnableVncServer = "enable_vnc_server";
 const char* kVncServerBinary = "vnc_server_binary";
 const char* kVncServerPort = "vnc_server_port";
 
-const char* kEnableStreamAudio = "enable_stream_audio";
-const char* kStreamAudioBinary = "stream_audio_binary";
-const char* kStreamAudioPort = "stream_audio_port";
-
 const char* kEnableSandbox = "enable_sandbox";
 const char* kSeccompPolicyDir = "seccomp_policy_dir";
 
@@ -679,10 +675,6 @@ void CuttlefishConfig::set_vnc_server_port(int vnc_server_port) {
   (*dictionary_)[kVncServerPort] = vnc_server_port;
 }
 
-bool CuttlefishConfig::enable_stream_audio() const {
-  return (*dictionary_)[kEnableStreamAudio].asBool();
-}
-
 void CuttlefishConfig::set_enable_sandbox(const bool enable_sandbox) {
   (*dictionary_)[kEnableSandbox] = enable_sandbox;
 }
@@ -701,27 +693,6 @@ void CuttlefishConfig::set_seccomp_policy_dir(const std::string& seccomp_policy_
 
 std::string CuttlefishConfig::seccomp_policy_dir() const {
   return (*dictionary_)[kSeccompPolicyDir].asString();
-}
-
-void CuttlefishConfig::set_enable_stream_audio(bool enable_stream_audio) {
-  (*dictionary_)[kEnableStreamAudio] = enable_stream_audio;
-}
-
-std::string CuttlefishConfig::stream_audio_binary() const {
-  return (*dictionary_)[kStreamAudioBinary].asString();
-}
-
-void CuttlefishConfig::set_stream_audio_binary(
-    const std::string& stream_audio_binary) {
-  (*dictionary_)[kStreamAudioBinary] = stream_audio_binary;
-}
-
-int CuttlefishConfig::stream_audio_port() const {
-  return (*dictionary_)[kStreamAudioPort].asInt();
-}
-
-void CuttlefishConfig::set_stream_audio_port(int stream_audio_port) {
-  (*dictionary_)[kStreamAudioPort] = stream_audio_port;
 }
 
 bool CuttlefishConfig::restart_subprocesses() const {
