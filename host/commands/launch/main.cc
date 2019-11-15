@@ -416,7 +416,6 @@ int main(int argc, char** argv) {
   }
 
   // Start other host processes
-  LaunchSocketForwardProxyIfEnabled(&process_monitor, *config);
   LaunchSocketVsockProxyIfEnabled(&process_monitor, *config);
   LaunchAdbConnectorIfEnabled(&process_monitor, *config, adbd_events_pipe);
 

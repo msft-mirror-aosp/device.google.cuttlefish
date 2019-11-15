@@ -31,7 +31,6 @@ constexpr char kVsocUserPrefix[] = "vsoc-";
 constexpr char kCrosvmVarEmptyDir[] = "/var/empty";
 
 enum class AdbMode {
-  Tunnel,
   VsockTunnel,
   VsockHalfTunnel,
   NativeVsock,
