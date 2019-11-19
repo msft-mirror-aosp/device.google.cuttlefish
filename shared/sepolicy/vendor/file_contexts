@@ -1,22 +1,38 @@
 ##########################
 # Devices
 #
-/dev/block/vda  u:object_r:system_block_device:s0
-/dev/block/vdb  u:object_r:userdata_block_device:s0
-/dev/block/vdc  u:object_r:cache_block_device:s0
-/dev/block/vdd  u:object_r:metadata_block_device:s0
-/dev/block/vde  u:object_r:system_block_device:s0
-/dev/block/vdf  u:object_r:system_block_device:s0
-/dev/block/vdg  u:object_r:misc_block_device:s0
-/dev/block/vdh  u:object_r:system_block_device:s0
-/dev/block/vda1  u:object_r:system_block_device:s0
-/dev/block/vda2  u:object_r:userdata_block_device:s0
-/dev/block/vda3  u:object_r:cache_block_device:s0
-/dev/block/vda4  u:object_r:metadata_block_device:s0
-/dev/block/vda5  u:object_r:system_block_device:s0
-/dev/block/vda6  u:object_r:system_block_device:s0
-/dev/block/vda7  u:object_r:misc_block_device:s0
-/dev/block/vda8  u:object_r:system_block_device:s0
+
+# crosvm (x86) block devices
+/dev/block/pci/pci0000:00/0000:00:01\.0/by-name/boot u:object_r:boot_block_device:s0
+/dev/block/pci/pci0000:00/0000:00:01\.0/by-name/metadata u:object_r:metadata_block_device:s0
+/dev/block/pci/pci0000:00/0000:00:01\.0/by-name/misc u:object_r:misc_block_device:s0
+/dev/block/pci/pci0000:00/0000:00:01\.0/by-name/system u:object_r:system_block_device:s0
+/dev/block/pci/pci0000:00/0000:00:01\.0/by-name/vendor u:object_r:system_block_device:s0
+/dev/block/pci/pci0000:00/0000:00:01\.0/by-name/product u:object_r:system_block_device:s0
+/dev/block/pci/pci0000:00/0000:00:01\.0/by-name/odm u:object_r:system_block_device:s0
+/dev/block/pci/pci0000:00/0000:00:01\.0/by-name/userdata u:object_r:userdata_block_device:s0
+/dev/block/pci/pci0000:00/0000:00:01\.0/by-name/cache u:object_r:cache_block_device:s0
+# crosvm (arm64) block devices
+/dev/block/platform/10000.pci/by-name/boot u:object_r:boot_block_device:s0
+/dev/block/platform/10000.pci/by-name/metadata u:object_r:metadata_block_device:s0
+/dev/block/platform/10000.pci/by-name/misc u:object_r:misc_block_device:s0
+/dev/block/platform/10000.pci/by-name/system u:object_r:system_block_device:s0
+/dev/block/platform/10000.pci/by-name/vendor u:object_r:system_block_device:s0
+/dev/block/platform/10000.pci/by-name/product u:object_r:system_block_device:s0
+/dev/block/platform/10000.pci/by-name/odm u:object_r:system_block_device:s0
+/dev/block/platform/10000.pci/by-name/userdata u:object_r:userdata_block_device:s0
+/dev/block/platform/10000.pci/by-name/cache u:object_r:cache_block_device:s0
+# qemu block devices
+/dev/block/pci/pci0000:00/0000:00:03\.0/by-name/boot u:object_r:boot_block_device:s0
+/dev/block/pci/pci0000:00/0000:00:03\.0/by-name/metadata u:object_r:metadata_block_device:s0
+/dev/block/pci/pci0000:00/0000:00:03\.0/by-name/misc u:object_r:misc_block_device:s0
+/dev/block/pci/pci0000:00/0000:00:03\.0/by-name/system u:object_r:system_block_device:s0
+/dev/block/pci/pci0000:00/0000:00:03\.0/by-name/vendor u:object_r:system_block_device:s0
+/dev/block/pci/pci0000:00/0000:00:03\.0/by-name/product u:object_r:system_block_device:s0
+/dev/block/pci/pci0000:00/0000:00:03\.0/by-name/odm u:object_r:system_block_device:s0
+/dev/block/pci/pci0000:00/0000:00:03\.0/by-name/userdata u:object_r:userdata_block_device:s0
+/dev/block/pci/pci0000:00/0000:00:03\.0/by-name/cache u:object_r:cache_block_device:s0
+
 /dev/block/zram0  u:object_r:swap_block_device:s0
 /dev/dri(/.*)?  u:object_r:gpu_device:s0
 /dev/e2e_managed  u:object_r:region_e2e_test_device:s0

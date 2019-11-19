@@ -138,8 +138,8 @@ class CuttlefishConfig {
   std::string dtb_path() const;
   void set_dtb_path(const std::string& dtb_path);
 
-  std::string gsi_fstab_path() const;
-  void set_gsi_fstab_path(const std::string& path);
+  std::string dtb_fstab_path() const;
+  void set_dtb_fstab_path(const std::string& path);
 
   std::string kernel_log_pipe_name() const;
   void set_kernel_log_pipe_name(const std::string& kernel_log_pipe_name);

@@ -100,7 +100,7 @@ const char* kLogcatPath = "logcat_path";
 const char* kLauncherLogPath = "launcher_log_path";
 const char* kLauncherMonitorPath = "launcher_monitor_socket";
 const char* kDtbPath = "dtb_path";
-const char* kGsiFstabPath = "gsi.fstab_path";
+const char* kDtbFstabPath = "dtb_fstab_path";
 
 const char* kMobileBridgeName = "mobile_bridge_name";
 const char* kMobileTapName = "mobile_tap_name";
@@ -370,11 +370,11 @@ void CuttlefishConfig::set_dtb_path(const std::string& dtb_path) {
   SetPath(kDtbPath, dtb_path);
 }
 
-std::string CuttlefishConfig::gsi_fstab_path() const {
-  return (*dictionary_)[kGsiFstabPath].asString();
+std::string CuttlefishConfig::dtb_fstab_path() const {
+  return (*dictionary_)[kDtbFstabPath].asString();
 }
-void CuttlefishConfig::set_gsi_fstab_path(const std::string& path){
-  SetPath(kGsiFstabPath, path);
+void CuttlefishConfig::set_dtb_fstab_path(const std::string& path){
+  SetPath(kDtbFstabPath, path);
 }
 
 std::string CuttlefishConfig::kernel_log_pipe_name() const {

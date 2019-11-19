@@ -82,10 +82,8 @@ cvd_host_shared_libraries := \
 
 cvd_host_configs := \
     system-root.dtb \
-    composite-system-root.dtb \
-    gsi.fstab \
-    composite-gsi.fstab \
-    composite-gsi-arm64.fstab \
+    system-root.fstab \
+    system-root-arm64.fstab
 
 x86_64_seccomp_files := \
     9p_device.policy \

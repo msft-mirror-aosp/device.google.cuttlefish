@@ -151,7 +151,7 @@ BOARD_PROPERTY_OVERRIDES_SPLIT_ENABLED := true
 
 TARGET_NO_RECOVERY ?= true
 TARGET_RECOVERY_PIXEL_FORMAT := ABGR_8888
-TARGET_RECOVERY_FSTAB ?= device/google/cuttlefish/shared/config/fstab.composite.recovery
+TARGET_RECOVERY_FSTAB ?= device/google/cuttlefish/shared/config/fstab.recovery
 
 # To see full logs from init, disable ratelimiting.
 # The default is 5 messages per second amortized, with a burst of up to 10.

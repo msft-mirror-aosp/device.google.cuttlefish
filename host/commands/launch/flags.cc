@@ -106,8 +106,7 @@ DEFINE_string(product_image, "", "Location of the product partition image.");
 DEFINE_string(misc_image, "",
               "Location of the misc partition image. If the image does not "
               "exist, a blank new misc partition image is created.");
-DEFINE_string(composite_disk, "", "Location of the composite disk image. "
-                                  "If empty, a composite disk is not used.");
+DEFINE_string(composite_disk, "", "Location of the composite disk image.");
 
 DEFINE_bool(deprecated_boot_completed, false, "Log boot completed message to"
             " host kernel. This is only used during transition of our clients."
@@ -183,9 +182,7 @@ DEFINE_int32(vsock_guest_cid,
 
 // TODO(b/72969289) This should be generated
 DEFINE_string(dtb, "", "Path to the cuttlefish.dtb file");
-DEFINE_string(gsi_fstab,
-              vsoc::DefaultHostArtifactsPath("config/gsi.fstab"),
-              "Path to the GSI fstab file");
+DEFINE_string(dtb_fstab, "", "Path to the DTB fstab file");
 
 DEFINE_string(uuid, vsoc::GetPerInstanceDefault(vsoc::kDefaultUuidPrefix),
               "UUID to use for the device. Random if not specified");
@@ -351,23 +348,13 @@ bool InitializeCuttlefishConfiguration(
   }
 
   if (FLAGS_dtb.empty()) {
-    if (FLAGS_composite_disk.empty()) {
-      FLAGS_dtb = vsoc::DefaultHostArtifactsPath("config/system-root.dtb");
-    } else {
-      FLAGS_dtb = vsoc::DefaultHostArtifactsPath("config/composite-system-root.dtb");
-    }
+    FLAGS_dtb = vsoc::DefaultHostArtifactsPath("config/system-root.dtb");
   }
 
   tmp_config_obj.add_kernel_cmdline(boot_image_unpacker.kernel_cmdline());
 
   if (!use_ramdisk) {
-    if (FLAGS_composite_disk.empty()) {
-      tmp_config_obj.add_kernel_cmdline("root=/dev/vda");
-      tmp_config_obj.add_kernel_cmdline("androidboot.fstab_name=fstab");
-    } else {
-      tmp_config_obj.add_kernel_cmdline("root=/dev/vda1");
-      tmp_config_obj.add_kernel_cmdline("androidboot.fstab_name=composite-fstab");
-    }
+    tmp_config_obj.add_kernel_cmdline("root=/dev/vda1");
   }
 
   tmp_config_obj.add_kernel_cmdline("init=/init");
@@ -412,23 +399,9 @@ bool InitializeCuttlefishConfiguration(
   }
 
   tmp_config_obj.set_dtb_path(FLAGS_dtb);
-  tmp_config_obj.set_gsi_fstab_path(FLAGS_gsi_fstab);
+  tmp_config_obj.set_dtb_fstab_path(FLAGS_dtb_fstab);
 
-  if (!FLAGS_composite_disk.empty()) {
-    tmp_config_obj.set_virtual_disk_paths({FLAGS_composite_disk});
-  } else {
-    tmp_config_obj.set_virtual_disk_paths({
-      FLAGS_system_image,
-      FLAGS_data_image,
-      FLAGS_cache_image,
-      FLAGS_metadata_image,
-      FLAGS_vendor_image,
-      FLAGS_product_image,
-      FLAGS_misc_image,
-      FLAGS_odm_image,
-      FLAGS_system_ext_image,
-    });
-  }
+  tmp_config_obj.set_virtual_disk_paths({FLAGS_composite_disk});
 
   tmp_config_obj.set_ramdisk_image_path(ramdisk_path);
 
@@ -573,18 +546,16 @@ void SetDefaultFlagsForCrosvm() {
   SetCommandLineOptionWithMode("logcat_mode", cvd::kLogcatVsockMode,
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
 
-  if (!FLAGS_composite_disk.empty()) {
-    std::string composite_gsi_fstab;
-    if (cvd::HostArch() == "x86_64") {
-      composite_gsi_fstab =
-        vsoc::DefaultHostArtifactsPath("config/composite-gsi.fstab");
-    } else {
-      composite_gsi_fstab =
-        vsoc::DefaultHostArtifactsPath("config/composite-gsi-arm64.fstab");
-    }
-    SetCommandLineOptionWithMode("gsi_fstab", composite_gsi_fstab.c_str(),
-                                 google::FlagSettingMode::SET_FLAGS_DEFAULT);
+  std::string dtb_fstab;
+  if (cvd::HostArch() == "x86_64") {
+    dtb_fstab =
+      vsoc::DefaultHostArtifactsPath("config/system-root.fstab");
+  } else {
+    dtb_fstab =
+      vsoc::DefaultHostArtifactsPath("config/system-root-arm64.fstab");
   }
+  SetCommandLineOptionWithMode("dtb_fstab", dtb_fstab.c_str(),
+                               google::FlagSettingMode::SET_FLAGS_DEFAULT);
 
   // for now, we support only x86_64 by default
   bool default_enable_sandbox = false;
@@ -720,9 +691,6 @@ std::vector<ImagePartition> disk_config() {
 }
 
 bool ShouldCreateCompositeDisk() {
-  if (FLAGS_composite_disk.empty()) {
-    return false;
-  }
   if (FLAGS_vm_manager == vm_manager::CrosvmManager::name()) {
     // The crosvm implementation is very fast to rebuild but also more brittle due to being split
     // into multiple files. The QEMU implementation is slow to build, but completely self-contained
