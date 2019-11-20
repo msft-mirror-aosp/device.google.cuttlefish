@@ -39,16 +39,16 @@ using vsoc::DefaultHostArtifactsPath;
 std::string TargetFilesZip(const cvd::FetcherConfig& fetcher_config,
                            cvd::FileSource source) {
   for (const auto& file_iter : fetcher_config.get_cvd_files()) {
-    if (file_iter.second.source != source) {
+    const auto& file_path = file_iter.first;
+    const auto& file_info = file_iter.second;
+    if (file_info.source != source) {
       continue;
     }
-    std::string expected_substr = "target_files-" + file_iter.second.build_id;
-    if (expected_substr.size() > file_iter.first.size()) {
+    std::string expected_filename = "target_files-" + file_iter.second.build_id + ".zip";
+    if (!android::base::EndsWith(file_path, expected_filename)) {
       continue;
     }
-    if (file_iter.first.find(expected_substr) != std::string::npos) {
-      return file_iter.first;
-    }
+    return file_path;;
   }
   return "";
 }
