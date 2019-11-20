@@ -73,9 +73,6 @@ DEFINE_string(boot_image, "",
               "boot.img in the directory specified by -system_image_dir.");
 DEFINE_int32(memory_mb, 2048,
              "Total amount of memory available for guest, MB.");
-std::string g_default_mempath{vsoc::GetDefaultMempath()};
-DEFINE_string(mempath, g_default_mempath.c_str(),
-              "Target location for the shmem file.");
 DEFINE_string(mobile_interface, "", // default handled on ParseCommandLine
               "Network interface to use for mobile networking");
 DEFINE_string(mobile_tap_name, "", // default handled on ParseCommandLine
@@ -144,9 +141,6 @@ DEFINE_string(seccomp_policy_dir,
 DEFINE_string(kernel_log_monitor_binary,
               vsoc::DefaultHostArtifactsPath("bin/kernel_log_monitor"),
               "Location of the log monitor binary.");
-DEFINE_string(ivserver_binary,
-              vsoc::DefaultHostArtifactsPath("bin/ivserver"),
-              "Location of the ivshmem server binary.");
 DEFINE_int32(vnc_server_port, GetPerInstanceDefault(6444),
              "The port on which the vnc server should listen");
 DEFINE_string(socket_forward_proxy_binary,
@@ -431,13 +425,6 @@ bool InitializeCuttlefishConfiguration(
 
   tmp_config_obj.set_ramdisk_image_path(ramdisk_path);
 
-  tmp_config_obj.set_mempath(FLAGS_mempath);
-  tmp_config_obj.set_ivshmem_qemu_socket_path(
-      tmp_config_obj.PerInstancePath("ivshmem_socket_qemu"));
-  tmp_config_obj.set_ivshmem_client_socket_path(
-      tmp_config_obj.PerInstancePath("ivshmem_socket_client"));
-  tmp_config_obj.set_ivshmem_vector_count(0);
-
   tmp_config_obj.set_kernel_log_pipe_name(tmp_config_obj.PerInstancePath("kernel-log"));
   tmp_config_obj.set_console_pipe_name(tmp_config_obj.PerInstancePath("console-pipe"));
   tmp_config_obj.set_deprecated_boot_completed(FLAGS_deprecated_boot_completed);
@@ -465,7 +452,6 @@ bool InitializeCuttlefishConfiguration(
   tmp_config_obj.set_qemu_binary(FLAGS_qemu_binary);
   tmp_config_obj.set_crosvm_binary(FLAGS_crosvm_binary);
   tmp_config_obj.set_console_forwarder_binary(FLAGS_console_forwarder_binary);
-  tmp_config_obj.set_ivserver_binary(FLAGS_ivserver_binary);
   tmp_config_obj.set_kernel_log_monitor_binary(FLAGS_kernel_log_monitor_binary);
 
   tmp_config_obj.set_enable_vnc_server(FLAGS_start_vnc_server);
@@ -491,7 +477,7 @@ bool InitializeCuttlefishConfiguration(
   tmp_config_obj.set_logcat_vsock_port(FLAGS_logcat_vsock_port);
   tmp_config_obj.set_config_server_port(FLAGS_config_server_port);
   tmp_config_obj.set_frames_vsock_port(FLAGS_frames_vsock_port);
-  if (!tmp_config_obj.enable_ivserver() && tmp_config_obj.enable_vnc_server()) {
+  if (tmp_config_obj.enable_vnc_server()) {
     tmp_config_obj.add_kernel_cmdline(concat("androidboot.vsock_frames_port=",
                                              FLAGS_frames_vsock_port));
   }
@@ -656,8 +642,6 @@ bool ParseCommandLineFlags(int* argc, char*** argv) {
 bool CleanPriorFiles() {
   // Everything on the instance directory
   std::string prior_files = FLAGS_instance_dir + "/*";
-  // The shared memory file
-  prior_files += " " + FLAGS_mempath;
   // The environment file
   prior_files += " " + GetCuttlefishEnvPath();
   // The global link to the config file

@@ -219,7 +219,7 @@ bool LaunchVNCServerIfEnabled(const vsoc::CuttlefishConfig& config,
     if (config.vm_manager() == vm_manager::QemuManager::name()) {
       vnc_server.AddParameter("-write_virtio_input");
     }
-    // When the ivserver is not enabled, the vnc touch_server needs to serve
+    // The vnc touch_server needs to serve
     // on sockets and send input events to whoever connects to it (the VMM).
     auto touch_server =
         config.vm_manager() == vm_manager::CrosvmManager::name()

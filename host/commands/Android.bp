@@ -17,7 +17,6 @@ subdirs = [
     "adbshell",
     "launch",
     "stop_cvd",
-    "ivserver",
     "kernel_log_monitor",
     "config_server",
     "console_forwarder",

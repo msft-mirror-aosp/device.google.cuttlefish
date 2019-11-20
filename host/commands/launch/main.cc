@@ -355,8 +355,7 @@ int main(int argc, char** argv) {
 
   LaunchTombstoneReceiverIfEnabled(*config, &process_monitor);
 
-  // The vnc server needs to be launched after the ivserver because it connects
-  // to it when using qemu. It needs to launch before the VMM because it serves
+  // The vnc server needs to launch before the VMM because it serves
   // on several sockets (input devices, vsock frame server) when using crosvm.
   auto frontend_enabled = LaunchVNCServerIfEnabled(
       *config, &process_monitor, GetOnSubprocessExitCallback(*config));

@@ -141,20 +141,6 @@ class CuttlefishConfig {
   std::string gsi_fstab_path() const;
   void set_gsi_fstab_path(const std::string& path);
 
-  std::string mempath() const;
-  void set_mempath(const std::string& mempath);
-
-  std::string ivshmem_qemu_socket_path() const;
-  void set_ivshmem_qemu_socket_path(
-      const std::string& ivshmem_qemu_socket_path);
-
-  std::string ivshmem_client_socket_path() const;
-  void set_ivshmem_client_socket_path(
-      const std::string& ivshmem_client_socket_path);
-
-  int ivshmem_vector_count() const;
-  void set_ivshmem_vector_count(int ivshmem_vector_count);
-
   std::string kernel_log_pipe_name() const;
   void set_kernel_log_pipe_name(const std::string& kernel_log_pipe_name);
 
@@ -233,9 +219,6 @@ class CuttlefishConfig {
   void set_console_forwarder_binary(const std::string& crosvm_binary);
   std::string console_forwarder_binary() const;
 
-  void set_ivserver_binary(const std::string& ivserver_binary);
-  std::string ivserver_binary() const;
-
   void set_kernel_log_monitor_binary(
       const std::string& kernel_log_monitor_binary);
   std::string kernel_log_monitor_binary() const;
@@ -303,8 +286,6 @@ class CuttlefishConfig {
   void set_tombstone_receiver_port(int port);
   int tombstone_receiver_port() const;
 
-  bool enable_ivserver() const;
-
   std::string touch_socket_path() const;
   std::string keyboard_socket_path() const;
 
@@ -331,9 +312,6 @@ int GetInstance();
 // Returns a path where the launhcer puts a link to the config file which makes
 // it easily discoverable regardless of what vm manager is in use
 std::string GetGlobalConfigFileLink();
-
-// Returns the path to the ivserver's client socket.
-std::string GetDomain();
 
 // These functions modify a given base value to make it different accross
 // different instances by appending the instance id in case of strings or adding
