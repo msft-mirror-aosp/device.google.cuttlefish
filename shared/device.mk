@@ -60,7 +60,7 @@ PRODUCT_PROPERTY_OVERRIDES += \
     wlan.driver.status=ok
 
 PRODUCT_SOONG_NAMESPACES += hardware/google/camera
-PRODUCT_SOONG_NAMESPACES += vendor/google/camera
+PRODUCT_SOONG_NAMESPACES += hardware/google/camera/devices/EmulatedCamera
 
 #
 # Packages for various cuttlefish-specific tests
@@ -219,7 +219,7 @@ PRODUCT_PACKAGES += \
 # Bluetooth HAL and Compatibility Bluetooth library (for older revs).
 #
 PRODUCT_PACKAGES += \
-    android.hardware.bluetooth@1.0-service.sim \
+    android.hardware.bluetooth@1.1-service.sim \
     android.hardware.bluetooth.audio@2.0-impl
 
 #
