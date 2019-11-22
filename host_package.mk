@@ -24,7 +24,6 @@ x86_64_seccomp_files_path := usr/share/cuttlefish/x86_64-linux-gnu/seccomp
 cvd_host_executables := \
     adb \
     adbshell \
-    host_region_e2e_test \
     launch_cvd \
     socket_vsock_proxy \
     adb_connector \
