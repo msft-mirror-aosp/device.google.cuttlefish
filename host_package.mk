@@ -64,7 +64,6 @@ cvd_host_shared_libraries := \
     libbase.so \
     libcuttlefish_fs.so \
     cuttlefish_auto_resources.so \
-    libcuttlefish_strings.so \
     libcuttlefish_utils.so \
     cuttlefish_tcp_socket.so \
     cuttlefish_net.so \
