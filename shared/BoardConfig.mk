@@ -150,3 +150,8 @@ TARGET_RELEASETOOLS_EXTENSIONS := device/google/cuttlefish/shared
 # To see full logs from init, disable ratelimiting.
 # The default is 5 messages per second amortized, with a burst of up to 10.
 BOARD_KERNEL_CMDLINE += printk.devkmsg=on
+
+BOARD_KERNEL_CMDLINE += init=/init
+BOARD_KERNEL_CMDLINE += androidboot.hardware=cutf_cvm
+BOARD_KERNEL_CMDLINE += security=selinux
+BOARD_KERNEL_CMDLINE += androidboot.console=ttyS1
