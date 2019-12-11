@@ -32,7 +32,7 @@ LOCAL_SRC_FILES := \
     vsoc_audio_policy_hal.cpp
 
 LOCAL_C_INCLUDES := \
-    device/google/cuttlefish_common \
+    device/google/cuttlefish \
     $(VSOC_STLPORT_INCLUDES) \
     frameworks/native/include/media/hardware \
     $(call include-path-for, audio)

@@ -43,7 +43,7 @@ LOCAL_SRC_FILES := \
     vsoc_audio_output_stream.cpp
 
 LOCAL_C_INCLUDES := \
-    device/google/cuttlefish_common \
+    device/google/cuttlefish \
     device/google/cuttlefish_kernel \
     $(VSOC_STLPORT_INCLUDES) \
     frameworks/native/include/media/hardware \

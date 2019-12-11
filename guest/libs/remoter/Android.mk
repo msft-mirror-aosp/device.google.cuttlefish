@@ -24,7 +24,7 @@ LOCAL_SHARED_LIBRARIES := \
     liblog \
     libcuttlefish_fs
 LOCAL_C_INCLUDES := \
-    device/google/cuttlefish_common
+    device/google/cuttlefish
 LOCAL_CFLAGS := $(VSOC_VERSION_CFLAGS)
 LOCAL_VENDOR_MODULE := true
 include $(BUILD_STATIC_LIBRARY)
