@@ -147,9 +147,6 @@ DEFINE_string(seccomp_policy_dir,
               vsoc::DefaultHostArtifactsPath(kSeccompDir),
               "With sandbox'ed crosvm, overrieds the security comp policy directory");
 
-DEFINE_string(virtual_usb_manager_binary,
-              vsoc::DefaultHostArtifactsPath("bin/virtual_usb_manager"),
-              "Location of the virtual usb manager binary.");
 DEFINE_string(kernel_log_monitor_binary,
               vsoc::DefaultHostArtifactsPath("bin/kernel_log_monitor"),
               "Location of the log monitor binary.");
@@ -167,13 +164,12 @@ DEFINE_string(socket_vsock_proxy_binary,
               vsoc::DefaultHostArtifactsPath("bin/socket_vsock_proxy"),
               "Location of the socket_vsock_proxy binary.");
 DEFINE_string(adb_mode, "vsock_half_tunnel",
-              "Mode for ADB connection. Can be 'usb' for USB forwarding, "
-              "'tunnel' for a TCP connection tunneled through VSoC, "
+              "Mode for ADB connection."
               "'vsock_tunnel' for a TCP connection tunneled through vsock, "
               "'native_vsock' for a  direct connection to the guest ADB over "
               "vsock, 'vsock_half_tunnel' for a TCP connection forwarded to "
               "the guest ADB server, or a comma separated list of types as in "
-              "'usb,tunnel'");
+              "'native_vsock,vsock_half_tunnel'");
 DEFINE_bool(run_adb_connector, true,
             "Maintain adb connection by sending 'adb connect' commands to the "
             "server. Only relevant with -adb_mode=tunnel or vsock_tunnel");
@@ -181,7 +177,6 @@ DEFINE_string(adb_connector_binary,
               vsoc::DefaultHostArtifactsPath("bin/adb_connector"),
               "Location of the adb_connector binary. Only relevant if "
               "-run_adb_connector is true");
-DEFINE_int32(vhci_port, GetPerInstanceDefault(0), "VHCI port to use for usb");
 DEFINE_string(guest_mac_address,
               GetPerInstanceDefault("00:43:56:44:80:"), // 00:43:56:44:80:0x
               "MAC address of the wifi interface to be created on the guest.");
@@ -455,12 +450,6 @@ bool InitializeCuttlefishConfiguration(
       tmp_config_obj.PerInstancePath("ivshmem_socket_client"));
   tmp_config_obj.set_ivshmem_vector_count(memory_layout.GetRegions().size());
 
-  if (AdbUsbEnabled(tmp_config_obj)) {
-    tmp_config_obj.set_usb_v1_socket_name(tmp_config_obj.PerInstancePath("usb-v1"));
-    tmp_config_obj.set_vhci_port(FLAGS_vhci_port);
-    tmp_config_obj.set_usb_ip_socket_name(tmp_config_obj.PerInstancePath("usb-ip"));
-  }
-
   tmp_config_obj.set_kernel_log_pipe_name(tmp_config_obj.PerInstancePath("kernel-log"));
   tmp_config_obj.set_console_pipe_name(tmp_config_obj.PerInstancePath("console-pipe"));
   tmp_config_obj.set_deprecated_boot_completed(FLAGS_deprecated_boot_completed);
@@ -505,8 +494,6 @@ bool InitializeCuttlefishConfiguration(
   tmp_config_obj.set_restart_subprocesses(FLAGS_restart_subprocesses);
   tmp_config_obj.set_run_adb_connector(FLAGS_run_adb_connector);
   tmp_config_obj.set_adb_connector_binary(FLAGS_adb_connector_binary);
-  tmp_config_obj.set_virtual_usb_manager_binary(
-      FLAGS_virtual_usb_manager_binary);
   tmp_config_obj.set_socket_forward_proxy_binary(
       FLAGS_socket_forward_proxy_binary);
   tmp_config_obj.set_socket_vsock_proxy_binary(FLAGS_socket_vsock_proxy_binary);
@@ -517,10 +504,6 @@ bool InitializeCuttlefishConfiguration(
   tmp_config_obj.set_data_policy(FLAGS_data_policy);
   tmp_config_obj.set_blank_data_image_mb(FLAGS_blank_data_image_mb);
   tmp_config_obj.set_blank_data_image_fmt(FLAGS_blank_data_image_fmt);
-
-  if(!AdbUsbEnabled(tmp_config_obj)) {
-    tmp_config_obj.disable_usb_adb();
-  }
 
   tmp_config_obj.set_logcat_mode(FLAGS_logcat_mode);
   tmp_config_obj.set_logcat_vsock_port(FLAGS_logcat_vsock_port);

@@ -35,7 +35,6 @@ cvd_host_executables := \
     cf_qemu.sh \
     cf_bpttool \
     ivserver \
-    virtual_usb_manager \
     kernel_log_monitor \
     extract-vmlinux \
     crosvm \

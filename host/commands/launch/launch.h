@@ -19,8 +19,6 @@ void LaunchLogcatReceiverIfEnabled(const vsoc::CuttlefishConfig& config,
                                    cvd::ProcessMonitor* process_monitor);
 void LaunchConfigServer(const vsoc::CuttlefishConfig& config,
                         cvd::ProcessMonitor* process_monitor);
-void LaunchUsbServerIfEnabled(const vsoc::CuttlefishConfig& config,
-                              cvd::ProcessMonitor* process_monitor);
 bool LaunchVNCServerIfEnabled(const vsoc::CuttlefishConfig& config,
                               cvd::ProcessMonitor* process_monitor,
                               std::function<bool(cvd::MonitorEntry*)> callback);

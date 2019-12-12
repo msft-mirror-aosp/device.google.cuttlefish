@@ -92,12 +92,8 @@ bool LogcatReceiverEnabled(const vsoc::CuttlefishConfig& config) {
   return config.logcat_mode() == cvd::kLogcatVsockMode;
 }
 
-bool AdbUsbEnabled(const vsoc::CuttlefishConfig& config) {
-  return AdbModeEnabled(config, vsoc::AdbMode::Usb);
-}
-
 void ValidateAdbModeFlag(const vsoc::CuttlefishConfig& config) {
-  if (!AdbUsbEnabled(config) && !AdbTunnelEnabled(config)
+  if (!AdbTunnelEnabled(config)
       && !AdbVsockTunnelEnabled(config) && !AdbVsockHalfTunnelEnabled(config)) {
     LOG(INFO) << "ADB not enabled";
   }
@@ -236,25 +232,6 @@ void LaunchTombstoneReceiverIfEnabled(const vsoc::CuttlefishConfig& config,
   cmd.AddParameter("-tombstone_dir=", tombstoneDir);
 
   process_monitor->StartSubprocess(std::move(cmd),
-                                   GetOnSubprocessExitCallback(config));
-}
-
-void LaunchUsbServerIfEnabled(const vsoc::CuttlefishConfig& config,
-                              cvd::ProcessMonitor* process_monitor) {
-  if (!AdbUsbEnabled(config)) {
-    return;
-  }
-  auto socket_name = config.usb_v1_socket_name();
-  auto usb_v1_server = cvd::SharedFD::SocketLocalServer(
-      socket_name.c_str(), false, SOCK_STREAM, 0666);
-  if (!usb_v1_server->IsOpen()) {
-    LOG(ERROR) << "Unable to create USB v1 server socket: "
-               << usb_v1_server->StrError();
-    std::exit(cvd::LauncherExitCodes::kUsbV1SocketError);
-  }
-  cvd::Command usb_server(config.virtual_usb_manager_binary());
-  usb_server.AddParameter("-usb_v1_fd=", usb_v1_server);
-  process_monitor->StartSubprocess(std::move(usb_server),
                                    GetOnSubprocessExitCallback(config));
 }
 

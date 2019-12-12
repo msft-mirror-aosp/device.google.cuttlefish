@@ -151,7 +151,6 @@ std::vector<cvd::Command> QemuManager::StartCommands(bool /*with_frontend*/) {
                config_->ivshmem_qemu_socket_path());
   LogAndSetEnv("ivshmem_vector_count",
                std::to_string(config_->ivshmem_vector_count()));
-  LogAndSetEnv("usb_v1_socket_name", config_->usb_v1_socket_name());
   LogAndSetEnv("vsock_guest_cid", std::to_string(config_->vsock_guest_cid()));
   LogAndSetEnv("logcat_mode", config_->logcat_mode());
 

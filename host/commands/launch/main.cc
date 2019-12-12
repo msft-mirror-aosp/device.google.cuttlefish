@@ -206,11 +206,7 @@ bool WriteCuttlefishEnvironment(const vsoc::CuttlefishConfig& config) {
   std::string config_env = "export CUTTLEFISH_PER_INSTANCE_PATH=\"" +
                            config.PerInstancePath(".") + "\"\n";
   config_env += "export ANDROID_SERIAL=";
-  if (AdbUsbEnabled(config)) {
-    config_env += config.serial_number();
-  } else {
     config_env += "127.0.0.1:" + std::to_string(GetHostPort());
-  }
   config_env += "\n";
   env->Write(config_env.c_str(), config_env.size());
   return true;
@@ -405,8 +401,6 @@ int main(int argc, char** argv) {
   LaunchConfigServer(*config, &process_monitor);
 
   LaunchTombstoneReceiverIfEnabled(*config, &process_monitor);
-
-  LaunchUsbServerIfEnabled(*config, &process_monitor);
 
   LaunchIvServerIfEnabled(&process_monitor, *config);
   // Launch the e2e tests after the ivserver is ready
