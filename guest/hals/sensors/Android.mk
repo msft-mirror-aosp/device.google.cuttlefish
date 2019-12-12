@@ -49,7 +49,7 @@ LOCAL_CFLAGS := -DLOG_TAG=\"VSoC-Sensors\" \
 
 LOCAL_C_INCLUDES := \
     $(VSOC_STLPORT_INCLUDES) \
-    device/google/cuttlefish_common \
+    device/google/cuttlefish \
     system/extras
 
 LOCAL_STATIC_LIBRARIES := \

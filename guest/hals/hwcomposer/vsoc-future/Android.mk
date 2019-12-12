@@ -24,8 +24,8 @@ LOCAL_SRC_FILES := \
 
 LOCAL_C_INCLUDES += \
     device/google/cuttlefish_kernel \
-    device/google/cuttlefish_common \
-    device/google/cuttlefish_common/guest/hals/hwcomposer \
+    device/google/cuttlefish \
+    device/google/cuttlefish/guest/hals/hwcomposer \
     hardware/libhardware/include \
     system/core/base/include
 

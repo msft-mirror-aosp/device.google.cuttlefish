@@ -24,7 +24,7 @@ LOCAL_SRC_FILES := \
     mapper.cpp
 
 LOCAL_C_INCLUDES += \
-    device/google/cuttlefish_common \
+    device/google/cuttlefish \
     device/google/cuttlefish_kernel \
     hardware/libhardware/include \
     system/core/base/include
