@@ -32,7 +32,6 @@ cvd_host_executables := \
     vnc_server \
     cf_qemu.sh \
     cf_bpttool \
-    virtual_usb_manager \
     kernel_log_monitor \
     extract-vmlinux \
     crosvm \
