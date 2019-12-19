@@ -13,20 +13,17 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include <glog/logging.h>
 
-#include "common/libs/usbforward/protocol.h"
-#include "host/commands/virtual_usb_manager/vadb/usb_cmd_heartbeat.h"
+#pragma once
 
-namespace vadb {
-bool USBCmdHeartbeat::OnRequest(const cvd::SharedFD& /*fd*/) { return true; }
+#include <string>
+#include <vector>
 
-bool USBCmdHeartbeat::OnResponse(bool is_success,
-                                 const cvd::SharedFD& /*data*/) {
-  callback_(is_success);
-  return true;
-}
+#include "host/commands/run_cvd/launch.h"
+#include "host/libs/config/cuttlefish_config.h"
 
-USBCmdHeartbeat::USBCmdHeartbeat(USBCmdHeartbeat::HeartbeatResultCB callback)
-    : callback_(callback) {}
-}  // namespace vadb
+std::vector<std::string> KernelCommandLineFromConfig(const vsoc::CuttlefishConfig& config);
+std::vector<std::string> KernelCommandLineFromVnc(const VncServerPorts& vnc_config);
+std::vector<std::string> KernelCommandLineFromTombstone(const TombstoneReceiverPorts& tombstone);
+std::vector<std::string> KernelCommandLineFromConfigServer(const ConfigServerPorts& config_server);
+std::vector<std::string> KernelCommandLineFromLogcatServer(const LogcatServerPorts& config_server);
