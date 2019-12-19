@@ -52,6 +52,7 @@ cvd_host_executables := \
     assemble_cvd \
     run_cvd \
     cvd_status \
+    webRTC \
 
 cvd_host_tests := \
     auto_free_buffer_test \
@@ -82,6 +83,12 @@ cvd_host_shared_libraries := \
     cdisk_spec.so \
     libprotobuf-cpp-full.so \
     libziparchive.so \
+    libvpx.so \
+    libssl-host.so \
+    libopus.so \
+    libyuv.so \
+    libFraunhoferAAC.so \
+    libjpeg.so \
 
 cvd_host_package_files := \
      $(addprefix $(bin_path)/,$(cvd_host_executables)) \
