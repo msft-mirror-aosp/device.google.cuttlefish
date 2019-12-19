@@ -212,11 +212,11 @@ cvd::SharedFD CreateUnixVncInputServer(const std::string& path) {
   return server;
 }
 
-VncServerPorts LaunchVNCServerIfEnabled(
+VncServerLaunchResult LaunchVNCServerIfEnabled(
     const vsoc::CuttlefishConfig& config,
     cvd::ProcessMonitor* process_monitor,
     std::function<bool(MonitorEntry*)> callback) {
-  VncServerPorts server_ret;
+  VncServerLaunchResult server_ret;
   if (!config.enable_vnc_server()) {
     return {};
   }
@@ -267,7 +267,7 @@ VncServerPorts LaunchVNCServerIfEnabled(
   }
   vnc_server.AddParameter("-frame_server_fd=", frames_server);
   process_monitor->StartSubprocess(std::move(vnc_server), callback);
-
+  server_ret.launched = true;
   return server_ret;
 }
 
