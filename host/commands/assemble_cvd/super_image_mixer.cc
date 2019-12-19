@@ -42,12 +42,11 @@ std::string TargetFilesZip(const cvd::FetcherConfig& fetcher_config,
     if (file_iter.second.source != source) {
       continue;
     }
-    std::string expected_substr = "target_files-" + file_iter.second.build_id + ".zip";
+    std::string expected_substr = "target_files-" + file_iter.second.build_id;
     if (expected_substr.size() > file_iter.first.size()) {
       continue;
     }
-    auto expected_pos = file_iter.first.size() - expected_substr.size();
-    if (file_iter.first.rfind(expected_substr) == expected_pos) {
+    if (file_iter.first.find(expected_substr) != std::string::npos) {
       return file_iter.first;
     }
   }
