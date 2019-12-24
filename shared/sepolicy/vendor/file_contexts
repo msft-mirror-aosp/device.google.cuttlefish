@@ -60,8 +60,3 @@
 /vendor/lib(64)?/hw/gralloc.minigbm.so  u:object_r:same_process_hal_file:s0
 /vendor/lib(64)?/libcuttlefish_fs.so  u:object_r:same_process_hal_file:s0
 /vendor/lib(64)?/vsoc_lib.so  u:object_r:same_process_hal_file:s0
-
-#############################
-# Product files
-#
-/product/bin/tombstone_transmit  u:object_r:tombstone_transmit_exec:s0

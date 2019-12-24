@@ -11,7 +11,6 @@ ro.boot.hardware.hwcomposer u:object_r:cf_graphics_config_prop:s0 exact string
 ro.boot.lcd_density u:object_r:cf_graphics_config_prop:s0 exact int
 ro.boot.vsock_frames_port  u:object_r:vsock_frames_port_prop:s0
 ro.boot.logcat_serial_port  u:object_r:logcat_serial_port_prop:s0
-ro.boot.vsock_tombstone_port  u:object_r:vsock_tombstone_port_prop:s0
 ro.cdma.home.operator.alpha  u:object_r:vendor_init_radio_prop:s0
 ro.cdma.home.operator.numeric  u:object_r:vendor_init_radio_prop:s0
 sys.cf.ser.  u:object_r:sys_cf_ser_prop:s0
