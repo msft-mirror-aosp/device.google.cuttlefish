@@ -103,8 +103,7 @@ PRODUCT_AAPT_CONFIG := normal large xlarge hdpi xhdpi
 PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/config/audio_policy.conf:$(TARGET_COPY_OUT_VENDOR)/etc/audio_policy.conf \
     device/google/cuttlefish/shared/config/camera_v3.json:$(TARGET_COPY_OUT_VENDOR)/etc/config/camera.json \
-    device/google/cuttlefish/shared/config/init.common.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/hw/init.common.rc \
-    device/google/cuttlefish/shared/config/init.cutf_cvm.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/hw/init.cutf_cvm.rc \
+    device/google/cuttlefish/shared/config/init.vendor.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/hw/init.cutf_cvm.rc \
     device/google/cuttlefish/shared/config/init.product.rc:$(TARGET_COPY_OUT_PRODUCT)/etc/init/init.rc \
     device/google/cuttlefish/shared/config/ueventd.rc:$(TARGET_COPY_OUT_VENDOR)/ueventd.rc \
     device/google/cuttlefish/shared/config/media_codecs.xml:$(TARGET_COPY_OUT_VENDOR)/etc/media_codecs.xml \
@@ -140,16 +139,8 @@ PRODUCT_COPY_FILES += \
     frameworks/native/data/etc/android.hardware.wifi.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.wifi.xml \
     frameworks/native/data/etc/android.software.app_widgets.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.app_widgets.xml \
     system/bt/vendor_libs/test_vendor_lib/data/controller_properties.json:vendor/etc/bluetooth/controller_properties.json \
-    device/google/cuttlefish/shared/config/fstab:$(TARGET_COPY_OUT_RAMDISK)/fstab.cutf_ivsh \
-    device/google/cuttlefish/shared/config/fstab:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.cutf_ivsh \
     device/google/cuttlefish/shared/config/fstab:$(TARGET_COPY_OUT_RAMDISK)/fstab.cutf_cvm \
     device/google/cuttlefish/shared/config/fstab:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.cutf_cvm \
-
-#
-# USB Specific
-#
-PRODUCT_COPY_FILES += \
-    device/google/cuttlefish/shared/config/init.hardware.usb.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/init.cutf_ivsh.usb.rc
 
 # Packages for HAL implementations
 
@@ -171,7 +162,6 @@ PRODUCT_PACKAGES += \
 PRODUCT_PACKAGES += \
     hwcomposer.drm_minigbm \
     hwcomposer.cutf_cvm_ashmem \
-    hwcomposer.cutf_ivsh_ashmem \
     hwcomposer-stats \
     android.hardware.graphics.composer@2.2-impl \
     android.hardware.graphics.composer@2.2-service
@@ -325,8 +315,7 @@ PRODUCT_COPY_FILES += \
 ifneq ($(TARGET_NO_RECOVERY),true)
 
 PRODUCT_COPY_FILES += \
-    device/google/cuttlefish/shared/config/init.recovery.common.rc:recovery/root/init.recovery.common.rc \
-    device/google/cuttlefish/shared/config/init.recovery.cutf_cvm.rc:recovery/root/init.recovery.cutf_cvm.rc \
+    device/google/cuttlefish/shared/config/init.recovery.rc:$(TARGET_COPY_OUT_RECOVERY)/root/init.recovery.cutf_cvm.rc \
 
 endif
 
