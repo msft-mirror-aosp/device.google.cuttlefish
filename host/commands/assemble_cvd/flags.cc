@@ -55,6 +55,8 @@ DEFINE_bool(guest_enforce_security, true,
             "Whether to run in enforcing mode (non permissive).");
 DEFINE_bool(guest_audit_security, true,
             "Whether to log security audits.");
+DEFINE_bool(guest_force_normal_boot, true,
+            "Whether to force the boot sequence to skip recovery.");
 DEFINE_string(boot_image, "",
               "Location of cuttlefish boot image. If empty it is assumed to be "
               "boot.img in the directory specified by -system_image_dir.");
@@ -77,10 +79,6 @@ DEFINE_string(
 DEFINE_string(
     gpu_mode, vsoc::kGpuModeGuestSwiftshader,
     "What gpu configuration to use, one of {guest_swiftshader, drm_virgl}");
-DEFINE_string(wayland_socket, "",
-    "Location of the wayland socket to use for drm_virgl gpu_mode.");
-DEFINE_string(x_display, "",
-    "X display to use for drm_virgl gpu_mode.");
 
 DEFINE_string(system_image_dir, vsoc::DefaultGuestImagePath(""),
               "Location of the system partition images.");
@@ -219,8 +217,6 @@ bool InitializeCuttlefishConfiguration(
                " does not work with vm_manager=" << FLAGS_vm_manager;
     return false;
   }
-  tmp_config_obj.set_wayland_socket(FLAGS_wayland_socket);
-  tmp_config_obj.set_x_display(FLAGS_x_display);
 
   tmp_config_obj.set_serial_number(FLAGS_serial_number);
 
@@ -266,6 +262,7 @@ bool InitializeCuttlefishConfiguration(
   tmp_config_obj.set_loop_max_part(FLAGS_loop_max_part);
   tmp_config_obj.set_guest_enforce_security(FLAGS_guest_enforce_security);
   tmp_config_obj.set_guest_audit_security(FLAGS_guest_audit_security);
+  tmp_config_obj.set_guest_force_normal_boot(FLAGS_guest_force_normal_boot);
   tmp_config_obj.set_extra_kernel_cmdline(FLAGS_extra_kernel_cmdline);
 
   tmp_config_obj.set_virtual_disk_paths({FLAGS_composite_disk});
@@ -376,12 +373,6 @@ void SetDefaultFlagsForCrosvm() {
       cvd::StringFromEnv("HOME", ".") + "/cuttlefish_runtime";
   SetCommandLineOptionWithMode("instance_dir",
                                default_instance_dir.c_str(),
-                               google::FlagSettingMode::SET_FLAGS_DEFAULT);
-  SetCommandLineOptionWithMode("wayland_socket",
-                               "",
-                               google::FlagSettingMode::SET_FLAGS_DEFAULT);
-  SetCommandLineOptionWithMode("x_display",
-                               getenv("DISPLAY"),
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
   SetCommandLineOptionWithMode("logcat_mode", cvd::kLogcatVsockMode,
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);

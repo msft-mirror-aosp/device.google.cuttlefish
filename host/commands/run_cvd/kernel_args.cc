@@ -71,25 +71,28 @@ std::vector<std::string> KernelCommandLineFromConfig(const vsoc::CuttlefishConfi
   } else {
     kernel_cmdline.push_back("audit=0");
   }
+  if (config.guest_force_normal_boot()) {
+    kernel_cmdline.push_back("androidboot.force_normal_boot=1");
+  }
 
   AppendVector(&kernel_cmdline, config.extra_kernel_cmdline());
 
   return kernel_cmdline;
 }
 
-std::vector<std::string> KernelCommandLineFromVnc(const VncServerPorts& vnc_ports) {
+std::vector<std::string> KernelCommandLineFromVnc(const VncServerLaunchResult& vnc_launch) {
   std::vector<std::string> kernel_args;
-  if (vnc_ports.frames_server_vsock_port) {
+  if (vnc_launch.frames_server_vsock_port) {
     kernel_args.push_back(concat("androidboot.vsock_frames_port=",
-                                 *vnc_ports.frames_server_vsock_port));
+                                 *vnc_launch.frames_server_vsock_port));
   }
-  if (vnc_ports.touch_server_vsock_port) {
+  if (vnc_launch.touch_server_vsock_port) {
     kernel_args.push_back(concat("androidboot.vsock_touch_port=",
-                                 *vnc_ports.touch_server_vsock_port));
+                                 *vnc_launch.touch_server_vsock_port));
   }
-  if (vnc_ports.keyboard_server_vsock_port) {
+  if (vnc_launch.keyboard_server_vsock_port) {
     kernel_args.push_back(concat("androidboot.vsock_keyboard_port=",
-                                 *vnc_ports.keyboard_server_vsock_port));
+                                 *vnc_launch.keyboard_server_vsock_port));
   }
   return kernel_args;
 }

@@ -189,11 +189,11 @@ cvd::SharedFD CreateUnixVncInputServer(const std::string& path) {
   return server;
 }
 
-VncServerPorts LaunchVNCServerIfEnabled(
+VncServerLaunchResult LaunchVNCServerIfEnabled(
     const vsoc::CuttlefishConfig& config,
     cvd::ProcessMonitor* process_monitor,
     std::function<bool(MonitorEntry*)> callback) {
-  VncServerPorts server_ret;
+  VncServerLaunchResult server_ret;
   if (!config.enable_vnc_server()) {
     return {};
   }
@@ -232,19 +232,25 @@ VncServerPorts LaunchVNCServerIfEnabled(
     return {};
   }
   vnc_server.AddParameter("-keyboard_fd=", keyboard_server);
+
   // TODO(b/128852363): This should be handled through the wayland mock
   //  instead.
   // Additionally it receives the frame updates from a virtual socket
   // instead
-  auto frames_server = cvd::SharedFD::VsockServer(SOCK_STREAM);
-  server_ret.frames_server_vsock_port = frames_server->VsockServerPort();
+  cvd::SharedFD frames_server;
+  if (config.gpu_mode() == vsoc::kGpuModeDrmVirgl) {
+    frames_server = CreateUnixVncInputServer(config.frames_socket_path());
+  } else {
+    frames_server = cvd::SharedFD::VsockServer(SOCK_STREAM);
+    server_ret.frames_server_vsock_port = frames_server->VsockServerPort();
+  }
   if (!frames_server->IsOpen()) {
     LOG(ERROR) << "Could not open frames server: " << frames_server->StrError();
     return {};
   }
   vnc_server.AddParameter("-frame_server_fd=", frames_server);
   process_monitor->StartSubprocess(std::move(vnc_server), callback);
-
+  server_ret.launched = true;
   return server_ret;
 }
 
