@@ -50,9 +50,6 @@ struct ServerState {
     size_t acquireHandlerId();
     void releaseHandlerId(size_t id);
 
-    uint16_t acquirePort();
-    void releasePort(uint16_t port);
-
 private:
     using StreamingSource = android::StreamingSource;
 
@@ -67,7 +64,6 @@ private:
 
     std::shared_ptr<StreamingSource> mAudioSource;
 
-    std::shared_ptr<HostToGuestComms> mHostToGuestComms;
     std::shared_ptr<HostToGuestComms> mAudioComms;
     std::shared_ptr<cvd::ScreenConnector> mScreenConnector;
     std::shared_ptr<std::thread> mScreenConnectorMonitor;
@@ -76,9 +72,5 @@ private:
 
     std::set<size_t> mAllocatedHandlerIds;
 
-    std::mutex mPortLock;
-    std::set<uint16_t> mAvailablePorts;
-
-    void changeResolution(int32_t width, int32_t height, int32_t densityDpi);
     void MonitorScreenConnector();
 };
