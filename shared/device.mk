@@ -111,6 +111,12 @@ PRODUCT_PACKAGES += \
 PRODUCT_PACKAGES += \
     vulkan.pastel
 
+#
+# Packages for testing
+#
+PRODUCT_PACKAGES += \
+    aidl_lazy_test_server
+
 DEVICE_PACKAGE_OVERLAYS := device/google/cuttlefish/shared/overlay
 # PRODUCT_AAPT_CONFIG and PRODUCT_AAPT_PREF_CONFIG are intentionally not set to
 # pick up every density resources.
@@ -217,6 +223,12 @@ PRODUCT_PACKAGES += \
     android.hardware.audio.effect@5.0-impl:32 \
     android.hardware.audio@2.0-service \
     android.hardware.soundtrigger@2.3-impl \
+
+#
+# BiometricsFace HAL
+#
+PRODUCT_PACKAGES += \
+    android.hardware.biometrics.face@1.1-service.example
 
 #
 # Drm HAL

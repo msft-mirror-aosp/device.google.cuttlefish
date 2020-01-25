@@ -39,7 +39,6 @@ static const std::set<std::string> kKnownMissing = {
     "android.hardware.automotive.evs@1.0",
     "android.hardware.automotive.evs@1.1",
     "android.hardware.automotive.vehicle@2.0",
-    "android.hardware.biometrics.face@1.1", /* b/122264410 */
     "android.hardware.biometrics.fingerprint@2.1",
     "android.hardware.biometrics.fingerprint@2.2",
     "android.hardware.bluetooth.a2dp@1.0",
@@ -72,7 +71,7 @@ static const std::set<std::string> kKnownMissing = {
     "android.hardware.power@1.3",
     "android.hardware.radio.deprecated@1.0",
     "android.hardware.renderscript@1.0",
-    "android.hardware.secure_element@1.1",
+    "android.hardware.secure_element@1.2",
     "android.hardware.sensors@1.0",
     "android.hardware.tetheroffload.config@1.0",
     "android.hardware.tetheroffload.control@1.0",
