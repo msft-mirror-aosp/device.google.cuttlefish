@@ -35,23 +35,20 @@
 #include <thread>
 #include <vector>
 
+#include <android-base/strings.h>
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 
 #include "common/libs/fs/shared_buf.h"
 #include "common/libs/fs/shared_fd.h"
 #include "common/libs/fs/shared_select.h"
-#include "common/libs/strings/str_split.h"
 #include "common/libs/utils/environment.h"
 #include "common/libs/utils/files.h"
 #include "common/libs/utils/subprocess.h"
 #include "common/libs/utils/size_utils.h"
-#include "common/vsoc/lib/vsoc_memory.h"
-#include "common/vsoc/shm/screen_layout.h"
 #include "host/commands/run_cvd/launch.h"
 #include "host/commands/run_cvd/runner_defs.h"
 #include "host/commands/run_cvd/process_monitor.h"
-#include "host/commands/run_cvd/vsoc_shared_memory.h"
 #include "host/libs/config/cuttlefish_config.h"
 #include "host/commands/kernel_log_monitor/kernel_log_server.h"
 #include <host/libs/vm_manager/crosvm_manager.h>
@@ -351,7 +348,7 @@ int main(int argc, char** argv) {
       LOG(FATAL) << "Failed to read input files. Error was \"" << input_fd->StrError() << "\"";
     }
   }
-  std::vector<std::string> input_files = cvd::StrSplit(input_files_str, '\n');
+  std::vector<std::string> input_files = android::base::Split(input_files_str, "\n");
   bool found_config = false;
   for (const auto& file : input_files) {
     if (file.find("cuttlefish_config.json") != std::string::npos) {
@@ -455,8 +452,6 @@ int main(int argc, char** argv) {
   LaunchTombstoneReceiverIfEnabled(*config, &process_monitor);
 
   LaunchUsbServerIfEnabled(*config, &process_monitor);
-
-  LaunchIvServerIfEnabled(&process_monitor, *config);
   // Launch the e2e tests after the ivserver is ready
   LaunchE2eTestIfEnabled(&process_monitor, boot_state_machine, *config);
 
@@ -474,10 +469,7 @@ int main(int argc, char** argv) {
   }
 
   // Start other host processes
-  LaunchSocketForwardProxyIfEnabled(&process_monitor, *config);
   LaunchSocketVsockProxyIfEnabled(&process_monitor, *config);
-  LaunchStreamAudioIfEnabled(*config, &process_monitor,
-                             GetOnSubprocessExitCallback(*config));
   LaunchAdbConnectorIfEnabled(&process_monitor, *config, adbd_events_pipe);
 
   ServerLoop(launcher_monitor_socket, &process_monitor); // Should not return
