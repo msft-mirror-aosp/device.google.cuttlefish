@@ -17,6 +17,9 @@
 # Enable updating of APEXes
 $(call inherit-product, $(SRC_TARGET_DIR)/product/updatable_apex.mk)
 
+# Enable userspace reboot
+$(call inherit-product, $(SRC_TARGET_DIR)/product/userspace_reboot.mk)
+
 PRODUCT_SHIPPING_API_LEVEL := 30
 PRODUCT_BUILD_BOOT_IMAGE := true
 PRODUCT_USE_DYNAMIC_PARTITIONS := true
@@ -250,9 +253,9 @@ PRODUCT_PACKAGES += \
 # Camera
 #
 PRODUCT_PACKAGES += \
-    android.hardware.camera.provider@2.4-service-google \
+    android.hardware.camera.provider@2.6-service-google \
     libgooglecamerahwl_impl \
-    android.hardware.camera.provider@2.4-impl-google \
+    android.hardware.camera.provider@2.6-impl-google \
 
 #
 # Gatekeeper

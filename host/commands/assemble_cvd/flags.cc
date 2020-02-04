@@ -37,7 +37,7 @@ DEFINE_string(data_policy, "use_existing", "How to handle userdata partition."
             "'always_create'.");
 DEFINE_int32(blank_data_image_mb, 0,
              "The size of the blank data image to generate, MB.");
-DEFINE_string(blank_data_image_fmt, "ext4",
+DEFINE_string(blank_data_image_fmt, "f2fs",
               "The fs format for the blank data image. Used with mkfs.");
 DEFINE_string(qemu_gdb, "",
               "Debug flag to pass to qemu. e.g. -qemu_gdb=tcp::1234");
@@ -466,9 +466,9 @@ bool CleanPriorFiles() {
   // The global link to the config file
   prior_files += " " + vsoc::GetGlobalConfigFileLink();
   LOG(INFO) << "Assuming prior files of " << prior_files;
-  std::string fuser_cmd = "fuser " + prior_files + " 2> /dev/null";
-  int rval = std::system(fuser_cmd.c_str());
-  // fuser returns 0 if any of the files are open
+  std::string lsof_cmd = "lsof -t " + prior_files + " >/dev/null 2>&1";
+  int rval = std::system(lsof_cmd.c_str());
+  // lsof returns 0 if any of the files are open
   if (WEXITSTATUS(rval) == 0) {
     LOG(ERROR) << "Clean aborted: files are in use";
     return false;
