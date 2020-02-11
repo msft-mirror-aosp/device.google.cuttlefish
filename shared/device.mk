@@ -17,15 +17,28 @@
 # Enable updating of APEXes
 $(call inherit-product, $(SRC_TARGET_DIR)/product/updatable_apex.mk)
 
+# Enable userspace reboot
+$(call inherit-product, $(SRC_TARGET_DIR)/product/userspace_reboot.mk)
+
 PRODUCT_SHIPPING_API_LEVEL := 29
 PRODUCT_BUILD_BOOT_IMAGE := true
 PRODUCT_USE_DYNAMIC_PARTITIONS := true
 DISABLE_RILD_OEM_HOOK := true
 
+AB_OTA_UPDATER := true
+AB_OTA_PARTITIONS += \
+    product \
+    system \
+    system_ext \
+    vendor
+
+# Enable Virtual A/B
+$(call inherit-product, $(SRC_TARGET_DIR)/product/virtual_ab_ota.mk)
+
 # Properties that are not vendor-specific. These will go in the product
 # partition, instead of the vendor partition, and do not need vendor
 # sepolicy
-PRODUCT_PRODUCT_PROPERTIES := \
+PRODUCT_PRODUCT_PROPERTIES += \
     persist.adb.tcp.port=5555 \
     persist.traced.enable=1 \
     ro.com.google.locationfeatures=1 \
@@ -44,26 +57,18 @@ PRODUCT_PROPERTY_OVERRIDES += \
     ro.opengles.version=196608 \
     wifi.interface=wlan0 \
     persist.sys.zram_enabled=1 \
+    ro.apk_verity.mode=2 \
+    ro.rebootescrow.device=/dev/block/pmem0 \
 
 # Below is a list of properties we probably should get rid of.
 PRODUCT_PROPERTY_OVERRIDES += \
     wlan.driver.status=ok
 
 #
-# Packages for various cuttlefish-specific tests
-#
-PRODUCT_PACKAGES += \
-    vsoc_guest_region_e2e_test \
-    vsoc_managed_region_e2e_test \
-    vsoc_driver_test
-
-#
 # Packages for various GCE-specific utilities
 #
 PRODUCT_PACKAGES += \
-    socket_forward_proxy \
     socket_vsock_proxy \
-    usbforward \
     CuttlefishService \
     wpa_supplicant.vsoc.conf \
     vsoc_input_service \
@@ -74,6 +79,7 @@ PRODUCT_PACKAGES += \
     tombstone_transmit \
     vsock_logcat \
     tombstone_producer \
+    suspend_blocker \
 
 #
 # Packages for AOSP-available stuff we use from the framework
@@ -98,7 +104,34 @@ PRODUCT_PACKAGES += \
 
 # GL implementation for virgl
 PRODUCT_PACKAGES += \
-    libGLES_mesa
+    libGLES_mesa \
+
+# GL/Vk implementation for gfxstream
+PRODUCT_PACKAGES += \
+    vulkan.ranchu \
+    hwcomposer.ranchu \
+    libandroidemu \
+    libOpenglCodecCommon \
+    libOpenglSystemCommon \
+    libGLESv1_CM_emulation \
+    lib_renderControl_enc \
+    libEGL_emulation \
+    libGLESv2_enc \
+    libvulkan_enc \
+    libGLESv2_emulation \
+    libGLESv1_enc
+
+#
+# Packages for the Vulkan implementation
+#
+PRODUCT_PACKAGES += \
+    vulkan.pastel
+
+#
+# Packages for testing
+#
+PRODUCT_PACKAGES += \
+    aidl_lazy_test_server
 
 DEVICE_PACKAGE_OVERLAYS := device/google/cuttlefish/shared/overlay
 # PRODUCT_AAPT_CONFIG and PRODUCT_AAPT_PREF_CONFIG are intentionally not set to
@@ -110,9 +143,7 @@ DEVICE_PACKAGE_OVERLAYS := device/google/cuttlefish/shared/overlay
 PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/config/audio_policy.conf:$(TARGET_COPY_OUT_VENDOR)/etc/audio_policy.conf \
     device/google/cuttlefish/shared/config/camera_v3.json:$(TARGET_COPY_OUT_VENDOR)/etc/config/camera.json \
-    device/google/cuttlefish/shared/config/init.common.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/hw/init.common.rc \
-    device/google/cuttlefish/shared/config/init.cutf_ivsh.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/hw/init.cutf_ivsh.rc \
-    device/google/cuttlefish/shared/config/init.cutf_cvm.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/hw/init.cutf_cvm.rc \
+    device/google/cuttlefish/shared/config/init.vendor.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/hw/init.cutf_cvm.rc \
     device/google/cuttlefish/shared/config/init.product.rc:$(TARGET_COPY_OUT_PRODUCT)/etc/init/init.rc \
     device/google/cuttlefish/shared/config/ueventd.rc:$(TARGET_COPY_OUT_VENDOR)/ueventd.rc \
     device/google/cuttlefish/shared/config/media_codecs.xml:$(TARGET_COPY_OUT_VENDOR)/etc/media_codecs.xml \
@@ -145,21 +176,15 @@ PRODUCT_COPY_FILES += \
     frameworks/native/data/etc/android.hardware.sensor.proximity.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.sensor.proximity.xml \
     frameworks/native/data/etc/android.hardware.touchscreen.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.touchscreen.xml \
     frameworks/native/data/etc/android.hardware.usb.accessory.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.usb.accessory.xml \
+    frameworks/native/data/etc/android.hardware.vulkan.level-0.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.vulkan.level.xml \
+    frameworks/native/data/etc/android.hardware.vulkan.version-1_0_3.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.vulkan.version.xml \
     frameworks/native/data/etc/android.hardware.wifi.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.wifi.xml \
     frameworks/native/data/etc/android.software.app_widgets.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.app_widgets.xml \
     system/bt/vendor_libs/test_vendor_lib/data/controller_properties.json:vendor/etc/bluetooth/controller_properties.json \
-    device/google/cuttlefish/shared/config/fstab:$(TARGET_COPY_OUT_RAMDISK)/fstab.cutf_ivsh \
-    device/google/cuttlefish/shared/config/fstab:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.cutf_ivsh \
+    device/google/cuttlefish/shared/config/task_profiles.json:$(TARGET_COPY_OUT_VENDOR)/etc/task_profiles.json \
     device/google/cuttlefish/shared/config/fstab:$(TARGET_COPY_OUT_RAMDISK)/fstab.cutf_cvm \
     device/google/cuttlefish/shared/config/fstab:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.cutf_cvm \
-    device/google/cuttlefish/shared/config/fstab.composite:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.composite.cutf_ivsh \
-    device/google/cuttlefish/shared/config/fstab.composite:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.composite.cutf_cvm \
-
-#
-# USB Specific
-#
-PRODUCT_COPY_FILES += \
-    device/google/cuttlefish/shared/config/init.hardware.usb.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/init.cutf_ivsh.usb.rc
+    device/google/cuttlefish/shared/config/fstab:$(TARGET_COPY_OUT_RECOVERY)/root/first_stage_ramdisk/fstab.cutf_cvm \
 
 # Packages for HAL implementations
 
@@ -181,7 +206,6 @@ PRODUCT_PACKAGES += \
 PRODUCT_PACKAGES += \
     hwcomposer.drm_minigbm \
     hwcomposer.cutf_cvm_ashmem \
-    hwcomposer.cutf_ivsh_ashmem \
     hwcomposer-stats \
     android.hardware.graphics.composer@2.2-impl \
     android.hardware.graphics.composer@2.2-service
@@ -200,7 +224,7 @@ PRODUCT_PACKAGES += \
 # Bluetooth HAL and Compatibility Bluetooth library (for older revs).
 #
 PRODUCT_PACKAGES += \
-    android.hardware.bluetooth@1.0-service.sim \
+    android.hardware.bluetooth@1.1-service.sim \
     android.hardware.bluetooth.audio@2.0-impl
 
 #
@@ -209,8 +233,8 @@ PRODUCT_PACKAGES += \
 PRODUCT_PACKAGES += \
     audio.primary.cutf \
     audio.r_submix.default \
-    android.hardware.audio@5.0-impl:32 \
-    android.hardware.audio.effect@5.0-impl:32 \
+    android.hardware.audio@6.0-impl:32 \
+    android.hardware.audio.effect@6.0-impl:32 \
     android.hardware.audio@2.0-service \
     android.hardware.soundtrigger@2.0-impl \
 
@@ -220,13 +244,14 @@ PRODUCT_PACKAGES += \
 PRODUCT_PACKAGES += \
     android.hardware.drm@1.0-impl \
     android.hardware.drm@1.0-service \
-    android.hardware.drm@1.2-service.clearkey
+    android.hardware.drm@1.2-service.clearkey \
+    android.hardware.drm@1.2-service.widevine
 
 #
 # Dumpstate HAL
 #
 PRODUCT_PACKAGES += \
-    android.hardware.dumpstate@1.0-service.cuttlefish
+    android.hardware.dumpstate@1.1-service.cuttlefish
 
 #
 # Camera
@@ -252,15 +277,24 @@ PRODUCT_PACKAGES += \
 
 # Health
 PRODUCT_PACKAGES += \
-    android.hardware.health@2.0-service.cuttlefish
+    android.hardware.health@2.1-impl-cuttlefish \
+    android.hardware.health@2.1-service
 
 # Health Storage
 PRODUCT_PACKAGES += \
     android.hardware.health.storage@1.0-service.cuttlefish
 
+# Identity Credential
+PRODUCT_PACKAGES += \
+    android.hardware.identity@1.0-service.example
+
 # Input Classifier HAL
 PRODUCT_PACKAGES += \
     android.hardware.input.classifier@1.0-service.default
+
+# Radio Config HAL
+PRODUCT_PACKAGES += \
+    android.hardware.radio.config@1.3-service
 
 #
 # Sensors
@@ -285,17 +319,13 @@ PRODUCT_PACKAGES += \
 # Keymaster HAL
 #
 PRODUCT_PACKAGES += \
-     android.hardware.keymaster@4.0-impl \
-     android.hardware.keymaster@4.0-service
+     android.hardware.keymaster@4.1-service
 
 #
 # Power HAL
 #
 PRODUCT_PACKAGES += \
-    power.cutf \
-    android.hardware.power@1.0-impl \
-    android.hardware.power@1.0-service
-
+    android.hardware.power-service.example
 
 #
 # PowerStats HAL
@@ -320,10 +350,13 @@ PRODUCT_PACKAGES += \
 
 # Vibrator HAL
 PRODUCT_PACKAGES += \
-    android.hardware.vibrator@1.3-service.example
+    android.hardware.vibrator-service.example
 
+# BootControl HAL
 PRODUCT_PACKAGES += \
-    cuttlefish_dtb
+    android.hardware.boot@1.1-impl \
+    android.hardware.boot@1.1-impl.recovery \
+    android.hardware.boot@1.1-service
 
 # WLAN driver configuration files
 PRODUCT_COPY_FILES += \
@@ -333,9 +366,9 @@ PRODUCT_COPY_FILES += \
 ifneq ($(TARGET_NO_RECOVERY),true)
 
 PRODUCT_COPY_FILES += \
-    device/google/cuttlefish/shared/config/init.recovery.common.rc:recovery/root/init.recovery.common.rc \
-    device/google/cuttlefish/shared/config/init.recovery.cutf_ivsh.rc:recovery/root/init.recovery.cutf_ivsh.rc \
-    device/google/cuttlefish/shared/config/init.recovery.cutf_cvm.rc:recovery/root/init.recovery.cutf_cvm.rc \
+    device/google/cuttlefish/shared/config/init.recovery.rc:$(TARGET_COPY_OUT_RECOVERY)/root/init.recovery.cutf_cvm.rc \
+    device/google/cuttlefish/shared/config/cgroups.json:$(TARGET_COPY_OUT_RECOVERY)/root/vendor/etc/cgroups.json \
+    device/google/cuttlefish/shared/config/ueventd.rc:$(TARGET_COPY_OUT_RECOVERY)/root/ueventd.cutf_cvm.rc \
 
 endif
 
@@ -346,4 +379,12 @@ PRODUCT_COPY_FILES += \
    $(LOCAL_PATH)/config/init.insmod.sh:$(TARGET_COPY_OUT_VENDOR)/bin/init.insmod.sh \
 
 # Host packages to install
-PRODUCT_HOST_PACKAGES += socket_forward_proxy socket_vsock_proxy
+PRODUCT_HOST_PACKAGES += socket_vsock_proxy
+
+PRODUCT_EXTRA_VNDK_VERSIONS := 28 29
+
+PRODUCT_SOONG_NAMESPACES += external/mesa3d
+
+# Need this so that the application's loop on reading input can be synchronized
+# with HW VSYNC
+PRODUCT_DEFAULT_PROPERTY_OVERRIDES += ro.surface_flinger.running_without_sync_framework=true

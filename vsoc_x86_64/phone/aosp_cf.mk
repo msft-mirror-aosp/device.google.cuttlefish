@@ -18,13 +18,15 @@
 # All components inherited here go to system image (same as GSI system)
 #
 $(call inherit-product, $(SRC_TARGET_DIR)/product/core_64_bit.mk)
-
-PRODUCT_ARTIFACT_PATH_REQUIREMENT_WHITELIST += \
-    root/init.zygote64_32.rc \
-
 $(call inherit-product, $(SRC_TARGET_DIR)/product/mainline_system.mk)
 
 PRODUCT_ENFORCE_ARTIFACT_PATH_REQUIREMENTS := relaxed
+
+#
+# All components inherited here go to system_ext image (same as GSI system_ext)
+#
+$(call inherit-product, $(SRC_TARGET_DIR)/product/handheld_system_ext.mk)
+$(call inherit-product, $(SRC_TARGET_DIR)/product/telephony_system_ext.mk)
 
 #
 # All components inherited here go to product image (same as GSI product)

@@ -38,6 +38,10 @@ PRODUCT_COPY_FILES += \
 PRODUCT_COPY_FILES += \
     frameworks/native/data/etc/android.hardware.screen.landscape.xml:system/etc/permissions/android.hardware.screen.landscape.xml
 
+# Used to embed a map in an activity view
+PRODUCT_COPY_FILES += \
+    frameworks/native/data/etc/android.software.activities_on_secondary_displays.xml:system/etc/permissions/android.software.activities_on_secondary_displays.xml
+
 # Location permissions
 PRODUCT_COPY_FILES += \
     frameworks/native/data/etc/android.hardware.location.gps.xml:system/etc/permissions/android.hardware.location.gps.xml
@@ -53,7 +57,10 @@ PRODUCT_PROPERTY_OVERRIDES += \
     vendor.rild.libpath=libcuttlefish-ril.so \
 
 # vehicle HAL
-PRODUCT_PACKAGES += android.hardware.automotive.vehicle@2.0-service
+ifeq ($(LOCAL_VHAL_PRODUCT_PACKAGE),)
+    LOCAL_VHAL_PRODUCT_PACKAGE := android.hardware.automotive.vehicle@2.0-service
+endif
+PRODUCT_PACKAGES += $(LOCAL_VHAL_PRODUCT_PACKAGE)
 
 # Broadcast Radio
 PRODUCT_PACKAGES += android.hardware.broadcastradio@2.0-service
@@ -79,6 +86,5 @@ $(call inherit-product, packages/services/Car/car_product/build/car.mk)
 PRODUCT_BRAND := generic
 
 PRODUCT_ENFORCE_RRO_TARGETS := framework-res
-PRODUCT_ENFORCE_RRO_EXCLUDED_OVERLAYS := device/google/cuttlefish/shared/overlay
 
 TARGET_NO_TELEPHONY := true

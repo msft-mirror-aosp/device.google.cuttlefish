@@ -51,3 +51,11 @@ $(call add-clean-step, rm -rf $(PRODUCT_OUT)/product)
 # ************************************************
 # NEWER CLEAN STEPS MUST BE AT THE END OF THE LIST
 # ************************************************
+
+$(call add-clean-step, rm -rf $(PRODUCT_OUT)/vendor/bin/hw/android.hardware.health@2.0-service.cuttlefish)
+$(call add-clean-step, rm -rf $(PRODUCT_OUT)/vendor/etc/init/android.hardware.health@2.0-service.cuttlefish.rc)
+
+$(call add-clean-step, rm -rf $(PRODUCT_OUT)/vendor/etc/init/android.hardware.keymaster@4.0-service)
+$(call add-clean-step, rm -rf $(PRODUCT_OUT)/vendor/etc/init/android.hardware.keymaster@4.0-service.rc)
+
+$(call add-clean-step, rm -rf $(PRODUCT_OUT)/vendor/etc/init/android.hardware.power@1.0-service.rc)

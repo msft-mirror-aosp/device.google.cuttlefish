@@ -62,6 +62,9 @@ BOARD_MALLOC_ALIGNMENT := 16
 
 # Make the userdata partition 4.25G to accomodate ASAN and CTS
 BOARD_USERDATAIMAGE_PARTITION_SIZE := 4563402752
+TARGET_USERIMAGES_SPARSE_F2FS_DISABLED := true
+BOARD_USERDATAIMAGE_FILE_SYSTEM_TYPE := f2fs
+TARGET_USERIMAGES_USE_F2FS := true
 
 # Cache partition size: 64M
 BOARD_CACHEIMAGE_PARTITION_SIZE := 67108864
@@ -126,10 +129,6 @@ STAGEFRIGHT_AVCENC_CFLAGS := -DANDROID_GCE
 
 INIT_BOOTCHART := true
 
-# Need this so that the application's loop on reading input can be synchronized
-# with HW VSYNC
-TARGET_RUNNING_WITHOUT_SYNC_FRAMEWORK := true
-
 # Settings for dhcpcd-6.8.2.
 DHCPCD_USE_IPV6 := no
 DHCPCD_USE_DBUS := no
@@ -140,10 +139,10 @@ TARGET_RECOVERY_PIXEL_FORMAT := ABGR_8888
 
 TARGET_RECOVERY_FSTAB ?= device/google/cuttlefish/shared/config/fstab
 
-BOARD_SUPER_PARTITION_SIZE := 6174015488
+BOARD_SUPER_PARTITION_SIZE := 6442450944
 BOARD_SUPER_PARTITION_GROUPS := google_dynamic_partitions
 BOARD_GOOGLE_DYNAMIC_PARTITIONS_PARTITION_LIST := system vendor product system_ext
-BOARD_GOOGLE_DYNAMIC_PARTITIONS_SIZE := 6174015488
+BOARD_GOOGLE_DYNAMIC_PARTITIONS_SIZE := 6442450944
 BOARD_BUILD_SUPER_IMAGE_BY_DEFAULT := true
 BOARD_SUPER_IMAGE_IN_UPDATE_PACKAGE := true
 TARGET_RELEASETOOLS_EXTENSIONS := device/google/cuttlefish/shared
@@ -151,3 +150,17 @@ TARGET_RELEASETOOLS_EXTENSIONS := device/google/cuttlefish/shared
 # To see full logs from init, disable ratelimiting.
 # The default is 5 messages per second amortized, with a burst of up to 10.
 BOARD_KERNEL_CMDLINE += printk.devkmsg=on
+BOARD_KERNEL_CMDLINE += firmware_class.path=/vendor/etc/
+
+BOARD_KERNEL_CMDLINE += init=/init
+BOARD_KERNEL_CMDLINE += androidboot.hardware=cutf_cvm
+BOARD_KERNEL_CMDLINE += security=selinux
+BOARD_KERNEL_CMDLINE += androidboot.console=ttyS1
+
+BOARD_INCLUDE_DTB_IN_BOOTIMG := true
+BOARD_BOOT_HEADER_VERSION := 3
+BOARD_USES_RECOVERY_AS_BOOT := true
+BOARD_MKBOOTIMG_ARGS += --header_version $(BOARD_BOOT_HEADER_VERSION)
+PRODUCT_COPY_FILES += device/google/cuttlefish/dtb.img:dtb.img
+BOARD_BUILD_SYSTEM_ROOT_IMAGE := false
+

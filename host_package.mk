@@ -14,24 +14,20 @@ $(call dist-for-goals, dist_files, $(cvd_host_package_tar))
 bin_path := $(notdir $(HOST_OUT_EXECUTABLES))
 lib_path := $(notdir $(HOST_OUT_SHARED_LIBRARIES))
 tests_path := $(notdir $(HOST_OUT_NATIVE_TESTS))
+webrtc_files_path := usr/share/webrtc
 
 cvd_host_executables := \
     adb \
     adbshell \
-    host_region_e2e_test \
     launch_cvd \
     lpmake \
     lpunpack \
-    socket_forward_proxy \
     socket_vsock_proxy \
     adb_connector \
     stop_cvd \
     vnc_server \
-    record_audio \
     cf_qemu.sh \
     cf_bpttool \
-    ivserver \
-    virtual_usb_manager \
     kernel_log_monitor \
     extract-vmlinux \
     crosvm \
@@ -39,35 +35,31 @@ cvd_host_executables := \
     aarch64-linux-gnu/libepoxy.so.0 \
     aarch64-linux-gnu/libgbm.so.1 \
     aarch64-linux-gnu/libminijail.so \
-    aarch64-linux-gnu/libvirglrenderer.so.0 \
+    aarch64-linux-gnu/libvirglrenderer.so.1 \
     x86_64-linux-gnu/crosvm \
     x86_64-linux-gnu/libepoxy.so.0 \
     x86_64-linux-gnu/libgbm.so.1 \
     x86_64-linux-gnu/libminijail.so \
-    x86_64-linux-gnu/libvirglrenderer.so.0 \
+    x86_64-linux-gnu/libvirglrenderer.so.1 \
     logcat_receiver \
     config_server \
     tombstone_receiver \
     console_forwarder \
     assemble_cvd \
     run_cvd \
+    cvd_status \
+    webRTC \
+    fsck.f2fs \
+    resize.f2fs \
+    make_f2fs \
 
 cvd_host_tests := \
-    auto_free_buffer_test \
-    circqueue_test \
-    cuttlefish_thread_test \
-    hald_client_test \
-    lock_test \
     monotonic_time_test \
-    vsoc_graphics_test \
     cuttlefish_net_tests \
 
 cvd_host_shared_libraries := \
     libbase.so \
-    vsoc_lib.so \
     libcuttlefish_fs.so \
-    cuttlefish_auto_resources.so \
-    libcuttlefish_strings.so \
     libcuttlefish_utils.so \
     cuttlefish_tcp_socket.so \
     cuttlefish_net.so \
@@ -87,12 +79,33 @@ cvd_host_shared_libraries := \
     cdisk_spec.so \
     libprotobuf-cpp-full.so \
     libziparchive.so \
+    libvpx.so \
+    libssl-host.so \
+    libopus.so \
+    libyuv.so \
+    libjpeg.so \
 
+webrtc_assets := \
+    index.html \
+    style.css \
+    js/receive.js \
+    js/logcat.js \
+
+webrtc_certs := \
+    server.crt \
+    server.key \
+    server.p12 \
+    trusted.pem \
+
+cvd_host_webrtc_files := \
+    $(addprefix assets/,$(webrtc_assets)) \
+    $(addprefix certs/,$(webrtc_certs)) \
 
 cvd_host_package_files := \
      $(addprefix $(bin_path)/,$(cvd_host_executables)) \
      $(addprefix $(lib_path)/,$(cvd_host_shared_libraries)) \
      $(foreach test,$(cvd_host_tests), ${tests_path}/$(test)/$(test)) \
+     $(addprefix $(webrtc_files_path)/,$(cvd_host_webrtc_files)) \
 
 $(cvd_host_package_tar): PRIVATE_FILES := $(cvd_host_package_files)
 $(cvd_host_package_tar): $(addprefix $(HOST_OUT)/,$(cvd_host_package_files))
