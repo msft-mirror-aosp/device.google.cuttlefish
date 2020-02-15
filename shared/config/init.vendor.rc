@@ -50,13 +50,13 @@ on init
 
 
 on fs
-    mount_all /vendor/etc/fstab.${ro.hardware}
+    # Mount everything that does not require fsck
+    mount_all /vendor/etc/fstab.${ro.hardware} --early
     restorecon_recursive /vendor
 
     start setup_wifi
     # works around framework netiface enumeration issue
     start rename_eth1
-
 
     # TODO(ender): Find better way to talk to serial port.
     chmod 622 /dev/kmsg
@@ -80,8 +80,17 @@ on post-fs
 on post-fs-data
     start vport_trigger
 
+    mkdir /data/vendor/modem_dump 0777 system system
+    mkdir /data/vendor/radio 0777 system system
+
 
 on late-fs
+    # Wait for keymaster
+    exec_start wait_for_keymaster
+
+    # Mount RW partitions which need run fsck
+    mount_all /vendor/etc/fstab.${ro.hardware} --late
+
     write /dev/kmsg "GUEST_BUILD_FINGERPRINT: ${ro.build.fingerprint}"
 
 
