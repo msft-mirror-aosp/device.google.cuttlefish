@@ -90,27 +90,27 @@ DEFINE_bool(deprecated_boot_completed, false, "Log boot completed message to"
             " Will be deprecated soon.");
 DEFINE_bool(start_vnc_server, false, "Whether to start the vnc server process.");
 
-DEFINE_bool(start_webrtc, false, "Whether to start the webrtc process.");
+DEFINE_bool(start_webrtc, false, "[Experimental] Whether to start the webrtc process.");
 
 DEFINE_string(
         webrtc_assets_dir,
         vsoc::DefaultHostArtifactsPath("usr/share/webrtc/assets"),
-        "Path to WebRTC webpage assets.");
+        "[Experimental] Path to WebRTC webpage assets.");
 
 DEFINE_string(
         webrtc_certs_dir,
         vsoc::DefaultHostArtifactsPath("usr/share/webrtc/certs"),
-        "Path to WebRTC certificates directory.");
+        "[Experimental] Path to WebRTC certificates directory.");
 
 DEFINE_string(
         webrtc_public_ip,
         "127.0.0.1",
-        "Public IPv4 address of your server, a.b.c.d format");
+        "[Experimental] Public IPv4 address of your server, a.b.c.d format");
 
 DEFINE_bool(
         webrtc_enable_adb_websocket,
         false,
-        "If enabled, exposes local adb service through a websocket.");
+        "[Experimental] If enabled, exposes local adb service through a websocket.");
 
 DEFINE_int32(vnc_server_port, GetPerInstanceDefault(6444),
              "The port on which the vnc server should listen");
