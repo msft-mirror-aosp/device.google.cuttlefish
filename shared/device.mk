@@ -253,6 +253,12 @@ PRODUCT_PACKAGES += \
     android.hardware.biometrics.face@1.1-service.example
 
 #
+# Contexthub HAL
+#
+PRODUCT_PACKAGES += \
+    android.hardware.contexthub@1.1-service.mock
+
+#
 # Drm HAL
 #
 PRODUCT_PACKAGES += \
@@ -296,21 +302,17 @@ PRODUCT_PACKAGES += \
 
 # Identity Credential
 PRODUCT_PACKAGES += \
-    android.hardware.identity@1.0-service.example
+    android.hardware.identity-service.example
 
 # Input Classifier HAL
 PRODUCT_PACKAGES += \
     android.hardware.input.classifier@1.0-service.default
 
-# Radio Config HAL
-PRODUCT_PACKAGES += \
-    android.hardware.radio.config@1.3-service
-
 #
 # Sensors
 #
 PRODUCT_PACKAGES += \
-    android.hardware.sensors@2.0-service.mock
+    android.hardware.sensors@2.1-service.mock
 #
 # Thermal (mock)
 #
