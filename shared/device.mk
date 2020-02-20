@@ -253,6 +253,12 @@ PRODUCT_PACKAGES += \
     android.hardware.biometrics.face@1.1-service.example
 
 #
+# Contexthub HAL
+#
+PRODUCT_PACKAGES += \
+    android.hardware.contexthub@1.1-service.mock
+
+#
 # Drm HAL
 #
 PRODUCT_PACKAGES += \
@@ -310,7 +316,7 @@ PRODUCT_PACKAGES += \
 # Sensors
 #
 PRODUCT_PACKAGES += \
-    android.hardware.sensors@2.0-service.mock
+    android.hardware.sensors@2.1-service.mock
 #
 # Thermal (mock)
 #
