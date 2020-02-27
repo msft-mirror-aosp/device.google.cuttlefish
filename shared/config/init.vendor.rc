@@ -8,6 +8,7 @@ on early-init
     chown system system /dev/gce
 
     mount tracefs tracefs /sys/kernel/tracing
+    mount securityfs securityfs /sys/kernel/security
 
     setprop ro.sf.lcd_density ${ro.boot.lcd_density}
     setprop ro.hardware.egl ${ro.boot.hardware.egl}
@@ -50,13 +51,13 @@ on init
 
 
 on fs
-    mount_all /vendor/etc/fstab.${ro.hardware}
+    # Mount everything that does not require fsck
+    mount_all /vendor/etc/fstab.${ro.hardware} --early
     restorecon_recursive /vendor
 
     start setup_wifi
     # works around framework netiface enumeration issue
     start rename_eth1
-
 
     # TODO(ender): Find better way to talk to serial port.
     chmod 622 /dev/kmsg
@@ -80,8 +81,17 @@ on post-fs
 on post-fs-data
     start vport_trigger
 
+    mkdir /data/vendor/modem_dump 0777 system system
+    mkdir /data/vendor/radio 0777 system system
+
 
 on late-fs
+    # Wait for keymaster
+    exec_start wait_for_keymaster
+
+    # Mount RW partitions which need run fsck
+    mount_all /vendor/etc/fstab.${ro.hardware} --late
+
     write /dev/kmsg "GUEST_BUILD_FINGERPRINT: ${ro.build.fingerprint}"
 
 
@@ -119,7 +129,7 @@ service vendor.insmod_sh /vendor/bin/init.insmod.sh
     disabled
     oneshot
 
-service socket_vsock_proxy /vendor/bin/socket_vsock_proxy -tcp_port=5555 -vsock_port=6520
+service socket_vsock_proxy /vendor/bin/socket_vsock_proxy -server=vsock -tcp_port=5555 -vsock_port=6520
 
 
 service vport_trigger /vendor/bin/vport_trigger
@@ -135,6 +145,15 @@ service seriallogging /system/bin/logcat -b all -v threadtime -f /dev/cf-logcat 
     class main
     user root
     disabled
+
+
+on property:ro.boot.tpm_vsock_port=*
+  enable vtpm_manager
+
+service vtpm_manager /vendor/bin/vtpm_manager -tpm_vsock_port=${ro.boot.tpm_vsock_port}
+  class main
+  user root
+  disabled
 
 
 on property:ro.boot.vsock_logcat_port=*
