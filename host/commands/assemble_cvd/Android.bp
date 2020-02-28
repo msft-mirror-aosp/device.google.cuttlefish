@@ -39,9 +39,6 @@ cc_binary_host {
         "misc_info.cc",
         "super_image_mixer.cc",
     ],
-    header_libs: [
-        "cuttlefish_glog",
-    ],
     shared_libs: [
         "cdisk_spec",
         "libcuttlefish_fs",

@@ -18,9 +18,6 @@ cc_binary_host {
     srcs: [
         "main.cpp"
     ],
-    header_libs: [
-        "cuttlefish_glog",
-    ],
     static_libs: [
         "libadb_connection_maintainer",
         "libgflags",

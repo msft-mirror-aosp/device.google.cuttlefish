@@ -26,9 +26,6 @@ cc_binary {
         "libcutils",
     ],
     stl: "libc++_static",
-    header_libs: [
-        "cuttlefish_glog_product",
-    ],
     defaults: ["cuttlefish_guest_product_only"],
 }
 

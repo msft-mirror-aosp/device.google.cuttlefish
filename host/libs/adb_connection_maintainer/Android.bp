@@ -18,9 +18,6 @@ cc_library_host_static {
     srcs: [
         "adb_connection_maintainer.cpp",
     ],
-    header_libs: [
-        "cuttlefish_glog",
-    ],
     shared_libs: [
         "libbase",
     ],

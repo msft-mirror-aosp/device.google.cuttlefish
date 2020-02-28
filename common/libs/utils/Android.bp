@@ -25,9 +25,6 @@ cc_library {
         "network.cpp",
         "base64.cpp",
     ],
-    header_libs: [
-        "cuttlefish_glog",
-    ],
     shared: {
         shared_libs: [
             "libbase",

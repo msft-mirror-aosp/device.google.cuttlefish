@@ -60,7 +60,6 @@ cc_library_static {
         "libcuttlefish_fs",
     ],
     header_libs: [
-        "cuttlefish_common_headers",
         "webrtc_signaling_headers",
     ],
     defaults: ["cuttlefish_host_only"],
@@ -72,9 +71,6 @@ cc_binary_host {
     name: "webRTC",
     srcs: [
         "webRTC.cpp",
-    ],
-    header_libs: [
-        "cuttlefish_glog",
     ],
     shared_libs: [
         "libbase",
