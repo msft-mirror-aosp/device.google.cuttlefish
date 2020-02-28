@@ -25,8 +25,6 @@ PRODUCT_BUILD_BOOT_IMAGE := true
 PRODUCT_USE_DYNAMIC_PARTITIONS := true
 DISABLE_RILD_OEM_HOOK := true
 
-TARGET_USERDATAIMAGE_FILE_SYSTEM_TYPE ?= f2fs
-
 AB_OTA_UPDATER := true
 AB_OTA_PARTITIONS += \
     product \
@@ -36,11 +34,6 @@ AB_OTA_PARTITIONS += \
 
 # Enable Virtual A/B
 $(call inherit-product, $(SRC_TARGET_DIR)/product/virtual_ab_ota.mk)
-
-# Enable Scoped Storage related changes for f2fs
-ifeq ($(TARGET_USERDATAIMAGE_FILE_SYSTEM_TYPE),f2fs)
-$(call inherit-product, $(SRC_TARGET_DIR)/product/emulated_storage.mk)
-endif
 
 # Properties that are not vendor-specific. These will go in the product
 # partition, instead of the vendor partition, and do not need vendor
@@ -222,9 +215,10 @@ PRODUCT_PACKAGES += \
 PRODUCT_PACKAGES += \
     hwcomposer.drm_minigbm \
     hwcomposer.cutf_cvm_ashmem \
+    hwcomposer.cutf_hwc2 \
     hwcomposer-stats \
-    android.hardware.graphics.composer@2.2-impl \
-    android.hardware.graphics.composer@2.2-service
+    android.hardware.graphics.composer@2.3-impl \
+    android.hardware.graphics.composer@2.3-service
 
 #
 # Gralloc HAL
