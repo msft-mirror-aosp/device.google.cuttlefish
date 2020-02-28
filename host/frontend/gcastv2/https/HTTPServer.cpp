@@ -21,7 +21,7 @@
 #include <https/Support.h>
 #include "common/libs/utils/base64.h"
 
-#include <glog/logging.h>
+#include <android-base/logging.h>
 
 #include <iostream>
 #include <map>

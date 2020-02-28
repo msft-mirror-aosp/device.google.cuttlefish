@@ -21,7 +21,7 @@
 
 #include <sstream>
 
-#include <glog/logging.h>
+#include <android-base/logging.h>
 
 #include "common/libs/utils/subprocess.h"
 #include "host/commands/assemble_cvd/bootimg.h"
