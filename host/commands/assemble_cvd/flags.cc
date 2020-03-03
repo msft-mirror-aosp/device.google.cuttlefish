@@ -36,6 +36,7 @@
 #define VBMETA_MAX_SIZE 65536ul
 
 using cuttlefish::CreateBlankImage;
+using cuttlefish::DataImageResult;
 using cuttlefish::ForCurrentInstance;
 using cuttlefish::InitializeMiscImage;
 using cuttlefish::RandomSerialNumber;
@@ -1310,7 +1311,9 @@ const cuttlefish::CuttlefishConfig* InitFilesystemAndCreateConfig(
   }
 
   // Create data if necessary
-  if (!ApplyDataImagePolicy(*config, FLAGS_data_image)) {
+  DataImageResult dataImageResult =
+      ApplyDataImagePolicy(*config, FLAGS_data_image);
+  if (dataImageResult == DataImageResult::Error) {
     exit(cuttlefish::kCuttlefishConfigurationInitError);
   }
 
@@ -1363,7 +1366,9 @@ const cuttlefish::CuttlefishConfig* InitFilesystemAndCreateConfig(
     }
   }
 
-  if (ShouldCreateCompositeDisk(*config)) {
+  bool oldCompositeDisk = ShouldCreateCompositeDisk(*config);
+  bool newDataImage = dataImageResult == DataImageResult::FileUpdated;
+  if (oldCompositeDisk || newDataImage) {
     if (!CreateCompositeDisk(*config)) {
       exit(cuttlefish::kDiskSpaceError);
     }
@@ -1371,8 +1376,12 @@ const cuttlefish::CuttlefishConfig* InitFilesystemAndCreateConfig(
 
   for (auto instance : config->Instances()) {
     auto overlay_path = instance.PerInstancePath("overlay.img");
-    if (!cuttlefish::FileExists(overlay_path) || ShouldCreateCompositeDisk(*config) || !FLAGS_resume
-        || cuttlefish::FileModificationTime(overlay_path) < cuttlefish::FileModificationTime(config->composite_disk_path())) {
+    bool missingOverlay = !cuttlefish::FileExists(overlay_path);
+    bool newOverlay =
+        cuttlefish::FileModificationTime(overlay_path) <
+        cuttlefish::FileModificationTime(config->composite_disk_path());
+    if (missingOverlay || oldCompositeDisk || !FLAGS_resume || newDataImage ||
+        newOverlay) {
       if (FLAGS_resume) {
         LOG(INFO) << "Requested to continue an existing session, (the default)"
                   << "but the disk files have become out of date. Wiping the "

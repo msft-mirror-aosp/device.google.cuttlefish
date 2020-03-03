@@ -124,7 +124,7 @@ void CreateBlankImage(
   }
 }
 
-bool ApplyDataImagePolicy(const cuttlefish::CuttlefishConfig& config,
+DataImageResult ApplyDataImagePolicy(const cuttlefish::CuttlefishConfig& config,
                           const std::string& data_image) {
   bool data_exists = cuttlefish::FileHasContent(data_image.c_str());
   bool remove{};
@@ -134,12 +134,12 @@ bool ApplyDataImagePolicy(const cuttlefish::CuttlefishConfig& config,
   if (config.data_policy() == kDataPolicyUseExisting) {
     if (!data_exists) {
       LOG(ERROR) << "Specified data image file does not exists: " << data_image;
-      return false;
+      return DataImageResult::Error;
     }
     if (config.blank_data_image_mb() > 0) {
       LOG(ERROR) << "You should NOT use -blank_data_image_mb with -data_policy="
                  << kDataPolicyUseExisting;
-      return false;
+      return DataImageResult::Error;
     }
     create = false;
     remove = false;
@@ -158,7 +158,7 @@ bool ApplyDataImagePolicy(const cuttlefish::CuttlefishConfig& config,
     resize = true;
   } else {
     LOG(ERROR) << "Invalid data_policy: " << config.data_policy();
-    return false;
+    return DataImageResult::Error;
   }
 
   if (remove) {
@@ -168,21 +168,22 @@ bool ApplyDataImagePolicy(const cuttlefish::CuttlefishConfig& config,
   if (create) {
     if (config.blank_data_image_mb() <= 0) {
       LOG(ERROR) << "-blank_data_image_mb is required to create data image";
-      return false;
+      return DataImageResult::Error;
     }
     CreateBlankImage(data_image.c_str(), config.blank_data_image_mb(),
                      config.blank_data_image_fmt());
+    return DataImageResult::FileUpdated;
   } else if (resize) {
     if (!data_exists) {
       LOG(ERROR) << data_image << " does not exist, but resizing was requested";
-      return false;
+      return DataImageResult::Error;
     }
-    return ResizeImage(data_image.c_str(), config.blank_data_image_mb());
+    bool success = ResizeImage(data_image.c_str(), config.blank_data_image_mb());
+    return success ? DataImageResult::FileUpdated : DataImageResult::Error;
   } else {
     LOG(DEBUG) << data_image << " exists. Not creating it.";
+    return DataImageResult::NoChange;
   }
-
-  return true;
 }
 
 bool InitializeMiscImage(const std::string& misc_image) {
