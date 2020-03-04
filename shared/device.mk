@@ -20,13 +20,16 @@ $(call inherit-product, $(SRC_TARGET_DIR)/product/updatable_apex.mk)
 # Enable userspace reboot
 $(call inherit-product, $(SRC_TARGET_DIR)/product/userspace_reboot.mk)
 
-PRODUCT_SHIPPING_API_LEVEL := 29
+PRODUCT_SHIPPING_API_LEVEL := 30
 PRODUCT_BUILD_BOOT_IMAGE := true
 PRODUCT_USE_DYNAMIC_PARTITIONS := true
 DISABLE_RILD_OEM_HOOK := true
 
+TARGET_USERDATAIMAGE_FILE_SYSTEM_TYPE ?= f2fs
+
 AB_OTA_UPDATER := true
 AB_OTA_PARTITIONS += \
+    odm \
     product \
     system \
     system_ext \
@@ -34,6 +37,11 @@ AB_OTA_PARTITIONS += \
 
 # Enable Virtual A/B
 $(call inherit-product, $(SRC_TARGET_DIR)/product/virtual_ab_ota.mk)
+
+# Enable Scoped Storage related changes for f2fs
+ifeq ($(TARGET_USERDATAIMAGE_FILE_SYSTEM_TYPE),f2fs)
+$(call inherit-product, $(SRC_TARGET_DIR)/product/emulated_storage.mk)
+endif
 
 # Properties that are not vendor-specific. These will go in the product
 # partition, instead of the vendor partition, and do not need vendor
@@ -64,7 +72,9 @@ PRODUCT_PROPERTY_OVERRIDES += \
 PRODUCT_PROPERTY_OVERRIDES += \
     wlan.driver.status=ok
 
-#
+# aes-256-heh default is not supported in standard kernels.
+PRODUCT_PROPERTY_OVERRIDES += ro.crypto.volume.filenames_mode=aes-256-cts
+
 # Packages for various GCE-specific utilities
 #
 PRODUCT_PACKAGES += \
@@ -80,6 +90,7 @@ PRODUCT_PACKAGES += \
     vsock_logcat \
     tombstone_producer \
     suspend_blocker \
+    vtpm_manager \
 
 #
 # Packages for AOSP-available stuff we use from the framework
@@ -109,7 +120,6 @@ PRODUCT_PACKAGES += \
 # GL/Vk implementation for gfxstream
 PRODUCT_PACKAGES += \
     vulkan.ranchu \
-    hwcomposer.ranchu \
     libandroidemu \
     libOpenglCodecCommon \
     libOpenglSystemCommon \
@@ -180,6 +190,7 @@ PRODUCT_COPY_FILES += \
     frameworks/native/data/etc/android.hardware.vulkan.version-1_0_3.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.vulkan.version.xml \
     frameworks/native/data/etc/android.hardware.wifi.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.wifi.xml \
     frameworks/native/data/etc/android.software.app_widgets.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.app_widgets.xml \
+    frameworks/native/data/etc/android.software.vulkan.deqp.level-2020-03-01.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.vulkan.deqp.level.xml \
     system/bt/vendor_libs/test_vendor_lib/data/controller_properties.json:vendor/etc/bluetooth/controller_properties.json \
     device/google/cuttlefish/shared/config/task_profiles.json:$(TARGET_COPY_OUT_VENDOR)/etc/task_profiles.json \
     device/google/cuttlefish/shared/config/fstab:$(TARGET_COPY_OUT_RAMDISK)/fstab.cutf_cvm \
@@ -286,15 +297,11 @@ PRODUCT_PACKAGES += \
 
 # Identity Credential
 PRODUCT_PACKAGES += \
-    android.hardware.identity@1.0-service.example
+    android.hardware.identity-service.example
 
 # Input Classifier HAL
 PRODUCT_PACKAGES += \
     android.hardware.input.classifier@1.0-service.default
-
-# Radio Config HAL
-PRODUCT_PACKAGES += \
-    android.hardware.radio.config@1.3-service
 
 #
 # Sensors
@@ -311,9 +318,7 @@ PRODUCT_PACKAGES += \
 # Lights
 #
 PRODUCT_PACKAGES += \
-    lights.cutf \
-    android.hardware.light@2.0-impl \
-    android.hardware.light@2.0-service
+    android.hardware.lights-service.example \
 
 #
 # Keymaster HAL

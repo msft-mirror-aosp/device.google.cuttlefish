@@ -49,9 +49,11 @@ cvd_host_executables := \
     run_cvd \
     cvd_status \
     webRTC \
+    metrics \
     fsck.f2fs \
     resize.f2fs \
     make_f2fs \
+    tpm_simulator_manager \
 
 cvd_host_tests := \
     monotonic_time_test \
@@ -88,8 +90,9 @@ cvd_host_shared_libraries := \
 webrtc_assets := \
     index.html \
     style.css \
-    js/receive.js \
     js/logcat.js \
+    js/app.js \
+    js/cf_webrtc.js \
 
 webrtc_certs := \
     server.crt \

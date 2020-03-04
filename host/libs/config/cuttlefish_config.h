@@ -50,6 +50,7 @@ enum class AdbMode {
 class CuttlefishConfig {
  public:
   static const CuttlefishConfig* Get();
+  static bool ConfigExists();
 
   CuttlefishConfig();
   CuttlefishConfig(CuttlefishConfig&&);
@@ -164,6 +165,9 @@ class CuttlefishConfig {
   void set_crosvm_binary(const std::string& crosvm_binary);
   std::string crosvm_binary() const;
 
+  void set_tpm_binary(const std::string& tpm_binary);
+  std::string tpm_binary() const;
+
   void set_console_forwarder_binary(const std::string& crosvm_binary);
   std::string console_forwarder_binary() const;
 
@@ -246,6 +250,18 @@ class CuttlefishConfig {
   void set_guest_force_normal_boot(bool guest_force_normal_boot);
   bool guest_force_normal_boot() const;
 
+  enum Answer {
+    kUnknown = 0,
+    kYes,
+    kNo,
+  };
+
+  void set_enable_metrics(std::string enable_metrics);
+  CuttlefishConfig::Answer enable_metrics() const;
+
+  void set_metrics_binary(const std::string& metrics_binary);
+  std::string metrics_binary() const;
+
   void set_boot_image_kernel_cmdline(std::string boot_image_kernel_cmdline);
   std::vector<std::string> boot_image_kernel_cmdline() const;
 
@@ -284,6 +300,7 @@ class CuttlefishConfig {
     std::string serial_number() const;
     int vnc_server_port() const;
     int host_port() const;
+    int tpm_port() const;
     std::string adb_ip_and_port() const;
     std::string adb_device_name() const;
     std::string device_title() const;
@@ -336,6 +353,7 @@ class CuttlefishConfig {
     void set_serial_number(const std::string& serial_number);
     void set_vnc_server_port(int vnc_server_port);
     void set_host_port(int host_port);
+    void set_tpm_port(int tpm_port);
     void set_adb_ip_and_port(const std::string& ip_port);
     void set_device_title(const std::string& title);
     void set_mobile_bridge_name(const std::string& mobile_bridge_name);

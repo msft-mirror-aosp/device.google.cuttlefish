@@ -319,22 +319,53 @@ void LaunchSocketVsockProxyIfEnabled(cvd::ProcessMonitor* process_monitor,
   auto instance = config.ForDefaultInstance();
   if (AdbVsockTunnelEnabled(config)) {
     cvd::Command adb_tunnel(config.socket_vsock_proxy_binary());
+    adb_tunnel.AddParameter("--server=tcp");
     adb_tunnel.AddParameter("--vsock_port=6520");
     adb_tunnel.AddParameter(
         std::string{"--tcp_port="} + std::to_string(instance.host_port()));
-    adb_tunnel.AddParameter(std::string{"--vsock_guest_cid="} +
+    adb_tunnel.AddParameter(std::string{"--vsock_cid="} +
                             std::to_string(instance.vsock_guest_cid()));
     process_monitor->StartSubprocess(std::move(adb_tunnel),
                                      GetOnSubprocessExitCallback(config));
   }
   if (AdbVsockHalfTunnelEnabled(config)) {
     cvd::Command adb_tunnel(config.socket_vsock_proxy_binary());
+    adb_tunnel.AddParameter("--server=tcp");
     adb_tunnel.AddParameter("--vsock_port=5555");
     adb_tunnel.AddParameter(
         std::string{"--tcp_port="} + std::to_string(instance.host_port()));
-    adb_tunnel.AddParameter(std::string{"--vsock_guest_cid="} +
+    adb_tunnel.AddParameter(std::string{"--vsock_cid="} +
                             std::to_string(instance.vsock_guest_cid()));
     process_monitor->StartSubprocess(std::move(adb_tunnel),
                                      GetOnSubprocessExitCallback(config));
   }
+}
+
+TpmPorts LaunchTpm(cvd::ProcessMonitor* process_monitor,
+                   const vsoc::CuttlefishConfig& config) {
+  if (config.tpm_binary() == "") {
+    return TpmPorts{};
+  }
+  int port = config.ForDefaultInstance().tpm_port();
+  cvd::Command tpm_command(
+      vsoc::DefaultHostArtifactsPath("bin/tpm_simulator_manager"));
+  tpm_command.AddParameter("-port=", port);
+  process_monitor->StartSubprocess(std::move(tpm_command),
+                                   GetOnSubprocessExitCallback(config));
+
+  cvd::Command proxy_command(config.socket_vsock_proxy_binary());
+  proxy_command.AddParameter("--server=vsock");
+  proxy_command.AddParameter("--tcp_port=", port);
+  proxy_command.AddParameter("--vsock_port=", port);
+  process_monitor->StartSubprocess(std::move(proxy_command),
+                                   GetOnSubprocessExitCallback(config));
+  return TpmPorts{port};
+}
+
+void LaunchMetrics(cvd::ProcessMonitor* process_monitor,
+                                  const vsoc::CuttlefishConfig& config) {
+  cvd::Command metrics(config.metrics_binary());
+
+  process_monitor->StartSubprocess(std::move(metrics),
+                                   GetOnSubprocessExitCallback(config));
 }

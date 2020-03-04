@@ -102,27 +102,27 @@ DEFINE_bool(start_vnc_server, false, "Whether to start the vnc server process. "
                                      "the vsoc-i user or CUTTLEFISH_INSTANCE=i, "
                                      "starting from 1.");
 
-DEFINE_bool(start_webrtc, false, "Whether to start the webrtc process.");
+DEFINE_bool(start_webrtc, false, "[Experimental] Whether to start the webrtc process.");
 
 DEFINE_string(
         webrtc_assets_dir,
         vsoc::DefaultHostArtifactsPath("usr/share/webrtc/assets"),
-        "Path to WebRTC webpage assets.");
+        "[Experimental] Path to WebRTC webpage assets.");
 
 DEFINE_string(
         webrtc_certs_dir,
         vsoc::DefaultHostArtifactsPath("usr/share/webrtc/certs"),
-        "Path to WebRTC certificates directory.");
+        "[Experimental] Path to WebRTC certificates directory.");
 
 DEFINE_string(
         webrtc_public_ip,
         "127.0.0.1",
-        "Public IPv4 address of your server, a.b.c.d format");
+        "[Experimental] Public IPv4 address of your server, a.b.c.d format");
 
 DEFINE_bool(
         webrtc_enable_adb_websocket,
         false,
-        "If enabled, exposes local adb service through a websocket.");
+        "[Experimental] If enabled, exposes local adb service through a websocket.");
 
 DEFINE_string(adb_mode, "vsock_half_tunnel",
               "Mode for ADB connection."
@@ -152,6 +152,7 @@ DEFINE_string(qemu_binary,
 DEFINE_string(crosvm_binary,
               vsoc::DefaultHostArtifactsPath("bin/crosvm"),
               "The Crosvm binary to use");
+DEFINE_string(tpm_binary, "", "The TPM simulator to use. Disabled if empty.");
 DEFINE_bool(restart_subprocesses, true, "Restart any crashed host process");
 DEFINE_string(logcat_mode, "", "How to send android's log messages from "
                                "guest to host. One of [serial, vsock]");
@@ -169,6 +170,8 @@ DEFINE_bool(resume, true, "Resume using the disk from the last session, if "
                           "will be reset to the state it was initially launched "
                           "in. This flag is ignored if the underlying partition "
                           "images have been updated since the first launch.");
+DEFINE_string(report_anonymous_usage_stats, "", "Report anonymous usage "
+            "statistics for metrics collection and analysis.");
 
 namespace {
 
@@ -321,6 +324,7 @@ vsoc::CuttlefishConfig InitializeCuttlefishConfiguration(
 
   tmp_config_obj.set_qemu_binary(FLAGS_qemu_binary);
   tmp_config_obj.set_crosvm_binary(FLAGS_crosvm_binary);
+  tmp_config_obj.set_tpm_binary(FLAGS_tpm_binary);
   tmp_config_obj.set_console_forwarder_binary(
       vsoc::DefaultHostArtifactsPath("bin/console_forwarder"));
   tmp_config_obj.set_kernel_log_monitor_binary(
@@ -361,6 +365,10 @@ vsoc::CuttlefishConfig InitializeCuttlefishConfiguration(
   tmp_config_obj.set_use_bootloader(FLAGS_use_bootloader);
   tmp_config_obj.set_bootloader(FLAGS_bootloader);
 
+  tmp_config_obj.set_enable_metrics(FLAGS_report_anonymous_usage_stats);
+  tmp_config_obj.set_metrics_binary(
+      vsoc::DefaultHostArtifactsPath("bin/metrics"));
+
   if (!FLAGS_boot_slot.empty()) {
       tmp_config_obj.set_boot_slot(FLAGS_boot_slot);
   }
@@ -392,6 +400,7 @@ vsoc::CuttlefishConfig InitializeCuttlefishConfiguration(
     instance.set_vnc_server_port(6444 + num - 1);
     instance.set_host_port(6520 + num - 1);
     instance.set_adb_ip_and_port("127.0.0.1:" + std::to_string(6520 + num - 1));
+    instance.set_tpm_port(2321 + num - 1);
 
     instance.set_device_title(FLAGS_device_title);
 
@@ -688,7 +697,9 @@ bool CreateCompositeDisk(const vsoc::CuttlefishConfig& config) {
     }
     std::string header_path = config.AssemblyPath("gpt_header.img");
     std::string footer_path = config.AssemblyPath("gpt_footer.img");
-    CreateCompositeDisk(disk_config(), header_path, footer_path, config.composite_disk_path());
+    std::string tmp_prefix = config.AssemblyPath("disk_hole/disk");
+    CreateCompositeDisk(disk_config(), tmp_prefix, header_path, footer_path,
+                        config.composite_disk_path());
   } else {
     auto existing_size = cvd::FileSize(config.composite_disk_path());
     auto available_space = AvailableSpaceAtPath(config.composite_disk_path());
@@ -732,6 +743,8 @@ const vsoc::CuttlefishConfig* InitFilesystemAndCreateConfig(
       preserving.insert("gpt_footer.img");
       preserving.insert("composite.img");
       preserving.insert("access-kregistry");
+      preserving.insert("disk_hole");
+      preserving.insert("NVChip");
     }
     if (!CleanPriorFiles(config, preserving)) {
       LOG(ERROR) << "Failed to clean prior files";
@@ -744,6 +757,16 @@ const vsoc::CuttlefishConfig* InitFilesystemAndCreateConfig(
           && errno != EEXIST) {
         LOG(ERROR) << "Failed to create assembly directory: "
                   << FLAGS_assembly_dir << ". Error: " << errno;
+        exit(AssemblerExitCodes::kAssemblyDirCreationError);
+      }
+    }
+    std::string disk_hole_dir = FLAGS_assembly_dir + "/disk_hole";
+    if (!cvd::DirectoryExists(disk_hole_dir.c_str())) {
+      LOG(INFO) << "Setting up " << disk_hole_dir << "/disk_hole";
+      if (mkdir(disk_hole_dir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) < 0
+          && errno != EEXIST) {
+        LOG(ERROR) << "Failed to create assembly directory: "
+                  << disk_hole_dir << ". Error: " << errno;
         exit(AssemblerExitCodes::kAssemblyDirCreationError);
       }
     }

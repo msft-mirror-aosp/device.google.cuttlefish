@@ -107,11 +107,13 @@ const char* kCuttlefishEnvPath = "cuttlefish_env_path";
 
 const char* kAdbMode = "adb_mode";
 const char* kHostPort = "host_port";
+const char* kTpmPort = "tpm_port";
 const char* kAdbIPAndPort = "adb_ip_and_port";
 const char* kSetupWizardMode = "setupwizard_mode";
 
 const char* kQemuBinary = "qemu_binary";
 const char* kCrosvmBinary = "crosvm_binary";
+const char* kTpmBinary = "tpm_binary";
 const char* kConsoleForwarderBinary = "console_forwarder_binary";
 const char* kKernelLogMonitorBinary = "kernel_log_monitor_binary";
 
@@ -149,6 +151,9 @@ const char* kBootloader = "bootloader";
 const char* kUseBootloader = "use_bootloader";
 
 const char* kBootSlot = "boot_slot";
+
+const char* kEnableMetrics = "enable_metrics";
+const char* kMetricsBinary = "metrics_binary";
 
 const char* kLoopMaxPart = "loop_max_part";
 const char* kGuestEnforceSecurity = "guest_enforce_security";
@@ -477,6 +482,14 @@ void CuttlefishConfig::MutableInstanceSpecific::set_host_port(int host_port) {
   (*Dictionary())[kHostPort] = host_port;
 }
 
+int CuttlefishConfig::InstanceSpecific::tpm_port() const {
+  return (*Dictionary())[kTpmPort].asInt();
+}
+
+void CuttlefishConfig::MutableInstanceSpecific::set_tpm_port(int tpm_port) {
+  (*Dictionary())[kTpmPort] = tpm_port;
+}
+
 std::string CuttlefishConfig::InstanceSpecific::adb_ip_and_port() const {
   return (*Dictionary())[kAdbIPAndPort].asString();
 }
@@ -525,6 +538,14 @@ std::string CuttlefishConfig::crosvm_binary() const {
 
 void CuttlefishConfig::set_crosvm_binary(const std::string& crosvm_binary) {
   (*dictionary_)[kCrosvmBinary] = crosvm_binary;
+}
+
+std::string CuttlefishConfig::tpm_binary() const {
+  return (*dictionary_)[kTpmBinary].asString();
+}
+
+void CuttlefishConfig::set_tpm_binary(const std::string& tpm_binary) {
+  (*dictionary_)[kTpmBinary] = tpm_binary;
 }
 
 std::string CuttlefishConfig::console_forwarder_binary() const {
@@ -789,6 +810,34 @@ bool CuttlefishConfig::guest_force_normal_boot() const {
   return (*dictionary_)[kGuestForceNormalBoot].asBool();
 }
 
+void CuttlefishConfig::set_enable_metrics(std::string enable_metrics) {
+  (*dictionary_)[kEnableMetrics] = kUnknown;
+  if (!enable_metrics.empty()) {
+    switch (enable_metrics.at(0)) {
+      case 'y':
+      case 'Y':
+        (*dictionary_)[kEnableMetrics] = kYes;
+        break;
+      case 'n':
+      case 'N':
+        (*dictionary_)[kEnableMetrics] = kNo;
+        break;
+    }
+  }
+}
+
+CuttlefishConfig::Answer CuttlefishConfig::enable_metrics() const {
+  return (CuttlefishConfig::Answer)(*dictionary_)[kEnableMetrics].asInt();
+}
+
+void CuttlefishConfig::set_metrics_binary(const std::string& metrics_binary) {
+  (*dictionary_)[kMetricsBinary] = metrics_binary;
+}
+
+std::string CuttlefishConfig::metrics_binary() const {
+  return (*dictionary_)[kMetricsBinary].asString();
+}
+
 void CuttlefishConfig::set_boot_image_kernel_cmdline(std::string boot_image_kernel_cmdline) {
   Json::Value args_json_obj(Json::arrayValue);
   for (const auto& arg : android::base::Split(boot_image_kernel_cmdline, " ")) {
@@ -839,6 +888,13 @@ std::vector<std::string> CuttlefishConfig::extra_kernel_cmdline() const {
 /*static*/ const CuttlefishConfig* CuttlefishConfig::Get() {
   static std::shared_ptr<CuttlefishConfig> config(BuildConfigImpl());
   return config.get();
+}
+
+/*static*/ bool CuttlefishConfig::ConfigExists() {
+  auto config_file_path = cvd::StringFromEnv(kCuttlefishConfigEnvVarName,
+                                             vsoc::GetGlobalConfigFileLink());
+  auto real_file_path = cvd::AbsolutePath(config_file_path.c_str());
+  return cvd::FileExists(real_file_path);
 }
 
 CuttlefishConfig::CuttlefishConfig() : dictionary_(new Json::Value()) {}

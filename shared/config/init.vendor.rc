@@ -8,6 +8,7 @@ on early-init
     chown system system /dev/gce
 
     mount tracefs tracefs /sys/kernel/tracing
+    mount securityfs securityfs /sys/kernel/security
 
     setprop ro.sf.lcd_density ${ro.boot.lcd_density}
     setprop ro.hardware.egl ${ro.boot.hardware.egl}
@@ -43,10 +44,6 @@ on init
     chmod 0664 /dev/cpuctl/background/tasks
     chmod 0664 /dev/cpuctl/top-app/tasks
     chmod 0664 /dev/cpuctl/rt/tasks
-    write /dev/cpuctl/foreground/cpu.rt_runtime_us 950000
-    write /dev/cpuctl/background/cpu.rt_runtime_us 950000
-    write /dev/cpuctl/top-app/cpu.rt_runtime_us 950000
-    write /dev/cpuctl/rt/cpu.rt_runtime_us 950000
 
 
 on fs
@@ -79,6 +76,9 @@ on post-fs
 
 on post-fs-data
     start vport_trigger
+
+    mkdir /data/vendor/modem_dump 0777 system system
+    mkdir /data/vendor/radio 0777 system system
 
 
 on late-fs
@@ -125,7 +125,7 @@ service vendor.insmod_sh /vendor/bin/init.insmod.sh
     disabled
     oneshot
 
-service socket_vsock_proxy /vendor/bin/socket_vsock_proxy -tcp_port=5555 -vsock_port=6520
+service socket_vsock_proxy /vendor/bin/socket_vsock_proxy -server=vsock -tcp_port=5555 -vsock_port=6520
 
 
 service vport_trigger /vendor/bin/vport_trigger
@@ -141,6 +141,15 @@ service seriallogging /system/bin/logcat -b all -v threadtime -f /dev/cf-logcat 
     class main
     user root
     disabled
+
+
+on property:ro.boot.tpm_vsock_port=*
+  enable vtpm_manager
+
+service vtpm_manager /vendor/bin/vtpm_manager -tpm_vsock_port=${ro.boot.tpm_vsock_port}
+  class main
+  user root
+  disabled
 
 
 on property:ro.boot.vsock_logcat_port=*

@@ -50,3 +50,13 @@ LogcatServerPorts LaunchLogcatReceiverIfEnabled(const vsoc::CuttlefishConfig& co
 
 StreamerLaunchResult LaunchWebRTC(cvd::ProcessMonitor* process_monitor,
                                   const vsoc::CuttlefishConfig& config);
+
+struct TpmPorts {
+  std::optional<unsigned int> server_vsock_port;
+};
+
+TpmPorts LaunchTpm(cvd::ProcessMonitor* process_monitor,
+                   const vsoc::CuttlefishConfig& config);
+
+void LaunchMetrics(cvd::ProcessMonitor* process_monitor,
+                                  const vsoc::CuttlefishConfig& config);
