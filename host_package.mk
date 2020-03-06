@@ -25,6 +25,7 @@ x86_64_seccomp_files_path := usr/share/cuttlefish/x86_64-linux-gnu/seccomp
 cvd_host_executables := \
     adb \
     adbshell \
+    detect_graphics \
     launch_cvd \
     lpmake \
     lpunpack \

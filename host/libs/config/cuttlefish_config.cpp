@@ -166,6 +166,7 @@ const char* kRilDns = "ril_dns";
 
 namespace cuttlefish {
 
+const char* const kGpuModeAuto = "auto";
 const char* const kGpuModeGuestSwiftshader = "guest_swiftshader";
 const char* const kGpuModeDrmVirgl = "drm_virgl";
 
