@@ -27,6 +27,7 @@ cc_library_static {
         "RTPSession.cpp",
         "RTPSocketHandler.cpp",
         "SCTPHandler.cpp",
+        "SCTPStream.cpp",
         "SDP.cpp",
         "ServerState.cpp",
         "STUNClient.cpp",
@@ -53,9 +54,6 @@ cc_library_static {
         "libbase",
         "libcuttlefish_fs",
     ],
-    header_libs: [
-        "cuttlefish_common_headers",
-    ],
     defaults: ["cuttlefish_host_only"],
     local_include_dirs: ["include"],
     export_include_dirs: ["include"],
@@ -65,9 +63,6 @@ cc_binary_host {
     name: "webRTC",
     srcs: [
         "webRTC.cpp",
-    ],
-    header_libs: [
-        "cuttlefish_glog",
     ],
     shared_libs: [
         "libbase",

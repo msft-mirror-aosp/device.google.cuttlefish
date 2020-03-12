@@ -27,7 +27,7 @@
 #endif
 
 void makeFdNonblocking(int fd);
-void hexdump(const void *_data, size_t size);
+std::string hexdump(const void *_data, size_t size);
 
 void encodeBase64(const void *_data, size_t size, std::string *out);
 
@@ -38,3 +38,5 @@ uint64_t U64_AT(const uint8_t *ptr);
 uint16_t U16LE_AT(const uint8_t *ptr);
 uint32_t U32LE_AT(const uint8_t *ptr);
 uint64_t U64LE_AT(const uint8_t *ptr);
+
+std::string STR_AT(const uint8_t *ptr, size_t size);

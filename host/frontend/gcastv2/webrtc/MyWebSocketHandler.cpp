@@ -23,8 +23,6 @@
 #include <netdb.h>
 #include <openssl/rand.h>
 
-#include <webrtc/Keyboard.h>
-
 namespace {
 
 // helper method to ensure a json object has the required fields convertible
@@ -63,7 +61,8 @@ MyWebSocketHandler::MyWebSocketHandler(
     : mRunLoop(runLoop),
       mServerState(serverState),
       mId(handlerId),
-      mOptions(OptionBits::useSingleCertificateForAllTracks),
+      mOptions(OptionBits::useSingleCertificateForAllTracks
+              | OptionBits::enableData),
       mTouchSink(mServerState->getTouchSink()),
       mKeyboardSink(mServerState->getKeyboardSink()) {
 }
@@ -180,7 +179,9 @@ int MyWebSocketHandler::handleMessage(
 "a=rtcp-fb:96 nack pli\r\n";
 
         ss <<
-"m=video 9 UDP/TLS/RTP/SAVPF 96 97\r\n"
+"m=video 9 "
+<< ((mOptions & OptionBits::useTCP) ? "TCP" : "UDP")
+<< "/TLS/RTP/SAVPF 96 97\r\n"
 "c=IN IP4 0.0.0.0\r\n"
 "a=rtcp:9 IN IP4 0.0.0.0\r\n";
 
@@ -211,7 +212,9 @@ int MyWebSocketHandler::handleMessage(
 
         if (!(mOptions & OptionBits::disableAudio)) {
             ss <<
-"m=audio 9 UDP/TLS/RTP/SAVPF 98\r\n"
+"m=audio 9 "
+<< ((mOptions & OptionBits::useTCP) ? "TCP" : "UDP")
+<< "/TLS/RTP/SAVPF 98\r\n"
 "c=IN IP4 0.0.0.0\r\n"
 "a=rtcp:9 IN IP4 0.0.0.0\r\n";
 
@@ -237,7 +240,9 @@ int MyWebSocketHandler::handleMessage(
 
         if (mOptions & OptionBits::enableData) {
             ss <<
-"m=application 9 UDP/DTLS/SCTP webrtc-datachannel\r\n"
+"m=application 9 "
+<< ((mOptions & OptionBits::useTCP) ? "TCP" : "UDP")
+<< "/DTLS/SCTP webrtc-datachannel\r\n"
 "c=IN IP4 0.0.0.0\r\n"
 "a=sctp-port:5000\r\n";
 
@@ -274,58 +279,6 @@ int MyWebSocketHandler::handleMessage(
             auto replyAsString = json_writer.write(reply);
             sendMessage(replyAsString.c_str(), replyAsString.size());
         }
-    } else if (type == "set-mouse-position") {
-        if (!validateJsonObject(obj, type, {{"down", Json::ValueType::intValue},
-                                            {"x", Json::ValueType::intValue},
-                                            {"y", Json::ValueType::intValue}},
-                                sendMessageOnError)) {
-            return -EINVAL;
-        }
-        int32_t down = obj["down"].asInt();
-        int32_t x = obj["x"].asInt();
-        int32_t y = obj["y"].asInt();
-
-        LOG(VERBOSE)
-            << "set-mouse-position(" << down << ", " << x << ", " << y << ")";
-
-        mTouchSink->injectTouchEvent(x, y, down != 0);
-    } else if (type == "inject-multi-touch") {
-        if (!validateJsonObject(obj, type, {{"id", Json::ValueType::intValue},
-                                            {"initialDown", Json::ValueType::intValue},
-                                            {"x", Json::ValueType::intValue},
-                                            {"y", Json::ValueType::intValue},
-                                            {"slot", Json::ValueType::intValue}},
-                                sendMessageOnError)) {
-            return -EINVAL;
-        }
-        int32_t id = obj["id"].asInt();
-        int32_t initialDown = obj["initialDown"].asInt();
-        int32_t x = obj["x"].asInt();
-        int32_t y = obj["y"].asInt();
-        int32_t slot = obj["slot"].asInt();
-
-        LOG(VERBOSE)
-            << "inject-multi-touch id="
-            << id
-            << ", initialDown="
-            << initialDown
-            << ", x="
-            << x
-            << ", y="
-            << y
-            << ", slot="
-            << slot;
-
-        mTouchSink->injectMultiTouchEvent(id, slot, x, y, initialDown);
-    } else if (type == "key-event") {
-        if (!validateJsonObject(obj, type, {{"event_type", Json::ValueType::stringValue},
-                                            {"keycode", Json::ValueType::stringValue}},
-                                sendMessageOnError)) {
-            return -EINVAL;
-        }
-        auto down = obj["event_type"].asString() == std::string("keydown");
-        auto code = DomKeyCodeToLinux(obj["keycode"].asString());
-        mKeyboardSink->injectEvent(down, code);
     }
 
     return 0;
@@ -411,6 +364,9 @@ bool MyWebSocketHandler::getCandidate(int32_t mid) {
         auto rtp = std::make_shared<RTPSocketHandler>(
                 mRunLoop,
                 mServerState,
+                (mOptions & OptionBits::useTCP)
+                    ? RTPSocketHandler::TransportType::TCP
+                    : RTPSocketHandler::TransportType::UDP,
                 PF_INET,
                 trackMask,
                 session);
@@ -427,15 +383,25 @@ bool MyWebSocketHandler::getCandidate(int32_t mid) {
 
     auto localIPString = rtp->getLocalIPString();
 
-    // see rfc8445, 5.1.2.1. for the derivation of "2122121471" below.
-    reply["candidate"] =
-                "candidate:0 1 UDP 2122121471 "
-                + localIPString
-                + " "
-                + std::to_string(rtp->getLocalPort())
-                + " typ host generation 0 ufrag "
-                + rtp->getLocalUFrag();
+    std::stringstream ss;
+    ss << "candidate:0 1 ";
 
+    if (mOptions & OptionBits::useTCP) {
+        ss << "tcp";
+    } else {
+        ss << "UDP";
+    }
+
+    // see rfc8445, 5.1.2.1. for the derivation of "2122121471" below.
+    ss << " 2122121471 " << localIPString << " " << rtp->getLocalPort() << " typ host ";
+
+    if (mOptions & OptionBits::useTCP) {
+        ss << "tcptype passive ";
+    }
+
+    ss << "generation 0 ufrag " << rtp->getLocalUFrag();
+
+    reply["candidate"] = ss.str();
     reply["mlineIndex"] = static_cast<Json::UInt64>(mlineIndex);
 
     Json::FastWriter json_writer;
@@ -588,6 +554,10 @@ void MyWebSocketHandler::parseOptions(const Json::Value& options) {
     if (options.isMember("enable_data") && options["enable_data"].isBool()) {
         auto mask = OptionBits::enableData;
         mOptions = (mOptions & ~mask) | (options["enable_data"].asBool() ? mask : 0);
+    }
+    if (options.isMember("use_tcp") && options["use_tcp"].isBool()) {
+        auto mask = OptionBits::useTCP;
+        mOptions = (mOptions & ~mask) | (options["use_tcp"].asBool() ? mask : 0);
     }
 }
 

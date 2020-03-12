@@ -16,6 +16,7 @@
 
 #include <webrtc/RTPSocketHandler.h>
 
+#include <webrtc/Keyboard.h>
 #include <webrtc/MyWebSocketHandler.h>
 #include <webrtc/STUNMessage.h>
 #include <Utils.h>
@@ -32,6 +33,8 @@
 #include <iostream>
 #include <set>
 
+#include <json/json.h>
+
 #include <gflags/gflags.h>
 
 DECLARE_string(public_ip);
@@ -39,6 +42,7 @@ DECLARE_string(public_ip);
 // These are the ports we currently open in the firewall (15550..15557)
 static constexpr int kPortRangeBegin = 15550;
 static constexpr int kPortRangeEnd = 15558;
+static constexpr int kPortRangeEndTcp = 15551;
 
 static socklen_t getSockAddrLen(const sockaddr_storage &addr) {
     switch (addr.ss_family) {
@@ -52,7 +56,7 @@ static socklen_t getSockAddrLen(const sockaddr_storage &addr) {
     }
 }
 
-static int acquirePort(int sockfd, int domain) {
+static int acquirePort(int sockfd, int domain, bool tcp) {
     sockaddr_storage addr;
     uint16_t* port_ptr;
 
@@ -85,32 +89,149 @@ static int acquirePort(int sockfd, int domain) {
         if (errno != EADDRINUSE) {
             return -1;
         }
+        // for now, limit to one client / one tcp port to minimize
+        // complexity for using WebRTC over TCP over ssh tunnels
+        if (tcp && port == kPortRangeEndTcp)
+            break;
         // else try the next port
     }
 
     return -1;
 }
 
+static void ProcessInputEvent(std::shared_ptr<ServerState> server_state,
+                              const uint8_t* msg, size_t size) {
+    // TODO(jemoreira) consider binary protocol to avoid JSON parsing overhead
+    Json::Value evt;
+    Json::Reader json_reader;
+    auto str = reinterpret_cast<const char *>(msg);
+    if (!json_reader.parse(str, str + size, evt) < 0) {
+        LOG(ERROR) << "Received invalid JSON object in input channel:";
+        LOG(INFO) << hexdump(msg, size);
+        return;
+    }
+    if (!evt.isMember("type") || !evt["type"].isString()) {
+        LOG(ERROR) << "Input event doesn't have a valid 'type' field";
+        return;
+    }
+    auto event_type = evt["type"].asString();
+    if (event_type == "mouse") {
+        if (!evt.isMember("down") || !evt["down"].isInt()) {
+            LOG(ERROR) << "Integer field 'down' is required for events of type "
+                       << event_type;
+            return;
+        }
+        if (!evt.isMember("x") || !evt["x"].isInt()) {
+            LOG(ERROR) << "Integer field 'x' is required for events of type "
+                       << event_type;
+            return;
+        }
+        if (!evt.isMember("y") || !evt["y"].isInt()) {
+            LOG(ERROR) << "Integer field 'y' is required for events of type "
+                       << event_type;
+            return;
+        }
+        int32_t down = evt["down"].asInt();
+        int32_t x = evt["x"].asInt();
+        int32_t y = evt["y"].asInt();
+
+        server_state->getTouchSink()->injectTouchEvent(x, y, down != 0);
+    } else if (event_type == "multi-touch") {
+        if (!evt.isMember("id") || !evt["id"].isInt()) {
+            LOG(ERROR) << "Integer field 'id' is required for events of type "
+                       << event_type;
+            return;
+        }
+        if (!evt.isMember("initialDown") || !evt["initialDown"].isInt()) {
+            LOG(ERROR) << "Integer field 'initialDown' is required for events "
+                       << "of type " << event_type;
+            return;
+        }
+        if (!evt.isMember("x") || !evt["x"].isInt()) {
+            LOG(ERROR) << "Integer field 'x' is required for events of type "
+                       << event_type;
+            return;
+        }
+        if (!evt.isMember("y") || !evt["y"].isInt()) {
+            LOG(ERROR) << "Integer field 'y' is required for events of type "
+                       << event_type;
+            return;
+        }
+        if (!evt.isMember("slot") || !evt["slot"].isInt()) {
+            LOG(ERROR) << "Integer field 'slot' is required for events of type "
+                       << event_type;
+            return;
+        }
+        int32_t id = evt["id"].asInt();
+        int32_t initialDown = evt["initialDown"].asInt();
+        int32_t x = evt["x"].asInt();
+        int32_t y = evt["y"].asInt();
+        int32_t slot = evt["slot"].asInt();
+
+        server_state->getTouchSink()->injectMultiTouchEvent(id, slot, x, y,
+                                                            initialDown);
+    } else if (event_type == "keyboard") {
+        if (!evt.isMember("event_type") || !evt["event_type"].isString()) {
+            LOG(ERROR) << "String field 'event_type' is required for events of "
+                       << "type " << event_type;
+            return;
+        }
+        if (!evt.isMember("keycode") || !evt["keycode"].isString()) {
+            LOG(ERROR) << "String field 'keycode' is required for events of "
+                       << "type " << event_type;
+            return;
+        }
+        auto down = evt["event_type"].asString() == std::string("keydown");
+        auto code = DomKeyCodeToLinux(evt["keycode"].asString());
+        server_state->getKeyboardSink()->injectEvent(down, code);
+    } else {
+        LOG(ERROR) << "Unrecognized event type: " << event_type;
+        return;
+    }
+}
+
 RTPSocketHandler::RTPSocketHandler(
         std::shared_ptr<RunLoop> runLoop,
         std::shared_ptr<ServerState> serverState,
+        TransportType transportType,
         int domain,
         uint32_t trackMask,
         std::shared_ptr<RTPSession> session)
     : mRunLoop(runLoop),
       mServerState(serverState),
+      mTransportType(transportType),
       mTrackMask(trackMask),
       mSession(session),
       mSendPending(false),
-      mDTLSConnected(false) {
-    int sock = socket(domain, SOCK_DGRAM, 0);
+      mDTLSConnected(false),
+      mInBufferLength(0) {
+    bool tcp = mTransportType == TransportType::TCP;
+
+    int sock = socket(domain, tcp ? SOCK_STREAM : SOCK_DGRAM, 0);
+
+    if (tcp) {
+        static constexpr int yes = 1;
+        auto res = setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
+        CHECK(!res);
+    }
 
     makeFdNonblocking(sock);
-    mSocket = std::make_shared<PlainSocket>(mRunLoop, sock);
 
-    mLocalPort = acquirePort(sock, domain);
+    mLocalPort = acquirePort(sock, domain, tcp);
 
     CHECK(mLocalPort > 0);
+
+    if (tcp) {
+        auto res = listen(sock, 4);
+        CHECK(!res);
+    }
+
+    auto tmp = std::make_shared<PlainSocket>(mRunLoop, sock);
+    if (tcp) {
+        mServerSocket = tmp;
+    } else {
+        mSocket = tmp;
+    }
 
     auto videoPacketizer =
         (trackMask & TRACK_VIDEO)
@@ -151,7 +272,76 @@ std::string RTPSocketHandler::getLocalIPString() const {
 }
 
 void RTPSocketHandler::run() {
-    mSocket->postRecv(makeSafeCallback(this, &RTPSocketHandler::onReceive));
+    if (mTransportType == TransportType::TCP) {
+        mServerSocket->postRecv(
+                makeSafeCallback(this, &RTPSocketHandler::onTCPConnect));
+    } else {
+        mSocket->postRecv(makeSafeCallback(this, &RTPSocketHandler::onReceive));
+    }
+}
+
+void RTPSocketHandler::onTCPConnect() {
+    int sock = accept(mServerSocket->fd(), nullptr, 0);
+
+    if (sock < 0) {
+        LOG(ERROR) << "RTPSocketHandler: Failed to accept client";
+        mSocket->postRecv(makeSafeCallback(this, &RTPSocketHandler::onTCPConnect));
+        return;
+    }
+
+    LOG(INFO) << "RTPSocketHandler: Accepted client";
+
+    makeFdNonblocking(sock);
+
+    mClientAddrLen = sizeof(mClientAddr);
+
+    int res = getpeername(
+            sock, reinterpret_cast<sockaddr *>(&mClientAddr), &mClientAddrLen);
+
+    CHECK(!res);
+
+    mSocket = std::make_shared<PlainSocket>(mRunLoop, sock);
+
+    mSocket->postRecv(makeSafeCallback(this, &RTPSocketHandler::onTCPReceive));
+}
+
+void RTPSocketHandler::onTCPReceive() {
+    mInBuffer.resize(mInBuffer.size() + 8192);
+
+    auto n = mSocket->recv(
+            mInBuffer.data() + mInBufferLength, mInBuffer.size() - mInBufferLength);
+
+    if (n == 0) {
+        LOG(INFO) << "Client disconnected.";
+        return;
+    }
+
+    mInBufferLength += n;
+
+    size_t offset = 0;
+    while (offset + 1 < mInBufferLength) {
+        auto packetLength = U16_AT(mInBuffer.data() + offset);
+        offset += 2;
+
+        if (offset + packetLength > mInBufferLength) {
+            break;
+        }
+
+        onPacketReceived(
+                mClientAddr,
+                mClientAddrLen,
+                mInBuffer.data() + offset,
+                packetLength);
+
+        offset += packetLength;
+    }
+
+    if (offset > 0) {
+        mInBuffer.erase(mInBuffer.begin(), mInBuffer.begin() + offset);
+        mInBufferLength -= offset;
+    }
+
+    mSocket->postRecv(makeSafeCallback(this, &RTPSocketHandler::onTCPReceive));
 }
 
 void RTPSocketHandler::onReceive() {
@@ -165,6 +355,22 @@ void RTPSocketHandler::onReceive() {
     auto n = mSocket->recvfrom(
             data, buffer.size(), reinterpret_cast<sockaddr *>(&addr), &addrLen);
 
+    onPacketReceived(addr, addrLen, data, n);
+
+    mSocket->postRecv(makeSafeCallback(this, &RTPSocketHandler::onReceive));
+}
+
+void RTPSocketHandler::onPacketReceived(
+        const sockaddr_storage &addr,
+        socklen_t addrLen,
+        uint8_t *data,
+        size_t n) {
+#if 0
+    std::cout << "========================================" << std::endl;
+
+    hexdump(data, n);
+#endif
+
     STUNMessage msg(data, n);
     if (!msg.isValid()) {
         if (mDTLSConnected) {
@@ -175,7 +381,7 @@ void RTPSocketHandler::onReceive() {
 
             if (err == -EINVAL) {
                 LOG(VERBOSE) << "Sending to DTLS instead:";
-                // hexdump(data, n);
+                LOG(VERBOSE) << hexdump(data, n);
 
                 onDTLSReceive(data, static_cast<size_t>(n));
 
@@ -203,7 +409,6 @@ void RTPSocketHandler::onReceive() {
             onDTLSReceive(data, static_cast<size_t>(n));
         }
 
-        run();
         return;
     }
 
@@ -212,7 +417,6 @@ void RTPSocketHandler::onReceive() {
 
         if (!matchesSession(msg)) {
             LOG(WARNING) << "Unknown session or no USERNAME.";
-            run();
             return;
         }
 
@@ -284,7 +488,7 @@ void RTPSocketHandler::onReceive() {
                 ipHost[i] ^= response.data()[4 + i];
             }
 
-            // LOG(INFO) << "IP6 = " << out;
+            LOG(VERBOSE) << "IP6 = " << out;
 
             for (size_t i = 0; i < 16; ++i) {
                 attr[4 + i] = ipHost[15 - i];
@@ -299,15 +503,7 @@ void RTPSocketHandler::onReceive() {
 
         // response.dump(answerPassword);
 
-        auto res =
-            mSocket->sendto(
-                    response.data(),
-                    response.size(),
-                    reinterpret_cast<const sockaddr *>(&addr),
-                    addrLen);
-
-        CHECK_GT(res, 0);
-        CHECK_EQ(static_cast<size_t>(res), response.size());
+        queueDatagram(addr, response.data(), response.size());
 
         if (!mSession->isActive()) {
             mSession->setRemoteAddress(addr);
@@ -336,8 +532,6 @@ void RTPSocketHandler::onReceive() {
             mDTLS->connect(mSession->remoteAddress());
         }
     }
-
-    run();
 }
 
 bool RTPSocketHandler::matchesSession(const STUNMessage &msg) const {
@@ -434,6 +628,22 @@ const sockaddr_storage &RTPSocketHandler::Datagram::remoteAddress() const {
 
 void RTPSocketHandler::queueDatagram(
         const sockaddr_storage &addr, const void *data, size_t size) {
+    if (mTransportType == TransportType::TCP) {
+        std::vector copy(
+                static_cast<const uint8_t *>(data),
+                static_cast<const uint8_t *>(data) + size);
+
+        mRunLoop->post(
+                makeSafeCallback<RTPSocketHandler>(
+                    this,
+                    [copy](RTPSocketHandler *me) {
+                        // addr is ignored and assumed to be the connected endpoint's.
+                        me->queueTCPOutputPacket(copy.data(), copy.size());
+                    }));
+
+        return;
+    }
+
     auto datagram = std::make_shared<Datagram>(addr, data, size);
 
     CHECK_LE(size, RTPSocketHandler::kMaxUDPPayloadSize);
@@ -448,6 +658,58 @@ void RTPSocketHandler::queueDatagram(
                         me->scheduleDrainOutQueue();
                     }
                 }));
+}
+
+void RTPSocketHandler::queueTCPOutputPacket(const uint8_t *data, size_t size) {
+    uint8_t framing[2];
+    framing[0] = size >> 8;
+    framing[1] = size & 0xff;
+
+    std::copy(framing, framing + sizeof(framing), std::back_inserter(mOutBuffer));
+    std::copy(data, data + size, std::back_inserter(mOutBuffer));
+
+    if (!mSendPending) {
+        mSendPending = true;
+
+        mSocket->postSend(
+                makeSafeCallback(this, &RTPSocketHandler::sendTCPOutputData));
+    }
+}
+
+void RTPSocketHandler::sendTCPOutputData() {
+    mSendPending = false;
+
+    const size_t size = mOutBuffer.size();
+    size_t offset = 0;
+
+    bool disconnected = false;
+
+    while (offset < size) {
+        auto n = mSocket->send(mOutBuffer.data() + offset, size - offset);
+
+        if (n < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+
+            LOG(FATAL) << "Should not be here.";
+        } else if (n == 0) {
+            offset = size;
+            disconnected = true;
+            break;
+        }
+
+        offset += static_cast<size_t>(n);
+    }
+
+    mOutBuffer.erase(mOutBuffer.begin(), mOutBuffer.begin() + offset);
+
+    if (!mOutBuffer.empty() && !disconnected) {
+        mSendPending = true;
+
+        mSocket->postSend(
+                makeSafeCallback(this, &RTPSocketHandler::sendTCPOutputData));
+    }
 }
 
 void RTPSocketHandler::scheduleDrainOutQueue() {
@@ -516,6 +778,15 @@ void RTPSocketHandler::notifyDTLSConnected() {
 
     if (mTrackMask & TRACK_DATA) {
         mSCTPHandler = std::make_shared<SCTPHandler>(mRunLoop, mDTLS);
+        auto server_state = mServerState;
+        mSCTPHandler->onDataChannel(
+            "input-channel",
+            [server_state](std::shared_ptr<DataChannelStream> data_channel) {
+              data_channel->OnMessage(
+                  [server_state](const uint8_t *data, size_t size) {
+                    ProcessInputEvent(server_state, data, size);
+                  });
+            });
         mSCTPHandler->run();
     }
 
