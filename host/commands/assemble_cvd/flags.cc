@@ -90,6 +90,31 @@ DEFINE_bool(deprecated_boot_completed, false, "Log boot completed message to"
             " Will be deprecated soon.");
 DEFINE_bool(start_vnc_server, false, "Whether to start the vnc server process.");
 
+/**
+ *
+ * crosvm sandbox feature requires /var/empty and seccomp directory
+ *
+ * --enable-sandbox: will enforce the sandbox feature
+ *                   failing to meet the requirements result in assembly_cvd termination
+ *
+ * --enable-sandbox=no, etc: will disable sandbox
+ *
+ * no option given: it is enabled only if /var/empty exists
+ *                  if /var/empty exists but seccomp doesn't, assembly_cvd will terminate
+ *
+ * See SetDefaultFlagsForCrosvm()
+ *
+ */
+DEFINE_bool(enable_sandbox,
+            false,
+            "Enable crosvm sandbox. Use this when you are sure about what you are doing.");
+
+static const std::string kSeccompDir =
+    std::string("usr/share/cuttlefish/") + cvd::HostArch() + "-linux-gnu/seccomp";
+DEFINE_string(seccomp_policy_dir,
+              vsoc::DefaultHostArtifactsPath(kSeccompDir),
+              "With sandbox'ed crosvm, overrieds the security comp policy directory");
+
 DEFINE_bool(start_webrtc, false, "[Experimental] Whether to start the webrtc process.");
 
 DEFINE_string(
@@ -317,6 +342,10 @@ bool InitializeCuttlefishConfiguration(
       vsoc::DefaultHostArtifactsPath("bin/vnc_server"));
   tmp_config_obj.set_vnc_server_port(FLAGS_vnc_server_port);
 
+  tmp_config_obj.set_enable_sandbox(FLAGS_enable_sandbox);
+
+  tmp_config_obj.set_seccomp_policy_dir(FLAGS_seccomp_policy_dir);
+
   tmp_config_obj.set_enable_webrtc(FLAGS_start_webrtc);
   tmp_config_obj.set_webrtc_binary(
       vsoc::DefaultHostArtifactsPath("bin/webRTC"));
@@ -389,6 +418,21 @@ void SetDefaultFlagsForCrosvm() {
                                default_instance_dir.c_str(),
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
   SetCommandLineOptionWithMode("logcat_mode", cvd::kLogcatVsockMode,
+                               google::FlagSettingMode::SET_FLAGS_DEFAULT);
+  // for now, we support only x86_64 by default
+  bool default_enable_sandbox = false;
+  if (cvd::HostArch() == "x86_64") {
+    default_enable_sandbox =
+        [](const std::string& var_empty) -> bool {
+          if (cvd::DirectoryExists(var_empty)) {
+            return cvd::IsDirectoryEmpty(var_empty);
+          }
+          // if file does not exist, we will create one later
+          return cvd::FileExists(var_empty);
+        }(vsoc::kCrosvmVarEmptyDir);
+  }
+  SetCommandLineOptionWithMode("enable_sandbox",
+                               (default_enable_sandbox ? "true" : "false"),
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
 }
 
