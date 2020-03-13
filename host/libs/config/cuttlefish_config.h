@@ -28,6 +28,7 @@ namespace vsoc {
 constexpr char kDefaultUuidPrefix[] = "699acfc4-c8c4-11e7-882b-5065f31dc1";
 constexpr char kCuttlefishConfigEnvVarName[] = "CUTTLEFISH_CONFIG_FILE";
 constexpr char kVsocUserPrefix[] = "vsoc-";
+constexpr char kCrosvmVarEmptyDir[] = "/var/empty";
 
 enum class AdbMode {
   Tunnel,
@@ -271,6 +272,12 @@ class CuttlefishConfig {
 
   void set_stream_audio_binary(const std::string& stream_audio_binary);
   std::string stream_audio_binary() const;
+
+  void set_enable_sandbox(const bool enable_sandbox);
+  bool enable_sandbox() const;
+
+  void set_seccomp_policy_dir(const std::string& seccomp_policy_dir);
+  std::string seccomp_policy_dir() const;
 
   void set_restart_subprocesses(bool restart_subprocesses);
   bool restart_subprocesses() const;

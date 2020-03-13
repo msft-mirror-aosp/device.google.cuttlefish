@@ -139,6 +139,9 @@ const char* kEnableStreamAudio = "enable_stream_audio";
 const char* kStreamAudioBinary = "stream_audio_binary";
 const char* kStreamAudioPort = "stream_audio_port";
 
+const char* kEnableSandbox = "enable_sandbox";
+const char* kSeccompPolicyDir = "seccomp_policy_dir";
+
 const char* kRestartSubprocesses = "restart_subprocesses";
 const char* kRunAdbConnector = "run_adb_connector";
 const char* kAdbConnectorBinary = "adb_connector_binary";
@@ -703,6 +706,26 @@ void CuttlefishConfig::set_vnc_server_port(int vnc_server_port) {
 
 bool CuttlefishConfig::enable_stream_audio() const {
   return (*dictionary_)[kEnableStreamAudio].asBool();
+}
+
+void CuttlefishConfig::set_enable_sandbox(const bool enable_sandbox) {
+  (*dictionary_)[kEnableSandbox] = enable_sandbox;
+}
+
+bool CuttlefishConfig::enable_sandbox() const {
+  return (*dictionary_)[kEnableSandbox].asBool();
+}
+
+void CuttlefishConfig::set_seccomp_policy_dir(const std::string& seccomp_policy_dir) {
+  if (seccomp_policy_dir.empty()) {
+    (*dictionary_)[kSeccompPolicyDir] = seccomp_policy_dir;
+    return;
+  }
+  SetPath(kSeccompPolicyDir, seccomp_policy_dir);
+}
+
+std::string CuttlefishConfig::seccomp_policy_dir() const {
+  return (*dictionary_)[kSeccompPolicyDir].asString();
 }
 
 void CuttlefishConfig::set_enable_stream_audio(bool enable_stream_audio) {

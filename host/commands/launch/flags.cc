@@ -114,6 +114,32 @@ DEFINE_bool(start_stream_audio, false,
 DEFINE_string(stream_audio_binary,
               vsoc::DefaultHostArtifactsPath("bin/stream_audio"),
               "Location of the stream_audio binary.");
+
+/**
+ *
+ * crosvm sandbox feature requires /var/empty and seccomp directory
+ *
+ * --enable-sandbox: will enforce the sandbox feature
+ *                   failing to meet the requirements result in assembly_cvd termination
+ *
+ * --enable-sandbox=no, etc: will disable sandbox
+ *
+ * no option given: it is enabled only if /var/empty exists
+ *                  if /var/empty exists but seccomp doesn't, assembly_cvd will terminate
+ *
+ * See SetDefaultFlagsForCrosvm()
+ *
+ */
+DEFINE_bool(enable_sandbox,
+            false,
+            "Enable crosvm sandbox. Use this when you are sure about what you are doing.");
+
+static const std::string kSeccompDir =
+    std::string("usr/share/cuttlefish/") + cvd::HostArch() + "-linux-gnu/seccomp";
+DEFINE_string(seccomp_policy_dir,
+              vsoc::DefaultHostArtifactsPath(kSeccompDir),
+              "With sandbox'ed crosvm, overrieds the security comp policy directory");
+
 DEFINE_string(virtual_usb_manager_binary,
               vsoc::DefaultHostArtifactsPath("bin/virtual_usb_manager"),
               "Location of the virtual usb manager binary.");
@@ -494,6 +520,9 @@ bool InitializeCuttlefishConfiguration(
   tmp_config_obj.set_stream_audio_binary(FLAGS_stream_audio_binary);
   tmp_config_obj.set_stream_audio_port(FLAGS_stream_audio_port);
 
+  tmp_config_obj.set_enable_sandbox(FLAGS_enable_sandbox);
+  tmp_config_obj.set_seccomp_policy_dir(FLAGS_seccomp_policy_dir);
+
   tmp_config_obj.set_restart_subprocesses(FLAGS_restart_subprocesses);
   tmp_config_obj.set_run_adb_connector(FLAGS_run_adb_connector);
   tmp_config_obj.set_adb_connector_binary(FLAGS_adb_connector_binary);
@@ -615,6 +644,22 @@ void SetDefaultFlagsForCrosvm() {
     SetCommandLineOptionWithMode("gsi_fstab", composite_gsi_fstab.c_str(),
                                  google::FlagSettingMode::SET_FLAGS_DEFAULT);
   }
+
+  // for now, we support only x86_64 by default
+  bool default_enable_sandbox = false;
+  if (cvd::HostArch() == "x86_64") {
+    default_enable_sandbox =
+        [](const std::string& var_empty) -> bool {
+          if (cvd::DirectoryExists(var_empty)) {
+            return cvd::IsDirectoryEmpty(var_empty);
+          }
+          // if file does not exist, we will create one later
+          return cvd::FileExists(var_empty);
+       }(vsoc::kCrosvmVarEmptyDir);
+  }
+  SetCommandLineOptionWithMode("enable_sandbox",
+                               (default_enable_sandbox ? "true" : "false"),
+                               google::FlagSettingMode::SET_FLAGS_DEFAULT);
 }
 
 bool ParseCommandLineFlags(int* argc, char*** argv) {
