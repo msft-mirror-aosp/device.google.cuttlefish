@@ -15,6 +15,7 @@ bin_path := $(notdir $(HOST_OUT_EXECUTABLES))
 lib_path := $(notdir $(HOST_OUT_SHARED_LIBRARIES))
 tests_path := $(notdir $(HOST_OUT_NATIVE_TESTS))
 webrtc_files_path := usr/share/webrtc
+modem_simulator_path := etc/modem_simulator
 
 cvd_host_executables := \
     adb \
@@ -61,6 +62,7 @@ cvd_host_executables := \
     lz4 \
     tapsetiff \
     newfs_msdos \
+    modem_simulator \
 
 ifneq ($(wildcard device/google/trout),)
     cvd_host_executables += android.hardware.automotive.vehicle@2.0-virtualization-grpc-server
@@ -69,6 +71,7 @@ endif
 cvd_host_tests := \
     monotonic_time_test \
     cuttlefish_net_tests \
+    modem_simulator_test \
 
 cvd_host_shared_libraries := \
     libbase.so \
@@ -121,11 +124,16 @@ cvd_host_webrtc_files := \
     $(addprefix assets/,$(webrtc_assets)) \
     $(addprefix certs/,$(webrtc_certs)) \
 
+modem_simulator_files := \
+     iccprofile_for_sim0.xml \
+     numeric_operator.xml \
+
 cvd_host_package_files := \
      $(addprefix $(bin_path)/,$(cvd_host_executables)) \
      $(addprefix $(lib_path)/,$(cvd_host_shared_libraries)) \
      $(foreach test,$(cvd_host_tests), ${tests_path}/$(test)/$(test)) \
      $(addprefix $(webrtc_files_path)/,$(cvd_host_webrtc_files)) \
+     $(addprefix $(modem_simulator_path)/files/,$(modem_simulator_files)) \
 
 $(cvd_host_package_tar): PRIVATE_FILES := $(cvd_host_package_files)
 $(cvd_host_package_tar): $(addprefix $(HOST_OUT)/,$(cvd_host_package_files))
