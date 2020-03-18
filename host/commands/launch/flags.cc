@@ -124,8 +124,10 @@ DEFINE_string(stream_audio_binary,
  *
  * --enable-sandbox=no, etc: will disable sandbox
  *
- * no option given: it is enabled only if /var/empty exists
- *                  if /var/empty exists but seccomp doesn't, assembly_cvd will terminate
+ * no option given: it is enabled if /var/empty exists and an empty directory
+ *                             or if it does not exist and can be created
+ *
+ * if seccomp dir doesn't exist, assembly_cvd will terminate
  *
  * See SetDefaultFlagsForCrosvm()
  *
@@ -653,8 +655,10 @@ void SetDefaultFlagsForCrosvm() {
           if (cvd::DirectoryExists(var_empty)) {
             return cvd::IsDirectoryEmpty(var_empty);
           }
-          // if file does not exist, we will create one later
-          return cvd::FileExists(var_empty);
+	  if (cvd::FileExists(var_empty)) {
+            return false;
+          }
+	  return (::mkdir(var_empty.c_str(), 0755) == 0);
        }(vsoc::kCrosvmVarEmptyDir);
   }
   SetCommandLineOptionWithMode("enable_sandbox",
