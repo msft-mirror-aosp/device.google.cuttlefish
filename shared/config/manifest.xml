@@ -16,12 +16,12 @@
 ** limitations under the License.
 */
 -->
-<manifest version="1.0" type="device" target-level="4">
+<manifest version="1.0" type="device" target-level="5">
     <kernel  target-level="5" />
     <hal format="hidl">
         <name>android.hardware.audio</name>
         <transport>hwbinder</transport>
-        <version>5.0</version>
+        <version>6.0</version>
         <interface>
             <name>IDevicesFactory</name>
             <instance>default</instance>
@@ -30,7 +30,7 @@
     <hal format="hidl">
         <name>android.hardware.audio.effect</name>
         <transport>hwbinder</transport>
-        <version>5.0</version>
+        <version>6.0</version>
         <interface>
             <name>IEffectsFactory</name>
             <instance>default</instance>
@@ -95,15 +95,6 @@
             <instance>legacy/0</instance>
         </interface>
     </hal>
-    <hal format="hidl">
-        <name>android.hardware.configstore</name>
-        <transport>hwbinder</transport>
-        <version>1.1</version>
-        <interface>
-            <name>ISurfaceFlingerConfigs</name>
-            <instance>default</instance>
-        </interface>
-    </hal>
     <!-- TODO (b/130078386):
     <hal format="hidl">
         <name>android.hardware.confirmationui</name>
@@ -137,7 +128,7 @@
     <hal format="hidl">
         <name>android.hardware.dumpstate</name>
         <transport>hwbinder</transport>
-        <version>1.0</version>
+        <version>1.1</version>
         <interface>
             <name>IDumpstateDevice</name>
             <instance>default</instance>
@@ -194,15 +185,6 @@
         </interface>
     </hal>
     <hal format="hidl">
-        <name>android.hardware.light</name>
-        <transport>hwbinder</transport>
-        <version>2.0</version>
-        <interface>
-            <name>ILight</name>
-            <instance>default</instance>
-        </interface>
-    </hal>
-    <hal format="hidl">
         <name>android.hardware.media.omx</name>
         <transport>hwbinder</transport>
         <version>1.0</version>
@@ -248,16 +230,6 @@
         </interface>
     </hal>
     -->
-    <!-- TODO (b/130079218): -->
-    <hal format="hidl">
-        <name>android.hardware.power</name>
-        <transport>hwbinder</transport>
-        <version>1.0</version>
-        <interface>
-            <name>IPower</name>
-            <instance>default</instance>
-        </interface>
-    </hal>
     <hal format="hidl">
         <name>android.hardware.radio</name>
         <transport>hwbinder</transport>
@@ -274,6 +246,17 @@
         </interface>
         -->
     </hal>
+    <!-- TODO (b/130076972):
+    <hal format="hidl">
+        <name>android.hardware.radio.config</name>
+        <transport>hwbinder</transport>
+        <version>1.2</version>
+        <interface>
+            <name>IRadioConfig</name>
+            <instance>default</instance>
+        </interface>
+    </hal>
+    -->
     <!-- TODO (b/130079239):
     <hal format="hidl">
         <name>android.hardware.secure_element</name>

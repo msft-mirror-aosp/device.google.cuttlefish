@@ -18,6 +18,7 @@
 #include <memory>
 #include <string>
 #include <set>
+#include <vector>
 
 namespace Json {
 class Value;
@@ -36,7 +37,7 @@ constexpr char kMobileNetworkConnectedMessage[] =
 constexpr char kWifiConnectedMessage[] =
     "VIRTUAL_DEVICE_NETWORK_WIFI_CONNECTED";
 constexpr char kInternalDirName[] = "internal";
-
+constexpr char kCrosvmVarEmptyDir[] = "/var/empty";
 
 enum class AdbMode {
   VsockTunnel,
@@ -49,24 +50,23 @@ enum class AdbMode {
 class CuttlefishConfig {
  public:
   static const CuttlefishConfig* Get();
+  static bool ConfigExists();
 
   CuttlefishConfig();
+  CuttlefishConfig(CuttlefishConfig&&);
   ~CuttlefishConfig();
+  CuttlefishConfig& operator=(CuttlefishConfig&&);
 
   // Saves the configuration object in a file, it can then be read in other
   // processes by passing the --config_file option.
   bool SaveToFile(const std::string& file) const;
 
-  // Returns the path to a file with the given name in the instance directory..
-  std::string PerInstancePath(const char* file_name) const;
-  std::string PerInstanceInternalPath(const char* file_name) const;
+  std::string assembly_dir() const;
+  void set_assembly_dir(const std::string& assembly_dir);
 
-  std::string instance_name() const;
+  std::string AssemblyPath(const std::string&) const;
 
-  std::string instance_dir() const;
-  void set_instance_dir(const std::string& instance_dir);
-
-  std::string instance_internal_dir() const;
+  std::string composite_disk_path() const;
 
   std::string vm_manager() const;
   void set_vm_manager(const std::string& name);
@@ -74,14 +74,14 @@ class CuttlefishConfig {
   std::string gpu_mode() const;
   void set_gpu_mode(const std::string& name);
 
+  std::string serial_number() const;
+  void set_serial_number(const std::string& serial_number);
+
   std::string wayland_socket() const;
   void set_wayland_socket(const std::string& path);
 
   std::string x_display() const;
   void set_x_display(const std::string& address);
-
-  std::string serial_number() const;
-  void set_serial_number(const std::string& serial_number);
 
   int cpus() const;
   void set_cpus(int cpus);
@@ -141,19 +141,8 @@ class CuttlefishConfig {
   void set_vendor_ramdisk_image_path(const std::string&
     vendor_ramdisk_image_path);
 
-  std::vector<std::string> virtual_disk_paths() const;
-  void set_virtual_disk_paths(const std::vector<std::string>& disk_paths);
-
-  std::string kernel_log_pipe_name() const;
-
-  std::string console_pipe_name() const;
-
   bool deprecated_boot_completed() const;
   void set_deprecated_boot_completed(bool deprecated_boot_completed);
-
-  std::string console_path() const;
-
-  std::string logcat_path() const;
 
   std::string logcat_receiver_binary() const;
   void set_logcat_receiver_binary(const std::string& binary);
@@ -161,41 +150,11 @@ class CuttlefishConfig {
   std::string config_server_binary() const;
   void set_config_server_binary(const std::string& binary);
 
-  std::string launcher_log_path() const;
-
-  std::string launcher_monitor_socket_path() const;
-
-  std::string mobile_bridge_name() const;
-  void set_mobile_bridge_name(const std::string& mobile_bridge_name);
-
-  std::string mobile_tap_name() const;
-  void set_mobile_tap_name(const std::string& mobile_tap_name);
-
-  std::string wifi_tap_name() const;
-  void set_wifi_tap_name(const std::string& wifi_tap_name);
-
-  void set_vsock_guest_cid(int vsock_guest_cid);
-  int vsock_guest_cid() const;
-
-  std::string uuid() const;
-  void set_uuid(const std::string& uuid);
-
   void set_cuttlefish_env_path(const std::string& path);
   std::string cuttlefish_env_path() const;
 
   void set_adb_mode(const std::set<std::string>& modes);
   std::set<AdbMode> adb_mode() const;
-
-  void set_host_port(int host_port);
-  int host_port() const;
-
-  void set_adb_ip_and_port(const std::string& ip_port);
-  std::string adb_ip_and_port() const;
-
-  std::string adb_device_name() const;
-
-  void set_device_title(const std::string& title);
-  std::string device_title() const;
 
   void set_setupwizard_mode(const std::string& title);
   std::string setupwizard_mode() const;
@@ -205,6 +164,12 @@ class CuttlefishConfig {
 
   void set_crosvm_binary(const std::string& crosvm_binary);
   std::string crosvm_binary() const;
+
+  void set_tpm_binary(const std::string& tpm_binary);
+  std::string tpm_binary() const;
+
+  void set_tpm_device(const std::string& tpm_device);
+  std::string tpm_device() const;
 
   void set_console_forwarder_binary(const std::string& crosvm_binary);
   std::string console_forwarder_binary() const;
@@ -216,11 +181,29 @@ class CuttlefishConfig {
   void set_enable_vnc_server(bool enable_vnc_server);
   bool enable_vnc_server() const;
 
-  void set_vnc_server_port(int vnc_server_port);
-  int vnc_server_port() const;
-
   void set_vnc_server_binary(const std::string& vnc_server_binary);
   std::string vnc_server_binary() const;
+
+  void set_enable_sandbox(const bool enable_sandbox);
+  bool enable_sandbox() const;
+
+  void set_seccomp_policy_dir(const std::string& seccomp_policy_dir);
+  std::string seccomp_policy_dir() const;
+
+  void set_enable_webrtc(bool enable_webrtc);
+  bool enable_webrtc() const;
+
+  void set_webrtc_binary(const std::string& webrtc_binary);
+  std::string webrtc_binary() const;
+
+  void set_webrtc_assets_dir(const std::string& webrtc_assets_dir);
+  std::string webrtc_assets_dir() const;
+
+  void set_webrtc_public_ip(const std::string& webrtc_public_ip);
+  std::string webrtc_public_ip() const;
+
+  void set_webrtc_enable_adb_websocket(bool enable);
+  bool webrtc_enable_adb_websocket() const;
 
   void set_restart_subprocesses(bool restart_subprocesses);
   bool restart_subprocesses() const;
@@ -264,9 +247,6 @@ class CuttlefishConfig {
   void set_boot_slot(const std::string& boot_slot);
   std::string boot_slot() const;
 
-  std::string touch_socket_path() const;
-  std::string keyboard_socket_path() const;
-
   void set_loop_max_part(int loop_max_part);
   int loop_max_part() const;
 
@@ -276,11 +256,123 @@ class CuttlefishConfig {
   void set_guest_audit_security(bool guest_audit_security);
   bool guest_audit_security() const;
 
+  void set_guest_force_normal_boot(bool guest_force_normal_boot);
+  bool guest_force_normal_boot() const;
+
+  enum Answer {
+    kUnknown = 0,
+    kYes,
+    kNo,
+  };
+
+  void set_enable_metrics(std::string enable_metrics);
+  CuttlefishConfig::Answer enable_metrics() const;
+
+  void set_metrics_binary(const std::string& metrics_binary);
+  std::string metrics_binary() const;
+
   void set_boot_image_kernel_cmdline(std::string boot_image_kernel_cmdline);
   std::vector<std::string> boot_image_kernel_cmdline() const;
 
   void set_extra_kernel_cmdline(std::string extra_cmdline);
   std::vector<std::string> extra_kernel_cmdline() const;
+
+  void set_webrtc_certs_dir(const std::string& certs_dir);
+  std::string webrtc_certs_dir() const;
+
+  void set_dialog_certs_dir(const std::string& certs_dir);
+  std::string dialog_certs_dir() const;
+
+  class InstanceSpecific;
+  class MutableInstanceSpecific;
+
+  MutableInstanceSpecific ForInstance(int instance_num);
+  InstanceSpecific ForInstance(int instance_num) const;
+  InstanceSpecific ForDefaultInstance() const;
+
+  std::vector<InstanceSpecific> Instances() const;
+
+  // A view into an existing CuttlefishConfig object for a particular instance.
+  class InstanceSpecific {
+    const CuttlefishConfig* config_;
+    std::string id_;
+    friend InstanceSpecific CuttlefishConfig::ForInstance(int num) const;
+    friend InstanceSpecific CuttlefishConfig::ForDefaultInstance() const;
+    friend std::vector<InstanceSpecific> CuttlefishConfig::Instances() const;
+
+    InstanceSpecific(const CuttlefishConfig* config, const std::string& id)
+        : config_(config), id_(id) {}
+
+    Json::Value* Dictionary();
+    const Json::Value* Dictionary() const;
+  public:
+    std::string serial_number() const;
+    int vnc_server_port() const;
+    int host_port() const;
+    int tpm_port() const;
+    std::string adb_ip_and_port() const;
+    std::string adb_device_name() const;
+    std::string device_title() const;
+    std::string mobile_bridge_name() const;
+    std::string mobile_tap_name() const;
+    std::string wifi_tap_name() const;
+    int vsock_guest_cid() const;
+    std::string uuid() const;
+    std::string instance_name() const;
+    std::vector<std::string> virtual_disk_paths() const;
+
+    // Returns the path to a file with the given name in the instance directory..
+    std::string PerInstancePath(const char* file_name) const;
+    std::string PerInstanceInternalPath(const char* file_name) const;
+
+    std::string instance_dir() const;
+
+    std::string instance_internal_dir() const;
+
+    std::string touch_socket_path() const;
+    std::string keyboard_socket_path() const;
+    std::string frames_socket_path() const;
+
+    std::string access_kregistry_path() const;
+
+    std::string console_path() const;
+
+    std::string logcat_path() const;
+
+    std::string kernel_log_pipe_name() const;
+
+    std::string console_pipe_name() const;
+
+    std::string launcher_log_path() const;
+
+    std::string launcher_monitor_socket_path() const;
+  };
+
+  // A view into an existing CuttlefishConfig object for a particular instance.
+  class MutableInstanceSpecific {
+    CuttlefishConfig* config_;
+    std::string id_;
+    friend MutableInstanceSpecific CuttlefishConfig::ForInstance(int num);
+
+    MutableInstanceSpecific(CuttlefishConfig* config, const std::string& id)
+        : config_(config), id_(id) {}
+
+    Json::Value* Dictionary();
+  public:
+    void set_serial_number(const std::string& serial_number);
+    void set_vnc_server_port(int vnc_server_port);
+    void set_host_port(int host_port);
+    void set_tpm_port(int tpm_port);
+    void set_adb_ip_and_port(const std::string& ip_port);
+    void set_device_title(const std::string& title);
+    void set_mobile_bridge_name(const std::string& mobile_bridge_name);
+    void set_mobile_tap_name(const std::string& mobile_tap_name);
+    void set_wifi_tap_name(const std::string& wifi_tap_name);
+    void set_vsock_guest_cid(int vsock_guest_cid);
+    void set_uuid(const std::string& uuid);
+    void set_instance_dir(const std::string& instance_dir);
+    void set_virtual_disk_paths(const std::vector<std::string>& disk_paths);
+  };
 
  private:
   std::unique_ptr<Json::Value> dictionary_;
@@ -303,8 +395,8 @@ std::string GetGlobalConfigFileLink();
 // These functions modify a given base value to make it different accross
 // different instances by appending the instance id in case of strings or adding
 // it in case of integers.
-std::string GetPerInstanceDefault(const char* prefix);
-int GetPerInstanceDefault(int base);
+std::string ForCurrentInstance(const char* prefix);
+int ForCurrentInstance(int base);
 
 std::string GetDefaultPerInstanceDir();
 std::string GetDefaultMempath();
@@ -323,4 +415,5 @@ bool HostSupportsVsock();
 // GPU modes
 extern const char* const kGpuModeGuestSwiftshader;
 extern const char* const kGpuModeDrmVirgl;
+extern const char* const kGpuModeGfxStream;
 }  // namespace vsoc

@@ -21,7 +21,7 @@
 #include <vector>
 
 #include <gflags/gflags.h>
-#include <glog/logging.h>
+#include <android-base/logging.h>
 
 #include <common/libs/fs/shared_fd.h>
 #include <common/libs/fs/shared_select.h>
@@ -197,7 +197,8 @@ int main(int argc, char** argv) {
     return -3;
   }
 
-  auto console_socket_name = config->console_path();
+  auto instance = config->ForDefaultInstance();
+  auto console_socket_name = instance.console_path();
   auto socket = cvd::SharedFD::SocketLocalServer(console_socket_name.c_str(),
                                                  false,
                                                  SOCK_STREAM,

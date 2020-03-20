@@ -36,7 +36,7 @@
 #include <vector>
 
 #include <gflags/gflags.h>
-#include <glog/logging.h>
+#include <android-base/logging.h>
 
 #include "common/libs/fs/shared_fd.h"
 #include "common/libs/fs/shared_select.h"
@@ -59,7 +59,8 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  auto monitor_path = config->launcher_monitor_socket_path();
+  auto instance = config->ForDefaultInstance();
+  auto monitor_path = instance.launcher_monitor_socket_path();
   if (monitor_path.empty()) {
     LOG(ERROR) << "No path to launcher monitor found";
     return 2;

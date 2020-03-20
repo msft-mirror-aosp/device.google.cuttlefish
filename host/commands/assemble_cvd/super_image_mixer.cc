@@ -23,7 +23,7 @@
 #include <memory>
 
 #include <android-base/strings.h>
-#include <glog/logging.h>
+#include <android-base/logging.h>
 
 #include "common/libs/utils/archive.h"
 #include "common/libs/utils/files.h"
@@ -44,11 +44,10 @@ std::string TargetFilesZip(const cvd::FetcherConfig& fetcher_config,
     if (file_info.source != source) {
       continue;
     }
-    std::string expected_filename = "target_files-" + file_iter.second.build_id + ".zip";
-    if (!android::base::EndsWith(file_path, expected_filename)) {
-      continue;
+    std::string expected_filename = "target_files-" + file_iter.second.build_id;
+    if (file_path.find(expected_filename) != std::string::npos) {
+      return file_path;
     }
-    return file_path;;
   }
   return "";
 }
@@ -181,7 +180,9 @@ bool RebuildSuperImage(const cvd::FetcherConfig& fetcher_config,
     LOG(ERROR) << "Unable to find system target zip file.";
     return false;
   }
-  std::string combined_target_path = config.PerInstanceInternalPath("target_combined");
+  auto instance = config.ForDefaultInstance();
+  // TODO(schuffelen): Use cuttlefish_assembly
+  std::string combined_target_path = instance.PerInstanceInternalPath("target_combined");
   // TODO(schuffelen): Use otatools/bin/merge_target_files
   if (!CombineTargetZipFiles(default_target_zip, system_target_zip,
                              combined_target_path)) {

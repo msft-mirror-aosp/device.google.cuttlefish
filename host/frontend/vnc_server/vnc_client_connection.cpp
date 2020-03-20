@@ -31,12 +31,13 @@
 #include <vector>
 
 #include <gflags/gflags.h>
-#include <glog/logging.h>
+#include <android-base/logging.h>
 #include "common/libs/tcp_socket/tcp_socket.h"
 #include "host/frontend/vnc_server/keysyms.h"
 #include "host/frontend/vnc_server/mocks.h"
 #include "host/frontend/vnc_server/vnc_utils.h"
 #include "host/libs/config/cuttlefish_config.h"
+#include "host/libs/screen_connector/screen_connector.h"
 
 using cvd::Message;
 using cvd::vnc::Stripe;
@@ -88,8 +89,9 @@ constexpr size_t kClientCutTextLength = 7;  // more bytes follow
 
 std::string HostName() {
   auto config = vsoc::CuttlefishConfig::Get();
-  return !config || config->device_title().empty() ? std::string{"localhost"}
-                                                   : config->device_title();
+  auto instance = config->ForDefaultInstance();
+  return !config || instance.device_title().empty() ? std::string{"localhost"}
+                                                    : instance.device_title();
 }
 
 std::uint16_t uint16_tAt(const void* p) {
@@ -193,12 +195,22 @@ bool VncClientConnection::closed() {
 
 void VncClientConnection::SetupProtocol() {
   static constexpr char kRFBVersion[] = "RFB 003.008\n";
+  static constexpr char kRFBVersionOld[] = "RFB 003.003\n";
   static constexpr auto kVersionLen = (sizeof kRFBVersion) - 1;
   client_.SendNoSignal(reinterpret_cast<const std::uint8_t*>(kRFBVersion),
                        kVersionLen);
   auto client_protocol = client_.Recv(kVersionLen);
   if (std::memcmp(&client_protocol[0], kRFBVersion,
                   std::min(kVersionLen, client_protocol.size())) != 0) {
+    if (!std::memcmp(
+                &client_protocol[0],
+                kRFBVersionOld,
+                std::min(kVersionLen, client_protocol.size()))) {
+        // We'll deal with V3.3 as well.
+        client_is_old_ = true;
+        return;
+    }
+
     client_protocol.push_back('\0');
     LOG(ERROR) << "vnc client wants a different protocol: "
                << reinterpret_cast<const char*>(&client_protocol[0]);
@@ -206,6 +218,23 @@ void VncClientConnection::SetupProtocol() {
 }
 
 void VncClientConnection::SetupSecurityType() {
+  if (client_is_old_) {
+    static constexpr std::uint8_t kVNCSecurity[4] = { 0x00, 0x00, 0x00, 0x02 };
+    client_.SendNoSignal(kVNCSecurity);
+
+    static constexpr std::uint8_t kChallenge[16] =
+        { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+
+    client_.SendNoSignal(kChallenge);
+
+    auto clientResponse = client_.Recv(16);
+    (void)clientResponse;  // Accept any response, we're not interested in actual security.
+
+    static constexpr std::uint8_t kSuccess[4] = { 0x00, 0x00, 0x00, 0x00 };
+    client_.SendNoSignal(kSuccess);
+    return;
+  }
+
   static constexpr std::uint8_t kNoneSecurity = 0x1;
   // The first '0x1' indicates the number of items that follow
   static constexpr std::uint8_t kOnlyNoneSecurity[] = {0x01, kNoneSecurity};
@@ -475,7 +504,7 @@ void VncClientConnection::HandlePointerEvent() {
     std::lock_guard<std::mutex> guard(m_);
     if (current_orientation_ == ScreenOrientation::Landscape) {
       std::tie(x_pos, y_pos) =
-          std::make_pair(ActualScreenWidth() - y_pos, x_pos);
+          std::make_pair(ScreenConnector::ScreenWidth() - y_pos, x_pos);
     }
   }
   virtual_inputs_->HandlePointerEvent(button_mask, x_pos, y_pos);
@@ -505,14 +534,14 @@ VncClientConnection::Coordinates VncClientConnection::CoordinatesForOrientation(
 
 int VncClientConnection::ScreenWidth() const {
   return current_orientation_ == ScreenOrientation::Portrait
-             ? ActualScreenWidth()
-             : ActualScreenHeight();
+             ? ScreenConnector::ScreenWidth()
+             : ScreenConnector::ScreenHeight();
 }
 
 int VncClientConnection::ScreenHeight() const {
   return current_orientation_ == ScreenOrientation::Portrait
-             ? ActualScreenHeight()
-             : ActualScreenWidth();
+             ? ScreenConnector::ScreenHeight()
+             : ScreenConnector::ScreenWidth();
 }
 
 void VncClientConnection::SetScreenOrientation(ScreenOrientation orientation) {

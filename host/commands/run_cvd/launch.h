@@ -19,30 +19,44 @@ void LaunchAdbConnectorIfEnabled(cvd::ProcessMonitor* process_monitor,
 void LaunchSocketVsockProxyIfEnabled(cvd::ProcessMonitor* process_monitor,
                                  const vsoc::CuttlefishConfig& config);
 
-struct VncServerPorts {
-  std::optional<int> frames_server_vsock_port;
-  std::optional<int> touch_server_vsock_port;
-  std::optional<int> keyboard_server_vsock_port;
+struct StreamerLaunchResult {
+  bool launched = false;
+  std::optional<unsigned int> frames_server_vsock_port;
+  std::optional<unsigned int> touch_server_vsock_port;
+  std::optional<unsigned int> keyboard_server_vsock_port;
 };
-VncServerPorts LaunchVNCServerIfEnabled(
+StreamerLaunchResult LaunchVNCServer(
     const vsoc::CuttlefishConfig& config,
     cvd::ProcessMonitor* process_monitor,
     std::function<bool(cvd::MonitorEntry*)> callback);
 
 struct TombstoneReceiverPorts {
-  std::optional<int> server_vsock_port;
+  std::optional<unsigned int> server_vsock_port;
 };
 TombstoneReceiverPorts LaunchTombstoneReceiverIfEnabled(
     const vsoc::CuttlefishConfig& config, cvd::ProcessMonitor* process_monitor);
 
 struct ConfigServerPorts {
-  std::optional<int> server_vsock_port;
+  std::optional<unsigned int> server_vsock_port;
 };
 ConfigServerPorts LaunchConfigServer(const vsoc::CuttlefishConfig& config,
                                      cvd::ProcessMonitor* process_monitor);
 
 struct LogcatServerPorts {
-  std::optional<int> server_vsock_port;
+  std::optional<unsigned int> server_vsock_port;
 };
 LogcatServerPorts LaunchLogcatReceiverIfEnabled(const vsoc::CuttlefishConfig& config,
                                                 cvd::ProcessMonitor* process_monitor);
+
+StreamerLaunchResult LaunchWebRTC(cvd::ProcessMonitor* process_monitor,
+                                  const vsoc::CuttlefishConfig& config);
+
+struct TpmPorts {
+  std::optional<unsigned int> server_vsock_port;
+};
+
+TpmPorts LaunchTpm(cvd::ProcessMonitor* process_monitor,
+                   const vsoc::CuttlefishConfig& config);
+
+void LaunchMetrics(cvd::ProcessMonitor* process_monitor,
+                                  const vsoc::CuttlefishConfig& config);

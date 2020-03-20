@@ -31,7 +31,7 @@
 #include <vector>
 
 #include <android-base/strings.h>
-#include <glog/logging.h>
+#include <android-base/logging.h>
 
 #include "common/libs/fs/shared_select.h"
 #include "common/libs/utils/files.h"
@@ -44,7 +44,8 @@ namespace vm_manager {
 namespace {
 
 std::string GetMonitorPath(const vsoc::CuttlefishConfig* config) {
-  return config->PerInstanceInternalPath("qemu_monitor.sock");
+  return config->ForDefaultInstance()
+      .PerInstanceInternalPath("qemu_monitor.sock");
 }
 
 void LogAndSetEnv(const char* key, const std::string& value) {
@@ -127,26 +128,26 @@ QemuManager::QemuManager(const vsoc::CuttlefishConfig* config)
   : VmManager(config) {}
 
 std::vector<cvd::Command> QemuManager::StartCommands() {
+  auto instance = config_->ForDefaultInstance();
   // Set the config values in the environment
   LogAndSetEnv("qemu_binary", config_->qemu_binary());
-  LogAndSetEnv("instance_name", config_->instance_name());
+  LogAndSetEnv("instance_name", instance.instance_name());
   LogAndSetEnv("memory_mb", std::to_string(config_->memory_mb()));
   LogAndSetEnv("cpus", std::to_string(config_->cpus()));
-  LogAndSetEnv("uuid", config_->uuid());
+  LogAndSetEnv("uuid", instance.uuid());
   LogAndSetEnv("monitor_path", GetMonitorPath(config_));
   LogAndSetEnv("kernel_image_path", config_->GetKernelImageToUse());
   LogAndSetEnv("gdb_flag", config_->gdb_flag());
   LogAndSetEnv("ramdisk_image_path", config_->final_ramdisk_path());
   LogAndSetEnv("kernel_cmdline", kernel_cmdline_);
-  LogAndSetEnv("virtual_disk_paths", JoinString(config_->virtual_disk_paths(),
+  LogAndSetEnv("virtual_disk_paths", JoinString(instance.virtual_disk_paths(),
                                                 ";"));
-  LogAndSetEnv("wifi_tap_name", config_->wifi_tap_name());
-  LogAndSetEnv("mobile_tap_name", config_->mobile_tap_name());
-  LogAndSetEnv("kernel_log_pipe_name",
-               config_->kernel_log_pipe_name());
-  LogAndSetEnv("console_path", config_->console_path());
-  LogAndSetEnv("logcat_path", config_->logcat_path());
-  LogAndSetEnv("vsock_guest_cid", std::to_string(config_->vsock_guest_cid()));
+  LogAndSetEnv("wifi_tap_name", instance.wifi_tap_name());
+  LogAndSetEnv("mobile_tap_name", instance.mobile_tap_name());
+  LogAndSetEnv("kernel_log_pipe_name", instance.kernel_log_pipe_name());
+  LogAndSetEnv("console_path", instance.console_path());
+  LogAndSetEnv("logcat_path", instance.logcat_path());
+  LogAndSetEnv("vsock_guest_cid", std::to_string(instance.vsock_guest_cid()));
   LogAndSetEnv("logcat_mode", config_->logcat_mode());
   LogAndSetEnv("use_bootloader", config_->use_bootloader() ? "true" : "false");
   LogAndSetEnv("bootloader", config_->bootloader());

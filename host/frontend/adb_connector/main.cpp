@@ -21,15 +21,15 @@
 #include <thread>
 #include <vector>
 
-#include <glog/logging.h>
+#include <android-base/logging.h>
 #include <gflags/gflags.h>
 
 #include <unistd.h>
 #include <host/commands/kernel_log_monitor/kernel_log_server.h>
 
 #include "common/libs/fs/shared_fd.h"
+#include "host/frontend/adb_connector/adb_connection_maintainer.h"
 #include "host/libs/config/cuttlefish_config.h"
-#include "host/libs/adb_connection_maintainer/adb_connection_maintainer.h"
 
 DEFINE_string(addresses, "", "Comma-separated list of addresses to "
                              "'adb connect' to");

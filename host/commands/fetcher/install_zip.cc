@@ -20,7 +20,8 @@
 #include <string>
 #include <vector>
 
-#include <glog/logging.h>
+#include <android-base/strings.h>
+#include <android-base/logging.h>
 
 #include "common/libs/utils/archive.h"
 #include "common/libs/utils/subprocess.h"
@@ -38,47 +39,16 @@ std::vector<std::string> ExtractImages(const std::string& archive_file,
     return {};
   }
 
-  bool extraction_success = true;
   std::vector<std::string> files =
-      images.size() > 0 ? images : archive.Contents();
-  for (const auto& file : files) {
-    if (file.find(".img") == std::string::npos) {
-      continue;
-    }
-    std::string extracted_file = target_directory + "/" + file;
-
-    std::string file_input, file_output;
-    cvd::Command file_cmd("/usr/bin/file");
-    file_cmd.AddParameter(extracted_file);
-    auto file_ret = cvd::RunWithManagedStdio(std::move(file_cmd), &file_input,
-                                             &file_output, nullptr);
-    if (file_ret != 0) {
-      LOG(ERROR) << "Unable to run file on " << file << ", returned" << file_ret;
-      extraction_success = false;
-      continue;
-    }
-    if (file_output.find("Android sparse image,") == std::string::npos) {
-      continue;
-    }
-    std::string inflated_file = extracted_file + ".inflated";
-    cvd::Command simg_cmd("/usr/bin/simg2img");
-    simg_cmd.AddParameter(extracted_file);
-    simg_cmd.AddParameter(inflated_file);
-    simg_cmd.RedirectStdIO(cvd::Subprocess::StdIOChannel::kStdOut,
-                           cvd::Subprocess::StdIOChannel::kStdErr);
-    if (simg_cmd.Start().Wait() != 0) {
-      LOG(ERROR) << "Unable to run simg2img on " << file;
-      extraction_success = false;
-      continue;
-    }
-    auto rename_ret = rename(inflated_file.c_str(), extracted_file.c_str());
-    if (rename_ret != 0) {
-      LOG(ERROR) << "Unable to rename deflated version of " << file;
-      extraction_success = false;
+      images.size() > 0 ? std::move(images) : archive.Contents();
+  auto it = files.begin();
+  while (it != files.end()) {
+    if (*it == "" || android::base::EndsWith(*it, "/")) {
+      it = files.erase(it);
+    } else {
+      *it = target_directory + "/" + *it;
+      it++;
     }
   }
-  for (auto& file : files) {
-    file = target_directory + "/" + file;
-  }
-  return extraction_success ? files : std::vector<std::string>{};
+  return files;
 }

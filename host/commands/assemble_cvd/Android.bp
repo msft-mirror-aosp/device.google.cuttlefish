@@ -40,7 +40,6 @@ cc_binary_host {
     ],
     header_libs: [
         "bootimg_headers",
-        "cuttlefish_glog",
     ],
     shared_libs: [
         "cdisk_spec",
@@ -53,6 +52,7 @@ cc_binary_host {
         "libz",
     ],
     static_libs: [
+        "libsparse",
         "libcuttlefish_host_config",
         "libcuttlefish_vm_manager",
         "libgflags",
@@ -62,7 +62,8 @@ cc_binary_host {
     defaults: ["cuttlefish_host_only", "cuttlefish_libicuuc"],
 }
 
-sh_binary_host {
+python_binary_host {
     name: "cf_bpttool",
-    src: "cf_bpttool",
+    srcs: [ "cf_bpttool.py" ],
+    defaults: ["py2_only"],
 }

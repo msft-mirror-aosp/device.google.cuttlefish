@@ -16,8 +16,12 @@
 
 #include "host/frontend/vnc_server/simulated_hw_composer.h"
 
+#include <gflags/gflags.h>
+
 #include "host/frontend/vnc_server/vnc_utils.h"
 #include "host/libs/config/cuttlefish_config.h"
+
+DEFINE_int32(frame_server_fd, -1, "");
 
 using cvd::vnc::SimulatedHWComposer;
 
@@ -27,7 +31,8 @@ SimulatedHWComposer::SimulatedHWComposer(BlackBoard* bb)
       engine_{std::random_device{}()},
 #endif
       bb_{bb},
-      stripes_(kMaxQueueElements, &SimulatedHWComposer::EraseHalfOfElements) {
+      stripes_(kMaxQueueElements, &SimulatedHWComposer::EraseHalfOfElements),
+      screen_connector_(ScreenConnector::Get(FLAGS_frame_server_fd)) {
   stripe_maker_ = std::thread(&SimulatedHWComposer::MakeStripes, this);
 }
 
@@ -68,16 +73,15 @@ void SimulatedHWComposer::EraseHalfOfElements(
 }
 
 void SimulatedHWComposer::MakeStripes() {
-  std::uint32_t previous_seq_num{};
-  auto screen_height = ActualScreenHeight();
+  std::uint32_t previous_frame_number = 0;
+  auto screen_height = ScreenConnector::ScreenHeight();
   Message raw_screen;
   std::uint64_t stripe_seq_num = 1;
-  while (!closed()) {
-    bb_->WaitForAtLeastOneClientConnection();
-    int buffer_idx = screen_connector_->WaitForNewFrameSince(&previous_seq_num);
-    const char* frame_start =
-        static_cast<char*>(screen_connector_->GetBuffer(buffer_idx));
-    raw_screen.assign(frame_start, frame_start + ScreenSizeInBytes());
+
+  const FrameCallback frame_callback = [&](uint32_t frame_number,
+                                           uint8_t* frame_pixels) {
+    raw_screen.assign(frame_pixels,
+                      frame_pixels + ScreenConnector::ScreenSizeInBytes());
 
     for (int i = 0; i < kNumStripes; ++i) {
       ++stripe_seq_num;
@@ -88,27 +92,36 @@ void SimulatedHWComposer::MakeStripes() {
       std::uint16_t height =
           screen_height / kNumStripes +
           (i + 1 == kNumStripes ? screen_height % kNumStripes : 0);
-      const auto* raw_start =
-          &raw_screen[y * ActualScreenWidth() * BytesPerPixel()];
+      const auto* raw_start = &raw_screen[y * ScreenConnector::ScreenWidth() *
+                                          ScreenConnector::BytesPerPixel()];
       const auto* raw_end =
-          raw_start + (height * ActualScreenWidth() * BytesPerPixel());
+          raw_start + (height * ScreenConnector::ScreenWidth() *
+                       ScreenConnector::BytesPerPixel());
       // creating a named object and setting individual data members in order
       // to make klp happy
       // TODO (haining) construct this inside the call when not compiling
       // on klp
       Stripe s{};
       s.index = i;
-      s.frame_id = previous_seq_num;
+      s.frame_id = frame_number;
       s.x = 0;
       s.y = y;
-      s.width = ActualScreenWidth();
-      s.stride = ActualScreenStride();
+      s.width = ScreenConnector::ScreenWidth();
+      s.stride = ScreenConnector::ScreenStride();
       s.height = height;
       s.raw_data.assign(raw_start, raw_end);
       s.seq_number = StripeSeqNumber{stripe_seq_num};
       s.orientation = ScreenOrientation::Portrait;
       stripes_.Push(std::move(s));
     }
+
+    previous_frame_number = frame_number;
+  };
+
+  while (!closed()) {
+    bb_->WaitForAtLeastOneClientConnection();
+
+    screen_connector_->OnFrameAfter(previous_frame_number, frame_callback);
   }
 }
 

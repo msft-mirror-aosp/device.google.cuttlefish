@@ -14,6 +14,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+script_dir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+
 source "${ANDROID_BUILD_TOP}/external/shflags/src/shflags"
 
 DEFINE_boolean p1 \
@@ -142,7 +144,6 @@ scan_for_boot_part=part list mmc ${devnum} -bootable devplist; env exists devpli
 find_script=if test -e mmc ${devnum}:${distro_bootpart} /boot/boot.scr; then echo Found U-Boot script /boot/boot.scr; run run_scr; fi
 run_scr=load mmc ${devnum}:${distro_bootpart} ${scriptaddr} /boot/boot.scr; source ${scriptaddr}
 EOF
-	script_dir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 	echo "Sha=`${script_dir}/gen_sha.sh --kernel ${KERNEL_DIR}`" >> ${tmpfile}
 	${ANDROID_HOST_OUT}/bin/mkenvimage -s 32768 -o ${bootenv} - < ${tmpfile}
 fi
@@ -181,6 +182,8 @@ if [ ${FLAGS_p5} -eq ${FLAGS_TRUE} ]; then
 	fi
 
 	cat > ${mntdir}/boot/boot.cmd << "EOF"
+setenv start_poe 'gpio set 150; gpio clear 146'
+run start_poe
 setenv bootcmd_dhcp '
 mw.b ${scriptaddr} 0 0x8000
 mmc dev 0 0
@@ -278,7 +281,7 @@ load mmc ${devnum}:${distro_bootpart} 0x04000000 /boot/uInitrd
 load mmc ${devnum}:${distro_bootpart} 0x01f00000 /boot/dtb/rockchip/rk3399-rock-pi-4.dtb
 setenv finduuid "part uuid mmc ${devnum}:${distro_bootpart} uuid"
 run finduuid
-setenv bootargs "earlycon=uart8250,mmio32,0xff1a0000 console=ttyS2,1500000n8 loglevel=7 root=PARTUUID=${uuid} rootwait rootfstype=ext4 sdhci.debug_quirks=0x20000000"
+setenv bootargs "earlycon=uart8250,mmio32,0xff1a0000 console=ttyS2,1500000n8 loglevel=7 root=PARTUUID=${uuid} rootwait rootfstype=ext4 sdhci.debug_quirks=0x20000000 of_devlink=0"
 booti 0x02080000 0x04000000 0x01f00000
 EOF
 	${ANDROID_HOST_OUT}/bin/mkimage \
@@ -327,6 +330,66 @@ EOT
 	cd ${mntdir}/home/vsoc-01
 	git clone https://github.com/google/android-cuttlefish.git
 	cd -
+
+	echo "Creating PoE script..."
+	cat > ${mntdir}/usr/local/bin/poe << "EOF"
+#!/bin/bash
+
+if [ "$1" == "--start" ]; then
+	echo 146 > /sys/class/gpio/export
+	echo out > /sys/class/gpio/gpio146/direction
+	echo 0 > /sys/class/gpio/gpio146/value
+	echo 150 > /sys/class/gpio/export
+	echo out > /sys/class/gpio/gpio150/direction
+	echo 1 > /sys/class/gpio/gpio150/value
+	exit 0
+fi
+
+if [ "$1" == "--stop" ]; then
+	echo 0 > /sys/class/gpio/gpio146/value
+	echo 146 > /sys/class/gpio/unexport
+	echo 0 > /sys/class/gpio/gpio150/value
+	echo 150 > /sys/class/gpio/unexport
+	exit 0
+fi
+
+if [ ! -e /sys/class/gpio/gpio146/value ] || [ ! -e /sys/class/gpio/gpio150/value ]; then
+	echo "error: PoE service not initialized"
+	exit 1
+fi
+
+if [ "$1" == "0" ] || [ "$1" == "off" ] || [ "$1" == "OFF" ]; then
+	echo 0 > /sys/class/gpio/gpio150/value
+	exit 0
+fi
+
+if [ "$1" == "1" ] || [ "$1" == "on" ] || [ "$1" == "ON" ]; then
+	echo 1 > /sys/class/gpio/gpio150/value
+	exit 0
+fi
+
+echo "usage: poe <0|1>"
+exit 1
+EOF
+	chown root:root ${mntdir}/usr/local/bin/poe
+	chmod 755 ${mntdir}/usr/local/bin/poe
+
+	echo "Creating PoE service..."
+	cat > ${mntdir}/etc/systemd/system/poe.service << EOF
+[Unit]
+ Description=PoE service
+ ConditionPathExists=/usr/local/bin/poe
+
+[Service]
+ Type=oneshot
+ ExecStart=/usr/local/bin/poe --start
+ ExecStop=/usr/local/bin/poe --stop
+ RemainAfterExit=true
+ StandardOutput=journal
+
+[Install]
+ WantedBy=multi-user.target
+EOF
 
 	echo "Creating led script..."
 	cat > ${mntdir}/usr/local/bin/led << "EOF"
@@ -393,7 +456,7 @@ src_dev=mmcblk0
 dest_dev=mmcblk1
 part_num=p5
 
-if [ -e /dev/mmcblk0p5 ]; then
+if [ -e /dev/mmcblk0p5 ] && [ -e /dev/mmcblk1p5 ]; then
 	led 1
 
 	sgdisk -Z -a1 /dev/${dest_dev}
@@ -471,32 +534,33 @@ EOF
  WantedBy=multi-user.target
 EOF
 
-	echo "Creating cleanup script..."
-	cat > ${mntdir}/usr/local/bin/install-cleanup << "EOF"
-#!/bin/bash
-echo "Installing cuttlefish-common package..."
-echo "nameserver 8.8.8.8" > /etc/resolv.conf
-MAC=`ip link | grep eth0 -A1 | grep ether | sed 's/.*\(..:..:..:..:..:..\) .*/\1/' | tr -d :`
-sed -i " 1 s/.*/& rockpi-${MAC}/" /etc/hosts
-sudo hostnamectl set-hostname "rockpi-${MAC}"
+	umount ${mntdir}/sys
+	umount ${mntdir}/dev
+	umount ${mntdir}/proc
 
+	chroot ${mntdir} /bin/bash << "EOT"
+echo "Installing cuttlefish-common package..."
 dpkg --add-architecture amd64
-until ping -c1 ftp.debian.org; do sleep 1; done
-ntpdate time.google.com
-while true; do
-	apt-get -o Acquire::Check-Valid-Until=false update
-	if [ $? != 0 ]; then sleep 1; continue; fi
-	apt-get install -y -f libc6:amd64 qemu-user-static
-	if [ $? != 0 ]; then sleep 1; continue; fi
-	break
-done
+apt-get update
+apt-get install -y -f libc6:amd64 qemu-user-static
 cd /home/vsoc-01/android-cuttlefish
 dpkg-buildpackage -d -uc -us
 apt-get install -y -f ../cuttlefish-common_*_arm64.deb
 apt-get clean
+
 usermod -aG cvdnetwork vsoc-01
 chmod 660 /dev/vhost-vsock
 chown root:cvdnetwork /dev/vhost-vsock
+rm -rf /home/vsoc-01/*
+EOT
+
+	echo "Creating cleanup script..."
+	cat > ${mntdir}/usr/local/bin/install-cleanup << "EOF"
+#!/bin/bash
+echo "nameserver 8.8.8.8" > /etc/resolv.conf
+MAC=`ip link | grep eth0 -A1 | grep ether | sed 's/.*\(..:..:..:..:..:..\) .*/\1/' | tr -d :`
+sed -i " 1 s/.*/& rockpi-${MAC}/" /etc/hosts
+sudo hostnamectl set-hostname "rockpi-${MAC}"
 
 rm /etc/machine-id
 rm /var/lib/dbus/machine-id
@@ -512,6 +576,7 @@ EOF
 
 	chroot ${mntdir} /bin/bash << "EOT"
 echo "Enabling services..."
+systemctl enable poe
 systemctl enable led
 systemctl enable sd-dupe
 
@@ -521,9 +586,6 @@ mkimage -A arm -O linux -T ramdisk -C none -a 0 -e 0 -n uInitrd -d /boot/initrd.
 ln -s /boot/uInitrd-5.2.0 /boot/uInitrd
 EOT
 
-	umount ${mntdir}/sys
-	umount ${mntdir}/dev
-	umount ${mntdir}/proc
 	umount ${mntdir}
 
 	# Turn on journaling

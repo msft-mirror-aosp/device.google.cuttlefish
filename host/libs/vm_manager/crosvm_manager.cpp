@@ -19,14 +19,16 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
+#include <cassert>
 #include <string>
 #include <vector>
 
 #include <android-base/strings.h>
-#include <glog/logging.h>
+#include <android-base/logging.h>
 
 #include "common/libs/utils/network.h"
 #include "common/libs/utils/subprocess.h"
+#include "common/libs/utils/files.h"
 #include "host/libs/config/cuttlefish_config.h"
 #include "host/libs/vm_manager/qemu_manager.h"
 
@@ -35,7 +37,8 @@ namespace vm_manager {
 namespace {
 
 std::string GetControlSocketPath(const vsoc::CuttlefishConfig* config) {
-  return config->PerInstanceInternalPath("crosvm_control.sock");
+  return config->ForDefaultInstance()
+      .PerInstanceInternalPath("crosvm_control.sock");
 }
 
 void AddTapFdParameter(cvd::Command* crosvm_cmd, const std::string& tap_name) {
@@ -68,6 +71,23 @@ std::vector<std::string> CrosvmManager::ConfigureGpu(const std::string& gpu_mode
   // the HAL search path allows for fallbacks, and fallbacks in conjunction
   // with properities lead to non-deterministic behavior while loading the
   // HALs.
+  if (gpu_mode == vsoc::kGpuModeGuestSwiftshader) {
+    return {
+        "androidboot.hardware.gralloc=cutf_ashmem",
+        "androidboot.hardware.hwcomposer=cutf_hwc2",
+        "androidboot.hardware.egl=swiftshader",
+        "androidboot.hardware.vulkan=pastel",
+    };
+  }
+
+  // Try to load the Nvidia modeset kernel module. Running Crosvm with Nvidia's EGL library on a
+  // fresh machine after a boot will fail because the Nvidia EGL library will fork to run the
+  // nvidia-modprobe command and the main Crosvm process will abort after receiving the exit signal
+  // of the forked child which is interpreted as a failure.
+  cvd::Command modprobe_cmd("/usr/bin/nvidia-modprobe");
+  modprobe_cmd.AddParameter("--modeset");
+  modprobe_cmd.Start().Wait();
+
   if (gpu_mode == vsoc::kGpuModeDrmVirgl) {
     return {
       "androidboot.hardware.gralloc=minigbm",
@@ -75,12 +95,13 @@ std::vector<std::string> CrosvmManager::ConfigureGpu(const std::string& gpu_mode
       "androidboot.hardware.egl=mesa",
     };
   }
-  if (gpu_mode == vsoc::kGpuModeGuestSwiftshader) {
+  if (gpu_mode == vsoc::kGpuModeGfxStream) {
     return {
-        "androidboot.hardware.gralloc=cutf_ashmem",
-        "androidboot.hardware.hwcomposer=cutf_cvm_ashmem",
-        "androidboot.hardware.egl=swiftshader",
-        "androidboot.hardware.vulkan=pastel",
+        "androidboot.hardware.gralloc=minigbm",
+        "androidboot.hardware.hwcomposer=drm_minigbm",
+        "androidboot.hardware.egl=emulation",
+        "androidboot.hardware.vulkan=ranchu",
+        "androidboot.hardware.gltransport=virtio-gpu-pipe",
     };
   }
   return {};
@@ -96,6 +117,7 @@ CrosvmManager::CrosvmManager(const vsoc::CuttlefishConfig* config)
     : VmManager(config) {}
 
 std::vector<cvd::Command> CrosvmManager::StartCommands() {
+  auto instance = config_->ForDefaultInstance();
   cvd::Command crosvm_cmd(config_->crosvm_binary(), [](cvd::Subprocess* proc) {
     auto stopped = Stop();
     if (stopped) {
@@ -106,14 +128,16 @@ std::vector<cvd::Command> CrosvmManager::StartCommands() {
   });
   crosvm_cmd.AddParameter("run");
 
-  if (config_->gpu_mode() != vsoc::kGpuModeGuestSwiftshader) {
-    crosvm_cmd.AddParameter("--gpu");
-    if (config_->wayland_socket().size()) {
-      crosvm_cmd.AddParameter("--wayland-sock=", config_->wayland_socket());
-    }
-    if (config_->x_display().size()) {
-      crosvm_cmd.AddParameter("--x-display=", config_->x_display());
-    }
+  auto gpu_mode = config_->gpu_mode();
+
+  if (gpu_mode == vsoc::kGpuModeDrmVirgl ||
+      gpu_mode == vsoc::kGpuModeGfxStream) {
+    crosvm_cmd.AddParameter(gpu_mode == vsoc::kGpuModeGfxStream ?
+                                "--gpu=gfxstream," : "--gpu=",
+                            "width=", config_->x_res(), ",",
+                            "height=", config_->y_res(), ",",
+                            "egl=true,surfaceless=true,glx=false,gles=true");
+    crosvm_cmd.AddParameter("--wayland-sock=", instance.frames_socket_path());
   }
   if (!config_->final_ramdisk_path().empty()) {
     crosvm_cmd.AddParameter("--initrd=", config_->final_ramdisk_path());
@@ -122,30 +146,44 @@ std::vector<cvd::Command> CrosvmManager::StartCommands() {
   crosvm_cmd.AddParameter("--mem=", config_->memory_mb());
   crosvm_cmd.AddParameter("--cpus=", config_->cpus());
   crosvm_cmd.AddParameter("--params=", kernel_cmdline_);
-  for (const auto& disk : config_->virtual_disk_paths()) {
+  for (const auto& disk : instance.virtual_disk_paths()) {
     crosvm_cmd.AddParameter("--rwdisk=", disk);
   }
   crosvm_cmd.AddParameter("--socket=", GetControlSocketPath(config_));
 
   if (frontend_enabled_) {
-    crosvm_cmd.AddParameter("--single-touch=", config_->touch_socket_path(),
+    crosvm_cmd.AddParameter("--single-touch=", instance.touch_socket_path(),
                             ":", config_->x_res(), ":", config_->y_res());
-    crosvm_cmd.AddParameter("--keyboard=", config_->keyboard_socket_path());
+    crosvm_cmd.AddParameter("--keyboard=", instance.keyboard_socket_path());
   }
 
-  AddTapFdParameter(&crosvm_cmd, config_->wifi_tap_name());
-  AddTapFdParameter(&crosvm_cmd, config_->mobile_tap_name());
+  AddTapFdParameter(&crosvm_cmd, instance.wifi_tap_name());
+  AddTapFdParameter(&crosvm_cmd, instance.mobile_tap_name());
 
-  // TODO remove this (use crosvm's seccomp files)
-  crosvm_cmd.AddParameter("--disable-sandbox");
+  crosvm_cmd.AddParameter("--rw-pmem-device=", instance.access_kregistry_path());
 
-  if (config_->vsock_guest_cid() >= 2) {
-    crosvm_cmd.AddParameter("--cid=", config_->vsock_guest_cid());
+  if (config_->enable_sandbox()) {
+    const bool seccomp_exists = cvd::DirectoryExists(config_->seccomp_policy_dir());
+    const std::string& var_empty_dir = vsoc::kCrosvmVarEmptyDir;
+    const bool var_empty_available = cvd::DirectoryExists(var_empty_dir);
+    if (!var_empty_available || !seccomp_exists) {
+      LOG(FATAL) << var_empty_dir << " is not an existing, empty directory."
+                 << "seccomp-policy-dir, " << config_->seccomp_policy_dir()
+                 << " does not exist " << std::endl;
+      return {};
+    }
+    crosvm_cmd.AddParameter("--seccomp-policy-dir=", config_->seccomp_policy_dir());
+  } else {
+    crosvm_cmd.AddParameter("--disable-sandbox");
+  }
+
+  if (instance.vsock_guest_cid() >= 2) {
+    crosvm_cmd.AddParameter("--cid=", instance.vsock_guest_cid());
   }
 
   // Redirect the first serial port with the kernel logs to the appropriate file
   crosvm_cmd.AddParameter("--serial=num=1,type=file,path=",
-                          config_->kernel_log_pipe_name(), ",console=true");
+                          instance.kernel_log_pipe_name(), ",console=true");
 
   // Redirect standard input to a pipe for the console forwarder host process
   // to handle.
@@ -155,7 +193,7 @@ std::vector<cvd::Command> CrosvmManager::StartCommands() {
                << console_in_rd->StrError();
     return {};
   }
-  auto console_pipe_name = config_->console_pipe_name();
+  auto console_pipe_name = instance.console_pipe_name();
   if (mkfifo(console_pipe_name.c_str(), 0660) != 0) {
     auto error = errno;
     LOG(ERROR) << "Failed to create console fifo for crosvm: "

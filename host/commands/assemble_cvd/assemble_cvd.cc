@@ -16,10 +16,11 @@
 #include <iostream>
 
 #include <android-base/strings.h>
-#include <glog/logging.h>
+#include <android-base/logging.h>
 
 #include "common/libs/fs/shared_buf.h"
 #include "common/libs/fs/shared_fd.h"
+#include "common/libs/fs/tee.h"
 #include "host/commands/assemble_cvd/assembler_defs.h"
 #include "host/commands/assemble_cvd/flags.h"
 #include "host/libs/config/fetcher_config.h"
@@ -55,10 +56,12 @@ int main(int argc, char** argv) {
     int error_num = errno;
     if (error_num == EBADF) {
       LOG(FATAL) << "stdin was not a valid file descriptor, expected to be passed the output "
-                 << "of assemble_cvd. Did you mean to run launch_cvd?";
+                 << "of launch_cvd. Did you mean to run launch_cvd?";
       return cvd::AssemblerExitCodes::kInvalidHostConfiguration;
     }
   }
+
+  cvd::TeeStderrToFile stderr_tee;
 
   std::string input_files_str;
   {
@@ -71,6 +74,10 @@ int main(int argc, char** argv) {
   std::vector<std::string> input_files = android::base::Split(input_files_str, "\n");
 
   auto config = InitFilesystemAndCreateConfig(&argc, &argv, FindFetcherConfig(input_files));
+  auto instance = config->ForDefaultInstance();
+
+  auto assembler_log_path = instance.PerInstancePath("assemble_cvd.log");
+  stderr_tee.SetFile(cvd::SharedFD::Creat(assembler_log_path.c_str(), 0755));
 
   std::cout << GetConfigFilePath(*config) << "\n";
   std::cout << std::flush;

@@ -15,7 +15,7 @@
  */
 
 #include <gflags/gflags.h>
-#include <glog/logging.h>
+#include <android-base/logging.h>
 
 #include "common/libs/fs/shared_fd.h"
 #include "host/libs/config/cuttlefish_config.h"
@@ -30,7 +30,8 @@ int main(int argc, char** argv) {
 
   auto config = vsoc::CuttlefishConfig::Get();
 
-  auto path = config->logcat_path();
+  auto instance = config->ForDefaultInstance();
+  auto path = instance.logcat_path();
   auto logcat_file =
       cvd::SharedFD::Open(path.c_str(), O_CREAT | O_APPEND | O_WRONLY, 0666);
   CHECK(logcat_file->IsOpen())
