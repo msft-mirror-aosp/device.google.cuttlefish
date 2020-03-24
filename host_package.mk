@@ -56,6 +56,7 @@ cvd_host_executables := \
     fsck.f2fs \
     resize.f2fs \
     make_f2fs \
+    lz4 \
     tapsetiff \
     newfs_msdos \
 
