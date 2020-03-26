@@ -145,7 +145,8 @@ PRODUCT_PACKAGES += \
 # Packages for testing
 #
 PRODUCT_PACKAGES += \
-    aidl_lazy_test_server
+    aidl_lazy_test_server \
+    hidl_lazy_test_server
 
 DEVICE_PACKAGE_OVERLAYS := device/google/cuttlefish/shared/overlay
 # PRODUCT_AAPT_CONFIG and PRODUCT_AAPT_PREF_CONFIG are intentionally not set to
@@ -261,7 +262,7 @@ PRODUCT_PACKAGES += \
 # BiometricsFace HAL
 #
 PRODUCT_PACKAGES += \
-    android.hardware.biometrics.face@1.1-service.example
+    android.hardware.biometrics.face@1.0-service.example
 
 #
 # Contexthub HAL
@@ -280,7 +281,7 @@ PRODUCT_PACKAGES += \
 # Dumpstate HAL
 #
 PRODUCT_PACKAGES += \
-    android.hardware.dumpstate@1.1-service.cuttlefish
+    android.hardware.dumpstate@1.1-service.example
 
 #
 # Camera
