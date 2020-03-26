@@ -260,7 +260,7 @@ PRODUCT_PACKAGES += \
 # BiometricsFace HAL
 #
 PRODUCT_PACKAGES += \
-    android.hardware.biometrics.face@1.1-service.example
+    android.hardware.biometrics.face@1.0-service.example
 
 #
 # Contexthub HAL
@@ -278,8 +278,10 @@ PRODUCT_PACKAGES += \
 #
 # Dumpstate HAL
 #
-PRODUCT_PACKAGES += \
-    android.hardware.dumpstate@1.1-service.cuttlefish
+ifeq ($(LOCAL_DUMPSTATE_PRODUCT_PACKAGE),)
+    LOCAL_DUMPSTATE_PRODUCT_PACKAGE := android.hardware.dumpstate@1.1-service.example
+endif
+PRODUCT_PACKAGES += $(LOCAL_DUMPSTATE_PRODUCT_PACKAGE)
 
 #
 # Camera
