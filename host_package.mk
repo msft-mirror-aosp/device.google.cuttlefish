@@ -96,6 +96,7 @@ cvd_host_configs := \
     composite-system-root.dtb \
     gsi.fstab \
     composite-gsi.fstab \
+    composite-gsi-arm64.fstab \
 
 x86_64_seccomp_files := \
     9p_device.policy \

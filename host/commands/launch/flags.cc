@@ -619,8 +619,14 @@ void SetDefaultFlagsForCrosvm() {
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
 
   if (!FLAGS_composite_disk.empty()) {
-    std::string composite_gsi_fstab =
+    std::string composite_gsi_fstab;
+    if (cvd::HostArch() == "x86_64") {
+      composite_gsi_fstab =
         vsoc::DefaultHostArtifactsPath("config/composite-gsi.fstab");
+    } else {
+      composite_gsi_fstab =
+        vsoc::DefaultHostArtifactsPath("config/composite-gsi-arm64.fstab");
+    }
     SetCommandLineOptionWithMode("gsi_fstab", composite_gsi_fstab.c_str(),
                                  google::FlagSettingMode::SET_FLAGS_DEFAULT);
   }

@@ -75,3 +75,13 @@ LOCAL_MODULE_STEM := composite-gsi.fstab
 LOCAL_SRC_FILES := composite-gsi.fstab
 
 include $(BUILD_PREBUILT)
+
+include $(CLEAR_VARS)
+
+LOCAL_MODULE := composite_gsi_arm64_fstab
+LOCAL_MODULE_CLASS := ETC
+LOCAL_MODULE_PATH := $(HOST_OUT)/config
+LOCAL_MODULE_STEM := composite-gsi-arm64.fstab
+LOCAL_SRC_FILES := composite-gsi-arm64.fstab
+
+include $(BUILD_PREBUILT)
