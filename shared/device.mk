@@ -141,7 +141,8 @@ PRODUCT_PACKAGES += \
 # Packages for testing
 #
 PRODUCT_PACKAGES += \
-    aidl_lazy_test_server
+    aidl_lazy_test_server \
+    hidl_lazy_test_server
 
 DEVICE_PACKAGE_OVERLAYS := device/google/cuttlefish/shared/overlay
 # PRODUCT_AAPT_CONFIG and PRODUCT_AAPT_PREF_CONFIG are intentionally not set to
@@ -217,6 +218,7 @@ PRODUCT_PACKAGES += \
 PRODUCT_PACKAGES += \
     hwcomposer.drm_minigbm \
     hwcomposer.cutf_cvm_ashmem \
+    hwcomposer.cutf_hwc2 \
     hwcomposer-stats \
     android.hardware.graphics.composer@2.2-impl \
     android.hardware.graphics.composer@2.2-service
@@ -261,8 +263,10 @@ PRODUCT_PACKAGES += \
 #
 # Dumpstate HAL
 #
-PRODUCT_PACKAGES += \
-    android.hardware.dumpstate@1.1-service.cuttlefish
+ifeq ($(LOCAL_DUMPSTATE_PRODUCT_PACKAGE),)
+    LOCAL_DUMPSTATE_PRODUCT_PACKAGE := android.hardware.dumpstate@1.1-service.example
+endif
+PRODUCT_PACKAGES += $(LOCAL_DUMPSTATE_PRODUCT_PACKAGE)
 
 #
 # Camera

@@ -19,14 +19,17 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
+#include <cassert>
 #include <string>
 #include <vector>
 
 #include <android-base/strings.h>
 #include <android-base/logging.h>
 
+#include "common/libs/utils/environment.h"
 #include "common/libs/utils/network.h"
 #include "common/libs/utils/subprocess.h"
+#include "common/libs/utils/files.h"
 #include "host/libs/config/cuttlefish_config.h"
 #include "host/libs/vm_manager/qemu_manager.h"
 
@@ -72,7 +75,7 @@ std::vector<std::string> CrosvmManager::ConfigureGpu(const std::string& gpu_mode
   if (gpu_mode == vsoc::kGpuModeGuestSwiftshader) {
     return {
         "androidboot.hardware.gralloc=cutf_ashmem",
-        "androidboot.hardware.hwcomposer=cutf_cvm_ashmem",
+        "androidboot.hardware.hwcomposer=cutf_hwc2",
         "androidboot.hardware.egl=swiftshader",
         "androidboot.hardware.vulkan=pastel",
     };
@@ -108,7 +111,11 @@ std::vector<std::string> CrosvmManager::ConfigureGpu(const std::string& gpu_mode
 std::vector<std::string> CrosvmManager::ConfigureBootDevices() {
   // PCI domain 0, bus 0, device 1, function 0
   // TODO There is no way to control this assignment with crosvm (yet)
-  return { "androidboot.boot_devices=pci0000:00/0000:00:01.0" };
+  if (cvd::HostArch() == "x86_64") {
+    return { "androidboot.boot_devices=pci0000:00/0000:00:01.0" };
+  } else {
+    return { "androidboot.boot_devices=10000.pci" };
+  }
 }
 
 CrosvmManager::CrosvmManager(const vsoc::CuttlefishConfig* config)
@@ -158,10 +165,24 @@ std::vector<cvd::Command> CrosvmManager::StartCommands() {
   AddTapFdParameter(&crosvm_cmd, instance.wifi_tap_name());
   AddTapFdParameter(&crosvm_cmd, instance.mobile_tap_name());
 
-  crosvm_cmd.AddParameter("--rw-pmem-device=", instance.access_kregistry_path());
+  if (cvd::HostArch() == "x86_64") {
+    crosvm_cmd.AddParameter("--rw-pmem-device=", instance.access_kregistry_path());
+  }
 
-  // TODO remove this (use crosvm's seccomp files)
-  crosvm_cmd.AddParameter("--disable-sandbox");
+  if (config_->enable_sandbox()) {
+    const bool seccomp_exists = cvd::DirectoryExists(config_->seccomp_policy_dir());
+    const std::string& var_empty_dir = vsoc::kCrosvmVarEmptyDir;
+    const bool var_empty_available = cvd::DirectoryExists(var_empty_dir);
+    if (!var_empty_available || !seccomp_exists) {
+      LOG(FATAL) << var_empty_dir << " is not an existing, empty directory."
+                 << "seccomp-policy-dir, " << config_->seccomp_policy_dir()
+                 << " does not exist " << std::endl;
+      return {};
+    }
+    crosvm_cmd.AddParameter("--seccomp-policy-dir=", config_->seccomp_policy_dir());
+  } else {
+    crosvm_cmd.AddParameter("--disable-sandbox");
+  }
 
   if (instance.vsock_guest_cid() >= 2) {
     crosvm_cmd.AddParameter("--cid=", instance.vsock_guest_cid());
