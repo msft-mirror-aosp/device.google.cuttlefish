@@ -68,6 +68,7 @@ PRODUCT_PACKAGES += \
     ip_link_add \
     setup_wifi \
     tombstone_transmit \
+    vsock_logcat \
 
 #
 # Packages for AOSP-available stuff we use from the framework

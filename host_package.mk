@@ -57,6 +57,7 @@ cvd_host_executables := \
     x86_64-linux-gnu/libGLES_CM_translator.so \
     x86_64-linux-gnu/libGLES_V2_translator.so \
     x86_64-linux-gnu/libgfxstream_backend.so \
+    logcat_receiver \
     config_server \
     tombstone_receiver \
     console_forwarder \
