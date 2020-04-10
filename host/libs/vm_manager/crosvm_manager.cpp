@@ -161,9 +161,6 @@ std::vector<cvd::Command> CrosvmManager::StartCommands(bool with_frontend) {
   // Redirect the first serial port with the kernel logs to the appropriate file
   crosvm_cmd.AddParameter("--serial=num=1,type=file,path=",
                           config_->kernel_log_pipe_name(),",console=true");
-  // Third serial port has logcat output, send it to the appropriate file.
-  crosvm_cmd.AddParameter("--serial=num=3,type=file,path=",
-                          config_->logcat_path());
 
   // Redirect standard input to a pipe for the console forwarder host process
   // to handle.
