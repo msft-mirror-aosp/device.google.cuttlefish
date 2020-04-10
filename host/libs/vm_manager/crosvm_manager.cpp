@@ -250,7 +250,11 @@ std::vector<cvd::Command> CrosvmManager::StartCommands() {
                           instance.logcat_pipe_name());
 
   // This needs to be the last parameter
-  crosvm_cmd.AddParameter(config_->GetKernelImageToUse());
+  if (config_->use_bootloader()) {
+    crosvm_cmd.AddParameter("--bios=", config_->bootloader());
+  } else {
+    crosvm_cmd.AddParameter(config_->GetKernelImageToUse());
+  }
 
   std::vector<cvd::Command> ret;
   ret.push_back(std::move(crosvm_cmd));
