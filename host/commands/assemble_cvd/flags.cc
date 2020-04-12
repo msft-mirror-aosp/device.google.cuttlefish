@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <iostream>
 #include <fstream>
+#include <set>
 
 #include <android-base/strings.h>
 #include <gflags/gflags.h>
@@ -178,7 +179,9 @@ DEFINE_string(qemu_binary,
 DEFINE_string(crosvm_binary,
               vsoc::DefaultHostArtifactsPath("bin/crosvm"),
               "The Crosvm binary to use");
-DEFINE_string(tpm_binary, "", "The TPM simulator to use. Disabled if empty.");
+DEFINE_string(tpm_binary,
+              vsoc::DefaultHostArtifactsPath("bin/ms-tpm-20-ref"),
+              "The TPM simulator to use. Disabled if empty.");
 DEFINE_string(tpm_device, "", "A host TPM device to pass through commands to.");
 DEFINE_bool(restart_subprocesses, true, "Restart any crashed host process");
 DEFINE_string(logcat_mode, "", "How to send android's log messages from "
@@ -476,7 +479,8 @@ void SetDefaultFlagsForCrosvm() {
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
   // for now, we support only x86_64 by default
   bool default_enable_sandbox = false;
-  if (cvd::HostArch() == "x86_64") {
+  std::set<const std::string> supported_archs{std::string("x86_64"), std::string("aarch64")};
+  if (supported_archs.find(cvd::HostArch()) != supported_archs.end()) {
     default_enable_sandbox =
         [](const std::string& var_empty) -> bool {
           if (cvd::DirectoryExists(var_empty)) {
