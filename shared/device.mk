@@ -147,27 +147,13 @@ PRODUCT_COPY_FILES += \
 #
 # The fstab requires special handling. For system-as-root builds, we *must*
 # retrieve the vendor partition mount options from DTB, as system must be
-# "pristine" to support GSI. For builds with an initrd, we prefer not to
-# rely on DTB, and *must* retrieve the partition mount options from an fstab
-# in the initrd instead. (In either case, the fstab *must also* be installed to
-# /vendor/etc)
+# "pristine" to support GSI.
 #
-ifeq ($(TARGET_BUILD_SYSTEM_ROOT_IMAGE),true)
 PRODUCT_COPY_FILES += \
-    device/google/cuttlefish/shared/config/fstab.dtb:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.cutf_ivsh \
-    device/google/cuttlefish/shared/config/fstab.dtb:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.cutf_cvm \
-    device/google/cuttlefish/shared/config/composite-fstab.ivsh.dtb:$(TARGET_COPY_OUT_VENDOR)/etc/composite-fstab.cutf_ivsh \
-    device/google/cuttlefish/shared/config/composite-fstab.cvm.dtb:$(TARGET_COPY_OUT_VENDOR)/etc/composite-fstab.cutf_cvm \
-
-else
-PRODUCT_COPY_FILES += \
-    device/google/cuttlefish/shared/config/fstab.initrd:$(TARGET_COPY_OUT_RAMDISK)/fstab.cutf_ivsh \
-    device/google/cuttlefish/shared/config/fstab.initrd:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.cutf_ivsh \
-    device/google/cuttlefish/shared/config/fstab.initrd:$(TARGET_COPY_OUT_RAMDISK)/fstab.cutf_cvm \
-    device/google/cuttlefish/shared/config/fstab.initrd:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.cutf_cvm \
-
-endif
-
+    device/google/cuttlefish/shared/config/fstab:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.cutf_ivsh \
+    device/google/cuttlefish/shared/config/fstab:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.cutf_cvm \
+    device/google/cuttlefish/shared/config/fstab.composite:$(TARGET_COPY_OUT_VENDOR)/etc/composite-fstab.cutf_ivsh \
+    device/google/cuttlefish/shared/config/fstab.composite:$(TARGET_COPY_OUT_VENDOR)/etc/composite-fstab.cutf_cvm \
 
 #
 # USB Specific

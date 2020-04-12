@@ -42,9 +42,7 @@ BOARD_PRODUCTIMAGE_FILE_SYSTEM_TYPE := ext4
 BOARD_PRODUCTIMAGE_PARTITION_SIZE := 268435456 # 256MB
 TARGET_COPY_OUT_PRODUCT := product
 
-ifeq ($(TARGET_BUILD_SYSTEM_ROOT_IMAGE),true)
 BOARD_BUILD_SYSTEM_ROOT_IMAGE := true
-endif
 BOARD_USES_GENERIC_AUDIO := false
 USE_CAMERA_STUB := true
 TARGET_USERIMAGES_USE_EXT4 := true
@@ -145,13 +143,7 @@ BOARD_PROPERTY_OVERRIDES_SPLIT_ENABLED := true
 
 TARGET_NO_RECOVERY ?= true
 TARGET_RECOVERY_PIXEL_FORMAT := ABGR_8888
-ifeq ($(TARGET_BUILD_SYSTEM_ROOT_IMAGE),true)
-# Use the initrd version for the dtb build, because we need to have /system
-# defined somewhere, and the dtb fstab doesn't define it (deliberately)
-TARGET_RECOVERY_FSTAB ?= device/google/cuttlefish/shared/config/fstab.initrd
-else
-TARGET_RECOVERY_FSTAB ?= device/google/cuttlefish/shared/config/fstab.initrd
-endif
+TARGET_RECOVERY_FSTAB ?= device/google/cuttlefish/shared/config/fstab.composite.recovery
 
 # To see full logs from init, disable ratelimiting.
 # The default is 5 messages per second amortized, with a burst of up to 10.
