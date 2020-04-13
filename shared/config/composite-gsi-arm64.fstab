@@ -1,2 +1,3 @@
 /dev/block/platform/10000.pci/by-name/vendor /vendor ext4 noatime,ro,errors=panic wait
 /dev/block/platform/10000.pci/by-name/product /product ext4 noatime,ro,errors=panic wait
+/dev/block/platform/10000.pci/by-name/system_ext /system_ext ext4 noatime,ro,errors=panic wait

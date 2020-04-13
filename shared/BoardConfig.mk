@@ -47,6 +47,9 @@ BOARD_USES_ODMIMAGE := true
 BOARD_ODMIMAGE_FILE_SYSTEM_TYPE := ext4
 TARGET_COPY_OUT_ODM := odm
 
+# Create a mount point for the system_ext.img partition
+BOARD_ROOT_EXTRA_FOLDERS := system_ext
+
 BOARD_BUILD_SYSTEM_ROOT_IMAGE := true
 BOARD_USES_GENERIC_AUDIO := false
 USE_CAMERA_STUB := true

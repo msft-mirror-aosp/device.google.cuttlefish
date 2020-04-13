@@ -37,6 +37,14 @@
 					mnt_flags = "noatime,ro,errors=panic";
 					fsmgr_flags = "wait";
 				};
+
+				system_ext {
+					compatible = "android,system_ext";
+					dev = "/dev/block/pci/pci0000:00/0000:00:03.0/by-name/system_ext";
+					type = "ext4";
+					mnt_flags = "noatime,ro,errors=panic";
+					fsmgr_flags = "wait";
+				};
 			};
 		};
 	};

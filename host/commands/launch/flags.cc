@@ -32,6 +32,9 @@ DEFINE_int32(blank_metadata_image_mb, 16,
 DEFINE_string(odm_image, "", "Location of the odm partition image.");
 DEFINE_int32(blank_odm_image_mb, 16,
              "The size of the blank metadata image to generate, MB.");
+DEFINE_string(system_ext_image, "", "Location of the system_ext partition image.");
+DEFINE_int32(blank_system_ext_image_mb, 256,
+             "The size of the blank metadata image to generate, MB.");
 DEFINE_int32(cpus, 2, "Virtual CPU count.");
 DEFINE_string(data_image, "", "Location of the data partition image.");
 DEFINE_string(data_policy, "use_existing", "How to handle userdata partition."
@@ -275,6 +278,9 @@ bool ResolveInstanceFiles() {
   std::string default_odm_image = FLAGS_system_image_dir + "/odm.img";
   SetCommandLineOptionWithMode("odm_image", default_odm_image.c_str(),
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
+  std::string default_system_ext_image = FLAGS_system_image_dir + "/system_ext.img";
+  SetCommandLineOptionWithMode("system_ext_image", default_system_ext_image.c_str(),
+                               google::FlagSettingMode::SET_FLAGS_DEFAULT);
   std::string default_composite_disk = FLAGS_system_image_dir + "/composite.img";
   SetCommandLineOptionWithMode("composite_disk", default_composite_disk.c_str(),
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
@@ -427,6 +433,7 @@ bool InitializeCuttlefishConfiguration(
       FLAGS_product_image,
       FLAGS_misc_image,
       FLAGS_odm_image,
+      FLAGS_system_ext_image,
     });
   }
 
@@ -722,6 +729,10 @@ std::vector<ImagePartition> disk_config() {
     .image_file_path = FLAGS_odm_image,
   });
   partitions.push_back(ImagePartition {
+    .label = "system_ext",
+    .image_file_path = FLAGS_system_ext_image,
+  });
+  partitions.push_back(ImagePartition {
     .label = "boot",
     .image_file_path = FLAGS_boot_image,
   });
@@ -839,6 +850,10 @@ vsoc::CuttlefishConfig* InitFilesystemAndCreateConfig(int* argc, char*** argv) {
 
   if (!cvd::FileExists(FLAGS_odm_image)) {
     CreateBlankImage(FLAGS_odm_image, FLAGS_blank_odm_image_mb, "ext4");
+  }
+
+  if (!cvd::FileExists(FLAGS_system_ext_image)) {
+    CreateBlankImage(FLAGS_system_ext_image, FLAGS_blank_system_ext_image_mb, "ext4");
   }
 
   if (ShouldCreateCompositeDisk()) {

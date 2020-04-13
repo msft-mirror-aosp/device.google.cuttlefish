@@ -63,3 +63,5 @@
 /vendor/lib(64)?/hw/gralloc.minigbm.so  u:object_r:same_process_hal_file:s0
 /vendor/lib(64)?/libcuttlefish_fs.so  u:object_r:same_process_hal_file:s0
 /vendor/lib(64)?/vsoc_lib.so  u:object_r:same_process_hal_file:s0
+
+/(system_ext|system/system_ext)(/.*)?  u:object_r:system_file:s0
