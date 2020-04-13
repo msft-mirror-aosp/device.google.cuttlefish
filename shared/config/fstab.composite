@@ -3,6 +3,7 @@ recovery /recovery emmc defaults recoveryonly
 /dev/block/by-name/userdata /data ext4 nodev,noatime,nosuid,errors=panic wait,fileencryption=aes-256-xts:aes-256-cts
 /dev/block/by-name/cache /cache ext4 nodev,noatime,nosuid,errors=panic wait
 /dev/block/by-name/metadata /metadata ext4 nodev,noatime,nosuid,errors=panic wait,formattable
+/dev/block/by-name/misc /misc emmc defaults recoveryonly
 /dev/block/by-name/odm /odm emmc defaults recoveryonly
 /dev/block/zram0 none swap defaults zramsize=75%
 /tmp /sdcard none defaults,bind recoveryonly
