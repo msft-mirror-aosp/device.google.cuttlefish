@@ -699,20 +699,20 @@ std::vector<ImagePartition> disk_config() {
     .image_file_path = FLAGS_metadata_image,
   });
   partitions.push_back(ImagePartition {
-    .label = "product",
-    .image_file_path = FLAGS_product_image,
-  });
-  partitions.push_back(ImagePartition {
     .label = "vendor",
     .image_file_path = FLAGS_vendor_image,
   });
   partitions.push_back(ImagePartition {
-    .label = "boot",
-    .image_file_path = FLAGS_boot_image,
+    .label = "product",
+    .image_file_path = FLAGS_product_image,
   });
   partitions.push_back(ImagePartition {
     .label = "misc",
     .image_file_path = FLAGS_misc_image
+  });
+  partitions.push_back(ImagePartition {
+    .label = "boot",
+    .image_file_path = FLAGS_boot_image,
   });
   return partitions;
 }
