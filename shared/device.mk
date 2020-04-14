@@ -58,7 +58,6 @@ PRODUCT_PACKAGES += \
     rename_netiface \
     ip_link_add \
     setup_wifi \
-    tombstone_transmit \
     vsock_logcat \
 
 #
