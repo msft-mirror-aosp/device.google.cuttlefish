@@ -32,10 +32,7 @@ StreamerLaunchResult LaunchVNCServer(
     cuttlefish::ProcessMonitor* process_monitor,
     std::function<bool(cuttlefish::MonitorEntry*)> callback);
 
-struct TombstoneReceiverPorts {
-  std::optional<unsigned int> server_vsock_port;
-};
-TombstoneReceiverPorts LaunchTombstoneReceiverIfEnabled(
+void LaunchTombstoneReceiverIfEnabled(
     const cuttlefish::CuttlefishConfig& config, cuttlefish::ProcessMonitor* process_monitor);
 
 struct ConfigServerPorts {

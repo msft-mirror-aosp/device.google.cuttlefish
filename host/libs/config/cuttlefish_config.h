@@ -345,6 +345,7 @@ class CuttlefishConfig {
     int vehicle_hal_server_port() const;
     // Port number to connect to the audiocontrol server on the guest
     int audiocontrol_server_port() const;
+    int tombstone_receiver_port() const;
     int host_port() const;
     std::string adb_ip_and_port() const;
     std::string adb_device_name() const;
@@ -422,6 +423,7 @@ class CuttlefishConfig {
     void set_vnc_server_port(int vnc_server_port);
     void set_vehicle_hal_server_port(int vehicle_server_port);
     void set_audiocontrol_server_port(int audiocontrol_server_port);
+    void set_tombstone_receiver_port(int tombstone_receiver_port);
     void set_host_port(int host_port);
     void set_adb_ip_and_port(const std::string& ip_port);
     void set_device_title(const std::string& title);

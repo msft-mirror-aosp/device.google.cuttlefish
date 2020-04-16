@@ -150,6 +150,7 @@ const char* kConfigServerBinary = "config_server_binary";
 
 const char* kRunTombstoneReceiver = "enable_tombstone_logger";
 const char* kTombstoneReceiverBinary = "tombstone_receiver_binary";
+const char* kTombstoneReceiverPort = "tombstone_receiver_port";
 
 const char* kWebRTCCertsDir = "webrtc_certs_dir";
 const char* kSigServerBinary = "webrtc_sig_server_binary";
@@ -626,6 +627,14 @@ void CuttlefishConfig::MutableInstanceSpecific::set_vnc_server_port(int vnc_serv
 
 int CuttlefishConfig::InstanceSpecific::vehicle_hal_server_port() const {
   return (*Dictionary())[kVehicleHalServerPort].asInt();
+}
+
+int CuttlefishConfig::InstanceSpecific::tombstone_receiver_port() const {
+  return (*Dictionary())[kTombstoneReceiverPort].asInt();
+}
+
+void CuttlefishConfig::MutableInstanceSpecific::set_tombstone_receiver_port(int tombstone_receiver_port) {
+  (*Dictionary())[kTombstoneReceiverPort] = tombstone_receiver_port;
 }
 
 void CuttlefishConfig::MutableInstanceSpecific::set_vehicle_hal_server_port(int vehicle_hal_server_port) {

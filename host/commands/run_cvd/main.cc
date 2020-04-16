@@ -596,8 +596,7 @@ int main(int argc, char** argv) {
   auto config_server = LaunchConfigServer(*config, &process_monitor);
   auto config_server_args = KernelCommandLineFromConfigServer(config_server);
 
-  auto tombstone_server = LaunchTombstoneReceiverIfEnabled(*config, &process_monitor);
-  auto tombstone_kernel_args = KernelCommandLineFromTombstone(tombstone_server);
+  LaunchTombstoneReceiverIfEnabled(*config, &process_monitor);
 
   auto secure_env = LaunchSecureEnvironment(&process_monitor, *config);
   auto secure_env_args = KernelCommandLineFromSecureEnv(secure_env);
@@ -621,8 +620,6 @@ int main(int argc, char** argv) {
   auto kernel_args = KernelCommandLineFromConfig(*config);
   kernel_args.insert(kernel_args.end(), streamer_kernel_args.begin(),
                      streamer_kernel_args.end());
-  kernel_args.insert(kernel_args.end(), tombstone_kernel_args.begin(),
-                     tombstone_kernel_args.end());
   kernel_args.insert(kernel_args.end(), config_server_args.begin(), config_server_args.end());
   kernel_args.insert(kernel_args.end(), secure_env_args.begin(),
                      secure_env_args.end());
