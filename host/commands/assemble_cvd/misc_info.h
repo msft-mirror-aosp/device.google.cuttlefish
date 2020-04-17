@@ -13,22 +13,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#pragma once
 
-cc_binary {
-    name: "vtpm_manager",
-    srcs: [
-        "commands.cpp",
-        "main.cpp",
-    ],
-    shared_libs: [
-        "libbase",
-        "libcutils",
-        "libcuttlefish_fs",
-        "liblog",
-        "tpm2-tss2-rc",
-    ],
-    static_libs: [
-        "libgflags",
-    ],
-    defaults: ["cuttlefish_guest_only"]
-}
+#include <map>
+#include <string>
+
+using MiscInfo = std::map<std::string, std::string>;
+
+MiscInfo ParseMiscInfo(const std::string& file_contents);
+std::string WriteMiscInfo(const MiscInfo& info);
+
+std::vector<std::string> SuperPartitionComponents(const MiscInfo&);
+void SetSuperPartitionComponents(const std::vector<std::string>& components,
+                                 MiscInfo* misc_info);

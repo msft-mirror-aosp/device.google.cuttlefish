@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019 The Android Open Source Project
+ * Copyright (C) 2020 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,25 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 #pragma once
 
+#include <cstddef>
 #include <string>
-#include <vector>
 
-namespace cvd {
-
-// Operations on archive files
-class Archive {
-  std::string file;
-public:
-  Archive(const std::string& file);
-  ~Archive();
-
-  std::vector<std::string> Contents();
-  bool ExtractAll(const std::string& target_directory = ".");
-  bool ExtractFiles(const std::vector<std::string>& files,
-                    const std::string& target_directory = ".");
-  std::string ExtractToMemory(const std::string& path);
-};
-
-} // namespace cvd
+std::string TpmCommandName(std::uint32_t command_num);

@@ -36,6 +36,7 @@ cc_binary_host {
         "data_image.cc",
         "flags.cc",
         "image_aggregator.cc",
+        "misc_info.cc",
         "super_image_mixer.cc",
     ],
     header_libs: [
@@ -52,6 +53,7 @@ cc_binary_host {
         "libz",
     ],
     static_libs: [
+        "libext2_uuid",
         "libsparse",
         "libcuttlefish_host_config",
         "libcuttlefish_vm_manager",
@@ -60,10 +62,4 @@ cc_binary_host {
         "libjsoncpp",
     ],
     defaults: ["cuttlefish_host_only", "cuttlefish_libicuuc"],
-}
-
-python_binary_host {
-    name: "cf_bpttool",
-    srcs: [ "cf_bpttool.py" ],
-    defaults: ["py2_only"],
 }

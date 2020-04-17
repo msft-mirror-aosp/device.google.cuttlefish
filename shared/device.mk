@@ -14,13 +14,16 @@
 # limitations under the License.
 #
 
+# Include all languages
+$(call inherit-product, $(SRC_TARGET_DIR)/product/languages_full.mk)
+
 # Enable updating of APEXes
 $(call inherit-product, $(SRC_TARGET_DIR)/product/updatable_apex.mk)
 
 # Enable userspace reboot
 $(call inherit-product, $(SRC_TARGET_DIR)/product/userspace_reboot.mk)
 
-PRODUCT_SHIPPING_API_LEVEL := 30
+PRODUCT_SHIPPING_API_LEVEL := 31
 PRODUCT_BUILD_BOOT_IMAGE := true
 PRODUCT_USE_DYNAMIC_PARTITIONS := true
 DISABLE_RILD_OEM_HOOK := true
@@ -291,9 +294,12 @@ PRODUCT_PACKAGES += \
     android.hardware.gnss@2.0-service
 
 # Health
-PRODUCT_PACKAGES += \
+ifeq ($(LOCAL_HEALTH_PRODUCT_PACKAGE),)
+    LOCAL_HEALTH_PRODUCT_PACKAGE := \
     android.hardware.health@2.1-impl-cuttlefish \
     android.hardware.health@2.1-service
+endif
+PRODUCT_PACKAGES += $(LOCAL_HEALTH_PRODUCT_PACKAGE)
 
 # Health Storage
 PRODUCT_PACKAGES += \
@@ -310,8 +316,11 @@ PRODUCT_PACKAGES += \
 #
 # Sensors
 #
+ifeq ($(LOCAL_SENSOR_PRODUCT_PACKAGE),)
+       LOCAL_SENSOR_PRODUCT_PACKAGE := android.hardware.sensors@2.0-service.mock
+endif
 PRODUCT_PACKAGES += \
-    android.hardware.sensors@2.0-service.mock
+    $(LOCAL_SENSOR_PRODUCT_PACKAGE)
 #
 # Thermal (mock)
 #

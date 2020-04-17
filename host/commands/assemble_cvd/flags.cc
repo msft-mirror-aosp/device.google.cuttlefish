@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <iostream>
 #include <fstream>
+#include <set>
 
 #include <android-base/strings.h>
 #include <gflags/gflags.h>
@@ -178,7 +179,9 @@ DEFINE_string(qemu_binary,
 DEFINE_string(crosvm_binary,
               vsoc::DefaultHostArtifactsPath("bin/crosvm"),
               "The Crosvm binary to use");
-DEFINE_string(tpm_binary, "", "The TPM simulator to use. Disabled if empty.");
+DEFINE_string(tpm_binary,
+              vsoc::DefaultHostArtifactsPath("bin/ms-tpm-20-ref"),
+              "The TPM simulator to use. Disabled if empty.");
 DEFINE_string(tpm_device, "", "A host TPM device to pass through commands to.");
 DEFINE_bool(restart_subprocesses, true, "Restart any crashed host process");
 DEFINE_string(logcat_mode, "", "How to send android's log messages from "
@@ -476,7 +479,8 @@ void SetDefaultFlagsForCrosvm() {
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
   // for now, we support only x86_64 by default
   bool default_enable_sandbox = false;
-  if (cvd::HostArch() == "x86_64") {
+  std::set<const std::string> supported_archs{std::string("x86_64"), std::string("aarch64")};
+  if (supported_archs.find(cvd::HostArch()) != supported_archs.end()) {
     default_enable_sandbox =
         [](const std::string& var_empty) -> bool {
           if (cvd::DirectoryExists(var_empty)) {
@@ -488,6 +492,13 @@ void SetDefaultFlagsForCrosvm() {
           return (::mkdir(var_empty.c_str(), 0755) == 0);
         }(vsoc::kCrosvmVarEmptyDir);
   }
+
+  // Sepolicy rules need to be updated to support gpu mode. Temporarily disable
+  // auto-enabling sandbox when gpu is enabled (b/152323505).
+  if (FLAGS_gpu_mode != vsoc::kGpuModeGuestSwiftshader) {
+    default_enable_sandbox = false;
+  }
+
   SetCommandLineOptionWithMode("enable_sandbox",
                                (default_enable_sandbox ? "true" : "false"),
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
@@ -726,38 +737,39 @@ off_t AvailableSpaceAtPath(const std::string& path) {
   return vfs.f_bsize * vfs.f_bavail; // block size * free blocks for unprivileged users
 }
 
-off_t USERDATA_IMAGE_RESERVED = 4l * (1l << 30l); // 4 GiB
-off_t AGGREGATE_IMAGE_RESERVED = 12l * (1l << 30l); // 12 GiB
-
 bool CreateCompositeDisk(const vsoc::CuttlefishConfig& config) {
   if (!cvd::SharedFD::Open(config.composite_disk_path().c_str(), O_WRONLY | O_CREAT, 0644)->IsOpen()) {
     LOG(ERROR) << "Could not ensure " << config.composite_disk_path() << " exists";
     return false;
   }
   if (FLAGS_vm_manager == vm_manager::CrosvmManager::name()) {
-    auto existing_size = cvd::FileSize(FLAGS_data_image);
+    // Check if filling in the sparse image would run out of disk space.
+    auto existing_sizes = cvd::SparseFileSizes(FLAGS_data_image);
+    if (existing_sizes.sparse_size == 0 && existing_sizes.disk_size == 0) {
+      LOG(ERROR) << "Unable to determine size of \"" << FLAGS_data_image
+                 << "\". Does this file exist?";
+    }
     auto available_space = AvailableSpaceAtPath(FLAGS_data_image);
-    if (available_space < USERDATA_IMAGE_RESERVED - existing_size) {
+    if (available_space < existing_sizes.sparse_size - existing_sizes.disk_size) {
       // TODO(schuffelen): Duplicate this check in run_cvd when it can run on a separate machine
-      LOG(ERROR) << "Not enough space in fs containing " << FLAGS_data_image;
-      LOG(ERROR) << "Wanted " << (USERDATA_IMAGE_RESERVED - existing_size);
+      LOG(ERROR) << "Not enough space remaining in fs containing " << FLAGS_data_image;
+      LOG(ERROR) << "Wanted " << (existing_sizes.sparse_size - existing_sizes.disk_size);
       LOG(ERROR) << "Got " << available_space;
       return false;
+    } else {
+      LOG(INFO) << "Available space: " << available_space;
+      LOG(INFO) << "Sparse size of \"" << FLAGS_data_image << "\": "
+                << existing_sizes.sparse_size;
+      LOG(INFO) << "Disk size of \"" << FLAGS_data_image << "\": "
+                << existing_sizes.disk_size;
     }
     std::string header_path = config.AssemblyPath("gpt_header.img");
     std::string footer_path = config.AssemblyPath("gpt_footer.img");
-    std::string tmp_prefix = config.AssemblyPath("disk_hole/disk");
-    CreateCompositeDisk(disk_config(), tmp_prefix, header_path, footer_path,
+    CreateCompositeDisk(disk_config(), header_path, footer_path,
                         config.composite_disk_path());
   } else {
-    auto existing_size = cvd::FileSize(config.composite_disk_path());
-    auto available_space = AvailableSpaceAtPath(config.composite_disk_path());
-    if (available_space < AGGREGATE_IMAGE_RESERVED - existing_size) {
-      LOG(ERROR) << "Not enough space to create " << config.composite_disk_path();
-      LOG(ERROR) << "Wanted " << (AGGREGATE_IMAGE_RESERVED - existing_size);
-      LOG(ERROR) << "Got " << available_space;
-      return false;
-    }
+    // If this doesn't fit into the disk, it will fail while aggregating. The
+    // aggregator doesn't maintain any sparse attributes.
     AggregateImage(disk_config(), config.composite_disk_path());
   }
   return true;
