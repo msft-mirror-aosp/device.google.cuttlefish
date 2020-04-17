@@ -35,13 +35,9 @@ StreamerLaunchResult LaunchVNCServer(
 void LaunchTombstoneReceiverIfEnabled(
     const cuttlefish::CuttlefishConfig& config, cuttlefish::ProcessMonitor* process_monitor);
 void LaunchLogcatReceiver(const cuttlefish::CuttlefishConfig& config,
-                                   cuttlefish::ProcessMonitor* process_monitor);
-
-struct ConfigServerPorts {
-  std::optional<unsigned int> server_vsock_port;
-};
-ConfigServerPorts LaunchConfigServer(const cuttlefish::CuttlefishConfig& config,
-                                     cuttlefish::ProcessMonitor* process_monitor);
+    cuttlefish::ProcessMonitor* process_monitor);
+void LaunchConfigServer(const cuttlefish::CuttlefishConfig& config,
+    cuttlefish::ProcessMonitor* process_monitor);
 
 StreamerLaunchResult LaunchWebRTC(cuttlefish::ProcessMonitor* process_monitor,
                                   const cuttlefish::CuttlefishConfig& config,

@@ -723,6 +723,7 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
 
     instance.set_tombstone_receiver_port(6600 + num - 1);
     instance.set_logcat_port(6700 + num - 1);
+    instance.set_config_server_port(6800 + num - 1);
 
     instance.set_device_title(FLAGS_device_title);
 

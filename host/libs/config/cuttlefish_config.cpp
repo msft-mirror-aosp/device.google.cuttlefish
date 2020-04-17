@@ -147,6 +147,7 @@ const char* kBlankDataImageFmt = "blank_data_image_fmt";
 
 const char* kLogcatPort = "logcat_port";
 const char* kLogcatReceiverBinary = "logcat_receiver_binary";
+const char* kConfigServerPort = "config_server_port";
 const char* kConfigServerBinary = "config_server_binary";
 
 const char* kRunTombstoneReceiver = "enable_tombstone_logger";
@@ -652,6 +653,14 @@ void CuttlefishConfig::MutableInstanceSpecific::set_logcat_port(int logcat_port)
 
 int CuttlefishConfig::InstanceSpecific::audiocontrol_server_port() const {
   return (*Dictionary())[kAudioControlServerPort].asInt();
+}
+
+int CuttlefishConfig::InstanceSpecific::config_server_port() const {
+  return (*Dictionary())[kConfigServerPort].asInt();
+}
+
+void CuttlefishConfig::MutableInstanceSpecific::set_config_server_port(int config_server_port) {
+  (*Dictionary())[kConfigServerPort] = config_server_port;
 }
 
 void CuttlefishConfig::MutableInstanceSpecific::set_audiocontrol_server_port(int audiocontrol_server_port) {
