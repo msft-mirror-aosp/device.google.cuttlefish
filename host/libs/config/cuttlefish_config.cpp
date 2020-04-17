@@ -194,6 +194,9 @@ const char* kWifiMacAddress = "wifi_mac_address";
 
 const char* kConsole = "console";
 
+const char* kFramesServerPort = "frames_server_port";
+const char* kTouchServerPort = "touch_server_port";
+const char* kKeyboardServerPort = "keyboard_server_port";
 }  // namespace
 
 namespace cuttlefish {
@@ -647,6 +650,30 @@ int CuttlefishConfig::InstanceSpecific::gatekeeper_vsock_port() const {
 
 void CuttlefishConfig::MutableInstanceSpecific::set_gatekeeper_vsock_port(int gatekeeper_vsock_port) {
   (*Dictionary())[kGatekeeperVsockPort] = gatekeeper_vsock_port;
+}
+
+int CuttlefishConfig::InstanceSpecific::frames_server_port() const {
+  return (*Dictionary())[kFramesServerPort].asInt();
+}
+
+void CuttlefishConfig::MutableInstanceSpecific::set_frames_server_port(int frames_server_port) {
+  (*Dictionary())[kFramesServerPort] = frames_server_port;
+}
+
+int CuttlefishConfig::InstanceSpecific::touch_server_port() const {
+  return (*Dictionary())[kTouchServerPort].asInt();
+}
+
+void CuttlefishConfig::MutableInstanceSpecific::set_touch_server_port(int touch_server_port) {
+  (*Dictionary())[kTouchServerPort] = touch_server_port;
+}
+
+int CuttlefishConfig::InstanceSpecific::keyboard_server_port() const {
+  return (*Dictionary())[kKeyboardServerPort].asInt();
+}
+
+void CuttlefishConfig::MutableInstanceSpecific::set_keyboard_server_port(int keyboard_server_port) {
+  (*Dictionary())[kKeyboardServerPort] = keyboard_server_port;
 }
 
 int CuttlefishConfig::InstanceSpecific::tombstone_receiver_port() const {

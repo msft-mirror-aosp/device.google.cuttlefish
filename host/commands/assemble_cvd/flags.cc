@@ -725,6 +725,16 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
     instance.set_logcat_port(6700 + num - 1);
     instance.set_config_server_port(6800 + num - 1);
 
+    if (FLAGS_gpu_mode != cuttlefish::kGpuModeDrmVirgl &&
+        FLAGS_gpu_mode != cuttlefish::kGpuModeGfxStream) {
+      instance.set_frames_server_port(6900 + num - 1);
+    }
+
+    if (FLAGS_vm_manager == cuttlefish::vm_manager::QemuManager::name()) {
+      instance.set_keyboard_server_port(7000 + num - 1);
+      instance.set_touch_server_port(7100 + num - 1);
+    }
+
     instance.set_keymaster_vsock_port(7200 + num - 1);
     instance.set_gatekeeper_vsock_port(7300 + num - 1);
 
