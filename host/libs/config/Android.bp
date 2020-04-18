@@ -20,6 +20,7 @@ cc_library_host_static {
         "cuttlefish_config.cpp",
         "data_image.cpp",
         "fetcher_config.cpp",
+        "kernel_args.cpp",
     ],
     header_libs: [
         "cuttlefish_glog",

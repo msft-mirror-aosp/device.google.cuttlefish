@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "host/commands/run_cvd/kernel_args.h"
+#include "host/libs/config/kernel_args.h"
 
 #include <array>
 #include <sstream>
@@ -22,8 +22,6 @@
 #include <vector>
 
 #include "common/libs/utils/files.h"
-#include "host/commands/run_cvd/launch.h"
-#include "host/commands/run_cvd/runner_defs.h"
 #include "host/libs/config/cuttlefish_config.h"
 #include "host/libs/vm_manager/vm_manager.h"
 

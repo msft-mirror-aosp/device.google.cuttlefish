@@ -48,12 +48,12 @@
 #include "common/libs/utils/network.h"
 #include "common/libs/utils/subprocess.h"
 #include "common/libs/utils/size_utils.h"
-#include "host/commands/run_cvd/kernel_args.h"
 #include "host/commands/run_cvd/launch.h"
 #include "host/commands/run_cvd/runner_defs.h"
 #include "host/commands/run_cvd/process_monitor.h"
 #include "host/libs/config/cuttlefish_config.h"
 #include "host/libs/config/data_image.h"
+#include "host/libs/config/kernel_args.h"
 #include "host/commands/kernel_log_monitor/kernel_log_server.h"
 #include "host/commands/kernel_log_monitor/utils.h"
 #include <host/libs/vm_manager/crosvm_manager.h>
@@ -585,8 +585,6 @@ int main(int argc, char** argv) {
   cuttlefish::SharedFD adbd_events_pipe = event_pipes[1];
   cuttlefish::SharedFD webrtc_events_pipe = event_pipes[2];
   event_pipes.clear();
-
-  std::set<std::string> extra_kernel_cmdline;
 
   SetUpHandlingOfBootEvents(&process_monitor, boot_events_pipe,
                             boot_state_machine);
