@@ -84,7 +84,6 @@
             <instance>default</instance>
         </interface>
     </hal>
-    <!-- TODO (b/130078382):
     <hal format="hidl">
         <name>android.hardware.boot</name>
         <transport>hwbinder</transport>
@@ -94,7 +93,6 @@
             <instance>default</instance>
         </interface>
     </hal>
-    -->
     <!-- TODO (b/130078384): -->
     <hal format="hidl">
         <name>android.hardware.camera.provider</name>
