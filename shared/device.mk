@@ -26,7 +26,8 @@ AB_OTA_PARTITIONS += \
     vendor
 
 PRODUCT_PACKAGES += \
-    update_engine
+    update_engine \
+    update_verifier
 
 # Properties that are not vendor-specific. These will go in the product
 # partition, instead of the vendor partition, and do not need vendor
@@ -281,6 +282,13 @@ PRODUCT_PACKAGES += \
 
 # TODO vibrator HAL
 # TODO thermal
+
+# BootControl HAL
+PRODUCT_PACKAGES += \
+    bootctrl.bcb \
+    android.hardware.boot@1.0-impl \
+    android.hardware.boot@1.0-impl.recovery \
+    android.hardware.boot@1.0-service
 
 PRODUCT_PACKAGES += \
     cuttlefish_dtb
