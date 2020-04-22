@@ -1,20 +1,20 @@
 #include "host/commands/run_cvd/launch.h"
 
-#include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/types.h>
 
 #include <glog/logging.h>
 
 #include "common/libs/fs/shared_fd.h"
 #include "common/libs/utils/files.h"
 #include "common/libs/utils/size_utils.h"
-#include "host/commands/run_cvd/runner_defs.h"
 #include "host/commands/run_cvd/pre_launch_initializers.h"
+#include "host/commands/run_cvd/runner_defs.h"
 #include "host/libs/vm_manager/crosvm_manager.h"
 #include "host/libs/vm_manager/qemu_manager.h"
 
-using cvd::RunnerExitCodes;
 using cvd::MonitorEntry;
+using cvd::RunnerExitCodes;
 
 namespace {
 
@@ -49,8 +49,8 @@ bool AdbTcpConnectorEnabled(const vsoc::CuttlefishConfig& config) {
 }
 
 bool AdbVsockConnectorEnabled(const vsoc::CuttlefishConfig& config) {
-  return config.run_adb_connector()
-      && AdbModeEnabled(config, vsoc::AdbMode::NativeVsock);
+  return config.run_adb_connector() &&
+         AdbModeEnabled(config, vsoc::AdbMode::NativeVsock);
 }
 
 cvd::OnSocketReadyCb GetOnSubprocessExitCallback(
@@ -63,10 +63,10 @@ cvd::OnSocketReadyCb GetOnSubprocessExitCallback(
 }
 
 cvd::SharedFD CreateUnixInputServer(const std::string& path) {
-  auto server = cvd::SharedFD::SocketLocalServer(path.c_str(), false, SOCK_STREAM, 0666);
+  auto server =
+      cvd::SharedFD::SocketLocalServer(path.c_str(), false, SOCK_STREAM, 0666);
   if (!server->IsOpen()) {
-    LOG(ERROR) << "Unable to create unix input server: "
-               << server->StrError();
+    LOG(ERROR) << "Unable to create unix input server: " << server->StrError();
     return cvd::SharedFD();
   }
   return server;
@@ -74,8 +74,8 @@ cvd::SharedFD CreateUnixInputServer(const std::string& path) {
 
 // Creates the frame and input sockets and add the relevant arguments to the vnc
 // server and webrtc commands
-StreamerLaunchResult CreateStreamerServers(cvd::Command* cmd,
-                                           const vsoc::CuttlefishConfig& config) {
+StreamerLaunchResult CreateStreamerServers(
+    cvd::Command* cmd, const vsoc::CuttlefishConfig& config) {
   StreamerLaunchResult server_ret;
   cvd::SharedFD touch_server;
   cvd::SharedFD keyboard_server;
@@ -99,7 +99,8 @@ StreamerLaunchResult CreateStreamerServers(cvd::Command* cmd,
   cmd->AddParameter("-touch_fd=", touch_server);
 
   if (!keyboard_server->IsOpen()) {
-    LOG(ERROR) << "Could not open keyboard server: " << keyboard_server->StrError();
+    LOG(ERROR) << "Could not open keyboard server: "
+               << keyboard_server->StrError();
     return {};
   }
   cmd->AddParameter("-keyboard_fd=", keyboard_server);
@@ -119,15 +120,14 @@ StreamerLaunchResult CreateStreamerServers(cvd::Command* cmd,
   return server_ret;
 }
 
-} // namespace
+}  // namespace
 
 bool LogcatReceiverEnabled(const vsoc::CuttlefishConfig& config) {
   return config.logcat_mode() == cvd::kLogcatVsockMode;
 }
 
 std::vector<cvd::SharedFD> LaunchKernelLogMonitor(
-    const vsoc::CuttlefishConfig& config,
-    cvd::ProcessMonitor* process_monitor,
+    const vsoc::CuttlefishConfig& config, cvd::ProcessMonitor* process_monitor,
     unsigned int number_of_event_pipes) {
   auto log_name = config.kernel_log_pipe_name();
   if (mkfifo(log_name.c_str(), 0600) != 0) {
@@ -238,8 +238,7 @@ TombstoneReceiverPorts LaunchTombstoneReceiverIfEnabled(
 }
 
 StreamerLaunchResult LaunchVNCServer(
-    const vsoc::CuttlefishConfig& config,
-    cvd::ProcessMonitor* process_monitor,
+    const vsoc::CuttlefishConfig& config, cvd::ProcessMonitor* process_monitor,
     std::function<bool(MonitorEntry*)> callback) {
   // Launch the vnc server, don't wait for it to complete
   auto port_options = "-port=" + std::to_string(config.vnc_server_port());
@@ -281,15 +280,27 @@ void LaunchAdbConnectorIfEnabled(cvd::ProcessMonitor* process_monitor,
 
 StreamerLaunchResult LaunchWebRTC(cvd::ProcessMonitor* process_monitor,
                                   const vsoc::CuttlefishConfig& config) {
-  cvd::Command webrtc(config.webrtc_binary());
-
-  if (!config.webrtc_certs_dir().empty()) {
-      webrtc.AddParameter("--certs_dir=", config.webrtc_certs_dir());
+  if (config.start_webrtc_sig_server()) {
+    cvd::Command sig_server(config.sig_server_binary());
+    sig_server.AddParameter("-assets_dir=", config.webrtc_assets_dir());
+    if (!config.webrtc_certs_dir().empty()) {
+      sig_server.AddParameter("-certs_dir=", config.webrtc_certs_dir());
+    }
+    sig_server.AddParameter("-http_server_port=", config.sig_server_port());
+    process_monitor->StartSubprocess(std::move(sig_server),
+                                     GetOnSubprocessExitCallback(config));
   }
 
-  webrtc.AddParameter("--http_server_port=", vsoc::GetPerInstanceDefault(8443));
-  webrtc.AddParameter("--public_ip=", config.webrtc_public_ip());
-  webrtc.AddParameter("--assets_dir=", config.webrtc_assets_dir());
+  // Currently there is no way to ensure the signaling server will already have
+  // bound the socket to the port by the time the webrtc process runs (the
+  // common technique of doing it from the launcher is not possible here as the
+  // server library being used creates its own sockets). However, this issue is
+  // mitigated slightly by doing some retrying and backoff in the webrtc process
+  // when connecting to the websocket, so it shouldn't be an issue most of the
+  // time.
+
+  cvd::Command webrtc(config.webrtc_binary());
+  webrtc.AddParameter("-public_ip=", config.webrtc_public_ip());
 
   auto server_ret = CreateStreamerServers(&webrtc, config);
 
@@ -297,6 +308,7 @@ StreamerLaunchResult LaunchWebRTC(cvd::ProcessMonitor* process_monitor,
       webrtc.AddParameter("--adb=", config.adb_ip_and_port());
   }
 
+  // TODO get from launcher params
   process_monitor->StartSubprocess(std::move(webrtc),
                                    GetOnSubprocessExitCallback(config));
   server_ret.launched = true;

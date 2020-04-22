@@ -126,7 +126,7 @@ DEFINE_string(seccomp_policy_dir,
               vsoc::DefaultHostArtifactsPath(kSeccompDir),
               "With sandbox'ed crosvm, overrieds the security comp policy directory");
 
-DEFINE_bool(start_webrtc, false, "[Experimental] Whether to start the webrtc process.");
+DEFINE_bool(start_webrtc, false, "Whether to start the webrtc process.");
 
 DEFINE_string(
         webrtc_assets_dir,
@@ -150,6 +150,35 @@ DEFINE_bool(
 
 DEFINE_int32(vnc_server_port, GetPerInstanceDefault(6444),
              "The port on which the vnc server should listen");
+DEFINE_bool(
+    start_webrtc_sig_server, false,
+    "Whether to start the webrtc signaling server. This option only applies to "
+    "the first instance, if multiple instances are launched they'll share the "
+    "same signaling server, which is owned by the first one.");
+
+DEFINE_string(webrtc_sig_server_addr, "127.0.0.1",
+              "The address of the webrtc signaling server.");
+
+DEFINE_int32(
+    webrtc_sig_server_port, GetPerInstanceDefault(8443),
+    "The port of the signaling server if started outside of this launch. If "
+    "-start_webrtc_sig_server is given it will choose 8443+instance_num1-1 and "
+    "this parameter is ignored.");
+
+DEFINE_string(webrtc_sig_server_path, "/register_device",
+              "The path section of the URL where the device should be "
+              "registered with the signaling server.");
+
+DEFINE_bool(verify_sig_server_certificate, false,
+            "Whether to verify the signaling server's certificate with a "
+            "trusted signing authority (Disallow self signed certificates).");
+
+DEFINE_string(
+    webrtc_device_id, "cvd-{num}",
+    "The for the device to register with the signaling server. Every "
+    "appearance of the substring '{num}' in the device id will be substituted "
+    "with the instance number to support multiple instances");
+
 DEFINE_string(adb_mode, "vsock_half_tunnel",
               "Mode for ADB connection."
               "'vsock_tunnel' for a TCP connection tunneled through vsock, "
@@ -376,6 +405,12 @@ bool InitializeCuttlefishConfiguration(
   tmp_config_obj.set_webrtc_assets_dir(FLAGS_webrtc_assets_dir);
   tmp_config_obj.set_webrtc_public_ip(FLAGS_webrtc_public_ip);
   tmp_config_obj.set_webrtc_certs_dir(FLAGS_webrtc_certs_dir);
+  tmp_config_obj.set_sig_server_binary(
+      vsoc::DefaultHostArtifactsPath("bin/webrtc_sig_server"));
+  tmp_config_obj.set_sig_server_port(FLAGS_webrtc_sig_server_port);
+  tmp_config_obj.set_sig_server_address(FLAGS_webrtc_sig_server_addr);
+  tmp_config_obj.set_sig_server_path(FLAGS_webrtc_sig_server_path);
+  tmp_config_obj.set_sig_server_strict(FLAGS_verify_sig_server_certificate);
 
   tmp_config_obj.set_webrtc_enable_adb_websocket(
           FLAGS_webrtc_enable_adb_websocket);
@@ -409,6 +444,18 @@ bool InitializeCuttlefishConfiguration(
 
   tmp_config_obj.set_ril_dns(FLAGS_ril_dns);
 
+  if (FLAGS_webrtc_device_id.empty()) {
+    // Use the instance's name as a default
+    tmp_config_obj.set_webrtc_device_id(tmp_config_obj.instance_name());
+  } else {
+    std::string device_id = FLAGS_webrtc_device_id;
+    size_t pos;
+    while ((pos = device_id.find("{num}")) != std::string::npos) {
+      device_id.replace(pos, strlen("{num}"), std::to_string(vsoc::GetInstance()));
+    }
+    tmp_config_obj.set_webrtc_device_id(device_id);
+  }
+  tmp_config_obj.set_start_webrtc_signaling_server(FLAGS_start_webrtc_sig_server);
   auto config_file = GetConfigFilePath(tmp_config_obj);
   auto config_link = vsoc::GetGlobalConfigFileLink();
   // Save the config object before starting any host process
@@ -500,6 +547,11 @@ bool ParseCommandLineFlags(int* argc, char*** argv) {
     SetCommandLineOptionWithMode("start_vnc_server", "true",
                                  google::FlagSettingMode::SET_FLAGS_DEFAULT);
   }
+  // The default for starting signaling server is whether or not webrt is to be
+  // started.
+  SetCommandLineOptionWithMode("start_webrtc_sig_server",
+                               FLAGS_start_webrtc ? "true" : "false",
+                               google::FlagSettingMode::SET_FLAGS_DEFAULT);
   google::HandleCommandLineHelpFlags();
   if (invalid_manager) {
     return false;
