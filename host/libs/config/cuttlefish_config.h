@@ -259,11 +259,32 @@ class CuttlefishConfig {
   void set_vm_manager_kernel_cmdline(std::string vm_manager_cmdline);
   std::vector<std::string> vm_manager_kernel_cmdline() const;
 
+  // A directory containing the SSL certificates for the signaling server
   void set_webrtc_certs_dir(const std::string& certs_dir);
   std::string webrtc_certs_dir() const;
 
-  void set_dialog_certs_dir(const std::string& certs_dir);
-  std::string dialog_certs_dir() const;
+  // The path to the webrtc signaling server binary
+  void set_sig_server_binary(const std::string& sig_server_binary);
+  std::string sig_server_binary() const;
+
+  // The port for the webrtc signaling server. It's used by the signaling server
+  // to bind to it and by the webrtc process to connect to and register itself
+  void set_sig_server_port(int port);
+  int sig_server_port() const;
+
+  // The address of the signaling server
+  void set_sig_server_address(const std::string& addr);
+  std::string sig_server_address() const;
+
+  // The path section of the url where the webrtc process registers itself with
+  // the signaling server
+  void set_sig_server_path(const std::string& path);
+  std::string sig_server_path() const;
+
+  // Whether the webrtc process should attempt to verify the authenticity of the
+  // signaling server (reject self signed certificates)
+  void set_sig_server_strict(bool strict);
+  bool sig_server_strict() const;
 
   // KGDB configuration for kernel debugging
   void set_kgdb(bool kgdb);
@@ -343,6 +364,13 @@ class CuttlefishConfig {
 
     // Wifi MAC address inside the guest
     std::array<unsigned char, 6> wifi_mac_address() const;
+
+    // The device id the webrtc process should use to register with the
+    // signaling server
+    std::string webrtc_device_id() const;
+
+    // Whether this instance should start the webrtc signaling server
+    bool start_webrtc_sig_server() const;
   };
 
   // A view into an existing CuttlefishConfig object for a particular instance.
@@ -372,6 +400,8 @@ class CuttlefishConfig {
     void set_virtual_disk_paths(const std::vector<std::string>& disk_paths);
     // Wifi MAC address inside the guest
     void set_wifi_mac_address(const std::array<unsigned char, 6>&);
+    void set_webrtc_device_id(const std::string& id);
+    void set_start_webrtc_signaling_server(bool start);
   };
 
  private:
