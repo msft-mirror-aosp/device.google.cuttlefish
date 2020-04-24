@@ -22,7 +22,7 @@ $(call inherit-product, $(SRC_TARGET_DIR)/product/core_64_bit.mk)
 PRODUCT_ARTIFACT_PATH_REQUIREMENT_WHITELIST += \
     root/init.zygote64_32.rc \
 
-$(call inherit-product, device/google/cuttlefish/shared/phone/mainline_system.mk)
+$(call inherit-product, $(SRC_TARGET_DIR)/product/mainline_system.mk)
 
 PRODUCT_ENFORCE_ARTIFACT_PATH_REQUIREMENTS := relaxed
 

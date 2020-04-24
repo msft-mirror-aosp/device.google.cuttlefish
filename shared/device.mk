@@ -31,9 +31,6 @@ AB_OTA_PARTITIONS += \
     system \
     vendor
 
-PRODUCT_PACKAGES += \
-    update_engine
-
 # Properties that are not vendor-specific. These will go in the product
 # partition, instead of the vendor partition, and do not need vendor
 # sepolicy
