@@ -33,6 +33,7 @@ PRODUCT_PACKAGES += \
     Telecom \
     TeleService \
     libcuttlefish-ril \
+    libcuttlefish-ril-2 \
     libcuttlefish-rild
 
 PRODUCT_COPY_FILES += \
