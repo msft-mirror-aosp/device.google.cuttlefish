@@ -485,9 +485,9 @@ bool InitializeCuttlefishConfiguration(
 
   if (!use_ramdisk) {
     if (slot_suffix == "_a") {
-      tmp_config_obj.add_kernel_cmdline("root=/dev/vda1");
+      tmp_config_obj.add_kernel_cmdline("root=/dev/vda4");
     } else {
-      tmp_config_obj.add_kernel_cmdline("root=/dev/vda2");
+      tmp_config_obj.add_kernel_cmdline("root=/dev/vda5");
     }
   }
 
@@ -668,6 +668,18 @@ namespace {
 std::vector<ImagePartition> disk_config() {
   std::vector<ImagePartition> partitions;
   partitions.push_back(ImagePartition {
+    .label = "misc",
+    .image_file_path = FLAGS_misc_image,
+  });
+  partitions.push_back(ImagePartition {
+    .label = "boot_a",
+    .image_file_path = FLAGS_boot_image,
+  });
+  partitions.push_back(ImagePartition {
+    .label = "boot_b",
+    .image_file_path = FLAGS_boot_image,
+  });
+  partitions.push_back(ImagePartition {
     .label = "system_a",
     .image_file_path = FLAGS_system_image,
   });
@@ -704,10 +716,6 @@ std::vector<ImagePartition> disk_config() {
     .image_file_path = FLAGS_product_image,
   });
   partitions.push_back(ImagePartition {
-    .label = "misc",
-    .image_file_path = FLAGS_misc_image
-  });
-  partitions.push_back(ImagePartition {
     .label = "odm_a",
     .image_file_path = FLAGS_odm_image,
   });
@@ -722,10 +730,6 @@ std::vector<ImagePartition> disk_config() {
   partitions.push_back(ImagePartition {
     .label = "system_ext_b",
     .image_file_path = FLAGS_system_ext_image,
-  });
-  partitions.push_back(ImagePartition {
-    .label = "boot",
-    .image_file_path = FLAGS_boot_image,
   });
   return partitions;
 }
