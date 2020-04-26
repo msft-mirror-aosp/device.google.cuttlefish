@@ -327,6 +327,9 @@ bool InitializeCuttlefishConfiguration(
   tmp_config_obj.set_virtual_disk_paths({FLAGS_composite_disk});
 
   tmp_config_obj.set_ramdisk_image_path(ramdisk_path);
+  tmp_config_obj.set_vbmeta_image_path(FLAGS_vbmeta_image);
+  tmp_config_obj.set_vbmeta_system_image_path(FLAGS_vbmeta_system_image);
+
   if(FLAGS_initramfs_path.size() > 0) {
     tmp_config_obj.set_initramfs_path(FLAGS_initramfs_path);
     tmp_config_obj.set_final_ramdisk_path(ramdisk_path + kRamdiskConcatExt);

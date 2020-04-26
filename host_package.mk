@@ -63,6 +63,7 @@ cvd_host_executables := \
     run_cvd \
     cvd_status \
     webRTC \
+    avbtool \
 
 cvd_host_tests := \
     auto_free_buffer_test \
