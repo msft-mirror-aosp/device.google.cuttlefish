@@ -1,4 +1,5 @@
 # Device types
+type ab_block_device, dev_type;
 type input_events_device, dev_type;
 type libcuttlefish_rild_device, dev_type;
 type region_e2e_test_device, dev_type;
