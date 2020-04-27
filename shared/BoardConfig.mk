@@ -57,6 +57,9 @@ TARGET_USERIMAGES_USE_EXT4 := true
 TARGET_USERIMAGES_SPARSE_EXT_DISABLED := true
 TARGET_USES_64_BIT_BINDER := true
 
+# 64 bit mediadrmserver
+TARGET_ENABLE_MEDIADRM_64 := true
+
 # Hardware composer configuration
 TARGET_USES_HWC2 := true
 
