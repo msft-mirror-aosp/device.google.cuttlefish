@@ -22,13 +22,45 @@
 #include "common/libs/fs/shared_buf.h"
 #include "common/libs/fs/shared_fd.h"
 
-namespace cuttlefish {
-
 namespace {
 
 const size_t BUFF_SIZE = 1 << 14;
 
 } // namespace
+
+namespace cuttlefish {
+
+ssize_t WriteAll(SharedFD fd, const char* buf, size_t size) {
+  size_t total_written = 0;
+  ssize_t written = 0;
+  while ((written = fd->Write((void*)&(buf[total_written]), size - total_written)) > 0) {
+    if (written < 0) {
+      errno = fd->GetErrno();
+      return written;
+    }
+    total_written += written;
+    if (total_written == size) {
+      break;
+    }
+  }
+  return total_written;
+}
+
+ssize_t ReadExact(SharedFD fd, char* buf, size_t size) {
+  size_t total_read = 0;
+  ssize_t read = 0;
+  while ((read = fd->Read((void*)&(buf[total_read]), size - total_read)) > 0) {
+    if (read < 0) {
+      errno = fd->GetErrno();
+      return read;
+    }
+    total_read += read;
+    if (total_read == size) {
+      break;
+    }
+  }
+  return total_read;
+}
 
 ssize_t ReadAll(SharedFD fd, std::string* buf) {
   char buff[BUFF_SIZE];
@@ -47,35 +79,19 @@ ssize_t ReadAll(SharedFD fd, std::string* buf) {
 }
 
 ssize_t ReadExact(SharedFD fd, std::string* buf) {
-  size_t total_read = 0;
-  ssize_t read = 0;
-  while ((read = fd->Read((void*)&((*buf)[total_read]), buf->size() - total_read)) > 0) {
-    if (read < 0) {
-      errno = fd->GetErrno();
-      return read;
-    }
-    total_read += read;
-    if (total_read == buf->size()) {
-      break;
-    }
-  }
-  return total_read;
+  return ReadExact(fd, &(buf->front()), buf->size());
+}
+
+ssize_t ReadExact(SharedFD fd, std::vector<char>* buf) {
+  return ReadExact(fd, buf->data(), buf->size());
 }
 
 ssize_t WriteAll(SharedFD fd, const std::string& buf) {
-  size_t total_written = 0;
-  ssize_t written = 0;
-  while ((written = fd->Write((void*)&(buf[total_written]), buf.size() - total_written)) > 0) {
-    if (written < 0) {
-      errno = fd->GetErrno();
-      return written;
-    }
-    total_written += written;
-    if (total_written == buf.size()) {
-      break;
-    }
-  }
-  return total_written;
+  return WriteAll(fd, buf.data(), buf.size());
+}
+
+ssize_t WriteAll(SharedFD fd, const std::vector<char>& buf) {
+  return WriteAll(fd, buf.data(), buf.size());
 }
 
 } // namespace cuttlefish
