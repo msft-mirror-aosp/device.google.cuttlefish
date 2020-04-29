@@ -124,7 +124,7 @@ std::vector<cvd::Command> CrosvmManager::StartCommands(bool with_frontend) {
   if (!config_->ramdisk_image_path().empty()) {
     crosvm_cmd.AddParameter("--initrd=", config_->ramdisk_image_path());
   }
-  crosvm_cmd.AddParameter("--null-audio");
+  // crosvm_cmd.AddParameter("--null-audio");
   crosvm_cmd.AddParameter("--mem=", config_->memory_mb());
   crosvm_cmd.AddParameter("--cpus=", config_->cpus());
   crosvm_cmd.AddParameter("--params=", config_->kernel_cmdline_as_string());
