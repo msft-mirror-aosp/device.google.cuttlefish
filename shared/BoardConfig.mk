@@ -21,9 +21,6 @@
 include build/make/target/board/BoardConfigMainlineCommon.mk
 
 # Reset CF unsupported settings
-TARGET_NO_RECOVERY := false
-BOARD_USES_SYSTEM_OTHER_ODEX :=
-WITH_DEXPREOPT := true
 BOARD_AVB_ENABLE := false
 
 
@@ -34,6 +31,7 @@ TARGET_BOOTLOADER_BOARD_NAME := cutf
 # will not change (as is it not a filesystem.)
 BOARD_BOOTIMAGE_PARTITION_SIZE := 67108864
 BOARD_RECOVERYIMAGE_PARTITION_SIZE := 67108864
+BOARD_VENDOR_BOOTIMAGE_PARTITION_SIZE := 67108864
 
 # Build a separate vendor.img partition
 BOARD_USES_VENDORIMAGE := true
@@ -144,7 +142,7 @@ DHCPCD_USE_SCRIPT := yes
 
 
 TARGET_RECOVERY_PIXEL_FORMAT := ABGR_8888
-
+TARGET_RECOVERY_UI_LIB := librecovery_ui_cuttlefish
 TARGET_RECOVERY_FSTAB ?= device/google/cuttlefish/shared/config/fstab
 
 BOARD_SUPER_PARTITION_SIZE := 6442450944
