@@ -65,6 +65,7 @@ cvd_host_executables := \
     tapsetiff \
     newfs_msdos \
     modem_simulator \
+    secure_env \
 
 ifneq ($(wildcard device/google/trout),)
     cvd_host_executables += android.hardware.automotive.vehicle@2.0-virtualization-grpc-server
