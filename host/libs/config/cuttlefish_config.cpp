@@ -1308,8 +1308,7 @@ std::string DefaultHostArtifactsPath(const std::string& file_name) {
 
 std::string DefaultGuestImagePath(const std::string& file_name) {
   return (cuttlefish::StringFromEnv("ANDROID_PRODUCT_OUT",
-                             cuttlefish::StringFromEnv("HOME", ".")) +
-          "/") +
+                             cuttlefish::StringFromEnv("HOME", "."))) +
          file_name;
 }
 
