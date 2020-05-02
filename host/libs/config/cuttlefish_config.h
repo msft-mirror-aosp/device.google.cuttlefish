@@ -504,7 +504,6 @@ int ForCurrentInstance(int base);
 // Returns a random serial number appended to a given prefix.
 std::string RandomSerialNumber(const std::string& prefix);
 
-std::string GetDefaultPerInstanceDir();
 std::string GetDefaultMempath();
 int GetDefaultPerInstanceVsockCid();
 

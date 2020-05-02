@@ -1294,12 +1294,6 @@ std::string RandomSerialNumber(const std::string& prefix) {
   return prefix + str;
 }
 
-std::string GetDefaultPerInstanceDir() {
-  std::ostringstream stream;
-  stream << std::getenv("HOME") << "/cuttlefish_runtime";
-  return stream.str();
-}
-
 int GetDefaultPerInstanceVsockCid() {
   constexpr int kFirstGuestCid = 3;
   return cuttlefish::HostSupportsVsock() ? ForCurrentInstance(kFirstGuestCid) : 0;
