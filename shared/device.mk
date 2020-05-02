@@ -58,6 +58,10 @@ PRODUCT_PROPERTY_OVERRIDES += \
 # aes-256-heh default is not supported in standard kernels.
 PRODUCT_PROPERTY_OVERRIDES += ro.crypto.volume.filenames_mode=aes-256-cts
 
+# P doesn't have APEX modules, but for Q/R compatibiltiy testing, claim
+# to support updatable APEX, as the P kernel does support it
+PRODUCT_PROPERTY_OVERRIDES += ro.apex.updatable=true
+
 # Packages for various GCE-specific utilities
 #
 PRODUCT_PACKAGES += \
