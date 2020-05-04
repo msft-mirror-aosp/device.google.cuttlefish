@@ -61,9 +61,9 @@ size_t WriteEnvironment(const cuttlefish::CuttlefishConfig& config,
 
 
 bool InitBootloaderEnvPartition(const cuttlefish::CuttlefishConfig& config,
-                                const std::string& uboot_env_path,
                                 const std::string& boot_env_image_path) {
   auto tmp_boot_env_image_path = boot_env_image_path + ".tmp";
+  auto uboot_env_path = config.AssemblyPath("u-boot.env");
   if(!WriteEnvironment(config, uboot_env_path)) {
     LOG(ERROR) << "Unable to write out plaintext env '" << uboot_env_path << ".'";
     return false;
