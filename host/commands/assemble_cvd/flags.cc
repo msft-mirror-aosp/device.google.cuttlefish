@@ -20,6 +20,9 @@
 #include "host/libs/vm_manager/qemu_manager.h"
 #include "host/libs/vm_manager/vm_manager.h"
 
+// Taken from external/avb/libavb/avb_slot_verify.c; this define is not in the headers
+#define VBMETA_MAX_SIZE 65536ul
+
 using vsoc::GetPerInstanceDefault;
 using cvd::AssemblerExitCodes;
 
@@ -59,6 +62,12 @@ DEFINE_bool(guest_audit_security, true,
 DEFINE_string(boot_image, "",
               "Location of cuttlefish boot image. If empty it is assumed to be "
               "boot.img in the directory specified by -system_image_dir.");
+DEFINE_string(vbmeta_image, "",
+              "Location of cuttlefish vbmeta image. If empty it is assumed to "
+              "be vbmeta.img in the directory specified by -system_image_dir.");
+DEFINE_string(vbmeta_system_image, "",
+              "Location of cuttlefish vbmeta_system image. If empty it is assumed to "
+              "be vbmeta_system.img in the directory specified by -system_image_dir.");
 DEFINE_int32(memory_mb, 2048,
              "Total amount of memory available for guest, MB.");
 DEFINE_string(mobile_interface, GetPerInstanceDefault("cvd-mbr-"),
@@ -216,6 +225,14 @@ bool ResolveInstanceFiles() {
   std::string default_misc_image = FLAGS_system_image_dir + "/misc.img";
   SetCommandLineOptionWithMode("misc_image", default_misc_image.c_str(),
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
+  std::string default_vbmeta_image = FLAGS_system_image_dir + "/vbmeta.img";
+  SetCommandLineOptionWithMode("vbmeta_image", default_vbmeta_image.c_str(),
+                               google::FlagSettingMode::SET_FLAGS_DEFAULT);
+  std::string default_vbmeta_system_image = FLAGS_system_image_dir
+                                          + "/vbmeta_system.img";
+  SetCommandLineOptionWithMode("vbmeta_system_image",
+                               default_vbmeta_system_image.c_str(),
+                               google::FlagSettingMode::SET_FLAGS_DEFAULT);
   std::string default_composite_disk = FLAGS_system_image_dir + "/composite.img";
   SetCommandLineOptionWithMode("composite_disk", default_composite_disk.c_str(),
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
@@ -310,6 +327,9 @@ bool InitializeCuttlefishConfiguration(
   tmp_config_obj.set_virtual_disk_paths({FLAGS_composite_disk});
 
   tmp_config_obj.set_ramdisk_image_path(ramdisk_path);
+  tmp_config_obj.set_vbmeta_image_path(FLAGS_vbmeta_image);
+  tmp_config_obj.set_vbmeta_system_image_path(FLAGS_vbmeta_system_image);
+
   if(FLAGS_initramfs_path.size() > 0) {
     tmp_config_obj.set_initramfs_path(FLAGS_initramfs_path);
     tmp_config_obj.set_final_ramdisk_path(ramdisk_path + kRamdiskConcatExt);
@@ -541,6 +561,22 @@ std::vector<ImagePartition> disk_config() {
     .image_file_path = FLAGS_boot_image,
   });
   partitions.push_back(ImagePartition {
+    .label = "vbmeta_a",
+    .image_file_path = FLAGS_vbmeta_image,
+  });
+  partitions.push_back(ImagePartition {
+    .label = "vbmeta_b",
+    .image_file_path = FLAGS_vbmeta_image,
+  });
+  partitions.push_back(ImagePartition {
+    .label = "vbmeta_system_a",
+    .image_file_path = FLAGS_vbmeta_system_image,
+  });
+  partitions.push_back(ImagePartition {
+    .label = "vbmeta_system_b",
+    .image_file_path = FLAGS_vbmeta_system_image,
+  });
+  partitions.push_back(ImagePartition {
     .label = "super",
     .image_file_path = FLAGS_super_image,
   });
@@ -697,6 +733,19 @@ const vsoc::CuttlefishConfig* InitFilesystemAndCreateConfig(
 
   if (!cvd::FileExists(FLAGS_metadata_image)) {
     CreateBlankImage(FLAGS_metadata_image, FLAGS_blank_metadata_image_mb, "none");
+  }
+
+  // libavb expects to be able to read the maximum vbmeta size, so we must
+  // provide a partition which matches this or the read will fail
+  for (const auto& vbmeta_image : { FLAGS_vbmeta_image, FLAGS_vbmeta_system_image }) {
+    if (cvd::FileSize(vbmeta_image) != VBMETA_MAX_SIZE) {
+      auto fd = cvd::SharedFD::Open(vbmeta_image, O_RDWR);
+      if (fd->Truncate(VBMETA_MAX_SIZE) != 0) {
+        LOG(ERROR) << "`truncate --size=" << VBMETA_MAX_SIZE << " "
+                   << vbmeta_image << "` failed: " << fd->StrError();
+        exit(cvd::kCuttlefishConfigurationInitError);
+      }
+    }
   }
 
   if (SuperImageNeedsRebuilding(fetcher_config, *config)) {

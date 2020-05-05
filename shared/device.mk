@@ -29,6 +29,8 @@ AB_OTA_PARTITIONS += \
     odm \
     product \
     system \
+    vbmeta \
+    vbmeta_system \
     vendor
 
 # Properties that are not vendor-specific. These will go in the product
