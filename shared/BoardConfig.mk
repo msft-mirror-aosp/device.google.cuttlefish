@@ -111,12 +111,12 @@ WIFI_DRIVER_FW_PATH_AP      := "/dev/null"
 # vendor sepolicy
 BOARD_VENDOR_SEPOLICY_DIRS += device/google/cuttlefish/shared/sepolicy/vendor
 BOARD_VENDOR_SEPOLICY_DIRS += device/google/cuttlefish/shared/sepolicy/vendor/google
-# product sepolicy
-PRODUCT_PRIVATE_SEPOLICY_DIRS := device/google/cuttlefish/shared/sepolicy/product/private
-# PRODUCT_PUBLIC_SEPOLICY_DIRS := device/google/cuttlefish/shared/sepolicy/product/public
+# product sepolicy, allow other layers to append
+PRODUCT_PRIVATE_SEPOLICY_DIRS += device/google/cuttlefish/shared/sepolicy/product/private
+# PRODUCT_PUBLIC_SEPOLICY_DIRS += device/google/cuttlefish/shared/sepolicy/product/public
 # system_ext sepolicy
-BOARD_PLAT_PRIVATE_SEPOLICY_DIR := device/google/cuttlefish/shared/sepolicy/system_ext/private
-# BOARD_PLAT_PUBLIC_SEPOLICY_DIR := device/google/cuttlefish/shared/sepolicy/system_ext/public
+BOARD_PLAT_PRIVATE_SEPOLICY_DIR += device/google/cuttlefish/shared/sepolicy/system_ext/private
+# BOARD_PLAT_PUBLIC_SEPOLICY_DIR += device/google/cuttlefish/shared/sepolicy/system_ext/public
 
 VSOC_STLPORT_INCLUDES :=
 VSOC_STLPORT_LIBS :=
@@ -176,5 +176,8 @@ BOARD_INCLUDE_DTB_IN_BOOTIMG := true
 BOARD_BOOT_HEADER_VERSION := 3
 BOARD_USES_RECOVERY_AS_BOOT := true
 BOARD_MKBOOTIMG_ARGS += --header_version $(BOARD_BOOT_HEADER_VERSION)
-PRODUCT_COPY_FILES += device/google/cuttlefish/dtb.img:dtb.img
+PRODUCT_COPY_FILES += \
+    device/google/cuttlefish/dtb.img:dtb.img \
+    device/google/cuttlefish/required_images:required_images \
+
 BOARD_BUILD_SYSTEM_ROOT_IMAGE := false
