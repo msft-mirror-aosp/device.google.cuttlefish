@@ -113,6 +113,10 @@ cvd_host_shared_libraries := \
     libgrpc++.so \
     android.hardware.automotive.vehicle@2.0.so \
     libxml2.so \
+    libkeymaster_messages.so \
+    libkeymaster_portable.so \
+    libsoft_attestation_cert.so \
+    libcuttlefish_security.so \
 
 webrtc_assets := \
     index.html \
