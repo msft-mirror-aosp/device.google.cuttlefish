@@ -380,7 +380,7 @@ PRODUCT_PACKAGES += \
 # Keymaster HAL
 #
 PRODUCT_PACKAGES += \
-     android.hardware.keymaster@4.1-service
+     android.hardware.keymaster@4.1-service.remote
 
 #
 # Power HAL
