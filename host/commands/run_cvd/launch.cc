@@ -553,3 +553,14 @@ void LaunchConsoleForwarderIfEnabled(const cuttlefish::CuttlefishConfig& config,
                                      GetOnSubprocessExitCallback(config));
 
 }
+
+SecureEnvironmentPorts LaunchSecureEnvironment(
+    cuttlefish::ProcessMonitor* process_monitor,
+    const cuttlefish::CuttlefishConfig& config) {
+  auto server = cuttlefish::SharedFD::VsockServer(SOCK_STREAM);
+  cuttlefish::Command command(cuttlefish::DefaultHostArtifactsPath("bin/secure_env"));
+  command.AddParameter("-keymaster_fd=", server);
+  process_monitor->StartSubprocess(std::move(command),
+                                   GetOnSubprocessExitCallback(config));
+  return { server->VsockServerPort() };
+}
