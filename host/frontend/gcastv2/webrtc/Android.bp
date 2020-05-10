@@ -16,11 +16,11 @@
 cc_library_static {
     name: "libwebrtc",
     srcs: [
-        "AdbWebSocketHandler.cpp",
+        "AdbHandler.cpp",
         "DTLS.cpp",
         "G711Packetizer.cpp",
         "Keyboard.cpp",
-        "MyWebSocketHandler.cpp",
+        "client_handler.cpp",
         "OpusPacketizer.cpp",
         "Packetizer.cpp",
         "RTPSender.cpp",
@@ -34,6 +34,11 @@ cc_library_static {
         "STUNMessage.cpp",
         "Utils.cpp",
         "VP8Packetizer.cpp",
+        "ws_connection.cpp",
+        "sig_server_handler.cpp",
+    ],
+    header_libs: [
+      "webrtc_signaling_headers",
     ],
     static_libs: [
         "libhttps",
@@ -48,6 +53,9 @@ cc_library_static {
         "libffi",
         "libwayland_server",
         "libwayland_extension_server_protocols",
+        "libwebsockets",
+        "libcap",
+        "libcuttlefish_utils",
     ],
     shared_libs: [
         "libssl",
@@ -88,6 +96,8 @@ cc_binary_host {
         "libffi",
         "libwayland_server",
         "libwayland_extension_server_protocols",
+        "libwebsockets",
+        "libcap",
     ],
     cpp_std: "experimental",
     defaults: ["cuttlefish_host_only"],
