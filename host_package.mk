@@ -55,6 +55,7 @@ cvd_host_executables := \
     logcat_receiver \
     config_server \
     console_forwarder \
+    tapsetiff
 
 cvd_host_tests := \
     auto_free_buffer_test \
