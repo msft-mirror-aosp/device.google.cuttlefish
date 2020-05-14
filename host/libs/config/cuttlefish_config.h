@@ -306,6 +306,10 @@ class CuttlefishConfig {
   void set_dialog_certs_dir(const std::string& certs_dir);
   std::string dialog_certs_dir() const;
 
+  // The dns address of mobile network (RIL)
+  void set_ril_dns(const std::string& ril_dns);
+  std::string ril_dns() const;
+
  private:
   std::unique_ptr<Json::Value> dictionary_;
 
