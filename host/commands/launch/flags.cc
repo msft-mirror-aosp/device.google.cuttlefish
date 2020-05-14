@@ -227,6 +227,7 @@ DEFINE_string(boot_slot, "", "Force booting into the given slot. If empty, "
              "the slot will be chosen based on the misc partition if using a "
              "bootloader. It will default to 'a' if empty and not using a "
              "bootloader.");
+DEFINE_string(ril_dns, "8.8.8.8", "DNS address of mobile network (RIL)");
 
 namespace {
 
@@ -493,6 +494,8 @@ bool InitializeCuttlefishConfiguration(
   }
 
   tmp_config_obj.set_cuttlefish_env_path(GetCuttlefishEnvPath());
+
+  tmp_config_obj.set_ril_dns(FLAGS_ril_dns);
 
   auto config_file = GetConfigFilePath(tmp_config_obj);
   auto config_link = vsoc::GetGlobalConfigFileLink();

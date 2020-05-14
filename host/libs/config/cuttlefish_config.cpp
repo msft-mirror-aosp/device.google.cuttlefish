@@ -152,6 +152,8 @@ const char* kTouchSocketPort = "touch_socket_port";
 const char* kKeyboardSocketPort = "keyboard_socket_port";
 
 const char* kBootSlot = "boot_slot";
+
+const char* kRilDns = "ril_dns";
 }  // namespace
 
 namespace vsoc {
@@ -796,6 +798,13 @@ void CuttlefishConfig::set_keyboard_socket_port(int port) {
 
 int CuttlefishConfig::keyboard_socket_port() const {
   return (*dictionary_)[kKeyboardSocketPort].asInt();
+}
+
+void CuttlefishConfig::set_ril_dns(const std::string& ril_dns) {
+  (*dictionary_)[kRilDns] = ril_dns;
+}
+std::string CuttlefishConfig::ril_dns()const {
+  return (*dictionary_)[kRilDns].asString();
 }
 
 // Creates the (initially empty) config object and populates it with values from

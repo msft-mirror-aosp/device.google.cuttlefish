@@ -289,6 +289,10 @@ class CuttlefishConfig {
   void set_keyboard_socket_port(int keyboard_socket_port);
   int keyboard_socket_port() const;
 
+  // The dns address of mobile network (RIL)
+  void set_ril_dns(const std::string& ril_dns);
+  std::string ril_dns() const;
+
  private:
   std::unique_ptr<Json::Value> dictionary_;
 
