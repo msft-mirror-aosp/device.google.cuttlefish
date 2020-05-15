@@ -361,8 +361,9 @@ vsoc::CuttlefishConfig InitializeCuttlefishConfiguration(
         tmp_config_obj.AssemblyPath(kKernelDefaultPath.c_str()));
     tmp_config_obj.set_use_unpacked_kernel(true);
   }
+
   tmp_config_obj.set_decompress_kernel(FLAGS_decompress_kernel);
-  if (FLAGS_decompress_kernel) {
+  if (tmp_config_obj.decompress_kernel()) {
     tmp_config_obj.set_decompressed_kernel_image_path(
         tmp_config_obj.AssemblyPath("vmlinux"));
   }
@@ -576,7 +577,7 @@ void SetDefaultFlagsForCrosvm() {
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
   // for now, we support only x86_64 by default
   bool default_enable_sandbox = false;
-  std::set<const std::string> supported_archs{std::string("x86_64"), std::string("aarch64")};
+  std::set<const std::string> supported_archs{std::string("x86_64")};
   if (supported_archs.find(cvd::HostArch()) != supported_archs.end()) {
     default_enable_sandbox =
         [](const std::string& var_empty) -> bool {
@@ -599,6 +600,16 @@ void SetDefaultFlagsForCrosvm() {
   SetCommandLineOptionWithMode("enable_sandbox",
                                (default_enable_sandbox ? "true" : "false"),
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
+
+  // Crosvm requires a specific setting for kernel decompression; it must be
+  // on for aarch64 and off for x86, no other mode is supported.
+  bool decompress_kernel = false;
+  if (cvd::HostArch() == "aarch64") {
+    decompress_kernel = true;
+  }
+  SetCommandLineOptionWithMode("decompress_kernel",
+                               (decompress_kernel ? "true" : "false"),
+                               google::FlagSettingMode::SET_FLAGS_DEFAULT);
 }
 
 bool ParseCommandLineFlags(int* argc, char*** argv) {
@@ -618,6 +629,12 @@ bool ParseCommandLineFlags(int* argc, char*** argv) {
     // another via a --star_<streamer> flag, while at the same time it's
     // possible to run without any streamer by setting --start_vnc_server=false.
     SetCommandLineOptionWithMode("start_vnc_server", "true",
+                                 google::FlagSettingMode::SET_FLAGS_DEFAULT);
+  }
+  // Various temporary workarounds for aarch64
+  if (cvd::HostArch() == "aarch64") {
+    SetCommandLineOptionWithMode("tpm_binary",
+                                 "",
                                  google::FlagSettingMode::SET_FLAGS_DEFAULT);
   }
   // The default for starting signaling server is whether or not webrt is to be
