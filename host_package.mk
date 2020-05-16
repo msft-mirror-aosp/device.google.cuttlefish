@@ -64,6 +64,7 @@ cvd_host_executables := \
     cvd_status \
     webRTC \
     avbtool \
+    tapsetiff
 
 cvd_host_tests := \
     auto_free_buffer_test \
