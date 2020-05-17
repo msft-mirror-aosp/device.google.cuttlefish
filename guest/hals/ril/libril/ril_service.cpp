@@ -3220,12 +3220,13 @@ Return<void> RadioImpl_1_4::setupDataCall_1_2(int32_t /* serial */,
     return Void();
 }
 
-Return<void> RadioImpl_1_4::deactivateDataCall_1_2(int32_t /* serial */, int32_t /* cid */,
-        ::android::hardware::radio::V1_2::DataRequestReason /* reason */) {
-    // TODO implement
+Return<void> RadioImpl_1_4::deactivateDataCall_1_2(int32_t serial, int32_t cid,
+        ::android::hardware::radio::V1_2::DataRequestReason reason) {
 #if VDBG
-    RLOGE("[%04d]< %s", serial, "Method is not implemented");
+    RLOGD("deactivateDataCall_1_2: serial %d", serial);
 #endif
+    deactivateDataCall(serial, cid,
+            reason == ::android::hardware::radio::V1_2::DataRequestReason::SHUTDOWN);
     return Void();
 }
 
