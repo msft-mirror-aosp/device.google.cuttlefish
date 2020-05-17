@@ -309,6 +309,10 @@ class CuttlefishConfig {
   void set_sig_server_strict(bool strict);
   bool sig_server_strict() const;
 
+  // The dns address of mobile network (RIL)
+  void set_ril_dns(const std::string& ril_dns);
+  std::string ril_dns() const;
+
   class InstanceSpecific;
   class MutableInstanceSpecific;
 
@@ -393,6 +397,8 @@ class CuttlefishConfig {
     std::string launcher_log_path() const;
 
     std::string launcher_monitor_socket_path() const;
+
+    std::string sdcard_path() const;
 
     // The device id the webrtc process should use to register with the
     // signaling server
