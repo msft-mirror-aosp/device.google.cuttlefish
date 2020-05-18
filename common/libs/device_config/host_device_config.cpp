@@ -156,7 +156,7 @@ bool DeviceConfig::InitializeNetworkConfiguration(
   // newer version of cuttlefish-common, and we can use the tap device
   // directly instead.
   if (!netconfig.ObtainConfig(config.mobile_bridge_name())) {
-    if (!netconfig.ObtainConfig(config.mobile_bridge_name())) {
+    if (!netconfig.ObtainConfig(config.mobile_tap_name())) {
       LOG(ERROR) << "Unable to obtain the network configuration";
       return false;
     }
