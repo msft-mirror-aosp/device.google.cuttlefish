@@ -16,15 +16,41 @@
 
 #include "remote_keymaster.h"
 
-#include <cutils/log.h>
+#include <android-base/logging.h>
 #include <keymaster/android_keymaster_messages.h>
 #include <keymaster/keymaster_configuration.h>
-#include "common/libs/security/keymaster_ipc.h"
 
 namespace keymaster {
 
-int RemoteKeymaster::Initialize() {
-    // TODO(schuffelen): Connect to the remote side.
+RemoteKeymaster::RemoteKeymaster(cvd::KeymasterChannel* channel)
+    : channel_(channel) {}
+
+RemoteKeymaster::~RemoteKeymaster() {
+}
+
+void RemoteKeymaster::ForwardCommand(AndroidKeymasterCommand command, const Serializable& req,
+                                     KeymasterResponse* rsp) {
+    if (!channel_->SendRequest(command, req)) {
+        LOG(ERROR) << "Failed to send keymaster message: " << command;
+        rsp->error = KM_ERROR_UNKNOWN_ERROR;
+        return;
+    }
+    auto response = channel_->ReceiveMessage();
+    if (!response) {
+        LOG(ERROR) << "Failed to receive keymaster response: " << command;
+        rsp->error = KM_ERROR_UNKNOWN_ERROR;
+        return;
+    }
+    const uint8_t* buffer = response->payload;
+    const uint8_t* buffer_end = response->payload + response->payload_size;
+    if (!rsp->Deserialize(&buffer, buffer_end)) {
+        LOG(ERROR) << "Failed to deserialize keymaster response: " << command;
+        rsp->error = KM_ERROR_UNKNOWN_ERROR;
+        return;
+    }
+}
+
+bool RemoteKeymaster::Initialize() {
 
     ConfigureRequest req;
     req.os_version = GetOsVersion();
@@ -34,73 +60,54 @@ int RemoteKeymaster::Initialize() {
     Configure(req, &rsp);
 
     if (rsp.error != KM_ERROR_OK) {
-        ALOGE("Failed to configure keymaster %d", rsp.error);
-        return -1;
+        LOG(ERROR) << "Failed to configure keymaster: " << rsp.error;
+        return false;
     }
 
-    return 0;
-}
-
-RemoteKeymaster::RemoteKeymaster() {}
-
-RemoteKeymaster::~RemoteKeymaster() {
-    // TODO(schuffelen): Disconnect from the remote side.
-}
-
-static void ForwardCommand(enum keymaster_command command, const Serializable& req,
-                           KeymasterResponse* rsp) {
-    keymaster_error_t err = KM_ERROR_OK;
-    // TODO(schuffelen): Send the message to the remote side.
-    (void) command;
-    (void) req;
-    (void) rsp;
-    if (err != KM_ERROR_OK) {
-        ALOGE("Failed to send cmd %d err: %d", command, err);
-        rsp->error = err;
-    }
+    return true;
 }
 
 void RemoteKeymaster::GetVersion(const GetVersionRequest& request, GetVersionResponse* response) {
-    ForwardCommand(KM_GET_VERSION, request, response);
+    ForwardCommand(GET_VERSION, request, response);
 }
 
 void RemoteKeymaster::SupportedAlgorithms(const SupportedAlgorithmsRequest& request,
                                           SupportedAlgorithmsResponse* response) {
-    ForwardCommand(KM_GET_SUPPORTED_ALGORITHMS, request, response);
+    ForwardCommand(GET_SUPPORTED_ALGORITHMS, request, response);
 }
 
 void RemoteKeymaster::SupportedBlockModes(const SupportedBlockModesRequest& request,
                                           SupportedBlockModesResponse* response) {
-    ForwardCommand(KM_GET_SUPPORTED_BLOCK_MODES, request, response);
+    ForwardCommand(GET_SUPPORTED_BLOCK_MODES, request, response);
 }
 
 void RemoteKeymaster::SupportedPaddingModes(const SupportedPaddingModesRequest& request,
                                             SupportedPaddingModesResponse* response) {
-    ForwardCommand(KM_GET_SUPPORTED_PADDING_MODES, request, response);
+    ForwardCommand(GET_SUPPORTED_PADDING_MODES, request, response);
 }
 
 void RemoteKeymaster::SupportedDigests(const SupportedDigestsRequest& request,
                                        SupportedDigestsResponse* response) {
-    ForwardCommand(KM_GET_SUPPORTED_DIGESTS, request, response);
+    ForwardCommand(GET_SUPPORTED_DIGESTS, request, response);
 }
 
 void RemoteKeymaster::SupportedImportFormats(const SupportedImportFormatsRequest& request,
                                              SupportedImportFormatsResponse* response) {
-    ForwardCommand(KM_GET_SUPPORTED_IMPORT_FORMATS, request, response);
+    ForwardCommand(GET_SUPPORTED_IMPORT_FORMATS, request, response);
 }
 
 void RemoteKeymaster::SupportedExportFormats(const SupportedExportFormatsRequest& request,
                                              SupportedExportFormatsResponse* response) {
-    ForwardCommand(KM_GET_SUPPORTED_EXPORT_FORMATS, request, response);
+    ForwardCommand(GET_SUPPORTED_EXPORT_FORMATS, request, response);
 }
 
 void RemoteKeymaster::AddRngEntropy(const AddEntropyRequest& request,
                                     AddEntropyResponse* response) {
-    ForwardCommand(KM_ADD_RNG_ENTROPY, request, response);
+    ForwardCommand(ADD_RNG_ENTROPY, request, response);
 }
 
 void RemoteKeymaster::Configure(const ConfigureRequest& request, ConfigureResponse* response) {
-    ForwardCommand(KM_CONFIGURE, request, response);
+    ForwardCommand(CONFIGURE, request, response);
 }
 
 void RemoteKeymaster::GenerateKey(const GenerateKeyRequest& request,
@@ -112,83 +119,83 @@ void RemoteKeymaster::GenerateKey(const GenerateKeyRequest& request,
         datedRequest.key_description.push_back(TAG_CREATION_DATETIME, java_time(time(NULL)));
     }
 
-    ForwardCommand(KM_GENERATE_KEY, datedRequest, response);
+    ForwardCommand(GENERATE_KEY, datedRequest, response);
 }
 
 void RemoteKeymaster::GetKeyCharacteristics(const GetKeyCharacteristicsRequest& request,
                                             GetKeyCharacteristicsResponse* response) {
-    ForwardCommand(KM_GET_KEY_CHARACTERISTICS, request, response);
+    ForwardCommand(GET_KEY_CHARACTERISTICS, request, response);
 }
 
 void RemoteKeymaster::ImportKey(const ImportKeyRequest& request, ImportKeyResponse* response) {
-    ForwardCommand(KM_IMPORT_KEY, request, response);
+    ForwardCommand(IMPORT_KEY, request, response);
 }
 
 void RemoteKeymaster::ImportWrappedKey(const ImportWrappedKeyRequest& request,
                                        ImportWrappedKeyResponse* response) {
-    ForwardCommand(KM_IMPORT_WRAPPED_KEY, request, response);
+    ForwardCommand(IMPORT_WRAPPED_KEY, request, response);
 }
 
 void RemoteKeymaster::ExportKey(const ExportKeyRequest& request, ExportKeyResponse* response) {
-    ForwardCommand(KM_EXPORT_KEY, request, response);
+    ForwardCommand(EXPORT_KEY, request, response);
 }
 
 void RemoteKeymaster::AttestKey(const AttestKeyRequest& request, AttestKeyResponse* response) {
-    ForwardCommand(KM_ATTEST_KEY, request, response);
+    ForwardCommand(ATTEST_KEY, request, response);
 }
 
 void RemoteKeymaster::UpgradeKey(const UpgradeKeyRequest& request, UpgradeKeyResponse* response) {
-    ForwardCommand(KM_UPGRADE_KEY, request, response);
+    ForwardCommand(UPGRADE_KEY, request, response);
 }
 
 void RemoteKeymaster::DeleteKey(const DeleteKeyRequest& request, DeleteKeyResponse* response) {
-    ForwardCommand(KM_DELETE_KEY, request, response);
+    ForwardCommand(DELETE_KEY, request, response);
 }
 
 void RemoteKeymaster::DeleteAllKeys(const DeleteAllKeysRequest& request,
                                     DeleteAllKeysResponse* response) {
-    ForwardCommand(KM_DELETE_ALL_KEYS, request, response);
+    ForwardCommand(DELETE_ALL_KEYS, request, response);
 }
 
 void RemoteKeymaster::BeginOperation(const BeginOperationRequest& request,
                                      BeginOperationResponse* response) {
-    ForwardCommand(KM_BEGIN_OPERATION, request, response);
+    ForwardCommand(BEGIN_OPERATION, request, response);
 }
 
 void RemoteKeymaster::UpdateOperation(const UpdateOperationRequest& request,
                                       UpdateOperationResponse* response) {
-    ForwardCommand(KM_UPDATE_OPERATION, request, response);
+    ForwardCommand(UPDATE_OPERATION, request, response);
 }
 
 void RemoteKeymaster::FinishOperation(const FinishOperationRequest& request,
                                       FinishOperationResponse* response) {
-    ForwardCommand(KM_FINISH_OPERATION, request, response);
+    ForwardCommand(FINISH_OPERATION, request, response);
 }
 
 void RemoteKeymaster::AbortOperation(const AbortOperationRequest& request,
                                      AbortOperationResponse* response) {
-    ForwardCommand(KM_ABORT_OPERATION, request, response);
+    ForwardCommand(ABORT_OPERATION, request, response);
 }
 
 GetHmacSharingParametersResponse RemoteKeymaster::GetHmacSharingParameters() {
     // Dummy empty buffer to allow ForwardCommand to have something to serialize
     Buffer request;
     GetHmacSharingParametersResponse response;
-    ForwardCommand(KM_GET_HMAC_SHARING_PARAMETERS, request, &response);
+    ForwardCommand(GET_HMAC_SHARING_PARAMETERS, request, &response);
     return response;
 }
 
 ComputeSharedHmacResponse RemoteKeymaster::ComputeSharedHmac(
         const ComputeSharedHmacRequest& request) {
     ComputeSharedHmacResponse response;
-    ForwardCommand(KM_COMPUTE_SHARED_HMAC, request, &response);
+    ForwardCommand(COMPUTE_SHARED_HMAC, request, &response);
     return response;
 }
 
 VerifyAuthorizationResponse RemoteKeymaster::VerifyAuthorization(
         const VerifyAuthorizationRequest& request) {
     VerifyAuthorizationResponse response;
-    ForwardCommand(KM_VERIFY_AUTHORIZATION, request, &response);
+    ForwardCommand(VERIFY_AUTHORIZATION, request, &response);
     return response;
 }
 
