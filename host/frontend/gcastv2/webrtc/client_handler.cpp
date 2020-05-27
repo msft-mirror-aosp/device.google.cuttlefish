@@ -14,7 +14,9 @@
  * limitations under the License.
  */
 
-#include <webrtc/MyWebSocketHandler.h>
+#include <webrtc/client_handler.h>
+
+#include <vector>
 
 #include "Utils.h"
 
@@ -23,7 +25,8 @@
 #include <netdb.h>
 #include <openssl/rand.h>
 
-#include <webrtc/Keyboard.h>
+#include "https/SafeCallbackable.h"
+#include "common/libs/utils/base64.h"
 
 namespace {
 
@@ -56,78 +59,87 @@ bool validateJsonObject(
 
 } // namespace
 
-MyWebSocketHandler::MyWebSocketHandler(
-        std::shared_ptr<RunLoop> runLoop,
+ClientHandler::ClientHandler(
         std::shared_ptr<ServerState> serverState,
-        size_t handlerId)
-    : mRunLoop(runLoop),
+        std::function<void(const Json::Value&)> send_to_client_cb)
+    : mRunLoop(serverState->run_loop()),
       mServerState(serverState),
-      mId(handlerId),
-      mOptions(OptionBits::useSingleCertificateForAllTracks),
+      mOptions(OptionBits::useSingleCertificateForAllTracks
+              | OptionBits::enableData),
+      sendToClient_(send_to_client_cb),
       mTouchSink(mServerState->getTouchSink()),
       mKeyboardSink(mServerState->getKeyboardSink()) {
 }
 
-MyWebSocketHandler::~MyWebSocketHandler() {
-    mServerState->releaseHandlerId(mId);
+std::shared_ptr<AdbHandler> ClientHandler::adb_handler() {
+  if (!adb_handler_) {
+    auto config = vsoc::CuttlefishConfig::Get();
+    adb_handler_.reset(
+        new AdbHandler(mRunLoop, config->adb_ip_and_port(),
+                       [this](const uint8_t *msg, size_t length) {
+                         std::string base64_msg;
+                         cvd::EncodeBase64(msg, length, &base64_msg);
+                         Json::Value reply;
+                         reply["type"] = "adb-message";
+                         reply["payload"] = base64_msg;
+                         sendToClient_(reply);
+                       }));
+    adb_handler_->run();
+  }
+  return adb_handler_;
 }
 
-int MyWebSocketHandler::handleMessage(
-        uint8_t /*headerByte*/, const uint8_t *msg, size_t len) {
-    // android::hexdump(msg, len);
+void ClientHandler::LogAndReplyError(const std::string& error_msg) const {
+    LOG(ERROR) << error_msg;
+    Json::Value reply;
+    reply["error"] = error_msg;
+    sendToClient_(reply);
+}
 
-    Json::Value obj;
-    Json::Reader json_reader;
-    Json::FastWriter json_writer;
-    auto str = reinterpret_cast<const char *>(msg);
-    if (!json_reader.parse(str, str + len, obj) < 0) {
-        return -EINVAL;
+void ClientHandler::HandleMessage(const Json::Value& message) {
+    LOG(VERBOSE) << message.toStyledString();
+
+    if (!validateJsonObject(
+            message, "", {{"type", Json::ValueType::stringValue}},
+            [this](const std::string &error) { LogAndReplyError(error); })) {
+      return;
     }
-
-    LOG(VERBOSE) << obj.toStyledString();
-
-    auto sendMessageOnError =
-        [this](const std::string &error_msg) {
-          auto reply = "{\"error\": \"" + error_msg + "\"}";
-          sendMessage(reply.c_str(), reply.size());
-        };
-
-    if (!validateJsonObject(obj, "", {{"type", Json::ValueType::stringValue}},
-                            sendMessageOnError)) {
-        return -EINVAL;
-    }
-    std::string type = obj["type"].asString();
-
-    if (type == "greeting") {
-        Json::Value reply;
-        reply["type"] = "hello";
-        reply["reply"] = "Right back at ya!";
-
-        auto replyAsString = json_writer.write(reply);
-        sendMessage(replyAsString.c_str(), replyAsString.size());
-
-        if (obj.isMember("options")) {
-            parseOptions(obj["options"]);
+    auto type = message["type"].asString();
+    if (type == "request-offer") {
+        if (message.isMember("options")) {
+            parseOptions(message["options"]);
         }
-
         if (mOptions & OptionBits::useSingleCertificateForAllTracks) {
             mCertificateAndKey = CreateDTLSCertificateAndKey();
         }
-
         prepareSessions();
-    } else if (type == "set-client-desc") {
-        if (!validateJsonObject(obj, type,
+        auto offer = BuildOffer();
+
+        Json::Value reply;
+        reply["type"] = "offer";
+        reply["sdp"] = offer;
+
+        sendToClient_(reply);
+    } else if (type == "answer") {
+        if (mSessions.size() == 0) {
+            LOG(ERROR)
+                  << "Received sdp answer from client before request for offer";
+            return;
+        }
+
+        if (!validateJsonObject(message, type,
                                 {{"sdp", Json::ValueType::stringValue}},
-                                sendMessageOnError)) {
-            return -EINVAL;
+                                [this](const std::string &error) {
+                                  LogAndReplyError(error);
+                                })) {
+          return;
         }
 
-        int err = mOfferedSDP.setTo(obj["sdp"].asString());
-
+        int err = mOfferedSDP.setTo(message["sdp"].asString());
         if (err) {
-            LOG(ERROR) << "Offered SDP could not be parsed (" << err << ")";
+            LogAndReplyError("Offered SDP could not be parsed (" +
+                                std::to_string(err) + ")");
         }
-
         for (size_t i = 0; i < mSessions.size(); ++i) {
             const auto &session = mSessions[i];
 
@@ -137,207 +149,148 @@ int MyWebSocketHandler::handleMessage(
                     getRemoteFingerprint(i));
         }
 
-        return err;
-    } else if (type == "request-offer") {
-        std::stringstream ss;
-
-        ss <<
-"v=0\r\n"
-"o=- 7794515898627856655 2 IN IP4 127.0.0.1\r\n"
-"s=-\r\n"
-"t=0 0\r\n"
-"a=msid-semantic: WMS pqWEULZNyLiJHA7lcwlUnbule9FJNk0pY0aw\r\n";
-
-        bool bundled = false;
-
-        if ((mOptions & OptionBits::bundleTracks) && countTracks() > 1) {
-            bundled = true;
-
-            ss << "a=group:BUNDLE 0";
-
-            if (!(mOptions & OptionBits::disableAudio)) {
-                ss << " 1";
-            }
-
-            if (mOptions & OptionBits::enableData) {
-                ss << " 2";
-            }
-
-            ss << "\r\n";
-
-            emitTrackIceOptionsAndFingerprint(ss, 0 /* mlineIndex */);
+        for (int32_t mid = 0; mid < 3; mid++) {
+            GatherAndSendCandidate(mid);
         }
-
-        size_t mlineIndex = 0;
-
-        // Video track (mid = 0)
-
-        std::string videoEncodingSpecific = "a=rtpmap:96 VP8/90000\r\n";
-
-        videoEncodingSpecific +=
-"a=rtcp-fb:96 ccm fir\r\n"
-"a=rtcp-fb:96 nack\r\n"
-"a=rtcp-fb:96 nack pli\r\n";
-
-        ss <<
-"m=video 9 "
-<< ((mOptions & OptionBits::useTCP) ? "TCP" : "UDP")
-<< "/TLS/RTP/SAVPF 96 97\r\n"
-"c=IN IP4 0.0.0.0\r\n"
-"a=rtcp:9 IN IP4 0.0.0.0\r\n";
-
-        if (!bundled) {
-            emitTrackIceOptionsAndFingerprint(ss, mlineIndex++);
-        }
-
-        ss <<
-"a=setup:actpass\r\n"
-"a=mid:0\r\n"
-"a=sendonly\r\n"
-"a=rtcp-mux\r\n"
-"a=rtcp-rsize\r\n"
-"a=rtcp-xr:rcvr-rtt=all\r\n";
-
-        ss << videoEncodingSpecific <<
-"a=rtpmap:97 rtx/90000\r\n"
-"a=fmtp:97 apt=96\r\n"
-"a=ssrc-group:FID 3735928559 3405689008\r\n"
-"a=ssrc:3735928559 cname:myWebRTP\r\n"
-"a=ssrc:3735928559 msid:pqWEULZNyLiJHA7lcwlUnbule9FJNk0pY0aw 61843855-edd7-4ca9-be79-4e3ccc6cc035\r\n"
-"a=ssrc:3735928559 mslabel:pqWEULZNyLiJHA7lcwlUnbule9FJNk0pY0aw\r\n"
-"a=ssrc:3735928559 label:61843855-edd7-4ca9-be79-4e3ccc6cc035\r\n"
-"a=ssrc:3405689008 cname:myWebRTP\r\n"
-"a=ssrc:3405689008 msid:pqWEULZNyLiJHA7lcwlUnbule9FJNk0pY0aw 61843855-edd7-4ca9-be79-4e3ccc6cc035\r\n"
-"a=ssrc:3405689008 mslabel:pqWEULZNyLiJHA7lcwlUnbule9FJNk0pY0aw\r\n"
-"a=ssrc:3405689008 label:61843855-edd7-4ca9-be79-4e3ccc6cc035\r\n";
-
-        if (!(mOptions & OptionBits::disableAudio)) {
-            ss <<
-"m=audio 9 "
-<< ((mOptions & OptionBits::useTCP) ? "TCP" : "UDP")
-<< "/TLS/RTP/SAVPF 98\r\n"
-"c=IN IP4 0.0.0.0\r\n"
-"a=rtcp:9 IN IP4 0.0.0.0\r\n";
-
-            if (!bundled) {
-                emitTrackIceOptionsAndFingerprint(ss, mlineIndex++);
-            }
-
-            ss <<
-"a=setup:actpass\r\n"
-"a=mid:1\r\n"
-"a=sendonly\r\n"
-"a=msid:pqWEULZNyLiJHA7lcwlUnbule9FJNk0pY0aw 61843856-edd7-4ca9-be79-4e3ccc6cc035\r\n"
-"a=rtcp-mux\r\n"
-"a=rtcp-rsize\r\n"
-"a=rtpmap:98 opus/48000/2\r\n"
-"a=fmtp:98 minptime=10;useinbandfec=1\r\n"
-"a=ssrc-group:FID 2343432205\r\n"
-"a=ssrc:2343432205 cname:myWebRTP\r\n"
-"a=ssrc:2343432205 msid:pqWEULZNyLiJHA7lcwlUnbule9FJNk0pY0aw 61843856-edd7-4ca9-be79-4e3ccc6cc035\r\n"
-"a=ssrc:2343432205 mslabel:pqWEULZNyLiJHA7lcwlUnbule9FJNk0pY0aw\r\n"
-"a=ssrc:2343432205 label:61843856-edd7-4ca9-be79-4e3ccc6cc035\r\n";
-        }
-
-        if (mOptions & OptionBits::enableData) {
-            ss <<
-"m=application 9 "
-<< ((mOptions & OptionBits::useTCP) ? "TCP" : "UDP")
-<< "/DTLS/SCTP webrtc-datachannel\r\n"
-"c=IN IP4 0.0.0.0\r\n"
-"a=sctp-port:5000\r\n";
-
-            if (!bundled) {
-                emitTrackIceOptionsAndFingerprint(ss, mlineIndex++);
-            }
-
-            ss <<
-"a=setup:actpass\r\n"
-"a=mid:2\r\n"
-"a=sendrecv\r\n"
-"a=fmtp:webrtc-datachannel max-message-size=65536\r\n";
-        }
-
-        Json::Value reply;
-        reply["type"] = "offer";
-        reply["sdp"] = ss.str();
-
-        auto replyAsString = json_writer.write(reply);
-        sendMessage(replyAsString.c_str(), replyAsString.size());
-    } else if (type == "get-ice-candidate") {
-        if (!validateJsonObject(obj, type, {{"mid", Json::ValueType::intValue}},
-                                sendMessageOnError)) {
-            return -EINVAL;
-        }
-        int32_t mid = obj["mid"].asInt();
-
-        bool success = getCandidate(mid);
-
-        if (!success) {
-            Json::Value reply;
-            reply["type"] = "ice-candidate";
-
-            auto replyAsString = json_writer.write(reply);
-            sendMessage(replyAsString.c_str(), replyAsString.size());
-        }
-    } else if (type == "set-mouse-position") {
-        if (!validateJsonObject(obj, type, {{"down", Json::ValueType::intValue},
-                                            {"x", Json::ValueType::intValue},
-                                            {"y", Json::ValueType::intValue}},
-                                sendMessageOnError)) {
-            return -EINVAL;
-        }
-        int32_t down = obj["down"].asInt();
-        int32_t x = obj["x"].asInt();
-        int32_t y = obj["y"].asInt();
-
-        LOG(VERBOSE)
-            << "set-mouse-position(" << down << ", " << x << ", " << y << ")";
-
-        mTouchSink->injectTouchEvent(x, y, down != 0);
-    } else if (type == "inject-multi-touch") {
-        if (!validateJsonObject(obj, type, {{"id", Json::ValueType::intValue},
-                                            {"initialDown", Json::ValueType::intValue},
-                                            {"x", Json::ValueType::intValue},
-                                            {"y", Json::ValueType::intValue},
-                                            {"slot", Json::ValueType::intValue}},
-                                sendMessageOnError)) {
-            return -EINVAL;
-        }
-        int32_t id = obj["id"].asInt();
-        int32_t initialDown = obj["initialDown"].asInt();
-        int32_t x = obj["x"].asInt();
-        int32_t y = obj["y"].asInt();
-        int32_t slot = obj["slot"].asInt();
-
-        LOG(VERBOSE)
-            << "inject-multi-touch id="
-            << id
-            << ", initialDown="
-            << initialDown
-            << ", x="
-            << x
-            << ", y="
-            << y
-            << ", slot="
-            << slot;
-
-        mTouchSink->injectMultiTouchEvent(id, slot, x, y, initialDown);
-    } else if (type == "key-event") {
-        if (!validateJsonObject(obj, type, {{"event_type", Json::ValueType::stringValue},
-                                            {"keycode", Json::ValueType::stringValue}},
-                                sendMessageOnError)) {
-            return -EINVAL;
-        }
-        auto down = obj["event_type"].asString() == std::string("keydown");
-        auto code = DomKeyCodeToLinux(obj["keycode"].asString());
-        mKeyboardSink->injectEvent(down, code);
+    } else if (type == "ice-candidate") {
+      LOG(INFO) << "Received ice candidate from client, ignoring";
+    } else if (type == "adb-message") {
+      if (!message.isMember("payload") || !message["payload"].isString()) {
+        LOG(ERROR) << "adb-message has invalid payload";
+        return;
+      }
+      auto base64_msg = message["payload"].asString();
+      std::vector<uint8_t> raw_msg;
+      if (!cvd::DecodeBase64(base64_msg, &raw_msg)) {
+        LOG(ERROR) << "Invalid base64 string in adb-message";
+        return;
+      }
+      adb_handler()->handleMessage(raw_msg.data(), raw_msg.size());
+    } else {
+        LogAndReplyError("Unknown type: " + type);
+        return;
     }
-
-    return 0;
 }
 
-size_t MyWebSocketHandler::countTracks() const {
+std::string ClientHandler::BuildOffer() {
+  std::stringstream ss;
+
+  ss << "v=0\r\n"
+        "o=- 7794515898627856655 2 IN IP4 127.0.0.1\r\n"
+        "s=-\r\n"
+        "t=0 0\r\n"
+        "a=msid-semantic: WMS display_0\r\n";
+
+  bool bundled = false;
+
+  if ((mOptions & OptionBits::bundleTracks) && countTracks() > 1) {
+    bundled = true;
+
+    ss << "a=group:BUNDLE 0";
+
+    if (!(mOptions & OptionBits::disableAudio)) {
+      ss << " 1";
+    }
+
+    if (mOptions & OptionBits::enableData) {
+      ss << " 2";
+    }
+
+    ss << "\r\n";
+
+    emitTrackIceOptionsAndFingerprint(ss, 0 /* mlineIndex */);
+  }
+
+  size_t mlineIndex = 0;
+
+  // Video track (mid = 0)
+
+  std::string videoEncodingSpecific = "a=rtpmap:96 VP8/90000\r\n";
+
+  videoEncodingSpecific +=
+      "a=rtcp-fb:96 ccm fir\r\n"
+      "a=rtcp-fb:96 nack\r\n"
+      "a=rtcp-fb:96 nack pli\r\n";
+
+  ss << "m=video 9 " << ((mOptions & OptionBits::useTCP) ? "TCP" : "UDP")
+     << "/TLS/RTP/SAVPF 96 97\r\n"
+        "c=IN IP4 0.0.0.0\r\n"
+        "a=rtcp:9 IN IP4 0.0.0.0\r\n";
+
+  if (!bundled) {
+    emitTrackIceOptionsAndFingerprint(ss, mlineIndex++);
+  }
+
+  ss << "a=setup:actpass\r\n"
+        "a=mid:0\r\n"
+        "a=sendonly\r\n"
+        "a=rtcp-mux\r\n"
+        "a=rtcp-rsize\r\n"
+        "a=rtcp-xr:rcvr-rtt=all\r\n";
+
+  ss << videoEncodingSpecific
+     << "a=rtpmap:97 rtx/90000\r\n"
+        "a=fmtp:97 apt=96\r\n"
+        "a=ssrc-group:FID 3735928559 3405689008\r\n"
+        "a=ssrc:3735928559 cname:myWebRTP\r\n"
+        "a=ssrc:3735928559 msid:display_0 "
+        "61843855-edd7-4ca9-be79-4e3ccc6cc035\r\n"
+        "a=ssrc:3735928559 mslabel:display_0\r\n"
+        "a=ssrc:3735928559 label:61843855-edd7-4ca9-be79-4e3ccc6cc035\r\n"
+        "a=ssrc:3405689008 cname:myWebRTP\r\n"
+        "a=ssrc:3405689008 msid:display_0 "
+        "61843855-edd7-4ca9-be79-4e3ccc6cc035\r\n"
+        "a=ssrc:3405689008 mslabel:display_0\r\n"
+        "a=ssrc:3405689008 label:61843855-edd7-4ca9-be79-4e3ccc6cc035\r\n";
+
+  if (!(mOptions & OptionBits::disableAudio)) {
+    ss << "m=audio 9 " << ((mOptions & OptionBits::useTCP) ? "TCP" : "UDP")
+       << "/TLS/RTP/SAVPF 98\r\n"
+          "c=IN IP4 0.0.0.0\r\n"
+          "a=rtcp:9 IN IP4 0.0.0.0\r\n";
+
+    if (!bundled) {
+      emitTrackIceOptionsAndFingerprint(ss, mlineIndex++);
+    }
+
+    ss << "a=setup:actpass\r\n"
+          "a=mid:1\r\n"
+          "a=sendonly\r\n"
+          "a=msid:display_0 "
+          "61843856-edd7-4ca9-be79-4e3ccc6cc035\r\n"
+          "a=rtcp-mux\r\n"
+          "a=rtcp-rsize\r\n"
+          "a=rtpmap:98 opus/48000/2\r\n"
+          "a=fmtp:98 minptime=10;useinbandfec=1\r\n"
+          "a=ssrc-group:FID 2343432205\r\n"
+          "a=ssrc:2343432205 cname:myWebRTP\r\n"
+          "a=ssrc:2343432205 msid:display_0 "
+          "61843856-edd7-4ca9-be79-4e3ccc6cc035\r\n"
+          "a=ssrc:2343432205 mslabel:display_0\r\n"
+          "a=ssrc:2343432205 label:61843856-edd7-4ca9-be79-4e3ccc6cc035\r\n";
+  }
+
+  if (mOptions & OptionBits::enableData) {
+    ss << "m=application 9 "
+       << ((mOptions & OptionBits::useTCP) ? "TCP" : "UDP")
+       << "/DTLS/SCTP webrtc-datachannel\r\n"
+          "c=IN IP4 0.0.0.0\r\n"
+          "a=sctp-port:5000\r\n";
+
+    if (!bundled) {
+      emitTrackIceOptionsAndFingerprint(ss, mlineIndex++);
+    }
+
+    ss << "a=setup:actpass\r\n"
+          "a=mid:2\r\n"
+          "a=sendrecv\r\n"
+          "a=fmtp:webrtc-datachannel max-message-size=65536\r\n";
+  }
+  return ss.str();
+}
+
+
+size_t ClientHandler::countTracks() const {
     size_t n = 1;  // We always have a video track.
 
     if (!(mOptions & OptionBits::disableAudio)) {
@@ -351,7 +304,7 @@ size_t MyWebSocketHandler::countTracks() const {
     return n;
 }
 
-ssize_t MyWebSocketHandler::mlineIndexForMid(int32_t mid) const {
+ssize_t ClientHandler::mlineIndexForMid(int32_t mid) const {
     switch (mid) {
         case 0:
             return 0;
@@ -379,7 +332,7 @@ ssize_t MyWebSocketHandler::mlineIndexForMid(int32_t mid) const {
     }
 }
 
-bool MyWebSocketHandler::getCandidate(int32_t mid) {
+bool ClientHandler::GatherAndSendCandidate(int32_t mid) {
     auto mlineIndex = mlineIndexForMid(mid);
 
     if (mlineIndex < 0) {
@@ -424,15 +377,18 @@ bool MyWebSocketHandler::getCandidate(int32_t mid) {
                 trackMask,
                 session);
 
-        rtp->run();
-
         mRTPs.push_back(rtp);
+        rtp->OnParticipantDisconnected([this]{
+          mRunLoop->post(makeSafeCallback<ClientHandler>(
+            this,
+            [](ClientHandler *me) {
+                me->on_connection_closed_cb_();
+            }));
+        });
+        rtp->run();
     }
 
     auto rtp = mRTPs.back();
-
-    Json::Value reply;
-    reply["type"] = "ice-candidate";
 
     auto localIPString = rtp->getLocalIPString();
 
@@ -454,17 +410,17 @@ bool MyWebSocketHandler::getCandidate(int32_t mid) {
 
     ss << "generation 0 ufrag " << rtp->getLocalUFrag();
 
+    Json::Value reply;
+    reply["type"] = "ice-candidate";
+    reply["mid"] = mid;
+    reply["mLineIndex"] = static_cast<Json::UInt64>(mlineIndex);
     reply["candidate"] = ss.str();
-    reply["mlineIndex"] = static_cast<Json::UInt64>(mlineIndex);
 
-    Json::FastWriter json_writer;
-    auto replyAsString = json_writer.write(reply);
-    sendMessage(replyAsString.c_str(), replyAsString.size());
-
+    sendToClient_(reply);
     return true;
 }
 
-std::optional<std::string> MyWebSocketHandler::getSDPValue(
+std::optional<std::string> ClientHandler::getSDPValue(
         ssize_t targetMediaIndex,
         std::string_view key,
         bool fallthroughToGeneralSection) const {
@@ -517,21 +473,21 @@ std::optional<std::string> MyWebSocketHandler::getSDPValue(
     return (*it).substr(prefix.size());
 }
 
-std::string MyWebSocketHandler::getRemotePassword(size_t mlineIndex) const {
+std::string ClientHandler::getRemotePassword(size_t mlineIndex) const {
     auto value = getSDPValue(
             mlineIndex, "ice-pwd", true /* fallthroughToGeneralSection */);
 
     return value ? *value : std::string();
 }
 
-std::string MyWebSocketHandler::getRemoteUFrag(size_t mlineIndex) const {
+std::string ClientHandler::getRemoteUFrag(size_t mlineIndex) const {
     auto value = getSDPValue(
             mlineIndex, "ice-ufrag", true /* fallthroughToGeneralSection */);
 
     return value ? *value : std::string();
 }
 
-std::string MyWebSocketHandler::getRemoteFingerprint(size_t mlineIndex) const {
+std::string ClientHandler::getRemoteFingerprint(size_t mlineIndex) const {
     auto value = getSDPValue(
             mlineIndex, "fingerprint", true /* fallthroughToGeneralSection */);
 
@@ -540,7 +496,7 @@ std::string MyWebSocketHandler::getRemoteFingerprint(size_t mlineIndex) const {
 
 // static
 std::pair<std::shared_ptr<X509>, std::shared_ptr<EVP_PKEY>>
-MyWebSocketHandler::CreateDTLSCertificateAndKey() {
+ClientHandler::CreateDTLSCertificateAndKey() {
     // Modeled after "https://stackoverflow.com/questions/256405/
     // programmatically-create-x509-certificate-using-openssl".
 
@@ -595,7 +551,7 @@ MyWebSocketHandler::CreateDTLSCertificateAndKey() {
     return std::make_pair(x509, pkey);
 }
 
-void MyWebSocketHandler::parseOptions(const Json::Value& options) {
+void ClientHandler::parseOptions(const Json::Value& options) {
     if (options.isMember("disable_audio") && options["disable_audio"].isBool()) {
         auto mask = OptionBits::disableAudio;
         mOptions = (mOptions & ~mask) | (options["disable_audio"].asBool() ? mask : 0);
@@ -615,7 +571,7 @@ void MyWebSocketHandler::parseOptions(const Json::Value& options) {
 }
 
 // static
-void MyWebSocketHandler::CreateRandomIceCharSequence(char *dst, size_t size) {
+void ClientHandler::CreateRandomIceCharSequence(char *dst, size_t size) {
     // Per RFC 5245 an ice-char is alphanumeric, '+' or '/', i.e. 64 distinct
     // character values (6 bit).
 
@@ -640,7 +596,7 @@ void MyWebSocketHandler::CreateRandomIceCharSequence(char *dst, size_t size) {
 }
 
 std::pair<std::string, std::string>
-MyWebSocketHandler::createUniqueUFragAndPassword() {
+ClientHandler::createUniqueUFragAndPassword() {
     // RFC 5245, section 15.4 mandates that uFrag is at least 4 and password
     // at least 22 ice-chars long.
 
@@ -671,7 +627,7 @@ MyWebSocketHandler::createUniqueUFragAndPassword() {
             std::string(passwordChars, sizeof(passwordChars)));
 }
 
-void MyWebSocketHandler::prepareSessions() {
+void ClientHandler::prepareSessions() {
     size_t numSessions =
         (mOptions & OptionBits::bundleTracks) ? 1 : countTracks();
 
@@ -688,7 +644,7 @@ void MyWebSocketHandler::prepareSessions() {
     }
 }
 
-void MyWebSocketHandler::emitTrackIceOptionsAndFingerprint(
+void ClientHandler::emitTrackIceOptionsAndFingerprint(
         std::stringstream &ss, size_t mlineIndex) const {
     CHECK_LT(mlineIndex, mSessions.size());
     const auto &session = mSessions[mlineIndex];
