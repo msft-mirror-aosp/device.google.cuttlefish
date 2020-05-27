@@ -45,9 +45,6 @@ cvd_host_executables := \
     x86_64-linux-gnu/libandroid-emu-shared.so \
     x86_64-linux-gnu/libemugl_common.so \
     x86_64-linux-gnu/libOpenglRender.so \
-    x86_64-linux-gnu/libEGL_translator.so \
-    x86_64-linux-gnu/libGLES_CM_translator.so \
-    x86_64-linux-gnu/libGLES_V2_translator.so \
     x86_64-linux-gnu/libgfxstream_backend.so \
     logcat_receiver \
     config_server \
@@ -57,6 +54,7 @@ cvd_host_executables := \
     run_cvd \
     cvd_status \
     webRTC \
+    webrtc_sig_server \
     metrics \
     fsck.f2fs \
     resize.f2fs \
@@ -64,7 +62,11 @@ cvd_host_executables := \
     tpm_simulator_manager \
     vtpm_passthrough \
     ms-tpm-20-ref \
-    lz4
+    lz4 \
+    mkenvimage \
+    tapsetiff \
+    newfs_msdos \
+    secure_env \
 
 cvd_host_tests := \
     monotonic_time_test \
@@ -97,6 +99,10 @@ cvd_host_shared_libraries := \
     libopus.so \
     libyuv.so \
     libjpeg.so \
+    libkeymaster_messages.so \
+    libkeymaster_portable.so \
+    libsoft_attestation_cert.so \
+    libcuttlefish_security.so \
 
 webrtc_assets := \
     index.html \

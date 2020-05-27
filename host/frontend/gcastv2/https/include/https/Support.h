@@ -19,6 +19,7 @@
 #include <sys/types.h>
 
 #include <string>
+#include <vector>
 
 #ifdef NDEBUG
 #define DEBUG_ONLY(x)
@@ -28,8 +29,6 @@
 
 void makeFdNonblocking(int fd);
 std::string hexdump(const void *_data, size_t size);
-
-void encodeBase64(const void *_data, size_t size, std::string *out);
 
 uint16_t U16_AT(const uint8_t *ptr);
 uint32_t U32_AT(const uint8_t *ptr);

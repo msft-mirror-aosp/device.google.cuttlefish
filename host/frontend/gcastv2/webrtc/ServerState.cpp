@@ -102,7 +102,8 @@ void ServerState::MonitorScreenConnector() {
 }
 
 std::shared_ptr<Packetizer> ServerState::getVideoPacketizer() {
-    auto packetizer = mVideoPacketizer.lock();
+    std::lock_guard<std::mutex> autoLock(mPacketizerLock);
+    std::shared_ptr<Packetizer> packetizer = mVideoPacketizer;
     if (!packetizer) {
         switch (mVideoFormat) {
             case VideoFormat::VP8:
@@ -125,7 +126,8 @@ std::shared_ptr<Packetizer> ServerState::getVideoPacketizer() {
 }
 
 std::shared_ptr<Packetizer> ServerState::getAudioPacketizer() {
-    auto packetizer = mAudioPacketizer.lock();
+    std::lock_guard<std::mutex> autoLock(mPacketizerLock);
+    std::shared_ptr packetizer = mAudioPacketizer;
     if (!packetizer) {
         packetizer = std::make_shared<OpusPacketizer>(mRunLoop, mAudioSource);
         packetizer->run();
@@ -134,19 +136,6 @@ std::shared_ptr<Packetizer> ServerState::getAudioPacketizer() {
     }
 
     return packetizer;
-}
-
-size_t ServerState::acquireHandlerId() {
-    size_t id = 0;
-    while (!mAllocatedHandlerIds.insert(id).second) {
-        ++id;
-    }
-
-    return id;
-}
-
-void ServerState::releaseHandlerId(size_t id) {
-    CHECK_EQ(mAllocatedHandlerIds.erase(id), 1);
 }
 
 std::shared_ptr<android::TouchSink> ServerState::getTouchSink() {

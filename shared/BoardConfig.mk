@@ -20,13 +20,6 @@
 
 include build/make/target/board/BoardConfigMainlineCommon.mk
 
-# Reset CF unsupported settings
-TARGET_NO_RECOVERY := false
-BOARD_USES_SYSTEM_OTHER_ODEX :=
-WITH_DEXPREOPT := true
-BOARD_AVB_ENABLE := false
-
-
 TARGET_BOOTLOADER_BOARD_NAME := cutf
 
 # Boot partition size: 32M
@@ -34,6 +27,7 @@ TARGET_BOOTLOADER_BOARD_NAME := cutf
 # will not change (as is it not a filesystem.)
 BOARD_BOOTIMAGE_PARTITION_SIZE := 67108864
 BOARD_RECOVERYIMAGE_PARTITION_SIZE := 67108864
+BOARD_VENDOR_BOOTIMAGE_PARTITION_SIZE := 67108864
 
 # Build a separate vendor.img partition
 BOARD_USES_VENDORIMAGE := true
@@ -55,6 +49,16 @@ BOARD_USES_ODMIMAGE := true
 BOARD_ODMIMAGE_FILE_SYSTEM_TYPE := ext4
 TARGET_COPY_OUT_ODM := odm
 
+# FIXME: Remove this once we generate the vbmeta digest correctly
+BOARD_AVB_MAKE_VBMETA_IMAGE_ARGS += --flag 2
+
+# Enable chained vbmeta for system image mixing
+BOARD_AVB_VBMETA_SYSTEM := product system system_ext
+BOARD_AVB_VBMETA_SYSTEM_KEY_PATH := external/avb/test/data/testkey_rsa2048.pem
+BOARD_AVB_VBMETA_SYSTEM_ALGORITHM := SHA256_RSA2048
+BOARD_AVB_VBMETA_SYSTEM_ROLLBACK_INDEX := $(PLATFORM_SECURITY_PATCH_TIMESTAMP)
+BOARD_AVB_VBMETA_SYSTEM_ROLLBACK_INDEX_LOCATION := 1
+
 BOARD_USES_GENERIC_AUDIO := false
 USE_CAMERA_STUB := true
 TARGET_USERIMAGES_SPARSE_EXT_DISABLED := true
@@ -74,9 +78,6 @@ TARGET_USERIMAGES_USE_F2FS := true
 # Cache partition size: 64M
 BOARD_CACHEIMAGE_PARTITION_SIZE := 67108864
 BOARD_CACHEIMAGE_FILE_SYSTEM_TYPE := ext4
-
-# Use ext4 block sharing on read-only partitions
-BOARD_EXT4_SHARE_DUP_BLOCKS := true
 
 BOARD_GPU_DRIVERS := virgl
 
@@ -107,9 +108,15 @@ WIFI_DRIVER_FW_PATH_PARAM   := "/dev/null"
 WIFI_DRIVER_FW_PATH_STA     := "/dev/null"
 WIFI_DRIVER_FW_PATH_AP      := "/dev/null"
 
-BOARD_SEPOLICY_DIRS += device/google/cuttlefish/shared/sepolicy/vendor
-BOARD_SEPOLICY_DIRS += device/google/cuttlefish/shared/sepolicy/vendor/google
-PRODUCT_PRIVATE_SEPOLICY_DIRS := device/google/cuttlefish/shared/sepolicy/private
+# vendor sepolicy
+BOARD_VENDOR_SEPOLICY_DIRS += device/google/cuttlefish/shared/sepolicy/vendor
+BOARD_VENDOR_SEPOLICY_DIRS += device/google/cuttlefish/shared/sepolicy/vendor/google
+# product sepolicy, allow other layers to append
+PRODUCT_PRIVATE_SEPOLICY_DIRS += device/google/cuttlefish/shared/sepolicy/product/private
+# PRODUCT_PUBLIC_SEPOLICY_DIRS += device/google/cuttlefish/shared/sepolicy/product/public
+# system_ext sepolicy
+# BOARD_PLAT_PRIVATE_SEPOLICY_DIR += device/google/cuttlefish/shared/sepolicy/system_ext/private
+# BOARD_PLAT_PUBLIC_SEPOLICY_DIR := device/google/cuttlefish/shared/sepolicy/system_ext/public
 
 VSOC_STLPORT_INCLUDES :=
 VSOC_STLPORT_LIBS :=
@@ -144,7 +151,7 @@ DHCPCD_USE_SCRIPT := yes
 
 
 TARGET_RECOVERY_PIXEL_FORMAT := ABGR_8888
-
+TARGET_RECOVERY_UI_LIB := librecovery_ui_cuttlefish
 TARGET_RECOVERY_FSTAB ?= device/google/cuttlefish/shared/config/fstab
 
 BOARD_SUPER_PARTITION_SIZE := 6442450944
@@ -169,5 +176,8 @@ BOARD_INCLUDE_DTB_IN_BOOTIMG := true
 BOARD_BOOT_HEADER_VERSION := 3
 BOARD_USES_RECOVERY_AS_BOOT := true
 BOARD_MKBOOTIMG_ARGS += --header_version $(BOARD_BOOT_HEADER_VERSION)
-PRODUCT_COPY_FILES += device/google/cuttlefish/dtb.img:dtb.img
+PRODUCT_COPY_FILES += \
+    device/google/cuttlefish/dtb.img:dtb.img \
+    device/google/cuttlefish/required_images:required_images \
+
 BOARD_BUILD_SYSTEM_ROOT_IMAGE := false

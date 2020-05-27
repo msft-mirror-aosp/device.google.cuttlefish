@@ -282,11 +282,36 @@ class CuttlefishConfig {
   void set_extra_kernel_cmdline(std::string extra_cmdline);
   std::vector<std::string> extra_kernel_cmdline() const;
 
+  // A directory containing the SSL certificates for the signaling server
   void set_webrtc_certs_dir(const std::string& certs_dir);
   std::string webrtc_certs_dir() const;
 
-  void set_dialog_certs_dir(const std::string& certs_dir);
-  std::string dialog_certs_dir() const;
+  // The path to the webrtc signaling server binary
+  void set_sig_server_binary(const std::string& sig_server_binary);
+  std::string sig_server_binary() const;
+
+  // The port for the webrtc signaling server. It's used by the signaling server
+  // to bind to it and by the webrtc process to connect to and register itself
+  void set_sig_server_port(int port);
+  int sig_server_port() const;
+
+  // The address of the signaling server
+  void set_sig_server_address(const std::string& addr);
+  std::string sig_server_address() const;
+
+  // The path section of the url where the webrtc process registers itself with
+  // the signaling server
+  void set_sig_server_path(const std::string& path);
+  std::string sig_server_path() const;
+
+  // Whether the webrtc process should attempt to verify the authenticity of the
+  // signaling server (reject self signed certificates)
+  void set_sig_server_strict(bool strict);
+  bool sig_server_strict() const;
+
+  // The dns address of mobile network (RIL)
+  void set_ril_dns(const std::string& ril_dns);
+  std::string ril_dns() const;
 
   class InstanceSpecific;
   class MutableInstanceSpecific;
@@ -336,6 +361,8 @@ class CuttlefishConfig {
     int host_port() const;
     // Port number to connect to the tpm server on the host
     int tpm_port() const;
+    // Port number to connect to the keymaster server on the host
+    int keymaster_vsock_port() const;
     std::string adb_ip_and_port() const;
     std::string adb_device_name() const;
     std::string device_title() const;
@@ -372,6 +399,15 @@ class CuttlefishConfig {
     std::string launcher_log_path() const;
 
     std::string launcher_monitor_socket_path() const;
+
+    std::string sdcard_path() const;
+
+    // The device id the webrtc process should use to register with the
+    // signaling server
+    std::string webrtc_device_id() const;
+
+    // Whether this instance should start the webrtc signaling server
+    bool start_webrtc_sig_server() const;
   };
 
   // A view into an existing CuttlefishConfig object for a particular instance.
@@ -393,6 +429,7 @@ class CuttlefishConfig {
     void set_frames_server_port(int config_server_port);
     void set_touch_server_port(int config_server_port);
     void set_keyboard_server_port(int config_server_port);
+    void set_keymaster_vsock_port(int keymaster_vsock_port);
     void set_host_port(int host_port);
     void set_tpm_port(int tpm_port);
     void set_adb_ip_and_port(const std::string& ip_port);
@@ -404,6 +441,8 @@ class CuttlefishConfig {
     void set_uuid(const std::string& uuid);
     void set_instance_dir(const std::string& instance_dir);
     void set_virtual_disk_paths(const std::vector<std::string>& disk_paths);
+    void set_webrtc_device_id(const std::string& id);
+    void set_start_webrtc_signaling_server(bool start);
   };
 
  private:
@@ -430,7 +469,6 @@ std::string GetGlobalConfigFileLink();
 std::string ForCurrentInstance(const char* prefix);
 int ForCurrentInstance(int base);
 
-std::string GetDefaultPerInstanceDir();
 std::string GetDefaultMempath();
 int GetDefaultPerInstanceVsockCid();
 

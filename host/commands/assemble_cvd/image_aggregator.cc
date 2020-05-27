@@ -40,30 +40,13 @@
 #include "common/libs/fs/shared_fd.h"
 #include "common/libs/utils/files.h"
 #include "common/libs/utils/subprocess.h"
+#include "host/commands/assemble_cvd/mbr.h"
 #include "host/libs/config/cuttlefish_config.h"
 #include "device/google/cuttlefish/host/commands/assemble_cvd/cdisk_spec.pb.h"
 
 namespace {
 
-constexpr int SECTOR_SIZE = 512;
 constexpr int GPT_NUM_PARTITIONS = 128;
-
-struct __attribute__((packed)) MbrPartitionEntry {
-  std::uint8_t status;
-  std::uint8_t begin_chs[3];
-  std::uint8_t partition_type;
-  std::uint8_t end_chs[3];
-  std::uint32_t first_lba;
-  std::uint32_t num_sectors;
-};
-
-struct __attribute__((packed)) MasterBootRecord {
-  std::uint8_t bootstrap_code[446];
-  MbrPartitionEntry partitions[4];
-  std::uint8_t boot_signature[2];
-};
-
-static_assert(sizeof(MasterBootRecord) == SECTOR_SIZE);
 
 /**
  * Creates a "Protective" Master Boot Record Partition Table header. The GUID
@@ -195,6 +178,12 @@ public:
     next_disk_offset_ += size;
   }
 
+  std::uint64_t DiskSize() const {
+    std::uint64_t align = 1 << 16; // 64k alignment
+    std::uint64_t val = next_disk_offset_ + sizeof(GptEnd);
+    return ((val + (align - 1)) / align) * align;
+  }
+
   /**
    * Generates a composite disk specification file, assuming that `header_file`
    * and `footer_file` will be populated with the contents of `Beginning()` and
@@ -204,7 +193,7 @@ public:
                                       const std::string& footer_file) const {
     CompositeDisk disk;
     disk.set_version(1);
-    disk.set_length(next_disk_offset_ + sizeof(GptEnd));
+    disk.set_length(DiskSize());
 
     ComponentDisk* header = disk.add_component_disks();
     header->set_file_path(header_file);
@@ -237,13 +226,13 @@ public:
       return {};
     }
     GptBeginning gpt = {
-      .protective_mbr = ProtectiveMbr(next_disk_offset_ + sizeof(GptEnd)),
+      .protective_mbr = ProtectiveMbr(DiskSize()),
       .header = {
         .signature = {'E', 'F', 'I', ' ', 'P', 'A', 'R', 'T'},
         .revision = {0, 0, 1, 0},
         .header_size = sizeof(GptHeader),
         .current_lba = 1,
-        .backup_lba = (next_disk_offset_ + sizeof(GptEnd)) / SECTOR_SIZE,
+        .backup_lba = (next_disk_offset_ + sizeof(GptEnd)) / SECTOR_SIZE - 1,
         .first_usable_lba = sizeof(GptBeginning) / SECTOR_SIZE,
         .last_usable_lba = (next_disk_offset_ - SECTOR_SIZE) / SECTOR_SIZE,
         .partition_entries_lba = 2,
@@ -306,9 +295,10 @@ bool WriteBeginning(cvd::SharedFD out, const GptBeginning& beginning) {
   return true;
 }
 
-bool WriteEnd(cvd::SharedFD out, const GptEnd& end) {
-  std::string begin_str((const char*) &end, sizeof(GptEnd));
-  if (cvd::WriteAll(out, begin_str) != begin_str.size()) {
+bool WriteEnd(cvd::SharedFD out, const GptEnd& end, std::int64_t padding) {
+  std::string end_str((const char*) &end, sizeof(GptEnd));
+  end_str.resize(end_str.size() + padding, '\0');
+  if (cvd::WriteAll(out, end_str) != end_str.size()) {
     LOG(ERROR) << "Could not write GPT end: " << out->StrError();
     return false;
   }
@@ -386,7 +376,9 @@ void AggregateImage(const std::vector<ImagePartition>& partitions,
                  << "\" to \"" << output_path << "\": " << output->StrError();
     }
   }
-  if (!WriteEnd(output, builder.End(beginning))) {
+  std::uint64_t padding =
+      builder.DiskSize() - ((beginning.header.backup_lba + 1) * SECTOR_SIZE);
+  if (!WriteEnd(output, builder.End(beginning), padding)) {
     LOG(FATAL) << "Could not write GPT end to \"" << output_path
                << "\": " << output->StrError();
   }
@@ -407,7 +399,9 @@ void CreateCompositeDisk(std::vector<ImagePartition> partitions,
                << "\": " << header->StrError();
   }
   auto footer = cvd::SharedFD::Creat(footer_file, 0600);
-  if (!WriteEnd(footer, builder.End(beginning))) {
+  std::uint64_t padding =
+      builder.DiskSize() - ((beginning.header.backup_lba + 1) * SECTOR_SIZE);
+  if (!WriteEnd(footer, builder.End(beginning), padding)) {
     LOG(FATAL) << "Could not write GPT end to \"" << footer_file
                << "\": " << footer->StrError();
   }

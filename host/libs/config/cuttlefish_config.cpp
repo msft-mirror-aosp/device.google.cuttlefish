@@ -153,6 +153,13 @@ const char* kTombstoneReceiverBinary = "tombstone_receiver_binary";
 const char* kTombstoneReceiverPort = "tombstone_receiver_port";
 
 const char* kWebRTCCertsDir = "webrtc_certs_dir";
+const char* kSigServerBinary = "webrtc_sig_server_binary";
+const char* kSigServerPort = "webrtc_sig_server_port";
+const char* kSigServerAddress = "webrtc_sig_server_addr";
+const char* kSigServerPath = "webrtc_sig_server_path";
+const char* kSigServerStrict = "webrtc_sig_server_strict";
+const char* kWebrtcDeviceId = "webrtc_device_id";
+const char* kStartSigServer = "webrtc_start_sig_server";
 
 const char* kBootloader = "bootloader";
 const char* kUseBootloader = "use_bootloader";
@@ -172,6 +179,9 @@ const char* kExtraKernelCmdline = "extra_kernel_cmdline";
 const char* kFramesServerPort = "frames_server_port";
 const char* kTouchServerPort = "touch_server_port";
 const char* kKeyboardServerPort = "keyboard_server_port";
+
+const char* kRilDns = "ril_dns";
+const char* kKeymasterVsockPort = "keymaster_vsock_port";
 }  // namespace
 
 namespace vsoc {
@@ -408,6 +418,10 @@ std::string CuttlefishConfig::InstanceSpecific::launcher_log_path() const {
   return cvd::AbsolutePath(PerInstancePath("launcher.log"));
 }
 
+std::string CuttlefishConfig::InstanceSpecific::sdcard_path() const {
+  return cvd::AbsolutePath(PerInstancePath("sdcard.img"));
+}
+
 std::string CuttlefishConfig::InstanceSpecific::mobile_bridge_name() const {
   return (*Dictionary())[kMobileBridgeName].asString();
 }
@@ -633,6 +647,14 @@ void CuttlefishConfig::MutableInstanceSpecific::set_keyboard_server_port(int key
   (*Dictionary())[kKeyboardServerPort] = keyboard_server_port;
 }
 
+int CuttlefishConfig::InstanceSpecific::keymaster_vsock_port() const {
+  return (*Dictionary())[kKeymasterVsockPort].asInt();
+}
+
+void CuttlefishConfig::MutableInstanceSpecific::set_keymaster_vsock_port(int keymaster_vsock_port) {
+  (*Dictionary())[kKeymasterVsockPort] = keymaster_vsock_port;
+}
+
 int CuttlefishConfig::InstanceSpecific::tombstone_receiver_port() const {
   return (*Dictionary())[kTombstoneReceiverPort].asInt();
 }
@@ -856,6 +878,64 @@ std::string CuttlefishConfig::webrtc_certs_dir() const {
   return (*dictionary_)[kWebRTCCertsDir].asString();
 }
 
+void CuttlefishConfig::set_sig_server_binary(const std::string& binary) {
+  SetPath(kSigServerBinary, binary);
+}
+
+std::string CuttlefishConfig::sig_server_binary() const {
+  return (*dictionary_)[kSigServerBinary].asString();
+}
+
+void CuttlefishConfig::set_sig_server_port(int port) {
+  (*dictionary_)[kSigServerPort] = port;
+}
+
+int CuttlefishConfig::sig_server_port() const {
+  return (*dictionary_)[kSigServerPort].asInt();
+}
+
+void CuttlefishConfig::set_sig_server_address(const std::string& addr) {
+  (*dictionary_)[kSigServerAddress] = addr;
+}
+
+std::string CuttlefishConfig::sig_server_address() const {
+  return (*dictionary_)[kSigServerAddress].asString();
+}
+
+void CuttlefishConfig::set_sig_server_path(const std::string& path) {
+  // Don't use SetPath here, it's a URL path not a file system path
+  (*dictionary_)[kSigServerPath] = path;
+}
+
+std::string CuttlefishConfig::sig_server_path() const {
+  return (*dictionary_)[kSigServerPath].asString();
+}
+
+void CuttlefishConfig::set_sig_server_strict(bool strict) {
+  (*dictionary_)[kSigServerStrict] = strict;
+}
+
+bool CuttlefishConfig::sig_server_strict() const {
+  return (*dictionary_)[kSigServerStrict].asBool();
+}
+
+void CuttlefishConfig::MutableInstanceSpecific::set_webrtc_device_id(
+    const std::string& id) {
+  (*Dictionary())[kWebrtcDeviceId] = id;
+}
+
+std::string CuttlefishConfig::InstanceSpecific::webrtc_device_id() const {
+  return (*Dictionary())[kWebrtcDeviceId].asString();
+}
+
+void CuttlefishConfig::MutableInstanceSpecific::set_start_webrtc_signaling_server(bool start) {
+  (*Dictionary())[kStartSigServer] = start;
+}
+
+bool CuttlefishConfig::InstanceSpecific::start_webrtc_sig_server() const {
+  return (*Dictionary())[kStartSigServer].asBool();
+}
+
 std::string CuttlefishConfig::InstanceSpecific::touch_socket_path() const {
   return PerInstanceInternalPath("touch.sock");
 }
@@ -952,6 +1032,13 @@ std::vector<std::string> CuttlefishConfig::extra_kernel_cmdline() const {
     cmdline.push_back(arg.asString());
   }
   return cmdline;
+}
+
+void CuttlefishConfig::set_ril_dns(const std::string& ril_dns) {
+  (*dictionary_)[kRilDns] = ril_dns;
+}
+std::string CuttlefishConfig::ril_dns()const {
+  return (*dictionary_)[kRilDns].asString();
 }
 
 // Creates the (initially empty) config object and populates it with values from
@@ -1081,12 +1168,6 @@ std::string ForCurrentInstance(const char* prefix) {
 }
 int ForCurrentInstance(int base) { return base + GetInstance() - 1; }
 
-std::string GetDefaultPerInstanceDir() {
-  std::ostringstream stream;
-  stream << std::getenv("HOME") << "/cuttlefish_runtime";
-  return stream.str();
-}
-
 int GetDefaultPerInstanceVsockCid() {
   constexpr int kFirstGuestCid = 3;
   return vsoc::HostSupportsVsock() ? ForCurrentInstance(kFirstGuestCid) : 0;
@@ -1101,8 +1182,7 @@ std::string DefaultHostArtifactsPath(const std::string& file_name) {
 
 std::string DefaultGuestImagePath(const std::string& file_name) {
   return (cvd::StringFromEnv("ANDROID_PRODUCT_OUT",
-                             cvd::StringFromEnv("HOME", ".")) +
-          "/") +
+                             cvd::StringFromEnv("HOME", "."))) +
          file_name;
 }
 
