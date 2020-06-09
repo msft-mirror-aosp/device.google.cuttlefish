@@ -223,7 +223,7 @@ void LaunchTombstoneReceiverIfEnabled(const cuttlefish::CuttlefishConfig& config
 
   std::string tombstoneDir = instance.PerInstancePath("tombstones");
   if (!cuttlefish::DirectoryExists(tombstoneDir.c_str())) {
-    LOG(INFO) << "Setting up " << tombstoneDir;
+    LOG(DEBUG) << "Setting up " << tombstoneDir;
     if (mkdir(tombstoneDir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) <
         0) {
       LOG(ERROR) << "Failed to create tombstone directory: " << tombstoneDir

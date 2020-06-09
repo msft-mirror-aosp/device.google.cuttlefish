@@ -127,7 +127,7 @@ int main(int argc, char** argv) {
     LOG(ERROR) << "assemble_cvd returned " << assemble_ret;
     return assemble_ret;
   } else {
-    LOG(INFO) << "assemble_cvd exited successfully.";
+    LOG(DEBUG) << "assemble_cvd exited successfully.";
   }
 
   std::vector<cuttlefish::Subprocess> runners;
@@ -154,7 +154,7 @@ int main(int argc, char** argv) {
       run_cvd_failure = true;
       LOG(ERROR) << "run_cvd returned " << run_ret;
     } else {
-      LOG(INFO) << "run_cvd exited successfully.";
+      LOG(DEBUG) << "run_cvd exited successfully.";
     }
   }
   return run_cvd_failure ? -1 : 0;

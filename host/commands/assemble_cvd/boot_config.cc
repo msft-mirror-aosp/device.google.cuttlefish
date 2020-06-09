@@ -87,7 +87,7 @@ bool InitBootloaderEnvPartition(const cuttlefish::CuttlefishConfig& config,
       LOG(ERROR) << "Unable to delete the old env image.";
       return false;
     }
-    LOG(INFO) << "Updated bootloader environment image.";
+    LOG(DEBUG) << "Updated bootloader environment image.";
   } else {
     cuttlefish::RemoveFile(tmp_boot_env_image_path);
   }

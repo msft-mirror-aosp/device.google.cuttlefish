@@ -51,7 +51,7 @@ int InstanceFromEnvironment() {
     if (!instance_str || std::strncmp(instance_str, cuttlefish::kVsocUserPrefix,
                                       sizeof(cuttlefish::kVsocUserPrefix) - 1)) {
       // No user or we don't recognize this user
-      LOG(WARNING) << "No user or non-vsoc user, returning default config";
+      LOG(DEBUG) << "No user or non-vsoc user, returning default config";
       return kDefaultInstance;
     }
     instance_str += sizeof(cuttlefish::kVsocUserPrefix) - 1;
