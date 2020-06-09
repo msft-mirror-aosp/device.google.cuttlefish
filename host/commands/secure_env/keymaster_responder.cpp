@@ -87,6 +87,7 @@ bool KeymasterResponder::ProcessMessage() {
     }
     HANDLE_MESSAGE(GET_HMAC_SHARING_PARAMETERS, GetHmacSharingParameters)
     HANDLE_MESSAGE(EARLY_BOOT_ENDED, EarlyBootEnded)
+#undef HANDLE_MESSAGE
     case ADD_RNG_ENTROPY: {
       AddEntropyRequest request;
       if (!request.Deserialize(&buffer, end)) {
