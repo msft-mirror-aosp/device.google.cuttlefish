@@ -22,4 +22,3 @@ PRODUCT_NAME := aosp_cf_arm64_auto
 PRODUCT_DEVICE := vsoc_arm64
 PRODUCT_MANUFACTURER := Google
 PRODUCT_MODEL := Cuttlefish arm64 auto
-DEVICE_PACKAGE_OVERLAYS += device/google/cuttlefish/vsoc_arm64/auto/overlay

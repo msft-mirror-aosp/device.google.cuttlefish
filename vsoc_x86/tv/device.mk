@@ -21,4 +21,3 @@ PRODUCT_NAME := aosp_cf_x86_tv
 PRODUCT_DEVICE := vsoc_x86
 PRODUCT_MANUFACTURER := Google
 PRODUCT_MODEL := Cuttlefish x86 tv
-# PRODUCT_PACKAGE_OVERLAYS := device/google/cuttlefish/vsoc_x86/tv/overlay
