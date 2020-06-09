@@ -41,7 +41,7 @@ $(call inherit-product, device/google/cuttlefish/shared/phone/device_vendor.mk)
 #
 # Special settings for the target
 #
-$(call inherit-product, device/google/cuttlefish/vsoc_x86_64/device.mk)
+$(call inherit-product, device/google/cuttlefish/vsoc_x86_64/kernel.mk)
 
 
 # Exclude features that are not available on AOSP devices.
