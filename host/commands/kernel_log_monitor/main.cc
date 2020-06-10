@@ -25,11 +25,12 @@
 #include <gflags/gflags.h>
 #include <json/json.h>
 
+#include "host/commands/kernel_log_monitor/kernel_log_server.h"
+#include "host/commands/kernel_log_monitor/utils.h"
 #include <common/libs/fs/shared_fd.h>
 #include <common/libs/fs/shared_select.h>
 #include <host/libs/config/cuttlefish_config.h>
-#include "host/commands/kernel_log_monitor/kernel_log_server.h"
-#include "host/commands/kernel_log_monitor/utils.h"
+#include <host/libs/config/logging.h>
 
 DEFINE_int32(log_pipe_fd, -1,
              "A file descriptor representing a (UNIX) socket from which to "
@@ -62,8 +63,14 @@ std::vector<cuttlefish::SharedFD> SubscribersFromCmdline() {
 }
 
 int main(int argc, char** argv) {
-  ::android::base::InitLogging(argv, android::base::StderrLogger);
+  cuttlefish::DefaultSubprocessLogging(argv);
   google::ParseCommandLineFlags(&argc, &argv, true);
+
+  auto config = cuttlefish::CuttlefishConfig::Get();
+
+  CHECK(config) << "Could not open cuttlefish config";
+
+  auto instance = config->ForDefaultInstance();
 
   auto subscriber_fds = SubscribersFromCmdline();
 
@@ -72,13 +79,6 @@ int main(int argc, char** argv) {
   }, old_action{};
   new_action.sa_handler = SIG_IGN;
   sigaction(SIGPIPE, &new_action, &old_action);
-
-  auto config = cuttlefish::CuttlefishConfig::Get();
-  if (!config) {
-    LOG(ERROR) << "Unable to get config object";
-    return 1;
-  }
-  auto instance = config->ForDefaultInstance();
 
   cuttlefish::SharedFD pipe;
   if (FLAGS_log_pipe_fd < 0) {

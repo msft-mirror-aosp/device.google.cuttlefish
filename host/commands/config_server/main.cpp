@@ -19,14 +19,15 @@
 #include <glog/logging.h>
 
 #include "common/libs/fs/shared_fd.h"
-#include "host/libs/config/cuttlefish_config.h"
+#include "common/libs/utils/tee_logging.h"
+#include "host/libs/config/logging.h"
 
 DEFINE_int32(
     server_fd, -1,
     "File descriptor to an already created vsock server. Must be specified.");
 
 int main(int argc, char** argv) {
-  ::android::base::InitLogging(argv, android::base::StderrLogger);
+  cuttlefish::DefaultSubprocessLogging(argv);
   google::ParseCommandLineFlags(&argc, &argv, true);
 
   auto device_config_helper = cuttlefish::DeviceConfigHelper::Get();

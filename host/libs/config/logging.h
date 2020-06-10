@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2018 The Android Open Source Project
+// Copyright (C) 2020 The Android Open Source Project
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,26 +13,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-cc_binary_host {
-    name: "adb_connector",
-    srcs: [
-        "adb_connection_maintainer.cpp",
-        "main.cpp"
-    ],
-    header_libs: [
-        "cuttlefish_glog",
-    ],
-    static_libs: [
-        "libcuttlefish_host_config",
-        "libgflags",
-    ],
-    shared_libs: [
-        "libbase",
-        "libcuttlefish_fs",
-        "libcuttlefish_kernel_log_monitor_utils",
-        "libjsoncpp",
-        "libcuttlefish_utils",
-        "liblog",
-    ],
-    defaults: ["cuttlefish_host_only"],
-}
+#pragma once
+
+namespace cuttlefish {
+
+void DefaultSubprocessLogging(char *argv[]);
+
+} // namespace cuttlefish

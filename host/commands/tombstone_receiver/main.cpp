@@ -23,6 +23,7 @@
 #include <sstream>
 
 #include "common/libs/fs/shared_fd.h"
+#include "host/libs/config/logging.h"
 
 DEFINE_int32(
     server_fd, -1,
@@ -55,7 +56,7 @@ static std::string next_tombstone_path() {
 
 #define CHUNK_RECV_MAX_LEN (1024)
 int main(int argc, char** argv) {
-  ::android::base::InitLogging(argv, android::base::StderrLogger);
+  cuttlefish::DefaultSubprocessLogging(argv);
   google::ParseCommandLineFlags(&argc, &argv, true);
 
   cuttlefish::SharedFD server_fd = cuttlefish::SharedFD::Dup(FLAGS_server_fd);

@@ -20,7 +20,6 @@
 
 #include "common/libs/fs/shared_buf.h"
 #include "common/libs/fs/shared_fd.h"
-#include "common/libs/fs/tee.h"
 #include "host/commands/assemble_cvd/assembler_defs.h"
 #include "host/commands/assemble_cvd/flags.h"
 #include "host/libs/config/fetcher_config.h"
@@ -46,6 +45,7 @@ cuttlefish::FetcherConfig FindFetcherConfig(const std::vector<std::string>& file
 } // namespace
 
 int main(int argc, char** argv) {
+  setenv("ANDROID_LOG_TAGS", "*:v", /* overwrite */ 0);
   ::android::base::InitLogging(argv, android::base::StderrLogger);
 
   if (isatty(0)) {
@@ -61,8 +61,6 @@ int main(int argc, char** argv) {
     }
   }
 
-  cuttlefish::TeeStderrToFile stderr_tee;
-
   std::string input_files_str;
   {
     auto input_fd = cuttlefish::SharedFD::Dup(0);
@@ -73,11 +71,8 @@ int main(int argc, char** argv) {
   }
   std::vector<std::string> input_files = android::base::Split(input_files_str, "\n");
 
-  auto config = InitFilesystemAndCreateConfig(&argc, &argv, FindFetcherConfig(input_files));
-  auto instance = config->ForDefaultInstance();
-
-  auto assembler_log_path = instance.PerInstancePath("assemble_cvd.log");
-  stderr_tee.SetFile(cuttlefish::SharedFD::Creat(assembler_log_path.c_str(), 0755));
+  auto config = InitFilesystemAndCreateConfig(&argc, &argv,
+                                              FindFetcherConfig(input_files));
 
   std::cout << GetConfigFilePath(*config) << "\n";
   std::cout << std::flush;
