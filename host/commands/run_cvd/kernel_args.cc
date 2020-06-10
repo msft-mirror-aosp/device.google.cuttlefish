@@ -142,6 +142,7 @@ std::vector<std::string> KernelCommandLineFromConfig(const vsoc::CuttlefishConfi
     kernel_cmdline.push_back("audit=0");
   }
 
+  kernel_cmdline.push_back("androidboot.verifiedbootstate=orange");
   kernel_cmdline.push_back("androidboot.vbmeta.hash_alg=sha256");
   kernel_cmdline.push_back(concat("androidboot.vbmeta.size=", CalculateVbmetaSize(config)));
   kernel_cmdline.push_back(concat("androidboot.vbmeta.digest=", CalculateVbmetaDigest(config)));
