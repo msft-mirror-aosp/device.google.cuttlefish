@@ -169,7 +169,7 @@ std::vector<cvd::Command> CrosvmManager::StartCommands() {
   if (!config_->final_ramdisk_path().empty()) {
     crosvm_cmd.AddParameter("--initrd=", config_->final_ramdisk_path());
   }
-  crosvm_cmd.AddParameter("--null-audio");
+  // crosvm_cmd.AddParameter("--null-audio");
   crosvm_cmd.AddParameter("--mem=", config_->memory_mb());
   crosvm_cmd.AddParameter("--cpus=", config_->cpus());
   crosvm_cmd.AddParameter("--params=", kernel_cmdline_);
@@ -187,9 +187,7 @@ std::vector<cvd::Command> CrosvmManager::StartCommands() {
   auto wifi_tap = AddTapFdParameter(&crosvm_cmd, instance.wifi_tap_name());
   AddTapFdParameter(&crosvm_cmd, instance.mobile_tap_name());
 
-  if (cvd::HostArch() == "x86_64") {
-    crosvm_cmd.AddParameter("--rw-pmem-device=", instance.access_kregistry_path());
-  }
+  crosvm_cmd.AddParameter("--rw-pmem-device=", instance.access_kregistry_path());
 
   if (config_->enable_sandbox()) {
     const bool seccomp_exists = cvd::DirectoryExists(config_->seccomp_policy_dir());

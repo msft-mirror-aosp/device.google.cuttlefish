@@ -72,6 +72,8 @@ int main(int argc, char** argv) {
   bool platform_server = false;
   bool sent_init = false;
 
+  cvd::SharedFD client; // Hold this connection open for the process lifetime.
+
   char* lineptr = nullptr;
   size_t size = 0;
   while (getline(&lineptr, &size, stdout_file.get()) >= 0) {
@@ -84,16 +86,19 @@ int main(int argc, char** argv) {
       platform_server = true;
     }
     if (command_server && platform_server && !sent_init) {
-      auto client = cvd::SharedFD::SocketLocalClient(FLAGS_port + 1, SOCK_STREAM);
-      std::vector<char> command_bytes(4, 0);
-      *reinterpret_cast<std::uint32_t*>(command_bytes.data()) = htobe32(1); // TPM_SIGNAL_POWER_ON
-      CHECK(cvd::WriteAll(client, command_bytes) == 4) << "Could not send TPM_SIGNAL_POWER_ON";
-      std::vector<char> response_bytes(4, 0);
-      CHECK(cvd::ReadExact(client, &response_bytes) == 4) << "Could not read parity response";
+      client = cvd::SharedFD::SocketLocalClient(FLAGS_port + 1, SOCK_STREAM);
+      std::uint32_t command = htobe32(1); // TPM_SIGNAL_POWER_ON
+      CHECK(cvd::WriteAllBinary(client, &command) == 4)
+          << "Could not send TPM_SIGNAL_POWER_ON";
+      std::uint32_t response;
+      CHECK(cvd::ReadExactBinary(client, &response) == 4)
+          << "Could not read parity response";
 
-      *reinterpret_cast<std::uint32_t*>(command_bytes.data()) = htobe32(11); // TPM_SIGNAL_NV_ON
-      CHECK(cvd::WriteAll(client, command_bytes) == 4) << "Could not send TPM_SIGNAL_NV_ON";
-      CHECK(cvd::ReadExact(client, &response_bytes) == 4) << "Could not read parity response";
+      command = htobe32(11); // TPM_SIGNAL_NV_ON
+      CHECK(cvd::WriteAllBinary(client, &command) == 4)
+          << "Could not send TPM_SIGNAL_NV_ON";
+      CHECK(cvd::ReadExactBinary(client, &response) == 4)
+          << "Could not read parity response";
 
       sent_init = true;
     }

@@ -50,18 +50,21 @@ struct ServerState {
 
     VideoFormat videoFormat() const { return mVideoFormat; }
 
-    size_t acquireHandlerId();
-    void releaseHandlerId(size_t id);
+    std::shared_ptr<RunLoop> run_loop() { return mRunLoop; }
+    std::string public_ip() const { return mPublicIp; }
+    void SetPublicIp(const std::string& public_ip) { mPublicIp = public_ip; }
 
-private:
+   private:
     using StreamingSource = android::StreamingSource;
 
     std::shared_ptr<RunLoop> mRunLoop;
 
     VideoFormat mVideoFormat;
 
-    std::weak_ptr<Packetizer> mVideoPacketizer;
-    std::weak_ptr<Packetizer> mAudioPacketizer;
+    std::mutex mPacketizerLock;
+
+    std::shared_ptr<Packetizer> mVideoPacketizer;
+    std::shared_ptr<Packetizer> mAudioPacketizer;
 
     std::shared_ptr<StreamingSource> mFrameBufferSource;
 
@@ -73,7 +76,7 @@ private:
     std::shared_ptr<TouchSink> mTouchSink;
     std::shared_ptr<KeyboardSink> mKeyboardSink;
 
-    std::set<size_t> mAllocatedHandlerIds;
+    std::string mPublicIp;
 
     void MonitorScreenConnector();
 };

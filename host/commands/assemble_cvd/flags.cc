@@ -7,6 +7,7 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <array>
 #include <iostream>
 #include <fstream>
 #include <set>
@@ -17,6 +18,7 @@
 
 #include "common/libs/utils/environment.h"
 #include "common/libs/utils/files.h"
+#include "host/commands/assemble_cvd/boot_config.h"
 #include "host/commands/assemble_cvd/boot_image_unpacker.h"
 #include "host/commands/assemble_cvd/data_image.h"
 #include "host/commands/assemble_cvd/image_aggregator.h"
@@ -27,6 +29,9 @@
 #include "host/libs/vm_manager/qemu_manager.h"
 #include "host/libs/vm_manager/vm_manager.h"
 
+// Taken from external/avb/libavb/avb_slot_verify.c; this define is not in the headers
+#define VBMETA_MAX_SIZE 65536ul
+
 using vsoc::ForCurrentInstance;
 using cvd::AssemblerExitCodes;
 
@@ -35,6 +40,8 @@ DEFINE_string(metadata_image, "", "Location of the metadata partition image "
               "to be generated.");
 DEFINE_int32(blank_metadata_image_mb, 16,
              "The size of the blank metadata image to generate, MB.");
+DEFINE_int32(blank_sdcard_image_mb, 2048,
+             "The size of the blank sdcard image to generate, MB.");
 DEFINE_int32(cpus, 2, "Virtual CPU count.");
 DEFINE_string(data_image, "", "Location of the data partition image.");
 DEFINE_string(data_policy, "use_existing", "How to handle userdata partition."
@@ -71,6 +78,12 @@ DEFINE_string(boot_image, "",
 DEFINE_string(vendor_boot_image, "",
               "Location of cuttlefish vendor boot image. If empty it is assumed to "
               "be vendor_boot.img in the directory specified by -system_image_dir.");
+DEFINE_string(vbmeta_image, "",
+              "Location of cuttlefish vbmeta image. If empty it is assumed to "
+              "be vbmeta.img in the directory specified by -system_image_dir.");
+DEFINE_string(vbmeta_system_image, "",
+              "Location of cuttlefish vbmeta_system image. If empty it is assumed to "
+              "be vbmeta_system.img in the directory specified by -system_image_dir.");
 DEFINE_int32(memory_mb, 2048,
              "Total amount of memory available for guest, MB.");
 DEFINE_string(serial_number, ForCurrentInstance("CUTTLEFISHCVD"),
@@ -94,6 +107,9 @@ DEFINE_string(super_image, "", "Location of the super partition image.");
 DEFINE_string(misc_image, "",
               "Location of the misc partition image. If the image does not "
               "exist, a blank new misc partition image is created.");
+DEFINE_string(boot_env_image, "",
+              "Location of the boot environment image. If the image does not "
+              "exist, a default boot environment image is created.");
 
 DEFINE_bool(deprecated_boot_completed, false, "Log boot completed message to"
             " host kernel. This is only used during transition of our clients."
@@ -129,7 +145,7 @@ DEFINE_string(seccomp_policy_dir,
               vsoc::DefaultHostArtifactsPath(kSeccompDir),
               "With sandbox'ed crosvm, overrieds the security comp policy directory");
 
-DEFINE_bool(start_webrtc, false, "[Experimental] Whether to start the webrtc process.");
+DEFINE_bool(start_webrtc, false, "Whether to start the webrtc process.");
 
 DEFINE_string(
         webrtc_assets_dir,
@@ -150,6 +166,35 @@ DEFINE_bool(
         webrtc_enable_adb_websocket,
         false,
         "[Experimental] If enabled, exposes local adb service through a websocket.");
+
+DEFINE_bool(
+    start_webrtc_sig_server, false,
+    "Whether to start the webrtc signaling server. This option only applies to "
+    "the first instance, if multiple instances are launched they'll share the "
+    "same signaling server, which is owned by the first one.");
+
+DEFINE_string(webrtc_sig_server_addr, "127.0.0.1",
+              "The address of the webrtc signaling server.");
+
+DEFINE_int32(
+    webrtc_sig_server_port, 443,
+    "The port of the signaling server if started outside of this launch. If "
+    "-start_webrtc_sig_server is given it will choose 8443+instance_num1-1 and "
+    "this parameter is ignored.");
+
+DEFINE_string(webrtc_sig_server_path, "/register_device",
+              "The path section of the URL where the device should be "
+              "registered with the signaling server.");
+
+DEFINE_bool(verify_sig_server_certificate, false,
+            "Whether to verify the signaling server's certificate with a "
+            "trusted signing authority (Disallow self signed certificates).");
+
+DEFINE_string(
+    webrtc_device_id, "cvd-{num}",
+    "The for the device to register with the signaling server. Every "
+    "appearance of the substring '{num}' in the device id will be substituted "
+    "with the instance number to support multiple instances");
 
 DEFINE_string(adb_mode, "vsock_half_tunnel",
               "Mode for ADB connection."
@@ -179,8 +224,7 @@ DEFINE_string(qemu_binary,
 DEFINE_string(crosvm_binary,
               vsoc::DefaultHostArtifactsPath("bin/crosvm"),
               "The Crosvm binary to use");
-DEFINE_string(tpm_binary,
-              vsoc::DefaultHostArtifactsPath("bin/ms-tpm-20-ref"),
+DEFINE_string(tpm_binary, "",
               "The TPM simulator to use. Disabled if empty.");
 DEFINE_string(tpm_device, "", "A host TPM device to pass through commands to.");
 DEFINE_bool(restart_subprocesses, true, "Restart any crashed host process");
@@ -202,6 +246,7 @@ DEFINE_bool(resume, true, "Resume using the disk from the last session, if "
                           "images have been updated since the first launch.");
 DEFINE_string(report_anonymous_usage_stats, "", "Report anonymous usage "
             "statistics for metrics collection and analysis.");
+DEFINE_string(ril_dns, "8.8.8.8", "DNS address of mobile network (RIL)");
 
 namespace {
 
@@ -239,6 +284,17 @@ bool ResolveInstanceFiles() {
                                         + "/vendor_boot.img";
   SetCommandLineOptionWithMode("vendor_boot_image",
                                default_vendor_boot_image.c_str(),
+                               google::FlagSettingMode::SET_FLAGS_DEFAULT);
+  std::string default_boot_env_image = FLAGS_system_image_dir + "/env.img";
+  SetCommandLineOptionWithMode("boot_env_image", default_boot_env_image.c_str(),
+                               google::FlagSettingMode::SET_FLAGS_DEFAULT);
+  std::string default_vbmeta_image = FLAGS_system_image_dir + "/vbmeta.img";
+  SetCommandLineOptionWithMode("vbmeta_image", default_vbmeta_image.c_str(),
+                               google::FlagSettingMode::SET_FLAGS_DEFAULT);
+  std::string default_vbmeta_system_image = FLAGS_system_image_dir
+                                          + "/vbmeta_system.img";
+  SetCommandLineOptionWithMode("vbmeta_system_image",
+                               default_vbmeta_system_image.c_str(),
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
 
   return true;
@@ -308,8 +364,9 @@ vsoc::CuttlefishConfig InitializeCuttlefishConfiguration(
         tmp_config_obj.AssemblyPath(kKernelDefaultPath.c_str()));
     tmp_config_obj.set_use_unpacked_kernel(true);
   }
+
   tmp_config_obj.set_decompress_kernel(FLAGS_decompress_kernel);
-  if (FLAGS_decompress_kernel) {
+  if (tmp_config_obj.decompress_kernel()) {
     tmp_config_obj.set_decompressed_kernel_image_path(
         tmp_config_obj.AssemblyPath("vmlinux"));
   }
@@ -375,6 +432,13 @@ vsoc::CuttlefishConfig InitializeCuttlefishConfiguration(
   tmp_config_obj.set_webrtc_assets_dir(FLAGS_webrtc_assets_dir);
   tmp_config_obj.set_webrtc_public_ip(FLAGS_webrtc_public_ip);
   tmp_config_obj.set_webrtc_certs_dir(FLAGS_webrtc_certs_dir);
+  tmp_config_obj.set_sig_server_binary(
+      vsoc::DefaultHostArtifactsPath("bin/webrtc_sig_server"));
+  // Note: This will be overridden if the sig server is started by us
+  tmp_config_obj.set_sig_server_port(FLAGS_webrtc_sig_server_port);
+  tmp_config_obj.set_sig_server_address(FLAGS_webrtc_sig_server_addr);
+  tmp_config_obj.set_sig_server_path(FLAGS_webrtc_sig_server_path);
+  tmp_config_obj.set_sig_server_strict(FLAGS_verify_sig_server_certificate);
 
   tmp_config_obj.set_webrtc_enable_adb_websocket(
           FLAGS_webrtc_enable_adb_websocket);
@@ -410,11 +474,14 @@ vsoc::CuttlefishConfig InitializeCuttlefishConfiguration(
 
   tmp_config_obj.set_cuttlefish_env_path(GetCuttlefishEnvPath());
 
+  tmp_config_obj.set_ril_dns(FLAGS_ril_dns);
+
   std::vector<int> instance_nums;
   for (int i = 0; i < FLAGS_num_instances; i++) {
     instance_nums.push_back(vsoc::GetInstance() + i);
   }
 
+  bool is_first_instance = true;
   for (const auto& num : instance_nums) {
     auto instance = tmp_config_obj.ForInstance(num);
     auto const_instance = const_cast<const vsoc::CuttlefishConfig&>(tmp_config_obj)
@@ -435,11 +502,60 @@ vsoc::CuttlefishConfig InitializeCuttlefishConfiguration(
     instance.set_vnc_server_port(6444 + num - 1);
     instance.set_host_port(6520 + num - 1);
     instance.set_adb_ip_and_port("127.0.0.1:" + std::to_string(6520 + num - 1));
-    instance.set_tpm_port(2321 + num - 1);
+    instance.set_tpm_port(2321 + (num * 2) - 2);
+    instance.set_tombstone_receiver_port(6600 + num - 1);
+    instance.set_logcat_port(6700 + num - 1);
+    instance.set_config_server_port(6800 + num - 1);
+
+    if (FLAGS_gpu_mode != vsoc::kGpuModeDrmVirgl &&
+        FLAGS_gpu_mode != vsoc::kGpuModeGfxStream) {
+      instance.set_frames_server_port(6900 + num - 1);
+    }
+
+    if (FLAGS_vm_manager == vm_manager::QemuManager::name()) {
+      instance.set_keyboard_server_port(7000 + num - 1);
+      instance.set_touch_server_port(7100 + num - 1);
+    }
+    instance.set_keymaster_vsock_port(7200 + num - 1);
 
     instance.set_device_title(FLAGS_device_title);
 
-    instance.set_virtual_disk_paths({const_instance.PerInstancePath("overlay.img")});
+    instance.set_virtual_disk_paths({
+      const_instance.PerInstancePath("overlay.img"),
+      const_instance.sdcard_path(),
+    });
+
+    std::array<unsigned char, 6> mac_address;
+    mac_address[0] = 1 << 6; // locally administered
+    // TODO(schuffelen): Randomize these and preserve the state.
+    for (int i = 1; i < 5; i++) {
+      mac_address[i] = i;
+    }
+    mac_address[5] = num;
+    instance.set_wifi_mac_address(mac_address);
+
+    instance.set_start_webrtc_signaling_server(false);
+
+    if (FLAGS_webrtc_device_id.empty()) {
+      // Use the instance's name as a default
+      instance.set_webrtc_device_id(const_instance.instance_name());
+    } else {
+      std::string device_id = FLAGS_webrtc_device_id;
+      size_t pos;
+      while ((pos = device_id.find("{num}")) != std::string::npos) {
+        device_id.replace(pos, strlen("{num}"), std::to_string(num));
+      }
+      instance.set_webrtc_device_id(device_id);
+    }
+    if (FLAGS_start_webrtc_sig_server && is_first_instance) {
+      auto port = 8443 + num - 1;
+      // Change the signaling server port for all instances
+      tmp_config_obj.set_sig_server_port(port);
+      instance.set_start_webrtc_signaling_server(true);
+    } else {
+      instance.set_start_webrtc_signaling_server(false);
+    }
+    is_first_instance = false;
   }
 
   return tmp_config_obj;
@@ -479,7 +595,7 @@ void SetDefaultFlagsForCrosvm() {
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
   // for now, we support only x86_64 by default
   bool default_enable_sandbox = false;
-  std::set<const std::string> supported_archs{std::string("x86_64"), std::string("aarch64")};
+  std::set<const std::string> supported_archs{std::string("x86_64")};
   if (supported_archs.find(cvd::HostArch()) != supported_archs.end()) {
     default_enable_sandbox =
         [](const std::string& var_empty) -> bool {
@@ -492,8 +608,25 @@ void SetDefaultFlagsForCrosvm() {
           return (::mkdir(var_empty.c_str(), 0755) == 0);
         }(vsoc::kCrosvmVarEmptyDir);
   }
+
+  // Sepolicy rules need to be updated to support gpu mode. Temporarily disable
+  // auto-enabling sandbox when gpu is enabled (b/152323505).
+  if (FLAGS_gpu_mode != vsoc::kGpuModeGuestSwiftshader) {
+    default_enable_sandbox = false;
+  }
+
   SetCommandLineOptionWithMode("enable_sandbox",
                                (default_enable_sandbox ? "true" : "false"),
+                               google::FlagSettingMode::SET_FLAGS_DEFAULT);
+
+  // Crosvm requires a specific setting for kernel decompression; it must be
+  // on for aarch64 and off for x86, no other mode is supported.
+  bool decompress_kernel = false;
+  if (cvd::HostArch() == "aarch64") {
+    decompress_kernel = true;
+  }
+  SetCommandLineOptionWithMode("decompress_kernel",
+                               (decompress_kernel ? "true" : "false"),
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
 }
 
@@ -516,6 +649,17 @@ bool ParseCommandLineFlags(int* argc, char*** argv) {
     SetCommandLineOptionWithMode("start_vnc_server", "true",
                                  google::FlagSettingMode::SET_FLAGS_DEFAULT);
   }
+  // Various temporary workarounds for aarch64
+  if (cvd::HostArch() == "aarch64") {
+    SetCommandLineOptionWithMode("tpm_binary",
+                                 "",
+                                 google::FlagSettingMode::SET_FLAGS_DEFAULT);
+  }
+  // The default for starting signaling server is whether or not webrt is to be
+  // started.
+  SetCommandLineOptionWithMode("start_webrtc_sig_server",
+                               FLAGS_start_webrtc ? "true" : "false",
+                               google::FlagSettingMode::SET_FLAGS_DEFAULT);
   google::HandleCommandLineHelpFlags();
   if (invalid_manager) {
     return false;
@@ -658,6 +802,50 @@ namespace {
 
 std::vector<ImagePartition> disk_config() {
   std::vector<ImagePartition> partitions;
+
+  // Note that if the positions of env or misc change, the environment for
+  // u-boot must be updated as well (see boot_config.cc and
+  // configs/cf-x86_defconfig in external/u-boot).
+  partitions.push_back(ImagePartition {
+    .label = "env",
+    .image_file_path = FLAGS_boot_env_image,
+  });
+  partitions.push_back(ImagePartition {
+    .label = "misc",
+    .image_file_path = FLAGS_misc_image,
+  });
+  partitions.push_back(ImagePartition {
+    .label = "boot_a",
+    .image_file_path = FLAGS_boot_image,
+  });
+  partitions.push_back(ImagePartition {
+    .label = "boot_b",
+    .image_file_path = FLAGS_boot_image,
+  });
+  partitions.push_back(ImagePartition {
+    .label = "vendor_boot_a",
+    .image_file_path = FLAGS_vendor_boot_image,
+  });
+  partitions.push_back(ImagePartition {
+    .label = "vendor_boot_b",
+    .image_file_path = FLAGS_vendor_boot_image,
+  });
+  partitions.push_back(ImagePartition {
+    .label = "vbmeta_a",
+    .image_file_path = FLAGS_vbmeta_image,
+  });
+  partitions.push_back(ImagePartition {
+    .label = "vbmeta_b",
+    .image_file_path = FLAGS_vbmeta_image,
+  });
+  partitions.push_back(ImagePartition {
+    .label = "vbmeta_system_a",
+    .image_file_path = FLAGS_vbmeta_system_image,
+  });
+  partitions.push_back(ImagePartition {
+    .label = "vbmeta_system_b",
+    .image_file_path = FLAGS_vbmeta_system_image,
+  });
   partitions.push_back(ImagePartition {
     .label = "super",
     .image_file_path = FLAGS_super_image,
@@ -673,14 +861,6 @@ std::vector<ImagePartition> disk_config() {
   partitions.push_back(ImagePartition {
     .label = "metadata",
     .image_file_path = FLAGS_metadata_image,
-  });
-  partitions.push_back(ImagePartition {
-    .label = "boot",
-    .image_file_path = FLAGS_boot_image,
-  });
-  partitions.push_back(ImagePartition {
-    .label = "misc",
-    .image_file_path = FLAGS_misc_image
   });
   return partitions;
 }
@@ -730,37 +910,39 @@ off_t AvailableSpaceAtPath(const std::string& path) {
   return vfs.f_bsize * vfs.f_bavail; // block size * free blocks for unprivileged users
 }
 
-off_t USERDATA_IMAGE_RESERVED = 4l * (1l << 30l); // 4 GiB
-off_t AGGREGATE_IMAGE_RESERVED = 12l * (1l << 30l); // 12 GiB
-
 bool CreateCompositeDisk(const vsoc::CuttlefishConfig& config) {
   if (!cvd::SharedFD::Open(config.composite_disk_path().c_str(), O_WRONLY | O_CREAT, 0644)->IsOpen()) {
     LOG(ERROR) << "Could not ensure " << config.composite_disk_path() << " exists";
     return false;
   }
   if (FLAGS_vm_manager == vm_manager::CrosvmManager::name()) {
-    auto existing_size = cvd::FileSize(FLAGS_data_image);
+    // Check if filling in the sparse image would run out of disk space.
+    auto existing_sizes = cvd::SparseFileSizes(FLAGS_data_image);
+    if (existing_sizes.sparse_size == 0 && existing_sizes.disk_size == 0) {
+      LOG(ERROR) << "Unable to determine size of \"" << FLAGS_data_image
+                 << "\". Does this file exist?";
+    }
     auto available_space = AvailableSpaceAtPath(FLAGS_data_image);
-    if (available_space < USERDATA_IMAGE_RESERVED - existing_size) {
+    if (available_space < existing_sizes.sparse_size - existing_sizes.disk_size) {
       // TODO(schuffelen): Duplicate this check in run_cvd when it can run on a separate machine
-      LOG(ERROR) << "Not enough space in fs containing " << FLAGS_data_image;
-      LOG(ERROR) << "Wanted " << (USERDATA_IMAGE_RESERVED - existing_size);
+      LOG(ERROR) << "Not enough space remaining in fs containing " << FLAGS_data_image;
+      LOG(ERROR) << "Wanted " << (existing_sizes.sparse_size - existing_sizes.disk_size);
       LOG(ERROR) << "Got " << available_space;
       return false;
+    } else {
+      LOG(INFO) << "Available space: " << available_space;
+      LOG(INFO) << "Sparse size of \"" << FLAGS_data_image << "\": "
+                << existing_sizes.sparse_size;
+      LOG(INFO) << "Disk size of \"" << FLAGS_data_image << "\": "
+                << existing_sizes.disk_size;
     }
     std::string header_path = config.AssemblyPath("gpt_header.img");
     std::string footer_path = config.AssemblyPath("gpt_footer.img");
     CreateCompositeDisk(disk_config(), header_path, footer_path,
                         config.composite_disk_path());
   } else {
-    auto existing_size = cvd::FileSize(config.composite_disk_path());
-    auto available_space = AvailableSpaceAtPath(config.composite_disk_path());
-    if (available_space < AGGREGATE_IMAGE_RESERVED - existing_size) {
-      LOG(ERROR) << "Not enough space to create " << config.composite_disk_path();
-      LOG(ERROR) << "Wanted " << (AGGREGATE_IMAGE_RESERVED - existing_size);
-      LOG(ERROR) << "Got " << available_space;
-      return false;
-    }
+    // If this doesn't fit into the disk, it will fail while aggregating. The
+    // aggregator doesn't maintain any sparse attributes.
     AggregateImage(disk_config(), config.composite_disk_path());
   }
   return true;
@@ -794,6 +976,7 @@ const vsoc::CuttlefishConfig* InitFilesystemAndCreateConfig(
       preserving.insert("gpt_header.img");
       preserving.insert("gpt_footer.img");
       preserving.insert("composite.img");
+      preserving.insert("sdcard.img");
       preserving.insert("access-kregistry");
       preserving.insert("disk_hole");
       preserving.insert("NVChip");
@@ -930,13 +1113,36 @@ const vsoc::CuttlefishConfig* InitFilesystemAndCreateConfig(
     exit(cvd::kCuttlefishConfigurationInitError);
   }
 
+  // Create boot_config if necessary
+  if (!InitBootloaderEnvPartition(*config, FLAGS_boot_env_image)) {
+    exit(cvd::kCuttlefishConfigurationInitError);
+  }
+
   if (!cvd::FileExists(FLAGS_metadata_image)) {
     CreateBlankImage(FLAGS_metadata_image, FLAGS_blank_metadata_image_mb, "none");
   }
 
   for (const auto& instance : config->Instances()) {
     if (!cvd::FileExists(instance.access_kregistry_path())) {
-      CreateBlankImage(instance.access_kregistry_path(), 1, "none", "64K");
+      CreateBlankImage(instance.access_kregistry_path(), 2 /* mb */, "none");
+    }
+
+    if (!cvd::FileExists(instance.sdcard_path())) {
+      CreateBlankImage(instance.sdcard_path(),
+                       FLAGS_blank_sdcard_image_mb, "sdcard");
+    }
+  }
+
+  // libavb expects to be able to read the maximum vbmeta size, so we must
+  // provide a partition which matches this or the read will fail
+  for (const auto& vbmeta_image : { FLAGS_vbmeta_image, FLAGS_vbmeta_system_image }) {
+    if (cvd::FileSize(vbmeta_image) != VBMETA_MAX_SIZE) {
+      auto fd = cvd::SharedFD::Open(vbmeta_image, O_RDWR);
+      if (fd->Truncate(VBMETA_MAX_SIZE) != 0) {
+        LOG(ERROR) << "`truncate --size=" << VBMETA_MAX_SIZE << " "
+                   << vbmeta_image << "` failed: " << fd->StrError();
+        exit(cvd::kCuttlefishConfigurationInitError);
+      }
     }
   }
 
@@ -966,7 +1172,7 @@ const vsoc::CuttlefishConfig* InitFilesystemAndCreateConfig(
                      << "newer than its underlying composite disk. Wiping the overlay.";
       }
       CreateQcowOverlay(config->crosvm_binary(), config->composite_disk_path(), overlay_path);
-      CreateBlankImage(instance.access_kregistry_path(), 1, "none", "64K");
+      CreateBlankImage(instance.access_kregistry_path(), 2 /* mb */, "none");
     }
   }
 

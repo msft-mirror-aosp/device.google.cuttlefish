@@ -72,13 +72,9 @@ const std::string OTA_TOOLS_DIR = "/otatools/";
 std::string TargetBuildZipFromArtifacts(
     const Build& build, const std::string& name,
     const std::vector<Artifact>& artifacts) {
-  std::string target = std::visit([](auto&& arg) { return arg.target; }, build);
-  size_t dash_pos = target.find('-');
-  if (dash_pos != std::string::npos) {
-    target.replace(dash_pos, target.size() - dash_pos, "");
-  }
+  std::string product = std::visit([](auto&& arg) { return arg.product; }, build);
   auto id = std::visit([](auto&& arg) { return arg.id; }, build);
-  auto match = target + "-" + name + "-" + id;
+  auto match = product + "-" + name + "-" + id;
   for (const auto& artifact : artifacts) {
     if (artifact.Name().find(match) != std::string::npos) {
       return artifact.Name();
@@ -322,11 +318,12 @@ int main(int argc, char** argv) {
       bool system_in_img_zip = true;
       if (FLAGS_download_img_zip) {
         std::vector<std::string> image_files =
-            download_images(&build_api, system_build, target_dir, {"system.img"});
+            download_images(&build_api, system_build, target_dir,
+                            {"system.img", "product.img"});
         if (image_files.empty()) {
           LOG(INFO) << "Could not find system image for " << system_build
                     << "in the img zip. Assuming a super image build, which will "
-                    << "get the super image from the target zip.";
+                    << "get the system image from the target zip.";
           system_in_img_zip = false;
         } else {
           LOG(INFO) << "Adding img-zip files for system build";
@@ -367,6 +364,28 @@ int main(int argc, char** argv) {
           LOG(FATAL) << "Could not replace product.img in target directory"
               << strerror(error_num);
           return -1;
+        }
+        if (ExtractImages(target_files[0], target_dir, {"IMAGES/system_ext.img"})
+            != std::vector<std::string>{}) {
+          std::string extracted_system_ext = target_dir + "/IMAGES/system_ext.img";
+          std::string target_system_ext = target_dir + "/system_ext.img";
+          if (rename(extracted_system_ext.c_str(), target_system_ext.c_str())) {
+            int error_num = errno;
+            LOG(FATAL) << "Could not move system_ext.img in target directory: "
+                       << strerror(error_num);
+            return -1;
+          }
+        }
+        if (ExtractImages(target_files[0], target_dir, {"IMAGES/vbmeta_system.img"})
+            != std::vector<std::string>{}) {
+          std::string extracted_vbmeta_system = target_dir + "/IMAGES/vbmeta_system.img";
+          std::string target_vbmeta_system = target_dir + "/vbmeta_system.img";
+          if (rename(extracted_vbmeta_system.c_str(), target_vbmeta_system.c_str())) {
+            int error_num = errno;
+            LOG(FATAL) << "Could not move vbmeta_system.img in target directory: "
+                       << strerror(error_num);
+            return -1;
+          }
         }
         // This should technically call AddFilesToConfig with the produced files,
         // but it will conflict with the ones produced from the default system image

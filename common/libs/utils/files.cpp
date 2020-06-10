@@ -22,10 +22,13 @@
 #include <climits>
 #include <cstdio>
 #include <cstdlib>
+#include <fstream>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
 #include <dirent.h>
+
+#include "common/libs/fs/shared_fd.h"
 
 namespace cvd {
 
@@ -105,9 +108,31 @@ std::chrono::system_clock::time_point FileModificationTime(const std::string& pa
   return std::chrono::system_clock::time_point(seconds);
 }
 
+bool RenameFile(const std::string& old_name, const std::string& new_name) {
+  LOG(INFO) << "Renaming " << old_name << " to " << new_name;
+  if(rename(old_name.c_str(), new_name.c_str())) {
+    LOG(ERROR) << "File rename failed due to " << strerror(errno);
+    return false;
+  }
+
+  return true;
+}
+
 bool RemoveFile(const std::string& file) {
   LOG(INFO) << "Removing " << file;
   return remove(file.c_str()) == 0;
+}
+
+
+std::string ReadFile(const std::string& file) {
+  std::string contents;
+  std::ifstream in(file, std::ios::in | std::ios::binary);
+  in.seekg(0, std::ios::end);
+  contents.resize(in.tellg());
+  in.seekg(0, std::ios::beg);
+  in.read(&contents[0], contents.size());
+  in.close();
+  return(contents);
 }
 
 std::string CurrentDirectory() {
@@ -115,6 +140,53 @@ std::string CurrentDirectory() {
   std::string ret(path);
   free(path);
   return ret;
+}
+
+FileSizes SparseFileSizes(const std::string& path) {
+  auto fd = SharedFD::Open(path, O_RDONLY);
+  if (!fd->IsOpen()) {
+    LOG(ERROR) << "Could not open \"" << path << "\": " << fd->StrError();
+    return {};
+  }
+  off_t farthest_seek = fd->LSeek(0, SEEK_END);
+  LOG(INFO) << "Farthest seek: " << farthest_seek;
+  if (farthest_seek == -1) {
+    LOG(ERROR) << "Could not lseek in \"" << path << "\": " << fd->StrError();
+    return {};
+  }
+  off_t data_bytes = 0;
+  off_t offset = 0;
+  while (offset < farthest_seek) {
+    off_t new_offset = fd->LSeek(offset, SEEK_HOLE);
+    if (new_offset == -1) {
+      // ENXIO is returned when there are no more blocks of this type coming.
+      if (fd->GetErrno() == ENXIO) {
+        break;
+      } else {
+        LOG(ERROR) << "Could not lseek in \"" << path << "\": " << fd->StrError();
+        return {};
+      }
+    } else {
+      data_bytes += new_offset - offset;
+      offset = new_offset;
+    }
+    if (offset >= farthest_seek) {
+      break;
+    }
+    new_offset = fd->LSeek(offset, SEEK_DATA);
+    if (new_offset == -1) {
+      // ENXIO is returned when there are no more blocks of this type coming.
+      if (fd->GetErrno() == ENXIO) {
+        break;
+      } else {
+        LOG(ERROR) << "Could not lseek in \"" << path << "\": " << fd->StrError();
+        return {};
+      }
+    } else {
+      offset = new_offset;
+    }
+  }
+  return (FileSizes) { .sparse_size = farthest_seek, .disk_size = data_bytes };
 }
 
 }  // namespace cvd
