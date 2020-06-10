@@ -120,4 +120,4 @@ class Gralloc {
   android::sp<android::hardware::graphics::mapper::V3_0::IMapper> gralloc3_;
 };
 
-}  // namespace cvd
+}  // namespace cuttlefish

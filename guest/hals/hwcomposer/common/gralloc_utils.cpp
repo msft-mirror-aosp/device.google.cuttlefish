@@ -431,4 +431,4 @@ std::optional<uint32_t> GrallocBuffer::GetMonoPlanarStrideBytes() {
   return std::nullopt;
 }
 
-}  // namespace cvd
+}  // namespace cuttlefish
