@@ -244,6 +244,22 @@ std::vector<cuttlefish::Command> CrosvmManager::StartCommands() {
     crosvm_cmd.AddParameter("hardware=virtio-console,num=2,type=sink");
   }
 
+  cuttlefish::SharedFD log_out_rd, log_out_wr;
+  if (!cuttlefish::SharedFD::Pipe(&log_out_rd, &log_out_wr)) {
+    LOG(ERROR) << "Failed to create log pipe for crosvm's stdout/stderr: "
+               << log_out_rd->StrError();
+    return {};
+  }
+  crosvm_cmd.RedirectStdIO(cuttlefish::Subprocess::StdIOChannel::kStdOut,
+                           log_out_wr);
+  crosvm_cmd.RedirectStdIO(cuttlefish::Subprocess::StdIOChannel::kStdErr,
+                           log_out_wr);
+
+  cuttlefish::Command log_tee_cmd(
+      cuttlefish::DefaultHostArtifactsPath("bin/log_tee"));
+  log_tee_cmd.AddParameter("--process_name=crosvm");
+  log_tee_cmd.AddParameter("--log_fd_in=", log_out_rd);
+
   // Serial port for logcat, redirected to a pipe
   crosvm_cmd.AddParameter("--serial");
   crosvm_cmd.AddParameter("hardware=virtio-console,num=3,type=file,path=",
@@ -259,6 +275,7 @@ std::vector<cuttlefish::Command> CrosvmManager::StartCommands() {
 
   std::vector<cuttlefish::Command> ret;
   ret.push_back(std::move(crosvm_cmd));
+  ret.push_back(std::move(log_tee_cmd));
   return ret;
 }
 
