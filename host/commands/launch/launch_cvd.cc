@@ -45,6 +45,10 @@ DEFINE_string(verbosity, "INFO", "Console logging verbosity. Options are VERBOSE
 DEFINE_bool(use_overlay, true,
             "Capture disk writes an overlay. This is a "
             "prerequisite for powerwash_cvd or multiple instances.");
+DEFINE_int32(base_instance_num,
+             cuttlefish::GetInstance(),
+             "The instance number of the device created. When `-num_instances N`"
+             " is used, N instance numbers are claimed starting at this number.");
 
 namespace {
 
@@ -127,6 +131,9 @@ int main(int argc, char** argv) {
     cuttlefish::SharedFD::Pipe(&assembler_stdin, &launcher_report);
   }
 
+  auto instance_num_str = std::to_string(FLAGS_base_instance_num);
+  setenv("CUTTLEFISH_INSTANCE", instance_num_str.c_str(), /* overwrite */ 0);
+
   // SharedFDs are std::move-d in to avoid dangling references.
   // Removing the std::move will probably make run_cvd hang as its stdin never closes.
   auto assemble_proc = StartAssembler(std::move(assembler_stdin),
@@ -156,7 +163,7 @@ int main(int argc, char** argv) {
   for (int i = 0; i < FLAGS_num_instances; i++) {
     cuttlefish::SharedFD runner_stdin_in, runner_stdin_out;
     cuttlefish::SharedFD::Pipe(&runner_stdin_out, &runner_stdin_in);
-    std::string instance_name = std::to_string(i + cuttlefish::GetInstance());
+    std::string instance_name = std::to_string(i + FLAGS_base_instance_num);
     setenv("CUTTLEFISH_INSTANCE", instance_name.c_str(), /* overwrite */ 1);
 
     auto run_proc = StartRunner(std::move(runner_stdin_out),
