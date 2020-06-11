@@ -19,7 +19,6 @@ cc_library {
         "shared_buf.cc",
         "shared_fd.cpp",
         "shared_fd_stream.cpp",
-        "tee.cpp",
     ],
     shared: {
         shared_libs: [
@@ -49,7 +48,6 @@ cc_library_static {
         "shared_buf.cc",
         "shared_fd.cpp",
         "shared_fd_stream.cpp",
-        "tee.cpp",
     ],
     shared_libs: [
         "libbase",
