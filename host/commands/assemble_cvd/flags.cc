@@ -1132,6 +1132,10 @@ const cuttlefish::CuttlefishConfig* InitFilesystemAndCreateConfig(
       CreateBlankImage(instance.access_kregistry_path(), 2 /* mb */, "none");
     }
 
+    if (!cuttlefish::FileExists(instance.pstore_path())) {
+      CreateBlankImage(instance.pstore_path(), 2 /* mb */, "none");
+    }
+
     if (!cuttlefish::FileExists(instance.sdcard_path())) {
       CreateBlankImage(instance.sdcard_path(),
                        FLAGS_blank_sdcard_image_mb, "sdcard");
@@ -1174,6 +1178,7 @@ const cuttlefish::CuttlefishConfig* InitFilesystemAndCreateConfig(
       }
       CreateQcowOverlay(config->crosvm_binary(), config->composite_disk_path(), overlay_path);
       CreateBlankImage(instance.access_kregistry_path(), 2 /* mb */, "none");
+      CreateBlankImage(instance.pstore_path(), 2 /* mb */, "none");
     }
   }
 

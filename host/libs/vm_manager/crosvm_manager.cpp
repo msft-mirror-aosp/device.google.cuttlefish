@@ -26,6 +26,7 @@
 #include <glog/logging.h>
 
 #include "common/libs/utils/environment.h"
+#include "common/libs/utils/files.h"
 #include "common/libs/utils/network.h"
 #include "common/libs/utils/subprocess.h"
 #include "host/libs/config/cuttlefish_config.h"
@@ -168,6 +169,8 @@ std::vector<cuttlefish::Command> CrosvmManager::StartCommands() {
   AddTapFdParameter(&crosvm_cmd, instance.mobile_tap_name());
 
   crosvm_cmd.AddParameter("--rw-pmem-device=", instance.access_kregistry_path());
+  crosvm_cmd.AddParameter("--pstore=path=", instance.pstore_path(), ",size=",
+                          cuttlefish::FileSize(instance.pstore_path()));
 
   // TODO remove this (use crosvm's seccomp files)
   crosvm_cmd.AddParameter("--disable-sandbox");
