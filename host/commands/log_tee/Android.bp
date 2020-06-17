@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2019 The Android Open Source Project
+// Copyright (C) 2020 The Android Open Source Project
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,20 +14,22 @@
 // limitations under the License.
 
 cc_binary_host {
-    name: "tombstone_receiver",
+    name: "log_tee",
     srcs: [
-        "main.cpp",
+        "log_tee.cpp",
     ],
     shared_libs: [
-        "libbase",
         "libcuttlefish_fs",
-        "liblog",
         "libcuttlefish_utils",
+        "libbase",
+        "libnl",
     ],
     static_libs: [
-        "libcuttlefish_host_config",
-        "libjsoncpp",
         "libgflags",
+        "libcuttlefish_host_config",
+        "libcuttlefish_vm_manager",
+        "libxml2",
+        "libjsoncpp",
     ],
-    defaults: ["cuttlefish_host_only"],
+    defaults: ["cuttlefish_host_only", "cuttlefish_libicuuc"],
 }

@@ -5,6 +5,7 @@
 #include <sys/stat.h>
 #include <sys/statvfs.h>
 #include <unistd.h>
+#include <fcntl.h>
 
 #include <algorithm>
 #include <array>
@@ -18,6 +19,7 @@
 
 #include "common/libs/utils/environment.h"
 #include "common/libs/utils/files.h"
+#include "common/libs/utils/tee_logging.h"
 #include "host/commands/assemble_cvd/boot_config.h"
 #include "host/commands/assemble_cvd/boot_image_unpacker.h"
 #include "host/commands/assemble_cvd/data_image.h"
@@ -89,7 +91,7 @@ DEFINE_int32(memory_mb, 2048,
 DEFINE_string(serial_number, ForCurrentInstance("CUTTLEFISHCVD"),
               "Serial number to use for the device");
 DEFINE_string(assembly_dir,
-              cvd::StringFromEnv("HOME", ".") + "/cuttlefish_assembly",
+              vsoc::DefaultHostArtifactsPath("cuttlefish_assembly"),
               "A directory to put generated files common between instances");
 DEFINE_string(instance_dir,
               cvd::StringFromEnv("HOME", ".") + "/cuttlefish_runtime",
@@ -302,10 +304,6 @@ bool ResolveInstanceFiles() {
 
 std::string GetCuttlefishEnvPath() {
   return cvd::StringFromEnv("HOME", ".") + "/.cuttlefish.sh";
-}
-
-std::string GetLegacyConfigFilePath(const vsoc::CuttlefishConfig& config) {
-  return config.ForDefaultInstance().PerInstancePath("cuttlefish_config.json");
 }
 
 int NumStreamers() {
@@ -569,10 +567,12 @@ bool SaveConfig(const vsoc::CuttlefishConfig& tmp_config_obj) {
     LOG(ERROR) << "Unable to save config object";
     return false;
   }
-  auto legacy_config_file = GetLegacyConfigFilePath(tmp_config_obj);
-  if (!tmp_config_obj.SaveToFile(legacy_config_file)) {
-    LOG(ERROR) << "Unable to save legacy config object";
-    return false;
+  for (auto instance : tmp_config_obj.Instances()) {
+    if (!tmp_config_obj.SaveToFile(
+        instance.PerInstancePath("cuttlefish_config.json"))) {
+      LOG(ERROR) << "Unable to save copy config object";
+      return false;
+    }
   }
   setenv(vsoc::kCuttlefishConfigEnvVarName, config_file.c_str(), true);
   if (symlink(config_file.c_str(), config_link.c_str()) != 0) {
@@ -679,7 +679,7 @@ std::string cpp_basename(const std::string& str) {
 
 bool CleanPriorFiles(const std::string& path, const std::set<std::string>& preserving) {
   if (preserving.count(cpp_basename(path))) {
-    LOG(INFO) << "Preserving: " << path;
+    LOG(DEBUG) << "Preserving: " << path;
     return true;
   }
   struct stat statbuf;
@@ -693,7 +693,7 @@ bool CleanPriorFiles(const std::string& path, const std::set<std::string>& prese
     }
   }
   if ((statbuf.st_mode & S_IFMT) != S_IFDIR) {
-    LOG(INFO) << "Deleting: " << path;
+    LOG(DEBUG) << "Deleting: " << path;
     if (unlink(path.c_str()) < 0) {
       int error_num = errno;
       LOG(ERROR) << "Could not unlink \"" << path << "\", error was " << strerror(error_num);
@@ -741,7 +741,7 @@ bool CleanPriorFiles(const std::vector<std::string>& paths, const std::set<std::
     bool is_directory = (statbuf.st_mode & S_IFMT) == S_IFDIR;
     prior_files += (is_directory ? (path + "/*") : path) + " ";
   }
-  LOG(INFO) << "Assuming prior files of " << prior_files;
+  LOG(DEBUG) << "Assuming prior files of " << prior_files;
   std::string lsof_cmd = "lsof -t " + prior_files + " >/dev/null 2>&1";
   int rval = std::system(lsof_cmd.c_str());
   // lsof returns 0 if any of the files are open
@@ -930,11 +930,11 @@ bool CreateCompositeDisk(const vsoc::CuttlefishConfig& config) {
       LOG(ERROR) << "Got " << available_space;
       return false;
     } else {
-      LOG(INFO) << "Available space: " << available_space;
-      LOG(INFO) << "Sparse size of \"" << FLAGS_data_image << "\": "
-                << existing_sizes.sparse_size;
-      LOG(INFO) << "Disk size of \"" << FLAGS_data_image << "\": "
-                << existing_sizes.disk_size;
+      LOG(DEBUG) << "Available space: " << available_space;
+      LOG(DEBUG) << "Sparse size of \"" << FLAGS_data_image << "\": "
+                 << existing_sizes.sparse_size;
+      LOG(DEBUG) << "Disk size of \"" << FLAGS_data_image << "\": "
+                 << existing_sizes.disk_size;
     }
     std::string header_path = config.AssemblyPath("gpt_header.img");
     std::string footer_path = config.AssemblyPath("gpt_footer.img");
@@ -950,11 +950,37 @@ bool CreateCompositeDisk(const vsoc::CuttlefishConfig& config) {
 
 } // namespace
 
+#ifndef O_TMPFILE
+# define O_TMPFILE (020000000 | O_DIRECTORY)
+#endif
+
 const vsoc::CuttlefishConfig* InitFilesystemAndCreateConfig(
     int* argc, char*** argv, cvd::FetcherConfig fetcher_config) {
   if (!ParseCommandLineFlags(argc, argv)) {
     LOG(ERROR) << "Failed to parse command arguments";
     exit(AssemblerExitCodes::kArgumentParsingError);
+  }
+
+  std::string assembly_dir_parent = cvd::AbsolutePath(FLAGS_assembly_dir);
+  while (assembly_dir_parent[assembly_dir_parent.size() - 1] == '/') {
+    assembly_dir_parent =
+        assembly_dir_parent.substr(0, FLAGS_assembly_dir.rfind('/'));
+  }
+  assembly_dir_parent =
+      assembly_dir_parent.substr(0, FLAGS_assembly_dir.rfind('/'));
+  auto log =
+      cvd::SharedFD::Open(
+          assembly_dir_parent,
+          O_WRONLY | O_TMPFILE,
+          S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
+  if (!log->IsOpen()) {
+    LOG(ERROR) << "Could not open O_TMPFILE precursor to assemble_cvd.log: "
+               << log->StrError();
+  } else {
+    android::base::SetLogger(cvd::TeeLogger({
+      {cvd::ConsoleSeverity(), cvd::SharedFD::Dup(2)},
+      {cvd::LogFileSeverity(), log},
+    }));
   }
 
   auto boot_img_unpacker =
@@ -968,9 +994,9 @@ const vsoc::CuttlefishConfig* InitFilesystemAndCreateConfig(
     auto config = InitializeCuttlefishConfiguration(*boot_img_unpacker, fetcher_config);
     std::set<std::string> preserving;
     if (FLAGS_resume && ShouldCreateCompositeDisk(config)) {
-      LOG(WARNING) << "Requested resuming a previous session (the default behavior) "
-                   << "but the base images have changed under the overlay, making the "
-                   << "overlay incompatible. Wiping the overlay files.";
+      LOG(INFO) << "Requested resuming a previous session (the default behavior) "
+                << "but the base images have changed under the overlay, making the "
+                << "overlay incompatible. Wiping the overlay files.";
     } else if (FLAGS_resume && !ShouldCreateCompositeDisk(config)) {
       preserving.insert("overlay.img");
       preserving.insert("gpt_header.img");
@@ -987,7 +1013,7 @@ const vsoc::CuttlefishConfig* InitFilesystemAndCreateConfig(
     }
     // Create assembly directory if it doesn't exist.
     if (!cvd::DirectoryExists(FLAGS_assembly_dir.c_str())) {
-      LOG(INFO) << "Setting up " << FLAGS_assembly_dir;
+      LOG(DEBUG) << "Setting up " << FLAGS_assembly_dir;
       if (mkdir(FLAGS_assembly_dir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) < 0
           && errno != EEXIST) {
         LOG(ERROR) << "Failed to create assembly directory: "
@@ -995,9 +1021,14 @@ const vsoc::CuttlefishConfig* InitFilesystemAndCreateConfig(
         exit(AssemblerExitCodes::kAssemblyDirCreationError);
       }
     }
+    if (log->LinkAtCwd(config.AssemblyPath("assemble_cvd.log"))) {
+      LOG(ERROR) << "Unable to persist assemble_cvd log at "
+                  << config.AssemblyPath("assemble_cvd.log")
+                  << ": " << log->StrError();
+    }
     std::string disk_hole_dir = FLAGS_assembly_dir + "/disk_hole";
     if (!cvd::DirectoryExists(disk_hole_dir.c_str())) {
-      LOG(INFO) << "Setting up " << disk_hole_dir << "/disk_hole";
+      LOG(DEBUG) << "Setting up " << disk_hole_dir << "/disk_hole";
       if (mkdir(disk_hole_dir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) < 0
           && errno != EEXIST) {
         LOG(ERROR) << "Failed to create assembly directory: "
@@ -1008,7 +1039,7 @@ const vsoc::CuttlefishConfig* InitFilesystemAndCreateConfig(
     for (const auto& instance : config.Instances()) {
       // Create instance directory if it doesn't exist.
       if (!cvd::DirectoryExists(instance.instance_dir().c_str())) {
-        LOG(INFO) << "Setting up " << FLAGS_instance_dir << ".N";
+        LOG(DEBUG) << "Setting up " << FLAGS_instance_dir << ".N";
         if (mkdir(instance.instance_dir().c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) < 0
             && errno != EEXIST) {
           LOG(ERROR) << "Failed to create instance directory: "
@@ -1024,6 +1055,12 @@ const vsoc::CuttlefishConfig* InitFilesystemAndCreateConfig(
                     << internal_dir << ". Error: " << errno;
           exit(AssemblerExitCodes::kInstanceDirCreationError);
         }
+      }
+      auto log_path = config.AssemblyPath("assemble_cvd.log");
+      auto instance_log_path = instance.PerInstancePath("assemble_cvd.log");
+      if (symlink(log_path.c_str(), instance_log_path.c_str())) {
+        LOG(WARNING) << "Unable to symlink " << log_path << " to "
+                     << instance_log_path;
       }
     }
     if (!SaveConfig(config)) {
@@ -1168,8 +1205,9 @@ const vsoc::CuttlefishConfig* InitFilesystemAndCreateConfig(
         < cvd::FileModificationTime(config->composite_disk_path());
     if (missingOverlay || oldCompositeDisk || !FLAGS_resume || newDataImage || newOverlay) {
       if (FLAGS_resume) {
-        LOG(WARNING) << "Requested to continue an existing session, but the overlay was "
-                     << "newer than its underlying composite disk. Wiping the overlay.";
+        LOG(INFO) << "Requested to continue an existing session, (the default)"
+                  << "but the disk files have become out of date. Wiping the "
+                  << "old session files and starting a new session.";
       }
       CreateQcowOverlay(config->crosvm_binary(), config->composite_disk_path(), overlay_path);
       CreateBlankImage(instance.access_kregistry_path(), 2 /* mb */, "none");

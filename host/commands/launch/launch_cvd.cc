@@ -48,6 +48,8 @@ DEFINE_int32(base_instance_num,
              vsoc::GetInstance(),
              "The instance number of the device created. When `-num_instances N`"
              " is used, N instance numbers are claimed starting at this number.");
+DEFINE_string(verbosity, "INFO", "Console logging verbosity. Options are VERBOSE,"
+                                 "DEBUG,INFO,WARNING,ERROR");
 
 namespace {
 
@@ -151,6 +153,8 @@ int main(int argc, char** argv) {
 
   gflags::HandleCommandLineHelpFlags();
 
+  setenv("CF_CONSOLE_SEVERITY", FLAGS_verbosity.c_str(), /* replace */ false);
+
   auto use_metrics = FLAGS_report_anonymous_usage_stats;
   FLAGS_report_anonymous_usage_stats = ValidateMetricsConfirmation(use_metrics);
 
@@ -188,7 +192,7 @@ int main(int argc, char** argv) {
     LOG(ERROR) << "assemble_cvd returned " << assemble_ret;
     return assemble_ret;
   } else {
-    LOG(INFO) << "assemble_cvd exited successfully.";
+    LOG(DEBUG) << "assemble_cvd exited successfully.";
   }
 
   std::vector<cvd::Subprocess> runners;
@@ -215,7 +219,7 @@ int main(int argc, char** argv) {
       run_cvd_failure = true;
       LOG(ERROR) << "run_cvd returned " << run_ret;
     } else {
-      LOG(INFO) << "run_cvd exited successfully.";
+      LOG(DEBUG) << "run_cvd exited successfully.";
     }
   }
   return run_cvd_failure ? -1 : 0;
