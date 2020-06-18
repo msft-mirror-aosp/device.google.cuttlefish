@@ -50,10 +50,12 @@ class ConsoleForwarder {
  public:
   ConsoleForwarder(std::string console_path,
                    cvd::SharedFD console_in,
-                   cvd::SharedFD console_out) :
+                   cvd::SharedFD console_out,
+                   cvd::SharedFD console_log) :
                                                 console_path_(console_path),
                                                 console_in_(console_in),
-                                                console_out_(console_out) {}
+                                                console_out_(console_out),
+                                                console_log_(console_log) {}
   [[noreturn]] void StartServer() {
     // Create a new thread to handle writes to the console
     writer_thread_ = std::thread([this]() { WriteLoop(); });
@@ -115,21 +117,21 @@ class ConsoleForwarder {
     return pty_shared_fd;
   }
 
-  void EnqueueWrite(std::vector<char> buffer, cvd::SharedFD fd) {
+  void EnqueueWrite(std::shared_ptr<std::vector<char>> buf_ptr, cvd::SharedFD fd) {
     std::lock_guard<std::mutex> lock(write_queue_mutex_);
-    write_queue_.emplace_back(fd, std::move(buffer));
+    write_queue_.emplace_back(fd, std::move(buf_ptr));
     condvar_.notify_one();
   }
 
   [[noreturn]] void WriteLoop() {
     while (true) {
       while (!write_queue_.empty()) {
-        std::vector<char> buffer;
+        std::shared_ptr<std::vector<char>> buf_ptr;
         cvd::SharedFD fd;
         {
           std::lock_guard<std::mutex> lock(write_queue_mutex_);
           auto& front = write_queue_.front();
-          buffer = std::move(front.second);
+          buf_ptr = std::move(front.second);
           fd = front.first;
           write_queue_.pop_front();
         }
@@ -137,10 +139,10 @@ class ConsoleForwarder {
         // mutex lock should NOT be held while writing to avoid blocking the
         // other thread.
         ssize_t bytes_written = 0;
-        ssize_t bytes_to_write = buffer.size();
+        ssize_t bytes_to_write = buf_ptr->size();
         while (bytes_to_write > 0) {
           bytes_written =
-              fd->Write(buffer.data() + bytes_written, bytes_to_write);
+              fd->Write(buf_ptr->data() + bytes_written, bytes_to_write);
           if (bytes_written < 0) {
             LOG(ERROR) << "Error writing to fd: " << fd->StrError();
             // Don't try to write from this buffer anymore, error handling will
@@ -174,22 +176,23 @@ class ConsoleForwarder {
 
       cvd::Select(&read_set, nullptr, nullptr, nullptr);
       if (read_set.IsSet(console_out_)) {
-        std::vector<char> buffer(4096);
-        auto bytes_read = console_out_->Read(buffer.data(), buffer.size());
+        std::shared_ptr<std::vector<char>> buf_ptr = std::make_shared<std::vector<char>>(4096);
+        auto bytes_read = console_out_->Read(buf_ptr->data(), buf_ptr->size());
         if (bytes_read <= 0) {
           LOG(ERROR) << "Error reading from console output: "
                      << console_out_->StrError();
           // This is likely unrecoverable, so exit here
           std::exit(-12);
         }
-        buffer.resize(bytes_read);
+        buf_ptr->resize(bytes_read);
+        EnqueueWrite(buf_ptr, console_log_);
         if (client_fd->IsOpen()) {
-          EnqueueWrite(std::move(buffer), client_fd);
+          EnqueueWrite(buf_ptr, client_fd);
         }
       }
       if (read_set.IsSet(client_fd)) {
-        std::vector<char> buffer(4096);
-        auto bytes_read = client_fd->Read(buffer.data(), buffer.size());
+        std::shared_ptr<std::vector<char>> buf_ptr = std::make_shared<std::vector<char>>(4096);
+        auto bytes_read = client_fd->Read(buf_ptr->data(), buf_ptr->size());
         if (bytes_read <= 0) {
           // If this happens, it's usually because the PTY controller went away
           // e.g. the user closed minicom, or killed screen, or closed kgdb. In
@@ -198,8 +201,8 @@ class ConsoleForwarder {
                      << client_fd->StrError();
           client_fd->Close();
         } else {
-          buffer.resize(bytes_read);
-          EnqueueWrite(std::move(buffer), console_in_);
+          buf_ptr->resize(bytes_read);
+          EnqueueWrite(buf_ptr, console_in_);
         }
       }
     }
@@ -208,10 +211,11 @@ class ConsoleForwarder {
   std::string console_path_;
   cvd::SharedFD console_in_;
   cvd::SharedFD console_out_;
+  cvd::SharedFD console_log_;
   std::thread writer_thread_;
   std::mutex write_queue_mutex_;
   std::condition_variable condvar_;
-  std::deque<std::pair<cvd::SharedFD, std::vector<char>>> write_queue_;
+  std::deque<std::pair<cvd::SharedFD, std::shared_ptr<std::vector<char>>>> write_queue_;
 };
 
 int main(int argc, char** argv) {
@@ -249,7 +253,9 @@ int main(int argc, char** argv) {
 
   auto instance = config->ForDefaultInstance();
   auto console_path = instance.console_path();
-  ConsoleForwarder console_forwarder(console_path, console_in, console_out);
+  auto console_log = instance.PerInstancePath("console_log");
+  auto console_log_fd = cvd::SharedFD::Open(console_log.c_str(), O_CREAT | O_APPEND | O_WRONLY, 0666);
+  ConsoleForwarder console_forwarder(console_path, console_in, console_out, console_log_fd);
 
   // Don't get a SIGPIPE from the clients
   if (sigaction(SIGPIPE, nullptr, nullptr) != 0) {
