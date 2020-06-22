@@ -47,6 +47,8 @@
   <!-- cuttlefish uses mac80211-hwsim, which does not support the Preferred
   Network Offload feature. The below config disables the use of this feature. -->
   <bool name="config_wifi_background_scan_support" translatable="false">false</bool>
+  <!--  Whether Multiuser UI should be shown -->
+  <bool name="config_enableMultiUserUI" translatable="false">true</bool>
   <!--  Maximum number of supported users -->
   <integer name="config_multiuserMaximumUsers" translatable="false">4</integer>
 </resources>
