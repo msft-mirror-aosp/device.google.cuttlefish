@@ -119,7 +119,7 @@ class ConsoleForwarder {
 
   void EnqueueWrite(std::shared_ptr<std::vector<char>> buf_ptr, cvd::SharedFD fd) {
     std::lock_guard<std::mutex> lock(write_queue_mutex_);
-    write_queue_.emplace_back(fd, std::move(buf_ptr));
+    write_queue_.emplace_back(fd, buf_ptr);
     condvar_.notify_one();
   }
 
@@ -131,7 +131,7 @@ class ConsoleForwarder {
         {
           std::lock_guard<std::mutex> lock(write_queue_mutex_);
           auto& front = write_queue_.front();
-          buf_ptr = std::move(front.second);
+          buf_ptr = front.second;
           fd = front.first;
           write_queue_.pop_front();
         }
