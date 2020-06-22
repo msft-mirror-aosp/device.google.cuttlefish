@@ -43,6 +43,7 @@ PRODUCT_PACKAGES += \
     libcuttlefish-rild
 
 PRODUCT_COPY_FILES += \
+    frameworks/native/data/etc/android.hardware.touchscreen.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.touchscreen.xml \
     frameworks/native/data/etc/android.hardware.telephony.gsm.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.telephony.gsm.xml
 
 # These flags are important for the GSI, but break auto

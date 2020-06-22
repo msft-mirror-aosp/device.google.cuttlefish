@@ -32,6 +32,7 @@ PRODUCT_COPY_FILES += \
 # Auto core hardware permissions
 PRODUCT_COPY_FILES += \
     frameworks/native/data/etc/car_core_hardware.xml:system/etc/permissions/car_core_hardware.xml \
+    frameworks/native/data/etc/android.hardware.touchscreen.xml:system/etc/permissions/android.hardware.touchscreen.xml \
     frameworks/native/data/etc/android.hardware.type.automotive.xml:system/etc/permissions/android.hardware.type.automotive.xml \
 
 # Enable landscape
