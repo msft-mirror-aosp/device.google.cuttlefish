@@ -42,7 +42,7 @@ namespace vm_manager {
 
 namespace {
 
-std::string GetMonitorPath(const vsoc::CuttlefishConfig* config) {
+std::string GetMonitorPath(const cuttlefish::CuttlefishConfig* config) {
   return config->PerInstancePath("qemu_monitor.sock");
 }
 
@@ -67,7 +67,7 @@ std::string JoinString(const std::vector<std::string>& args,
 }
 
 bool Stop() {
-  auto config = vsoc::CuttlefishConfig::Get();
+  auto config = cuttlefish::CuttlefishConfig::Get();
   auto monitor_path = GetMonitorPath(config);
   auto monitor_sock = cuttlefish::SharedFD::SocketLocalClient(
       monitor_path.c_str(), false, SOCK_STREAM);
@@ -100,8 +100,8 @@ bool Stop() {
 
 const std::string QemuManager::name() { return "qemu_cli"; }
 
-bool QemuManager::ConfigureGpu(vsoc::CuttlefishConfig *config) {
-  if (config->gpu_mode() != vsoc::kGpuModeGuestSwiftshader) {
+bool QemuManager::ConfigureGpu(cuttlefish::CuttlefishConfig *config) {
+  if (config->gpu_mode() != cuttlefish::kGpuModeGuestSwiftshader) {
     return false;
   }
   // Override the default HAL search paths in all cases. We do this because
@@ -115,14 +115,14 @@ bool QemuManager::ConfigureGpu(vsoc::CuttlefishConfig *config) {
   return true;
 }
 
-void QemuManager::ConfigureBootDevices(vsoc::CuttlefishConfig* config) {
+void QemuManager::ConfigureBootDevices(cuttlefish::CuttlefishConfig* config) {
   // PCI domain 0, bus 0, device 3, function 0
   // This is controlled with 'addr=0x3' in cf_qemu.sh
   config->add_kernel_cmdline(
     "androidboot.boot_devices=pci0000:00/0000:00:03.0");
 }
 
-QemuManager::QemuManager(const vsoc::CuttlefishConfig* config)
+QemuManager::QemuManager(const cuttlefish::CuttlefishConfig* config)
   : VmManager(config) {}
 
 std::vector<cuttlefish::Command> QemuManager::StartCommands(bool /*with_frontend*/) {
@@ -149,7 +149,7 @@ std::vector<cuttlefish::Command> QemuManager::StartCommands(bool /*with_frontend
   LogAndSetEnv("vsock_guest_cid", std::to_string(config_->vsock_guest_cid()));
   LogAndSetEnv("logcat_mode", config_->logcat_mode());
 
-  cuttlefish::Command qemu_cmd(vsoc::DefaultHostArtifactsPath("bin/cf_qemu.sh"),
+  cuttlefish::Command qemu_cmd(cuttlefish::DefaultHostArtifactsPath("bin/cf_qemu.sh"),
                         [](cuttlefish::Subprocess* proc) {
                           auto stopped = Stop();
                           if (stopped) {

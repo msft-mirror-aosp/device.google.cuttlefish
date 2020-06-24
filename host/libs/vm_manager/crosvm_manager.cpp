@@ -36,7 +36,7 @@ namespace vm_manager {
 
 namespace {
 
-std::string GetControlSocketPath(const vsoc::CuttlefishConfig* config) {
+std::string GetControlSocketPath(const cuttlefish::CuttlefishConfig* config) {
   return config->PerInstancePath("crosvm_control.sock");
 }
 
@@ -51,7 +51,7 @@ void AddTapFdParameter(cuttlefish::Command* crosvm_cmd, const std::string& tap_n
 }
 
 bool Stop() {
-  auto config = vsoc::CuttlefishConfig::Get();
+  auto config = cuttlefish::CuttlefishConfig::Get();
   cuttlefish::Command command(config->crosvm_binary());
   command.AddParameter("stop");
   command.AddParameter(GetControlSocketPath(config));
@@ -65,18 +65,18 @@ bool Stop() {
 
 const std::string CrosvmManager::name() { return "crosvm"; }
 
-bool CrosvmManager::ConfigureGpu(vsoc::CuttlefishConfig* config) {
+bool CrosvmManager::ConfigureGpu(cuttlefish::CuttlefishConfig* config) {
   // Override the default HAL search paths in all cases. We do this because
   // the HAL search path allows for fallbacks, and fallbacks in conjunction
   // with properities lead to non-deterministic behavior while loading the
   // HALs.
-  if (config->gpu_mode() == vsoc::kGpuModeDrmVirgl) {
+  if (config->gpu_mode() == cuttlefish::kGpuModeDrmVirgl) {
     config->add_kernel_cmdline("androidboot.hardware.gralloc=minigbm");
     config->add_kernel_cmdline("androidboot.hardware.hwcomposer=drm_minigbm");
     config->add_kernel_cmdline("androidboot.hardware.egl=mesa");
     return true;
   }
-  if (config->gpu_mode() == vsoc::kGpuModeGuestSwiftshader) {
+  if (config->gpu_mode() == cuttlefish::kGpuModeGuestSwiftshader) {
     config->add_kernel_cmdline("androidboot.hardware.gralloc=cutf_ashmem");
     config->add_kernel_cmdline(
         "androidboot.hardware.hwcomposer=cutf_cvm_ashmem");
@@ -86,7 +86,7 @@ bool CrosvmManager::ConfigureGpu(vsoc::CuttlefishConfig* config) {
   return false;
 }
 
-void CrosvmManager::ConfigureBootDevices(vsoc::CuttlefishConfig* config) {
+void CrosvmManager::ConfigureBootDevices(cuttlefish::CuttlefishConfig* config) {
   // PCI domain 0, bus 0, device 1, function 0
   // TODO There is no way to control this assignment with crosvm (yet)
   if (cuttlefish::HostArch() == "x86_64") {
@@ -98,7 +98,7 @@ void CrosvmManager::ConfigureBootDevices(vsoc::CuttlefishConfig* config) {
   }
 }
 
-CrosvmManager::CrosvmManager(const vsoc::CuttlefishConfig* config)
+CrosvmManager::CrosvmManager(const cuttlefish::CuttlefishConfig* config)
     : VmManager(config) {}
 
 std::vector<cuttlefish::Command> CrosvmManager::StartCommands(bool with_frontend) {
@@ -112,7 +112,7 @@ std::vector<cuttlefish::Command> CrosvmManager::StartCommands(bool with_frontend
   });
   crosvm_cmd.AddParameter("run");
 
-  if (config_->gpu_mode() != vsoc::kGpuModeGuestSwiftshader) {
+  if (config_->gpu_mode() != cuttlefish::kGpuModeGuestSwiftshader) {
     crosvm_cmd.AddParameter("--gpu");
     if (config_->wayland_socket().size()) {
       crosvm_cmd.AddParameter("--wayland-sock=", config_->wayland_socket());
@@ -147,7 +147,7 @@ std::vector<cuttlefish::Command> CrosvmManager::StartCommands(bool with_frontend
 
   if (config_->enable_sandbox()) {
     const bool seccomp_exists = cuttlefish::DirectoryExists(config_->seccomp_policy_dir());
-    const std::string& var_empty_dir = vsoc::kCrosvmVarEmptyDir;
+    const std::string& var_empty_dir = cuttlefish::kCrosvmVarEmptyDir;
     const bool var_empty_available = cuttlefish::DirectoryExists(var_empty_dir);
     if (!var_empty_available || !seccomp_exists) {
       LOG(FATAL) << var_empty_dir << " is not an existing, empty directory."

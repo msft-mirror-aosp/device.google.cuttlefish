@@ -29,7 +29,7 @@ int main(int argc, char** argv) {
   ::android::base::InitLogging(argv, android::base::StderrLogger);
   google::ParseCommandLineFlags(&argc, &argv, true);
 
-  auto config = vsoc::CuttlefishConfig::Get();
+  auto config = cuttlefish::CuttlefishConfig::Get();
 
   auto path = config->logcat_path();
   auto logcat_file =

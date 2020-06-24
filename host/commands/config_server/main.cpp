@@ -30,7 +30,7 @@ int main(int argc, char** argv) {
   ::android::base::InitLogging(argv, android::base::StderrLogger);
   google::ParseCommandLineFlags(&argc, &argv, true);
 
-  auto config = vsoc::CuttlefishConfig::Get();
+  auto config = cuttlefish::CuttlefishConfig::Get();
 
   cuttlefish::SharedFD server_fd;
   if (FLAGS_server_fd < 0) {

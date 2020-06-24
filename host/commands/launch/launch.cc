@@ -22,39 +22,39 @@ std::string GetAdbConnectorTcpArg() {
   return std::string{"127.0.0.1:"} + std::to_string(GetHostPort());
 }
 
-std::string GetAdbConnectorVsockArg(const vsoc::CuttlefishConfig& config) {
+std::string GetAdbConnectorVsockArg(const cuttlefish::CuttlefishConfig& config) {
   return std::string{"vsock:"}
       + std::to_string(config.vsock_guest_cid())
       + std::string{":5555"};
 }
 
-bool AdbModeEnabled(const vsoc::CuttlefishConfig& config, vsoc::AdbMode mode) {
+bool AdbModeEnabled(const cuttlefish::CuttlefishConfig& config, cuttlefish::AdbMode mode) {
   return config.adb_mode().count(mode) > 0;
 }
 
-bool AdbVsockTunnelEnabled(const vsoc::CuttlefishConfig& config) {
+bool AdbVsockTunnelEnabled(const cuttlefish::CuttlefishConfig& config) {
   return config.vsock_guest_cid() > 2
-      && AdbModeEnabled(config, vsoc::AdbMode::VsockTunnel);
+      && AdbModeEnabled(config, cuttlefish::AdbMode::VsockTunnel);
 }
 
-bool AdbVsockHalfTunnelEnabled(const vsoc::CuttlefishConfig& config) {
+bool AdbVsockHalfTunnelEnabled(const cuttlefish::CuttlefishConfig& config) {
   return config.vsock_guest_cid() > 2
-      && AdbModeEnabled(config, vsoc::AdbMode::VsockHalfTunnel);
+      && AdbModeEnabled(config, cuttlefish::AdbMode::VsockHalfTunnel);
 }
 
-bool AdbTcpConnectorEnabled(const vsoc::CuttlefishConfig& config) {
+bool AdbTcpConnectorEnabled(const cuttlefish::CuttlefishConfig& config) {
   bool vsock_tunnel = AdbVsockTunnelEnabled(config);
   bool vsock_half_tunnel = AdbVsockHalfTunnelEnabled(config);
   return config.run_adb_connector() && (vsock_tunnel || vsock_half_tunnel);
 }
 
-bool AdbVsockConnectorEnabled(const vsoc::CuttlefishConfig& config) {
+bool AdbVsockConnectorEnabled(const cuttlefish::CuttlefishConfig& config) {
   return config.run_adb_connector()
-      && AdbModeEnabled(config, vsoc::AdbMode::NativeVsock);
+      && AdbModeEnabled(config, cuttlefish::AdbMode::NativeVsock);
 }
 
 cuttlefish::OnSocketReadyCb GetOnSubprocessExitCallback(
-    const vsoc::CuttlefishConfig& config) {
+    const cuttlefish::CuttlefishConfig& config) {
   if (config.restart_subprocesses()) {
     return cuttlefish::ProcessMonitor::RestartOnExitCb;
   } else {
@@ -65,21 +65,21 @@ cuttlefish::OnSocketReadyCb GetOnSubprocessExitCallback(
 
 int GetHostPort() {
   constexpr int kFirstHostPort = 6520;
-  return vsoc::GetPerInstanceDefault(kFirstHostPort);
+  return cuttlefish::GetPerInstanceDefault(kFirstHostPort);
 }
 
-bool LogcatReceiverEnabled(const vsoc::CuttlefishConfig& config) {
+bool LogcatReceiverEnabled(const cuttlefish::CuttlefishConfig& config) {
   return config.logcat_mode() == cuttlefish::kLogcatVsockMode;
 }
 
-void ValidateAdbModeFlag(const vsoc::CuttlefishConfig& config) {
+void ValidateAdbModeFlag(const cuttlefish::CuttlefishConfig& config) {
   if (!AdbVsockTunnelEnabled(config) && !AdbVsockHalfTunnelEnabled(config)) {
     LOG(INFO) << "ADB not enabled";
   }
 }
 
 std::vector<cuttlefish::SharedFD> LaunchKernelLogMonitor(
-    const vsoc::CuttlefishConfig& config,
+    const cuttlefish::CuttlefishConfig& config,
     cuttlefish::ProcessMonitor* process_monitor,
     unsigned int number_of_event_pipes) {
   auto log_name = config.kernel_log_pipe_name();
@@ -123,7 +123,7 @@ std::vector<cuttlefish::SharedFD> LaunchKernelLogMonitor(
   return ret;
 }
 
-void LaunchLogcatReceiverIfEnabled(const vsoc::CuttlefishConfig& config,
+void LaunchLogcatReceiverIfEnabled(const cuttlefish::CuttlefishConfig& config,
                                    cuttlefish::ProcessMonitor* process_monitor) {
   if (!LogcatReceiverEnabled(config)) {
     return;
@@ -141,7 +141,7 @@ void LaunchLogcatReceiverIfEnabled(const vsoc::CuttlefishConfig& config,
                                    GetOnSubprocessExitCallback(config));
 }
 
-void LaunchConfigServer(const vsoc::CuttlefishConfig& config,
+void LaunchConfigServer(const cuttlefish::CuttlefishConfig& config,
                         cuttlefish::ProcessMonitor* process_monitor) {
   auto port = config.config_server_port();
   auto socket = cuttlefish::SharedFD::VsockServer(port, SOCK_STREAM);
@@ -176,7 +176,7 @@ cuttlefish::SharedFD CreateVsockVncInputServer(int port) {
   return server;
 }
 
-bool LaunchVNCServerIfEnabled(const vsoc::CuttlefishConfig& config,
+bool LaunchVNCServerIfEnabled(const cuttlefish::CuttlefishConfig& config,
                               cuttlefish::ProcessMonitor* process_monitor,
                               std::function<bool(MonitorEntry*)> callback) {
   if (config.enable_vnc_server()) {
@@ -223,7 +223,7 @@ bool LaunchVNCServerIfEnabled(const vsoc::CuttlefishConfig& config,
 }
 
 void LaunchAdbConnectorIfEnabled(cuttlefish::ProcessMonitor* process_monitor,
-                                 const vsoc::CuttlefishConfig& config,
+                                 const cuttlefish::CuttlefishConfig& config,
                                  cuttlefish::SharedFD adbd_events_pipe) {
   cuttlefish::Command adb_connector(config.adb_connector_binary());
   adb_connector.AddParameter("-adbd_events_fd=", adbd_events_pipe);
@@ -249,7 +249,7 @@ void LaunchAdbConnectorIfEnabled(cuttlefish::ProcessMonitor* process_monitor,
 }
 
 void LaunchSocketVsockProxyIfEnabled(cuttlefish::ProcessMonitor* process_monitor,
-                                 const vsoc::CuttlefishConfig& config) {
+                                 const cuttlefish::CuttlefishConfig& config) {
   if (AdbVsockTunnelEnabled(config)) {
     cuttlefish::Command adb_tunnel(config.socket_vsock_proxy_binary());
     adb_tunnel.AddParameter("--vsock_port=6520");

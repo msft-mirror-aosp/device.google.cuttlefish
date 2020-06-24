@@ -57,13 +57,13 @@
 #include "host/libs/vm_manager/vm_manager.h"
 #include "host/libs/vm_manager/qemu_manager.h"
 
-using vsoc::GetPerInstanceDefault;
+using cuttlefish::GetPerInstanceDefault;
 using cuttlefish::LauncherExitCodes;
 
 namespace {
 
 cuttlefish::OnSocketReadyCb GetOnSubprocessExitCallback(
-    const vsoc::CuttlefishConfig& config) {
+    const cuttlefish::CuttlefishConfig& config) {
   if (config.restart_subprocesses()) {
     return cuttlefish::ProcessMonitor::RestartOnExitCb;
   } else {
@@ -151,7 +151,7 @@ void SetUpHandlingOfBootEvents(
       });
 }
 
-bool WriteCuttlefishEnvironment(const vsoc::CuttlefishConfig& config) {
+bool WriteCuttlefishEnvironment(const cuttlefish::CuttlefishConfig& config) {
   auto env = cuttlefish::SharedFD::Open(config.cuttlefish_env_path().c_str(),
                                  O_CREAT | O_RDWR, 0755);
   if (!env->IsOpen()) {
@@ -169,7 +169,7 @@ bool WriteCuttlefishEnvironment(const vsoc::CuttlefishConfig& config) {
 
 // Forks and returns the write end of a pipe to the child process. The parent
 // process waits for boot events to come through the pipe and exits accordingly.
-cuttlefish::SharedFD DaemonizeLauncher(const vsoc::CuttlefishConfig& config) {
+cuttlefish::SharedFD DaemonizeLauncher(const cuttlefish::CuttlefishConfig& config) {
   cuttlefish::SharedFD read_end, write_end;
   if (!cuttlefish::SharedFD::Pipe(&read_end, &write_end)) {
     LOG(ERROR) << "Unable to create pipe";

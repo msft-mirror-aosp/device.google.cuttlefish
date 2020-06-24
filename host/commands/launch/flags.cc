@@ -17,7 +17,7 @@
 #include "host/libs/vm_manager/qemu_manager.h"
 #include "host/libs/vm_manager/vm_manager.h"
 
-using vsoc::GetPerInstanceDefault;
+using cuttlefish::GetPerInstanceDefault;
 using cuttlefish::LauncherExitCodes;
 
 DEFINE_string(
@@ -57,7 +57,7 @@ DEFINE_string(kernel_path, "",
 DEFINE_bool(decompress_kernel, false,
             "Whether to decompress the kernel image.");
 DEFINE_string(kernel_decompresser_executable,
-              vsoc::DefaultHostArtifactsPath("bin/extract-vmlinux"),
+              cuttlefish::DefaultHostArtifactsPath("bin/extract-vmlinux"),
              "Path to the extract-vmlinux executable.");
 DEFINE_string(extra_kernel_cmdline, "",
               "Additional flags to put on the kernel command line");
@@ -92,14 +92,14 @@ DEFINE_string(
     vm_manager, vm_manager::CrosvmManager::name(),
     "What virtual machine manager to use, one of {qemu_cli, crosvm}");
 DEFINE_string(
-    gpu_mode, vsoc::kGpuModeGuestSwiftshader,
+    gpu_mode, cuttlefish::kGpuModeGuestSwiftshader,
     "What gpu configuration to use, one of {guest_swiftshader, drm_virgl}");
 DEFINE_string(wayland_socket, "",
     "Location of the wayland socket to use for drm_virgl gpu_mode.");
 DEFINE_string(x_display, "",
     "X display to use for drm_virgl gpu_mode.");
 
-DEFINE_string(system_image_dir, vsoc::DefaultGuestImagePath(""),
+DEFINE_string(system_image_dir, cuttlefish::DefaultGuestImagePath(""),
               "Location of the system partition images.");
 DEFINE_string(vendor_image, "", "Location of the vendor partition image.");
 DEFINE_string(product_image, "", "Location of the product partition image.");
@@ -113,7 +113,7 @@ DEFINE_bool(deprecated_boot_completed, false, "Log boot completed message to"
             " Will be deprecated soon.");
 DEFINE_bool(start_vnc_server, true, "Whether to start the vnc server process.");
 DEFINE_string(vnc_server_binary,
-              vsoc::DefaultHostArtifactsPath("bin/vnc_server"),
+              cuttlefish::DefaultHostArtifactsPath("bin/vnc_server"),
               "Location of the vnc server binary.");
 
 /**
@@ -140,19 +140,19 @@ DEFINE_bool(enable_sandbox,
 static const std::string kSeccompDir =
     std::string("usr/share/cuttlefish/") + cuttlefish::HostArch() + "-linux-gnu/seccomp";
 DEFINE_string(seccomp_policy_dir,
-              vsoc::DefaultHostArtifactsPath(kSeccompDir),
+              cuttlefish::DefaultHostArtifactsPath(kSeccompDir),
               "With sandbox'ed crosvm, overrieds the security comp policy directory");
 
 DEFINE_string(kernel_log_monitor_binary,
-              vsoc::DefaultHostArtifactsPath("bin/kernel_log_monitor"),
+              cuttlefish::DefaultHostArtifactsPath("bin/kernel_log_monitor"),
               "Location of the log monitor binary.");
 DEFINE_int32(vnc_server_port, GetPerInstanceDefault(6444),
              "The port on which the vnc server should listen");
 DEFINE_string(socket_forward_proxy_binary,
-              vsoc::DefaultHostArtifactsPath("bin/socket_forward_proxy"),
+              cuttlefish::DefaultHostArtifactsPath("bin/socket_forward_proxy"),
               "Location of the socket_forward_proxy binary.");
 DEFINE_string(socket_vsock_proxy_binary,
-              vsoc::DefaultHostArtifactsPath("bin/socket_vsock_proxy"),
+              cuttlefish::DefaultHostArtifactsPath("bin/socket_vsock_proxy"),
               "Location of the socket_vsock_proxy binary.");
 DEFINE_string(adb_mode, "vsock_half_tunnel",
               "Mode for ADB connection."
@@ -165,7 +165,7 @@ DEFINE_bool(run_adb_connector, true,
             "Maintain adb connection by sending 'adb connect' commands to the "
             "server. Only relevant with -adb_mode=tunnel or vsock_tunnel");
 DEFINE_string(adb_connector_binary,
-              vsoc::DefaultHostArtifactsPath("bin/adb_connector"),
+              cuttlefish::DefaultHostArtifactsPath("bin/adb_connector"),
               "Location of the adb_connector binary. Only relevant if "
               "-run_adb_connector is true");
 DEFINE_string(guest_mac_address,
@@ -177,14 +177,14 @@ DEFINE_string(host_mac_address,
 DEFINE_string(wifi_tap_name, "", // default handled on ParseCommandLine
               "The name of the tap interface to use for wifi");
 DEFINE_int32(vsock_guest_cid,
-             vsoc::GetDefaultPerInstanceVsockCid(),
+             cuttlefish::GetDefaultPerInstanceVsockCid(),
              "Guest identifier for vsock. Disabled if under 3.");
 
 // TODO(b/72969289) This should be generated
 DEFINE_string(dtb, "", "Path to the cuttlefish.dtb file");
 DEFINE_string(dtb_fstab, "", "Path to the DTB fstab file");
 
-DEFINE_string(uuid, vsoc::GetPerInstanceDefault(vsoc::kDefaultUuidPrefix),
+DEFINE_string(uuid, cuttlefish::GetPerInstanceDefault(cuttlefish::kDefaultUuidPrefix),
               "UUID to use for the device. Random if not specified");
 DEFINE_bool(daemon, false,
             "Run cuttlefish in background, the launcher exits on boot "
@@ -199,25 +199,25 @@ DEFINE_string(qemu_binary,
               "/usr/bin/qemu-system-x86_64",
               "The qemu binary to use");
 DEFINE_string(crosvm_binary,
-              vsoc::DefaultHostArtifactsPath("bin/crosvm"),
+              cuttlefish::DefaultHostArtifactsPath("bin/crosvm"),
               "The Crosvm binary to use");
 DEFINE_string(console_forwarder_binary,
-              vsoc::DefaultHostArtifactsPath("bin/console_forwarder"),
+              cuttlefish::DefaultHostArtifactsPath("bin/console_forwarder"),
               "The Console Forwarder binary to use");
 DEFINE_bool(restart_subprocesses, true, "Restart any crashed host process");
 DEFINE_string(logcat_receiver_binary,
-              vsoc::DefaultHostArtifactsPath("bin/logcat_receiver"),
+              cuttlefish::DefaultHostArtifactsPath("bin/logcat_receiver"),
               "Binary for the logcat server");
 DEFINE_string(logcat_mode, "", "How to send android's log messages from "
                                "guest to host. One of [serial, vsock]");
-DEFINE_int32(logcat_vsock_port, vsoc::GetPerInstanceDefault(5620),
+DEFINE_int32(logcat_vsock_port, cuttlefish::GetPerInstanceDefault(5620),
              "The port for logcat over vsock");
 DEFINE_string(config_server_binary,
-              vsoc::DefaultHostArtifactsPath("bin/config_server"),
+              cuttlefish::DefaultHostArtifactsPath("bin/config_server"),
               "Binary for the configuration server");
-DEFINE_int32(config_server_port, vsoc::GetPerInstanceDefault(4680),
+DEFINE_int32(config_server_port, cuttlefish::GetPerInstanceDefault(4680),
              "The (vsock) port for the configuration server");
-DEFINE_int32(frames_vsock_port, vsoc::GetPerInstanceDefault(5580),
+DEFINE_int32(frames_vsock_port, cuttlefish::GetPerInstanceDefault(5580),
              "The vsock port to receive frames from the guest on");
 DEFINE_int32(keyboard_server_port, GetPerInstanceDefault(5540),
              "The port on which the vsock keyboard server should listen");
@@ -291,7 +291,7 @@ std::string GetCuttlefishEnvPath() {
 // further uses of the config should happen through the singleton
 bool InitializeCuttlefishConfiguration(
     const cuttlefish::BootImageUnpacker& boot_image_unpacker) {
-  vsoc::CuttlefishConfig tmp_config_obj;
+  cuttlefish::CuttlefishConfig tmp_config_obj;
   // Set this first so that calls to PerInstancePath below are correct
   tmp_config_obj.set_instance_dir(FLAGS_instance_dir);
   if (!vm_manager::VmManager::IsValidName(FLAGS_vm_manager)) {
@@ -354,7 +354,7 @@ bool InitializeCuttlefishConfiguration(
   }
 
   if (FLAGS_dtb.empty()) {
-    FLAGS_dtb = vsoc::DefaultHostArtifactsPath("config/system-root.dtb");
+    FLAGS_dtb = cuttlefish::DefaultHostArtifactsPath("config/system-root.dtb");
   }
 
   tmp_config_obj.add_kernel_cmdline(boot_image_unpacker.kernel_cmdline());
@@ -498,13 +498,13 @@ bool InitializeCuttlefishConfiguration(
   tmp_config_obj.set_ril_dns(FLAGS_ril_dns);
 
   auto config_file = GetConfigFilePath(tmp_config_obj);
-  auto config_link = vsoc::GetGlobalConfigFileLink();
+  auto config_link = cuttlefish::GetGlobalConfigFileLink();
   // Save the config object before starting any host process
   if (!tmp_config_obj.SaveToFile(config_file)) {
     LOG(ERROR) << "Unable to save config object";
     return false;
   }
-  setenv(vsoc::kCuttlefishConfigEnvVarName, config_file.c_str(), true);
+  setenv(cuttlefish::kCuttlefishConfigEnvVarName, config_file.c_str(), true);
   if (symlink(config_file.c_str(), config_link.c_str()) != 0) {
     LOG(ERROR) << "Failed to create symlink to config file at " << config_link
                << ": " << strerror(errno);
@@ -573,10 +573,10 @@ void SetDefaultFlagsForCrosvm() {
   std::string dtb_fstab;
   if (cuttlefish::HostArch() == "x86_64") {
     dtb_fstab =
-      vsoc::DefaultHostArtifactsPath("config/system-root.fstab");
+      cuttlefish::DefaultHostArtifactsPath("config/system-root.fstab");
   } else {
     dtb_fstab =
-      vsoc::DefaultHostArtifactsPath("config/system-root-arm64.fstab");
+      cuttlefish::DefaultHostArtifactsPath("config/system-root-arm64.fstab");
   }
   SetCommandLineOptionWithMode("dtb_fstab", dtb_fstab.c_str(),
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
@@ -593,7 +593,7 @@ void SetDefaultFlagsForCrosvm() {
             return false;
           }
 	  return (::mkdir(var_empty.c_str(), 0755) == 0);
-       }(vsoc::kCrosvmVarEmptyDir);
+       }(cuttlefish::kCrosvmVarEmptyDir);
   }
   SetCommandLineOptionWithMode("enable_sandbox",
                                (default_enable_sandbox ? "true" : "false"),
@@ -633,7 +633,7 @@ bool ParseCommandLineFlags(int* argc, char*** argv) {
     return false;
   }
   // Set the env variable to empty (in case the caller passed a value for it).
-  unsetenv(vsoc::kCuttlefishConfigEnvVarName);
+  unsetenv(cuttlefish::kCuttlefishConfigEnvVarName);
 
   return ret;
 }
@@ -644,7 +644,7 @@ bool CleanPriorFiles() {
   // The environment file
   prior_files += " " + GetCuttlefishEnvPath();
   // The global link to the config file
-  prior_files += " " + vsoc::GetGlobalConfigFileLink();
+  prior_files += " " + cuttlefish::GetGlobalConfigFileLink();
   LOG(INFO) << "Assuming prior files of " << prior_files;
   std::string fuser_cmd = "fuser " + prior_files + " 2> /dev/null";
   int rval = std::system(fuser_cmd.c_str());
@@ -767,7 +767,7 @@ bool ShouldCreateCompositeDisk() {
   return false;
 }
 
-void CreateCompositeDisk(const vsoc::CuttlefishConfig& config) {
+void CreateCompositeDisk(const cuttlefish::CuttlefishConfig& config) {
   if (FLAGS_composite_disk.empty()) {
     LOG(FATAL) << "asked to create composite disk, but path was empty";
   }
@@ -782,7 +782,7 @@ void CreateCompositeDisk(const vsoc::CuttlefishConfig& config) {
 
 } // namespace
 
-vsoc::CuttlefishConfig* InitFilesystemAndCreateConfig(int* argc, char*** argv) {
+cuttlefish::CuttlefishConfig* InitFilesystemAndCreateConfig(int* argc, char*** argv) {
   if (!ParseCommandLineFlags(argc, argv)) {
     LOG(ERROR) << "Failed to parse command arguments";
     exit(LauncherExitCodes::kArgumentParsingError);
@@ -816,7 +816,7 @@ vsoc::CuttlefishConfig* InitFilesystemAndCreateConfig(int* argc, char*** argv) {
     exit(LauncherExitCodes::kCuttlefishConfigurationInitError);
   }
   // Do this early so that the config object is ready for anything that needs it
-  auto config = vsoc::CuttlefishConfig::Get();
+  auto config = cuttlefish::CuttlefishConfig::Get();
   if (!config) {
     LOG(ERROR) << "Failed to obtain config singleton";
     exit(LauncherExitCodes::kCuttlefishConfigurationInitError);
@@ -877,6 +877,6 @@ vsoc::CuttlefishConfig* InitFilesystemAndCreateConfig(int* argc, char*** argv) {
   return config;
 }
 
-std::string GetConfigFilePath(const vsoc::CuttlefishConfig& config) {
+std::string GetConfigFilePath(const cuttlefish::CuttlefishConfig& config) {
   return config.PerInstancePath("cuttlefish_config.json");
 }

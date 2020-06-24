@@ -69,7 +69,7 @@ inline constexpr int BytesPerPixel() {
 
 // The width of the screen regardless of orientation. Does not change.
 inline int ActualScreenWidth() {
-  return vsoc::CuttlefishConfig::Get()->x_res();
+  return cuttlefish::CuttlefishConfig::Get()->x_res();
 }
 
 // The length of the screen stride regardless of orientation. Does not change.
@@ -79,7 +79,7 @@ inline int ActualScreenStride() {
 
 // The height of the screen regardless of orientation. Does not change.
 inline int ActualScreenHeight() {
-  return vsoc::CuttlefishConfig::Get()->y_res();
+  return cuttlefish::CuttlefishConfig::Get()->y_res();
 }
 
 inline int ScreenSizeInBytes() {

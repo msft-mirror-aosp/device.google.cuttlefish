@@ -27,12 +27,12 @@
 
 namespace vm_manager {
 
-VmManager::VmManager(const vsoc::CuttlefishConfig* config)
+VmManager::VmManager(const cuttlefish::CuttlefishConfig* config)
     : config_(config) {}
 
 namespace{
 template <typename T>
-VmManager* GetManagerSingleton(const vsoc::CuttlefishConfig* config) {
+VmManager* GetManagerSingleton(const cuttlefish::CuttlefishConfig* config) {
   static std::shared_ptr<VmManager> vm_manager(new T(config));
   return vm_manager.get();
 }
@@ -43,14 +43,14 @@ std::map<std::string, VmManager::VmManagerHelper>
         {
           QemuManager::name(),
           {
-            [](const vsoc::CuttlefishConfig* config) {
+            [](const cuttlefish::CuttlefishConfig* config) {
               return GetManagerSingleton<QemuManager>(config);
             },
-            []() { return vsoc::HostSupportsQemuCli(); },
-            [](vsoc::CuttlefishConfig* c) {
+            []() { return cuttlefish::HostSupportsQemuCli(); },
+            [](cuttlefish::CuttlefishConfig* c) {
               return QemuManager::ConfigureGpu(c);
             },
-            [](vsoc::CuttlefishConfig* c) {
+            [](cuttlefish::CuttlefishConfig* c) {
               return QemuManager::ConfigureBootDevices(c);
             }
           },
@@ -58,15 +58,15 @@ std::map<std::string, VmManager::VmManagerHelper>
         {
           CrosvmManager::name(),
           {
-            [](const vsoc::CuttlefishConfig* config) {
+            [](const cuttlefish::CuttlefishConfig* config) {
               return GetManagerSingleton<CrosvmManager>(config);
             },
             // Same as Qemu for the time being
-            []() { return vsoc::HostSupportsQemuCli(); },
-            [](vsoc::CuttlefishConfig* c) {
+            []() { return cuttlefish::HostSupportsQemuCli(); },
+            [](cuttlefish::CuttlefishConfig* c) {
               return CrosvmManager::ConfigureGpu(c);
             },
-            [](vsoc::CuttlefishConfig* c) {
+            [](cuttlefish::CuttlefishConfig* c) {
               return CrosvmManager::ConfigureBootDevices(c);
             }
           }
@@ -74,7 +74,7 @@ std::map<std::string, VmManager::VmManagerHelper>
     };
 
 VmManager* VmManager::Get(const std::string& vm_manager_name,
-                          const vsoc::CuttlefishConfig* config) {
+                          const cuttlefish::CuttlefishConfig* config) {
   if (VmManager::IsValidName(vm_manager_name)) {
     return vm_manager_helpers_[vm_manager_name].builder(config);
   }
@@ -91,7 +91,7 @@ bool VmManager::IsVmManagerSupported(const std::string& name) {
          vm_manager_helpers_[name].support_checker();
 }
 
-bool VmManager::ConfigureGpuMode(vsoc::CuttlefishConfig* config) {
+bool VmManager::ConfigureGpuMode(cuttlefish::CuttlefishConfig* config) {
   auto it = vm_manager_helpers_.find(config->vm_manager());
   if (it == vm_manager_helpers_.end()) {
     return false;
@@ -99,7 +99,7 @@ bool VmManager::ConfigureGpuMode(vsoc::CuttlefishConfig* config) {
   return it->second.configure_gpu_mode(config);
 }
 
-void VmManager::ConfigureBootDevices(vsoc::CuttlefishConfig* config) {
+void VmManager::ConfigureBootDevices(cuttlefish::CuttlefishConfig* config) {
   auto it = vm_manager_helpers_.find(config->vm_manager());
   if (it == vm_manager_helpers_.end()) {
     return;

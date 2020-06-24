@@ -23,7 +23,7 @@ namespace Json {
 class Value;
 }
 
-namespace vsoc {
+namespace cuttlefish {
 
 constexpr char kDefaultUuidPrefix[] = "699acfc4-c8c4-11e7-882b-5065f31dc1";
 constexpr char kCuttlefishConfigEnvVarName[] = "CUTTLEFISH_CONFIG_FILE";
@@ -334,4 +334,4 @@ bool HostSupportsVsock();
 // GPU modes
 extern const char* const kGpuModeGuestSwiftshader;
 extern const char* const kGpuModeDrmVirgl;
-}  // namespace vsoc
+}  // namespace cuttlefish

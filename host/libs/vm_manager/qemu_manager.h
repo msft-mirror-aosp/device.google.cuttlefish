@@ -26,10 +26,10 @@ namespace vm_manager {
 class QemuManager : public VmManager {
  public:
   static const std::string name();
-  static bool ConfigureGpu(vsoc::CuttlefishConfig* config);
-  static void ConfigureBootDevices(vsoc::CuttlefishConfig* config);
+  static bool ConfigureGpu(cuttlefish::CuttlefishConfig* config);
+  static void ConfigureBootDevices(cuttlefish::CuttlefishConfig* config);
 
-  QemuManager(const vsoc::CuttlefishConfig* config);
+  QemuManager(const cuttlefish::CuttlefishConfig* config);
   virtual ~QemuManager() = default;
 
   std::vector<cuttlefish::Command> StartCommands(bool with_frontend) override;
