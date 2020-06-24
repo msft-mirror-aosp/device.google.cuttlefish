@@ -74,7 +74,7 @@ void CreateBlankImage(
   }
 }
 
-bool ApplyDataImagePolicy(const vsoc::CuttlefishConfig& config,
+bool ApplyDataImagePolicy(const cuttlefish::CuttlefishConfig& config,
                           const std::string& data_image) {
   bool data_exists = cuttlefish::FileHasContent(data_image.c_str());
   bool remove{};

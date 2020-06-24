@@ -42,8 +42,8 @@ DEFINE_bool(run_file_discovery, true,
 
 namespace {
 
-std::string kAssemblerBin = vsoc::DefaultHostArtifactsPath("bin/assemble_cvd");
-std::string kRunnerBin = vsoc::DefaultHostArtifactsPath("bin/run_cvd");
+std::string kAssemblerBin = cuttlefish::DefaultHostArtifactsPath("bin/assemble_cvd");
+std::string kRunnerBin = cuttlefish::DefaultHostArtifactsPath("bin/run_cvd");
 
 cuttlefish::Subprocess StartAssembler(cuttlefish::SharedFD assembler_stdin,
                                cuttlefish::SharedFD assembler_stdout,

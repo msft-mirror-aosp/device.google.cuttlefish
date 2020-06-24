@@ -10,14 +10,14 @@
 #include "host/libs/config/cuttlefish_config.h"
 
 std::vector <cuttlefish::SharedFD> LaunchKernelLogMonitor(
-    const vsoc::CuttlefishConfig& config,
+    const cuttlefish::CuttlefishConfig& config,
     cuttlefish::ProcessMonitor* process_monitor,
     unsigned int number_of_event_pipes);
 void LaunchAdbConnectorIfEnabled(cuttlefish::ProcessMonitor* process_monitor,
-                                 const vsoc::CuttlefishConfig& config,
+                                 const cuttlefish::CuttlefishConfig& config,
                                  cuttlefish::SharedFD adbd_events_pipe);
 void LaunchSocketVsockProxyIfEnabled(cuttlefish::ProcessMonitor* process_monitor,
-                                 const vsoc::CuttlefishConfig& config);
+                                 const cuttlefish::CuttlefishConfig& config);
 
 struct StreamerLaunchResult {
   bool launched = false;
@@ -26,7 +26,7 @@ struct StreamerLaunchResult {
   std::optional<unsigned int> keyboard_server_vsock_port;
 };
 StreamerLaunchResult LaunchVNCServer(
-    const vsoc::CuttlefishConfig& config,
+    const cuttlefish::CuttlefishConfig& config,
     cuttlefish::ProcessMonitor* process_monitor,
     std::function<bool(cuttlefish::MonitorEntry*)> callback);
 
@@ -34,19 +34,19 @@ struct TombstoneReceiverPorts {
   std::optional<unsigned int> server_vsock_port;
 };
 TombstoneReceiverPorts LaunchTombstoneReceiverIfEnabled(
-    const vsoc::CuttlefishConfig& config, cuttlefish::ProcessMonitor* process_monitor);
+    const cuttlefish::CuttlefishConfig& config, cuttlefish::ProcessMonitor* process_monitor);
 
 struct ConfigServerPorts {
   std::optional<unsigned int> server_vsock_port;
 };
-ConfigServerPorts LaunchConfigServer(const vsoc::CuttlefishConfig& config,
+ConfigServerPorts LaunchConfigServer(const cuttlefish::CuttlefishConfig& config,
                                      cuttlefish::ProcessMonitor* process_monitor);
 
 struct LogcatServerPorts {
   std::optional<unsigned int> server_vsock_port;
 };
-LogcatServerPorts LaunchLogcatReceiverIfEnabled(const vsoc::CuttlefishConfig& config,
+LogcatServerPorts LaunchLogcatReceiverIfEnabled(const cuttlefish::CuttlefishConfig& config,
                                                 cuttlefish::ProcessMonitor* process_monitor);
 
 StreamerLaunchResult LaunchWebRTC(cuttlefish::ProcessMonitor* process_monitor,
-                                  const vsoc::CuttlefishConfig& config);
+                                  const cuttlefish::CuttlefishConfig& config);

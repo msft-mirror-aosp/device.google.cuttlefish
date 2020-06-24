@@ -47,13 +47,13 @@ int InstanceFromEnvironment() {
     // Try to get it from the user instead
     instance_str = std::getenv("USER");
 
-    if (!instance_str || std::strncmp(instance_str, vsoc::kVsocUserPrefix,
-                                      sizeof(vsoc::kVsocUserPrefix) - 1)) {
+    if (!instance_str || std::strncmp(instance_str, cuttlefish::kVsocUserPrefix,
+                                      sizeof(cuttlefish::kVsocUserPrefix) - 1)) {
       // No user or we don't recognize this user
       LOG(WARNING) << "No user or non-vsoc user, returning default config";
       return kDefaultInstance;
     }
-    instance_str += sizeof(vsoc::kVsocUserPrefix) - 1;
+    instance_str += sizeof(cuttlefish::kVsocUserPrefix) - 1;
 
     // Set the environment variable so that child processes see it
     setenv(kInstanceEnvironmentVariable, instance_str, 0);
@@ -167,7 +167,7 @@ const char* kExtraKernelCmdline = "extra_kernel_cmdline";
 const char* kRilDns = "ril_dns";
 }  // namespace
 
-namespace vsoc {
+namespace cuttlefish {
 
 const char* const kGpuModeGuestSwiftshader = "guest_swiftshader";
 const char* const kGpuModeDrmVirgl = "drm_virgl";
@@ -877,7 +877,7 @@ std::string CuttlefishConfig::ril_dns()const {
 // Returns nullptr if there was an error loading from file
 /*static*/ CuttlefishConfig* CuttlefishConfig::BuildConfigImpl() {
   auto config_file_path = cuttlefish::StringFromEnv(kCuttlefishConfigEnvVarName,
-                                             vsoc::GetGlobalConfigFileLink());
+                                             cuttlefish::GetGlobalConfigFileLink());
   auto ret = new CuttlefishConfig();
   if (ret) {
     auto loaded = ret->LoadFromFile(config_file_path.c_str());
@@ -966,7 +966,7 @@ std::string GetDefaultPerInstanceDir() {
 
 int GetDefaultPerInstanceVsockCid() {
   constexpr int kFirstGuestCid = 3;
-  return vsoc::HostSupportsVsock() ? GetPerInstanceDefault(kFirstGuestCid) : 0;
+  return cuttlefish::HostSupportsVsock() ? GetPerInstanceDefault(kFirstGuestCid) : 0;
 }
 
 std::string DefaultHostArtifactsPath(const std::string& file_name) {
@@ -996,4 +996,4 @@ bool HostSupportsVsock() {
           "/usr/lib/cuttlefish-common/bin/capability_query.py vsock") == 0;
   return supported;
 }
-}  // namespace vsoc
+}  // namespace cuttlefish

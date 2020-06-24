@@ -22,7 +22,7 @@
 #include "host/commands/run_cvd/launch.h"
 #include "host/libs/config/cuttlefish_config.h"
 
-std::vector<std::string> KernelCommandLineFromConfig(const vsoc::CuttlefishConfig& config);
+std::vector<std::string> KernelCommandLineFromConfig(const cuttlefish::CuttlefishConfig& config);
 std::vector<std::string> KernelCommandLineFromStreamer(const StreamerLaunchResult& vnc_config);
 std::vector<std::string> KernelCommandLineFromTombstone(const TombstoneReceiverPorts& tombstone);
 std::vector<std::string> KernelCommandLineFromConfigServer(const ConfigServerPorts& config_server);

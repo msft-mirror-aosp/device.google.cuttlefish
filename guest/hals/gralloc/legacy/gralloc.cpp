@@ -39,7 +39,7 @@
 #include "gralloc_vsoc_priv.h"
 #include "region_registry.h"
 
-using vsoc::screen::ScreenRegionView;
+using cuttlefish::screen::ScreenRegionView;
 
 /*****************************************************************************/
 

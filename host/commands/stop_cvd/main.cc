@@ -61,9 +61,9 @@ std::set<pid_t> GetCandidateProcessGroups() {
   // Add files in the tombstone directory
   cmd += " " + instance_dir + "/tombstones/*";
   // Add files in the internal directory
-  cmd += ((" " + instance_dir + "/") + vsoc::kInternalDirName) + "/*";
+  cmd += ((" " + instance_dir + "/") + cuttlefish::kInternalDirName) + "/*";
   // Add the shared memory file
-  cmd += " " + vsoc::GetPerInstanceDefault("/dev/shm/cvd-");
+  cmd += " " + cuttlefish::GetPerInstanceDefault("/dev/shm/cvd-");
   std::shared_ptr<FILE> cmd_out(popen(cmd.c_str(), "r"), pclose);
   if (!cmd_out) {
     LOG(ERROR) << "Unable to execute '" << cmd << "': " << strerror(errno);
@@ -107,7 +107,7 @@ int main(int argc, char** argv) {
   ::android::base::InitLogging(argv, android::base::StderrLogger);
   google::ParseCommandLineFlags(&argc, &argv, true);
 
-  auto config = vsoc::CuttlefishConfig::Get();
+  auto config = cuttlefish::CuttlefishConfig::Get();
   if (!config) {
     LOG(ERROR) << "Failed to obtain config object";
     return FallBackStop();

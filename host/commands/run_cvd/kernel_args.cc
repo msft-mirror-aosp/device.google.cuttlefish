@@ -43,7 +43,7 @@ static std::string concat(const S& s, const T& t) {
   return os.str();
 }
 
-static size_t CalculateVbmetaSize(const vsoc::CuttlefishConfig& config) {
+static size_t CalculateVbmetaSize(const cuttlefish::CuttlefishConfig& config) {
   auto vbmeta_fd = cuttlefish::SharedFD::Open(config.vbmeta_image_path(), O_RDONLY);
   if (!vbmeta_fd->IsOpen()) {
     LOG(ERROR) << "Could not open vbmeta file \""
@@ -89,8 +89,8 @@ static size_t CalculateVbmetaSize(const vsoc::CuttlefishConfig& config) {
          vbmeta_system_header_swapped.auxiliary_data_block_size;
 }
 
-static std::string CalculateVbmetaDigest(const vsoc::CuttlefishConfig& config) {
-  cuttlefish::Command avbtool_cmd(vsoc::DefaultHostArtifactsPath("bin/avbtool"));
+static std::string CalculateVbmetaDigest(const cuttlefish::CuttlefishConfig& config) {
+  cuttlefish::Command avbtool_cmd(cuttlefish::DefaultHostArtifactsPath("bin/avbtool"));
   avbtool_cmd.AddParameter("calculate_vbmeta_digest");
   avbtool_cmd.AddParameter("--image");
   avbtool_cmd.AddParameter(config.vbmeta_image_path());
@@ -106,7 +106,7 @@ static std::string CalculateVbmetaDigest(const vsoc::CuttlefishConfig& config) {
   return avbtool_ret == 0 ? android::base::Split(avbtool_output, "\n").at(0) : "";
 }
 
-std::vector<std::string> KernelCommandLineFromConfig(const vsoc::CuttlefishConfig& config) {
+std::vector<std::string> KernelCommandLineFromConfig(const cuttlefish::CuttlefishConfig& config) {
   std::vector<std::string> kernel_cmdline;
 
   AppendVector(&kernel_cmdline, config.boot_image_kernel_cmdline());

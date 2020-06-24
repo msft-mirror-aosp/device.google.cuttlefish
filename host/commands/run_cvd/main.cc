@@ -58,13 +58,13 @@
 #include "host/libs/vm_manager/vm_manager.h"
 #include "host/libs/vm_manager/qemu_manager.h"
 
-using vsoc::GetPerInstanceDefault;
+using cuttlefish::GetPerInstanceDefault;
 using cuttlefish::RunnerExitCodes;
 
 namespace {
 
 cuttlefish::OnSocketReadyCb GetOnSubprocessExitCallback(
-    const vsoc::CuttlefishConfig& config) {
+    const cuttlefish::CuttlefishConfig& config) {
   if (config.restart_subprocesses()) {
     return cuttlefish::ProcessMonitor::RestartOnExitCb;
   } else {
@@ -152,7 +152,7 @@ void SetUpHandlingOfBootEvents(
       });
 }
 
-bool WriteCuttlefishEnvironment(const vsoc::CuttlefishConfig& config) {
+bool WriteCuttlefishEnvironment(const cuttlefish::CuttlefishConfig& config) {
   auto env = cuttlefish::SharedFD::Open(config.cuttlefish_env_path().c_str(),
                                  O_CREAT | O_RDWR, 0755);
   if (!env->IsOpen()) {
@@ -168,7 +168,7 @@ bool WriteCuttlefishEnvironment(const vsoc::CuttlefishConfig& config) {
 
 // Forks and returns the write end of a pipe to the child process. The parent
 // process waits for boot events to come through the pipe and exits accordingly.
-cuttlefish::SharedFD DaemonizeLauncher(const vsoc::CuttlefishConfig& config) {
+cuttlefish::SharedFD DaemonizeLauncher(const cuttlefish::CuttlefishConfig& config) {
   cuttlefish::SharedFD read_end, write_end;
   if (!cuttlefish::SharedFD::Pipe(&read_end, &write_end)) {
     LOG(ERROR) << "Unable to create pipe";
@@ -193,9 +193,9 @@ cuttlefish::SharedFD DaemonizeLauncher(const vsoc::CuttlefishConfig& config) {
       LOG(ERROR) << "Unexpected exit code: " << exit_code;
     }
     if (exit_code == RunnerExitCodes::kSuccess) {
-      LOG(INFO) << vsoc::kBootCompletedMessage;
+      LOG(INFO) << cuttlefish::kBootCompletedMessage;
     } else {
-      LOG(INFO) << vsoc::kBootFailedMessage;
+      LOG(INFO) << cuttlefish::kBootFailedMessage;
     }
     std::exit(exit_code);
   } else {
@@ -270,7 +270,7 @@ void ServerLoop(cuttlefish::SharedFD server,
   }
 }
 
-std::string GetConfigFilePath(const vsoc::CuttlefishConfig& config) {
+std::string GetConfigFilePath(const cuttlefish::CuttlefishConfig& config) {
   return config.PerInstancePath("cuttlefish_config.json");
 }
 
@@ -308,14 +308,14 @@ int main(int argc, char** argv) {
   for (const auto& file : input_files) {
     if (file.find("cuttlefish_config.json") != std::string::npos) {
       found_config = true;
-      setenv(vsoc::kCuttlefishConfigEnvVarName, file.c_str(), /* overwrite */ false);
+      setenv(cuttlefish::kCuttlefishConfigEnvVarName, file.c_str(), /* overwrite */ false);
     }
   }
   if (!found_config) {
     return RunnerExitCodes::kCuttlefishConfigurationInitError;
   }
 
-  auto config = vsoc::CuttlefishConfig::Get();
+  auto config = cuttlefish::CuttlefishConfig::Get();
 
   auto runner_log_path = config->PerInstancePath("run_cvd.log");
   stderr_tee.SetFile(cuttlefish::SharedFD::Creat(runner_log_path.c_str(), 0755));

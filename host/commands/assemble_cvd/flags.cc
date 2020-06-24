@@ -23,7 +23,7 @@
 // Taken from external/avb/libavb/avb_slot_verify.c; this define is not in the headers
 #define VBMETA_MAX_SIZE 65536ul
 
-using vsoc::GetPerInstanceDefault;
+using cuttlefish::GetPerInstanceDefault;
 using cuttlefish::AssemblerExitCodes;
 
 DEFINE_string(cache_image, "", "Location of the cache partition image.");
@@ -82,10 +82,10 @@ DEFINE_string(
     vm_manager, vm_manager::CrosvmManager::name(),
     "What virtual machine manager to use, one of {qemu_cli, crosvm}");
 DEFINE_string(
-    gpu_mode, vsoc::kGpuModeGuestSwiftshader,
+    gpu_mode, cuttlefish::kGpuModeGuestSwiftshader,
     "What gpu configuration to use, one of {guest_swiftshader, drm_virgl}");
 
-DEFINE_string(system_image_dir, vsoc::DefaultGuestImagePath(""),
+DEFINE_string(system_image_dir, cuttlefish::DefaultGuestImagePath(""),
               "Location of the system partition images.");
 DEFINE_string(super_image, "", "Location of the super partition image.");
 DEFINE_string(misc_image, "",
@@ -123,19 +123,19 @@ DEFINE_bool(enable_sandbox,
 static const std::string kSeccompDir =
     std::string("usr/share/cuttlefish/") + cuttlefish::HostArch() + "-linux-gnu/seccomp";
 DEFINE_string(seccomp_policy_dir,
-              vsoc::DefaultHostArtifactsPath(kSeccompDir),
+              cuttlefish::DefaultHostArtifactsPath(kSeccompDir),
               "With sandbox'ed crosvm, overrieds the security comp policy directory");
 
 DEFINE_bool(start_webrtc, false, "Whether to start the webrtc process.");
 
 DEFINE_string(
         webrtc_assets_dir,
-        vsoc::DefaultHostArtifactsPath("usr/share/webrtc/assets"),
+        cuttlefish::DefaultHostArtifactsPath("usr/share/webrtc/assets"),
         "[Experimental] Path to WebRTC webpage assets.");
 
 DEFINE_string(
         webrtc_certs_dir,
-        vsoc::DefaultHostArtifactsPath("usr/share/webrtc/certs"),
+        cuttlefish::DefaultHostArtifactsPath("usr/share/webrtc/certs"),
         "[Experimental] Path to WebRTC certificates directory.");
 
 DEFINE_string(
@@ -192,10 +192,10 @@ DEFINE_bool(run_adb_connector, true,
 DEFINE_string(wifi_tap_name, GetPerInstanceDefault("cvd-wtap-"),
               "The name of the tap interface to use for wifi");
 DEFINE_int32(vsock_guest_cid,
-             vsoc::GetDefaultPerInstanceVsockCid(),
+             cuttlefish::GetDefaultPerInstanceVsockCid(),
              "Guest identifier for vsock. Disabled if under 3.");
 
-DEFINE_string(uuid, vsoc::GetPerInstanceDefault(vsoc::kDefaultUuidPrefix),
+DEFINE_string(uuid, cuttlefish::GetPerInstanceDefault(cuttlefish::kDefaultUuidPrefix),
               "UUID to use for the device. Random if not specified");
 DEFINE_bool(daemon, false,
             "Run cuttlefish in background, the launcher exits on boot "
@@ -210,7 +210,7 @@ DEFINE_string(qemu_binary,
               "/usr/bin/qemu-system-x86_64",
               "The qemu binary to use");
 DEFINE_string(crosvm_binary,
-              vsoc::DefaultHostArtifactsPath("bin/crosvm"),
+              cuttlefish::DefaultHostArtifactsPath("bin/crosvm"),
               "The Crosvm binary to use");
 DEFINE_bool(restart_subprocesses, true, "Restart any crashed host process");
 DEFINE_string(logcat_mode, "", "How to send android's log messages from "
@@ -276,7 +276,7 @@ std::string GetCuttlefishEnvPath() {
 
 int GetHostPort() {
   constexpr int kFirstHostPort = 6520;
-  return vsoc::GetPerInstanceDefault(kFirstHostPort);
+  return cuttlefish::GetPerInstanceDefault(kFirstHostPort);
 }
 
 int NumStreamers() {
@@ -291,7 +291,7 @@ bool InitializeCuttlefishConfiguration(
   // At most one streamer can be started.
   CHECK(NumStreamers() <= 1);
 
-  vsoc::CuttlefishConfig tmp_config_obj;
+  cuttlefish::CuttlefishConfig tmp_config_obj;
   // Set this first so that calls to PerInstancePath below are correct
   tmp_config_obj.set_instance_dir(FLAGS_instance_dir);
   if (!vm_manager::VmManager::IsValidName(FLAGS_vm_manager)) {
@@ -370,9 +370,9 @@ bool InitializeCuttlefishConfiguration(
 
   tmp_config_obj.set_deprecated_boot_completed(FLAGS_deprecated_boot_completed);
   tmp_config_obj.set_logcat_receiver_binary(
-      vsoc::DefaultHostArtifactsPath("bin/logcat_receiver"));
+      cuttlefish::DefaultHostArtifactsPath("bin/logcat_receiver"));
   tmp_config_obj.set_config_server_binary(
-      vsoc::DefaultHostArtifactsPath("bin/config_server"));
+      cuttlefish::DefaultHostArtifactsPath("bin/config_server"));
 
   tmp_config_obj.set_mobile_bridge_name(FLAGS_mobile_interface);
   tmp_config_obj.set_mobile_tap_name(FLAGS_mobile_tap_name);
@@ -386,13 +386,13 @@ bool InitializeCuttlefishConfiguration(
   tmp_config_obj.set_qemu_binary(FLAGS_qemu_binary);
   tmp_config_obj.set_crosvm_binary(FLAGS_crosvm_binary);
   tmp_config_obj.set_console_forwarder_binary(
-      vsoc::DefaultHostArtifactsPath("bin/console_forwarder"));
+      cuttlefish::DefaultHostArtifactsPath("bin/console_forwarder"));
   tmp_config_obj.set_kernel_log_monitor_binary(
-      vsoc::DefaultHostArtifactsPath("bin/kernel_log_monitor"));
+      cuttlefish::DefaultHostArtifactsPath("bin/kernel_log_monitor"));
 
   tmp_config_obj.set_enable_vnc_server(FLAGS_start_vnc_server);
   tmp_config_obj.set_vnc_server_binary(
-      vsoc::DefaultHostArtifactsPath("bin/vnc_server"));
+      cuttlefish::DefaultHostArtifactsPath("bin/vnc_server"));
   tmp_config_obj.set_vnc_server_port(FLAGS_vnc_server_port);
 
   tmp_config_obj.set_enable_sandbox(FLAGS_enable_sandbox);
@@ -401,12 +401,12 @@ bool InitializeCuttlefishConfiguration(
 
   tmp_config_obj.set_enable_webrtc(FLAGS_start_webrtc);
   tmp_config_obj.set_webrtc_binary(
-      vsoc::DefaultHostArtifactsPath("bin/webRTC"));
+      cuttlefish::DefaultHostArtifactsPath("bin/webRTC"));
   tmp_config_obj.set_webrtc_assets_dir(FLAGS_webrtc_assets_dir);
   tmp_config_obj.set_webrtc_public_ip(FLAGS_webrtc_public_ip);
   tmp_config_obj.set_webrtc_certs_dir(FLAGS_webrtc_certs_dir);
   tmp_config_obj.set_sig_server_binary(
-      vsoc::DefaultHostArtifactsPath("bin/webrtc_sig_server"));
+      cuttlefish::DefaultHostArtifactsPath("bin/webrtc_sig_server"));
   tmp_config_obj.set_sig_server_port(FLAGS_webrtc_sig_server_port);
   tmp_config_obj.set_sig_server_address(FLAGS_webrtc_sig_server_addr);
   tmp_config_obj.set_sig_server_path(FLAGS_webrtc_sig_server_path);
@@ -418,9 +418,9 @@ bool InitializeCuttlefishConfiguration(
   tmp_config_obj.set_restart_subprocesses(FLAGS_restart_subprocesses);
   tmp_config_obj.set_run_adb_connector(FLAGS_run_adb_connector);
   tmp_config_obj.set_adb_connector_binary(
-      vsoc::DefaultHostArtifactsPath("bin/adb_connector"));
+      cuttlefish::DefaultHostArtifactsPath("bin/adb_connector"));
   tmp_config_obj.set_socket_vsock_proxy_binary(
-      vsoc::DefaultHostArtifactsPath("bin/socket_vsock_proxy"));
+      cuttlefish::DefaultHostArtifactsPath("bin/socket_vsock_proxy"));
   tmp_config_obj.set_run_as_daemon(FLAGS_daemon);
 
   tmp_config_obj.set_data_policy(FLAGS_data_policy);
@@ -431,7 +431,7 @@ bool InitializeCuttlefishConfiguration(
 
   tmp_config_obj.set_enable_tombstone_receiver(FLAGS_enable_tombstone_receiver);
   tmp_config_obj.set_tombstone_receiver_binary(
-      vsoc::DefaultHostArtifactsPath("bin/tombstone_receiver"));
+      cuttlefish::DefaultHostArtifactsPath("bin/tombstone_receiver"));
 
   tmp_config_obj.set_use_bootloader(FLAGS_use_bootloader);
   tmp_config_obj.set_bootloader(FLAGS_bootloader);
@@ -451,19 +451,19 @@ bool InitializeCuttlefishConfiguration(
     std::string device_id = FLAGS_webrtc_device_id;
     size_t pos;
     while ((pos = device_id.find("{num}")) != std::string::npos) {
-      device_id.replace(pos, strlen("{num}"), std::to_string(vsoc::GetInstance()));
+      device_id.replace(pos, strlen("{num}"), std::to_string(cuttlefish::GetInstance()));
     }
     tmp_config_obj.set_webrtc_device_id(device_id);
   }
   tmp_config_obj.set_start_webrtc_signaling_server(FLAGS_start_webrtc_sig_server);
   auto config_file = GetConfigFilePath(tmp_config_obj);
-  auto config_link = vsoc::GetGlobalConfigFileLink();
+  auto config_link = cuttlefish::GetGlobalConfigFileLink();
   // Save the config object before starting any host process
   if (!tmp_config_obj.SaveToFile(config_file)) {
     LOG(ERROR) << "Unable to save config object";
     return false;
   }
-  setenv(vsoc::kCuttlefishConfigEnvVarName, config_file.c_str(), true);
+  setenv(cuttlefish::kCuttlefishConfigEnvVarName, config_file.c_str(), true);
   if (symlink(config_file.c_str(), config_link.c_str()) != 0) {
     LOG(ERROR) << "Failed to create symlink to config file at " << config_link
                << ": " << strerror(errno);
@@ -504,12 +504,12 @@ void SetDefaultFlagsForCrosvm() {
             return false;
           }
           return (::mkdir(var_empty.c_str(), 0755) == 0);
-        }(vsoc::kCrosvmVarEmptyDir);
+        }(cuttlefish::kCrosvmVarEmptyDir);
   }
 
   // Sepolicy rules need to be updated to support gpu mode. Temporarily disable
   // auto-enabling sandbox when gpu is enabled (b/152323505).
-  if (FLAGS_gpu_mode != vsoc::kGpuModeGuestSwiftshader) {
+  if (FLAGS_gpu_mode != cuttlefish::kGpuModeGuestSwiftshader) {
     default_enable_sandbox = false;
   }
 
@@ -557,7 +557,7 @@ bool ParseCommandLineFlags(int* argc, char*** argv) {
     return false;
   }
   // Set the env variable to empty (in case the caller passed a value for it).
-  unsetenv(vsoc::kCuttlefishConfigEnvVarName);
+  unsetenv(cuttlefish::kCuttlefishConfigEnvVarName);
 
   return ResolveInstanceFiles();
 }
@@ -568,7 +568,7 @@ bool CleanPriorFiles() {
   // The environment file
   prior_files += " " + GetCuttlefishEnvPath();
   // The global link to the config file
-  prior_files += " " + vsoc::GetGlobalConfigFileLink();
+  prior_files += " " + cuttlefish::GetGlobalConfigFileLink();
   LOG(INFO) << "Assuming prior files of " << prior_files;
   std::string fuser_cmd = "fuser " + prior_files + " 2> /dev/null";
   int rval = std::system(fuser_cmd.c_str());
@@ -587,7 +587,7 @@ bool CleanPriorFiles() {
 }
 
 bool DecompressKernel(const std::string& src, const std::string& dst) {
-  cuttlefish::Command decomp_cmd(vsoc::DefaultHostArtifactsPath("bin/extract-vmlinux"));
+  cuttlefish::Command decomp_cmd(cuttlefish::DefaultHostArtifactsPath("bin/extract-vmlinux"));
   decomp_cmd.AddParameter(src);
   auto output_file = cuttlefish::SharedFD::Creat(dst.c_str(), 0666);
   if (!output_file->IsOpen()) {
@@ -600,9 +600,9 @@ bool DecompressKernel(const std::string& src, const std::string& dst) {
   return decomp_proc.Started() && decomp_proc.Wait() == 0;
 }
 
-void ValidateAdbModeFlag(const vsoc::CuttlefishConfig& config) {
+void ValidateAdbModeFlag(const cuttlefish::CuttlefishConfig& config) {
   auto adb_modes = config.adb_mode();
-  adb_modes.erase(vsoc::AdbMode::Unknown);
+  adb_modes.erase(cuttlefish::AdbMode::Unknown);
   if (adb_modes.size() < 1) {
     LOG(INFO) << "ADB not enabled";
   }
@@ -695,7 +695,7 @@ bool ConcatRamdisks(const std::string& new_ramdisk_path, const std::string& ramd
   return true;
 }
 
-void CreateCompositeDisk(const vsoc::CuttlefishConfig& config) {
+void CreateCompositeDisk(const cuttlefish::CuttlefishConfig& config) {
   if (FLAGS_composite_disk.empty()) {
     LOG(FATAL) << "asked to create composite disk, but path was empty";
   }
@@ -710,7 +710,7 @@ void CreateCompositeDisk(const vsoc::CuttlefishConfig& config) {
 
 } // namespace
 
-const vsoc::CuttlefishConfig* InitFilesystemAndCreateConfig(
+const cuttlefish::CuttlefishConfig* InitFilesystemAndCreateConfig(
     int* argc, char*** argv, cuttlefish::FetcherConfig fetcher_config) {
   if (!ParseCommandLineFlags(argc, argv)) {
     LOG(ERROR) << "Failed to parse command arguments";
@@ -733,7 +733,7 @@ const vsoc::CuttlefishConfig* InitFilesystemAndCreateConfig(
     }
   }
 
-  auto internal_dir = FLAGS_instance_dir + "/" + vsoc::kInternalDirName;
+  auto internal_dir = FLAGS_instance_dir + "/" + cuttlefish::kInternalDirName;
   if (!cuttlefish::DirectoryExists(internal_dir)) {
     if (mkdir(internal_dir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) <
         0) {
@@ -755,7 +755,7 @@ const vsoc::CuttlefishConfig* InitFilesystemAndCreateConfig(
     exit(AssemblerExitCodes::kCuttlefishConfigurationInitError);
   }
   // Do this early so that the config object is ready for anything that needs it
-  auto config = vsoc::CuttlefishConfig::Get();
+  auto config = cuttlefish::CuttlefishConfig::Get();
   if (!config) {
     LOG(ERROR) << "Failed to obtain config singleton";
     exit(AssemblerExitCodes::kCuttlefishConfigurationInitError);
@@ -836,6 +836,6 @@ const vsoc::CuttlefishConfig* InitFilesystemAndCreateConfig(
   return config;
 }
 
-std::string GetConfigFilePath(const vsoc::CuttlefishConfig& config) {
+std::string GetConfigFilePath(const cuttlefish::CuttlefishConfig& config) {
   return config.PerInstancePath("cuttlefish_config.json");
 }

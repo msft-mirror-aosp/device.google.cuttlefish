@@ -34,7 +34,7 @@ class VmManager {
   // if the requested vm manager is not supported by the current version of the
   // host packages
   static VmManager* Get(const std::string& vm_manager_name,
-                        const vsoc::CuttlefishConfig* config);
+                        const cuttlefish::CuttlefishConfig* config);
   static bool IsValidName(const std::string& name);
   static std::vector<std::string> ConfigureGpuMode(
       const std::string& vmm_name, const std::string& gpu_mode);
@@ -62,8 +62,8 @@ class VmManager {
                           std::vector<std::string>* config_commands);
   static bool LinuxVersionAtLeast4_8(std::vector<std::string>* config_commands);
 
-  const vsoc::CuttlefishConfig* config_;
-  VmManager(const vsoc::CuttlefishConfig* config);
+  const cuttlefish::CuttlefishConfig* config_;
+  VmManager(const cuttlefish::CuttlefishConfig* config);
 
   bool frontend_enabled_;
   std::string kernel_cmdline_;
@@ -71,7 +71,7 @@ class VmManager {
  private:
   struct VmManagerHelper {
     // The singleton implementation
-    std::function<VmManager*(const vsoc::CuttlefishConfig*)> builder;
+    std::function<VmManager*(const cuttlefish::CuttlefishConfig*)> builder;
     // Whether the host packages support this vm manager
     std::function<bool()> support_checker;
     std::function<std::vector<std::string>(const std::string&)> configure_gpu_mode;

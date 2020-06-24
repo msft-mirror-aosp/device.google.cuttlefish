@@ -37,7 +37,7 @@ namespace vm_manager {
 
 namespace {
 
-std::string GetControlSocketPath(const vsoc::CuttlefishConfig* config) {
+std::string GetControlSocketPath(const cuttlefish::CuttlefishConfig* config) {
   return config->PerInstanceInternalPath("crosvm_control.sock");
 }
 
@@ -62,7 +62,7 @@ bool ReleaseDhcpLeases(const std::string& lease_path, cuttlefish::SharedFD tap_f
   bool success = true;
   auto dhcp_leases = cuttlefish::ParseDnsmasqLeases(lease_file_fd);
   for (auto& lease : dhcp_leases) {
-    std::uint8_t dhcp_server_ip[] = {192, 168, 96, (std::uint8_t) (vsoc::GetPerInstanceDefault(1) * 4 - 3)};
+    std::uint8_t dhcp_server_ip[] = {192, 168, 96, (std::uint8_t) (cuttlefish::GetPerInstanceDefault(1) * 4 - 3)};
     if (!cuttlefish::ReleaseDhcp4(tap_fd, lease.mac_address, lease.ip_address, dhcp_server_ip)) {
       LOG(ERROR) << "Failed to release " << lease;
       success = false;
@@ -74,7 +74,7 @@ bool ReleaseDhcpLeases(const std::string& lease_path, cuttlefish::SharedFD tap_f
 }
 
 bool Stop() {
-  auto config = vsoc::CuttlefishConfig::Get();
+  auto config = cuttlefish::CuttlefishConfig::Get();
   cuttlefish::Command command(config->crosvm_binary());
   command.AddParameter("stop");
   command.AddParameter(GetControlSocketPath(config));
@@ -93,14 +93,14 @@ std::vector<std::string> CrosvmManager::ConfigureGpu(const std::string& gpu_mode
   // the HAL search path allows for fallbacks, and fallbacks in conjunction
   // with properities lead to non-deterministic behavior while loading the
   // HALs.
-  if (gpu_mode == vsoc::kGpuModeDrmVirgl) {
+  if (gpu_mode == cuttlefish::kGpuModeDrmVirgl) {
     return {
       "androidboot.hardware.gralloc=minigbm",
       "androidboot.hardware.hwcomposer=drm_minigbm",
       "androidboot.hardware.egl=mesa",
     };
   }
-  if (gpu_mode == vsoc::kGpuModeGuestSwiftshader) {
+  if (gpu_mode == cuttlefish::kGpuModeGuestSwiftshader) {
     return {
         "androidboot.hardware.gralloc=cutf_ashmem",
         "androidboot.hardware.hwcomposer=cutf_cvm_ashmem",
@@ -120,7 +120,7 @@ std::vector<std::string> CrosvmManager::ConfigureBootDevices() {
   }
 }
 
-CrosvmManager::CrosvmManager(const vsoc::CuttlefishConfig* config)
+CrosvmManager::CrosvmManager(const cuttlefish::CuttlefishConfig* config)
     : VmManager(config) {}
 
 std::vector<cuttlefish::Command> CrosvmManager::StartCommands() {
@@ -134,7 +134,7 @@ std::vector<cuttlefish::Command> CrosvmManager::StartCommands() {
   });
   crosvm_cmd.AddParameter("run");
 
-  if (config_->gpu_mode() == vsoc::kGpuModeDrmVirgl) {
+  if (config_->gpu_mode() == cuttlefish::kGpuModeDrmVirgl) {
     crosvm_cmd.AddParameter("--gpu=",
                             "width=", config_->x_res(), ",",
                             "height=", config_->y_res(), ",",
@@ -164,7 +164,7 @@ std::vector<cuttlefish::Command> CrosvmManager::StartCommands() {
 
   if (config_->enable_sandbox()) {
     const bool seccomp_exists = cuttlefish::DirectoryExists(config_->seccomp_policy_dir());
-    const std::string& var_empty_dir = vsoc::kCrosvmVarEmptyDir;
+    const std::string& var_empty_dir = cuttlefish::kCrosvmVarEmptyDir;
     const bool var_empty_available = cuttlefish::DirectoryExists(var_empty_dir);
     if (!var_empty_available || !seccomp_exists) {
       LOG(FATAL) << var_empty_dir << " is not an existing, empty directory."
@@ -229,7 +229,7 @@ std::vector<cuttlefish::Command> CrosvmManager::StartCommands() {
   // TODO(schuffelen): QEMU also needs this and this is not the best place for
   // this code. Find a better place to put it.
   auto lease_file =
-      vsoc::GetPerInstanceDefault("/var/run/cuttlefish-dnsmasq-cvd-wbr-")
+      cuttlefish::GetPerInstanceDefault("/var/run/cuttlefish-dnsmasq-cvd-wbr-")
       + ".leases";
   if (!ReleaseDhcpLeases(lease_file, wifi_tap)) {
     LOG(ERROR) << "Failed to release wifi DHCP leases. Connecting to the wifi "

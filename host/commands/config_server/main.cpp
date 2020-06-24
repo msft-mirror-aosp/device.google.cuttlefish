@@ -29,7 +29,7 @@ int main(int argc, char** argv) {
   ::android::base::InitLogging(argv, android::base::StderrLogger);
   google::ParseCommandLineFlags(&argc, &argv, true);
 
-  CHECK(vsoc::CuttlefishConfig::Get()) << "Could not open config";
+  CHECK(cuttlefish::CuttlefishConfig::Get()) << "Could not open config";
 
   cuttlefish::SharedFD server_fd = cuttlefish::SharedFD::Dup(FLAGS_server_fd);
 

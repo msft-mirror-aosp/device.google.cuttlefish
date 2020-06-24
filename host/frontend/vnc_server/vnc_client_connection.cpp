@@ -88,7 +88,7 @@ constexpr size_t kPointerEventLength = 5;
 constexpr size_t kClientCutTextLength = 7;  // more bytes follow
 
 std::string HostName() {
-  auto config = vsoc::CuttlefishConfig::Get();
+  auto config = cuttlefish::CuttlefishConfig::Get();
   return !config || config->device_title().empty() ? std::string{"localhost"}
                                                    : config->device_title();
 }
