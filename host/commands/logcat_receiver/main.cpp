@@ -32,11 +32,11 @@ int main(int argc, char** argv) {
 
   auto path = config->logcat_path();
   auto logcat_file =
-      cvd::SharedFD::Open(path.c_str(), O_CREAT | O_APPEND | O_WRONLY, 0666);
+      cuttlefish::SharedFD::Open(path.c_str(), O_CREAT | O_APPEND | O_WRONLY, 0666);
   CHECK(logcat_file->IsOpen())
       << "Unable to open logcat file: " << logcat_file->StrError();
 
-  cvd::SharedFD server_fd = cvd::SharedFD::Dup(FLAGS_server_fd);
+  cuttlefish::SharedFD server_fd = cuttlefish::SharedFD::Dup(FLAGS_server_fd);
   close(FLAGS_server_fd);
 
   CHECK(server_fd->IsOpen()) << "Error creating or inheriting logcat server: "
@@ -44,7 +44,7 @@ int main(int argc, char** argv) {
 
   // Server loop
   while (true) {
-    auto conn = cvd::SharedFD::Accept(*server_fd);
+    auto conn = cuttlefish::SharedFD::Accept(*server_fd);
 
     while (true) {
       char buff[1024];

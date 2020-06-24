@@ -30,11 +30,11 @@
 // TODO(schuffelen): Merge this with the ip_link_add binary.
 int CreateWifiWrapper(const std::string& source,
                       const std::string& destination) {
-  auto factory = cvd::NetlinkClientFactory::Default();
-  std::unique_ptr<cvd::NetlinkClient> nl(factory->New(NETLINK_ROUTE));
+  auto factory = cuttlefish::NetlinkClientFactory::Default();
+  std::unique_ptr<cuttlefish::NetlinkClient> nl(factory->New(NETLINK_ROUTE));
 
   // http://maz-programmersdiary.blogspot.com/2011/09/netlink-sockets.html
-  cvd::NetlinkRequest link_add_request(RTM_NEWLINK,
+  cuttlefish::NetlinkRequest link_add_request(RTM_NEWLINK,
                                        NLM_F_REQUEST|NLM_F_ACK|0x600);
   link_add_request.Append(ifinfomsg {
     .ifi_change = 0xFFFFFFFF,
@@ -59,7 +59,7 @@ int CreateWifiWrapper(const std::string& source,
     return -3;
   }
 
-  cvd::NetlinkRequest bring_up_backing_request(RTM_SETLINK,
+  cuttlefish::NetlinkRequest bring_up_backing_request(RTM_SETLINK,
                                                NLM_F_REQUEST|NLM_F_ACK|0x600);
   bring_up_backing_request.Append(ifinfomsg {
     .ifi_index = index,
@@ -78,7 +78,7 @@ int CreateWifiWrapper(const std::string& source,
 
 int RenameNetwork(const std::string& name, const std::string& new_name) {
   static auto net_manager =
-      cvd::NetworkInterfaceManager::New(cvd::NetlinkClientFactory::Default());
+      cuttlefish::NetworkInterfaceManager::New(cuttlefish::NetlinkClientFactory::Default());
   auto connection = net_manager->Open(name, "ignore");
   if (!connection) {
     LOG(ERROR) << "setup_network: could not open " << name << " on device.";

@@ -70,7 +70,7 @@ std::string JoinString(const std::vector<std::string>& args,
 bool Stop() {
   auto config = vsoc::CuttlefishConfig::Get();
   auto monitor_path = GetMonitorPath(config);
-  auto monitor_sock = cvd::SharedFD::SocketLocalClient(
+  auto monitor_sock = cuttlefish::SharedFD::SocketLocalClient(
       monitor_path.c_str(), false, SOCK_STREAM);
 
   if (!monitor_sock->IsOpen()) {
@@ -125,7 +125,7 @@ std::vector<std::string> QemuManager::ConfigureBootDevices() {
 QemuManager::QemuManager(const vsoc::CuttlefishConfig* config)
   : VmManager(config) {}
 
-std::vector<cvd::Command> QemuManager::StartCommands() {
+std::vector<cuttlefish::Command> QemuManager::StartCommands() {
   // Set the config values in the environment
   LogAndSetEnv("qemu_binary", config_->qemu_binary());
   LogAndSetEnv("instance_name", config_->instance_name());
@@ -150,8 +150,8 @@ std::vector<cvd::Command> QemuManager::StartCommands() {
   LogAndSetEnv("use_bootloader", config_->use_bootloader() ? "true" : "false");
   LogAndSetEnv("bootloader", config_->bootloader());
 
-  cvd::Command qemu_cmd(vsoc::DefaultHostArtifactsPath("bin/cf_qemu.sh"),
-                        [](cvd::Subprocess* proc) {
+  cuttlefish::Command qemu_cmd(vsoc::DefaultHostArtifactsPath("bin/cf_qemu.sh"),
+                        [](cuttlefish::Subprocess* proc) {
                           auto stopped = Stop();
                           if (stopped) {
                             return true;
@@ -160,7 +160,7 @@ std::vector<cvd::Command> QemuManager::StartCommands() {
                                        << "attempting to KILL";
                           return KillSubprocess(proc);
                         });
-  std::vector<cvd::Command> ret;
+  std::vector<cuttlefish::Command> ret;
   ret.push_back(std::move(qemu_cmd));
   return ret;
 }

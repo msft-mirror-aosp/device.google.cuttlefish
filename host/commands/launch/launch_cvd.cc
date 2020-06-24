@@ -45,37 +45,37 @@ namespace {
 std::string kAssemblerBin = vsoc::DefaultHostArtifactsPath("bin/assemble_cvd");
 std::string kRunnerBin = vsoc::DefaultHostArtifactsPath("bin/run_cvd");
 
-cvd::Subprocess StartAssembler(cvd::SharedFD assembler_stdin,
-                               cvd::SharedFD assembler_stdout,
+cuttlefish::Subprocess StartAssembler(cuttlefish::SharedFD assembler_stdin,
+                               cuttlefish::SharedFD assembler_stdout,
                                const std::vector<std::string>& argv) {
-  cvd::Command assemble_cmd(kAssemblerBin);
+  cuttlefish::Command assemble_cmd(kAssemblerBin);
   for (const auto& arg : argv) {
     assemble_cmd.AddParameter(arg);
   }
   if (assembler_stdin->IsOpen()) {
-    assemble_cmd.RedirectStdIO(cvd::Subprocess::StdIOChannel::kStdIn, assembler_stdin);
+    assemble_cmd.RedirectStdIO(cuttlefish::Subprocess::StdIOChannel::kStdIn, assembler_stdin);
   }
-  assemble_cmd.RedirectStdIO(cvd::Subprocess::StdIOChannel::kStdOut, assembler_stdout);
+  assemble_cmd.RedirectStdIO(cuttlefish::Subprocess::StdIOChannel::kStdOut, assembler_stdout);
   return assemble_cmd.Start();
 }
 
-cvd::Subprocess StartRunner(cvd::SharedFD runner_stdin,
+cuttlefish::Subprocess StartRunner(cuttlefish::SharedFD runner_stdin,
                             const std::vector<std::string>& argv) {
-  cvd::Command run_cmd(kRunnerBin);
+  cuttlefish::Command run_cmd(kRunnerBin);
   for (const auto& arg : argv) {
     run_cmd.AddParameter(arg);
   }
-  run_cmd.RedirectStdIO(cvd::Subprocess::StdIOChannel::kStdIn, runner_stdin);
+  run_cmd.RedirectStdIO(cuttlefish::Subprocess::StdIOChannel::kStdIn, runner_stdin);
   return run_cmd.Start();
 }
 
-void WriteFiles(cvd::FetcherConfig fetcher_config, cvd::SharedFD out) {
+void WriteFiles(cuttlefish::FetcherConfig fetcher_config, cuttlefish::SharedFD out) {
   std::stringstream output_streambuf;
   for (const auto& file : fetcher_config.get_cvd_files()) {
     output_streambuf << file.first << "\n";
   }
   std::string output_string = output_streambuf.str();
-  int written = cvd::WriteAll(out, output_string);
+  int written = cuttlefish::WriteAll(out, output_string);
   if (written < 0) {
     LOG(FATAL) << "Could not write file report (" << strerror(out->GetErrno())
                << ")";
@@ -95,13 +95,13 @@ int main(int argc, char** argv) {
 
   gflags::HandleCommandLineHelpFlags();
 
-  cvd::SharedFD assembler_stdout, runner_stdin;
-  cvd::SharedFD::Pipe(&runner_stdin, &assembler_stdout);
+  cuttlefish::SharedFD assembler_stdout, runner_stdin;
+  cuttlefish::SharedFD::Pipe(&runner_stdin, &assembler_stdout);
 
-  cvd::SharedFD launcher_report, assembler_stdin;
+  cuttlefish::SharedFD launcher_report, assembler_stdin;
   bool should_generate_report = FLAGS_run_file_discovery;
   if (should_generate_report) {
-    cvd::SharedFD::Pipe(&assembler_stdin, &launcher_report);
+    cuttlefish::SharedFD::Pipe(&assembler_stdin, &launcher_report);
   }
 
   // SharedFDs are std::move-d in to avoid dangling references.

@@ -126,11 +126,11 @@ static inline void remoter_response_packet_init(
   pkt->status = status;
 }
 
-void remoter_connect(cvd::SharedFD* dest);
+void remoter_connect(cuttlefish::SharedFD* dest);
 int remoter_connect();
 
 static inline int remoter_read_request(
-    const cvd::SharedFD& socket,
+    const cuttlefish::SharedFD& socket,
     struct remoter_request_packet* request) {
   int len;
   int remaining_data;
@@ -231,7 +231,7 @@ static inline int remoter_send_request(
 }
 
 static inline int remoter_send_response(
-    const cvd::SharedFD& socket,
+    const cuttlefish::SharedFD& socket,
     struct remoter_response_packet* response) {
   int len = socket->Write(response, sizeof(*response));
   if (len <=0) {

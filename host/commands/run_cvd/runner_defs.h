@@ -15,7 +15,7 @@
  */
 #pragma once
 
-namespace cvd {
+namespace cuttlefish {
 
 constexpr char kLogcatSerialMode[] = "serial";
 constexpr char kLogcatVsockMode[] = "vsock";
@@ -59,4 +59,4 @@ enum class LauncherResponse : char {
   kError = 'E',
   kUnknownAction = 'U',
 };
-}  // namespace cvd
+}  // namespace cuttlefish

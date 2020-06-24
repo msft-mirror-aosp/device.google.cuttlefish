@@ -15,7 +15,7 @@ const int FSCK_ERROR_CORRECTED = 1;
 const int FSCK_ERROR_CORRECTED_REQUIRES_REBOOT = 2;
 
 bool ForceFsckImage(const char* data_image) {
-  int fsck_status = cvd::execute({"/sbin/e2fsck", "-y", "-f", data_image});
+  int fsck_status = cuttlefish::execute({"/sbin/e2fsck", "-y", "-f", data_image});
   if (fsck_status & ~(FSCK_ERROR_CORRECTED|FSCK_ERROR_CORRECTED_REQUIRES_REBOOT)) {
     LOG(ERROR) << "`e2fsck -y -f " << data_image << "` failed with code "
                << fsck_status;
@@ -25,7 +25,7 @@ bool ForceFsckImage(const char* data_image) {
 }
 
 bool ResizeImage(const char* data_image, int data_image_mb) {
-  auto file_mb = cvd::FileSize(data_image) >> 20;
+  auto file_mb = cuttlefish::FileSize(data_image) >> 20;
   if (file_mb > data_image_mb) {
     LOG(ERROR) << data_image << " is already " << file_mb << " MB, will not "
                << "resize down.";
@@ -36,7 +36,7 @@ bool ResizeImage(const char* data_image, int data_image_mb) {
   } else {
     off_t raw_target = static_cast<off_t>(data_image_mb) << 20;
     int truncate_status =
-        cvd::SharedFD::Open(data_image, O_RDWR)->Truncate(raw_target);
+        cuttlefish::SharedFD::Open(data_image, O_RDWR)->Truncate(raw_target);
     if (truncate_status != 0) {
       LOG(ERROR) << "`truncate --size=" << data_image_mb << "M "
                   << data_image << "` failed with code " << truncate_status;
@@ -46,7 +46,7 @@ bool ResizeImage(const char* data_image, int data_image_mb) {
     if (!fsck_success) {
       return false;
     }
-    int resize_status = cvd::execute({"/sbin/resize2fs", data_image});
+    int resize_status = cuttlefish::execute({"/sbin/resize2fs", data_image});
     if (resize_status != 0) {
       LOG(ERROR) << "`resize2fs " << data_image << "` failed with code "
                  << resize_status;
@@ -68,15 +68,15 @@ void CreateBlankImage(
   of += image;
   std::string count = "count=";
   count += std::to_string(image_mb);
-  cvd::execute({"/bin/dd", "if=/dev/zero", of, "bs=1M", count});
+  cuttlefish::execute({"/bin/dd", "if=/dev/zero", of, "bs=1M", count});
   if (image_fmt != "none") {
-    cvd::execute({"/sbin/mkfs", "-t", image_fmt, image}, {"PATH=/sbin"});
+    cuttlefish::execute({"/sbin/mkfs", "-t", image_fmt, image}, {"PATH=/sbin"});
   }
 }
 
 bool ApplyDataImagePolicy(const vsoc::CuttlefishConfig& config,
                           const std::string& data_image) {
-  bool data_exists = cvd::FileHasContent(data_image.c_str());
+  bool data_exists = cuttlefish::FileHasContent(data_image.c_str());
   bool remove{};
   bool create{};
   bool resize{};
@@ -112,7 +112,7 @@ bool ApplyDataImagePolicy(const vsoc::CuttlefishConfig& config,
   }
 
   if (remove) {
-    cvd::RemoveFile(data_image.c_str());
+    cuttlefish::RemoveFile(data_image.c_str());
   }
 
   if (create) {
@@ -136,7 +136,7 @@ bool ApplyDataImagePolicy(const vsoc::CuttlefishConfig& config,
 }
 
 bool InitializeMiscImage(const std::string& misc_image) {
-  bool misc_exists = cvd::FileHasContent(misc_image.c_str());
+  bool misc_exists = cuttlefish::FileHasContent(misc_image.c_str());
 
   if (misc_exists) {
     LOG(INFO) << "misc partition image: use existing";

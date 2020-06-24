@@ -15,7 +15,7 @@
  */
 #pragma once
 
-namespace cvd {
+namespace cuttlefish {
 
 constexpr char kLogcatSerialMode[] = "serial";
 constexpr char kLogcatVsockMode[] = "vsock";
@@ -46,4 +46,4 @@ enum AssemblerExitCodes : int {
   kInitRamFsConcatError = 22,
 };
 
-}  // namespace cvd
+}  // namespace cuttlefish

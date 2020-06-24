@@ -26,7 +26,7 @@
 
 #include "common/libs/glog/logging.h"
 
-namespace cvd {
+namespace cuttlefish {
 namespace {
 uint32_t kRequestSequenceNumber = 0;
 }  // namespace
@@ -122,4 +122,4 @@ size_t NetlinkRequest::RequestLength() const {
   return request_.size();
 }
 
-}  // namespace cvd
+}  // namespace cuttlefish

@@ -29,15 +29,15 @@
 
 #include "guest/hals/hwcomposer/common/geometry_utils.h"
 
-using cvd::LockGuard;
-using cvd::Mutex;
-using cvd::time::Microseconds;
-using cvd::time::MonotonicTimePoint;
-using cvd::time::Nanoseconds;
-using cvd::time::Seconds;
-using cvd::time::TimeDifference;
+using cuttlefish::LockGuard;
+using cuttlefish::Mutex;
+using cuttlefish::time::Microseconds;
+using cuttlefish::time::MonotonicTimePoint;
+using cuttlefish::time::Nanoseconds;
+using cuttlefish::time::Seconds;
+using cuttlefish::time::TimeDifference;
 
-namespace cvd {
+namespace cuttlefish {
 
 namespace {
 
@@ -258,4 +258,4 @@ void StatsKeeper::SynchronizedDump(char* buffer, int buffer_size) const {
 #undef bprintf
 }
 
-}  // namespace cvd
+}  // namespace cuttlefish

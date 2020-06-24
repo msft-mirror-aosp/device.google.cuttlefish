@@ -16,7 +16,7 @@
 #ifndef CUTTLEFISH_COMMON_COMMON_LIBS_THREADS_THUNKERS_H_
 #define CUTTLEFISH_COMMON_COMMON_LIBS_THREADS_THUNKERS_H_
 
-namespace cvd {
+namespace cuttlefish {
 namespace internal {
 
 template <typename HalType, typename F>
@@ -49,6 +49,6 @@ struct Thunker {
 template <typename HalType, auto MemFunc>
 constexpr auto thunk = internal::Thunker<HalType, MemFunc>::call;
 
-}  // namespace cvd
+}  // namespace cuttlefish
 
 #endif

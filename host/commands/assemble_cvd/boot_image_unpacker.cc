@@ -26,7 +26,7 @@
 #include "common/libs/utils/subprocess.h"
 #include "host/commands/assemble_cvd/bootimg.h"
 
-namespace cvd {
+namespace cuttlefish {
 
 namespace {
 
@@ -122,4 +122,4 @@ bool BootImageUnpacker::Unpack(const std::string& ramdisk_image_path,
   return true;
 }
 
-}  // namespace cvd
+}  // namespace cuttlefish

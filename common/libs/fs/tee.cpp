@@ -22,7 +22,7 @@
 
 static const std::size_t READ_SIZE = 512;
 
-namespace cvd {
+namespace cuttlefish {
 
 TeeSubscriber* Tee::AddSubscriber(TeeSubscriber subscriber) {
   if (reader_.joinable()) {
@@ -99,12 +99,12 @@ TeeStderrToFile::TeeStderrToFile() {
 
   tee_.AddSubscriber(SharedFDWriter(original_stderr_));
   tee_.AddSubscriber(
-      [this](cvd::TeeBufferPtr data) {
+      [this](cuttlefish::TeeBufferPtr data) {
         std::unique_lock lock(mutex_);
         while (!log_file_->IsOpen()) {
           notifier_.wait(lock);
         }
-        cvd::WriteAll(log_file_, *data);
+        cuttlefish::WriteAll(log_file_, *data);
       });
   tee_.Start(std::move(stderr_read));
 }

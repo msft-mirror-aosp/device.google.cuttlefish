@@ -22,7 +22,7 @@
 
 #include "common/libs/fs/shared_fd.h"
 
-namespace cvd {
+namespace cuttlefish {
 
 // Unpacks the boot image and extracts kernel, ramdisk and kernel arguments
 class BootImageUnpacker {
@@ -70,4 +70,4 @@ class BootImageUnpacker {
   uint32_t ramdisk_image_offset_;
 };
 
-}  // namespace cvd
+}  // namespace cuttlefish

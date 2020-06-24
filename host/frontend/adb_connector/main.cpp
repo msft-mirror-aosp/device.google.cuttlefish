@@ -39,7 +39,7 @@ DEFINE_int32(adbd_events_fd, -1, "A file descriptor. If set it will wait for "
 
 namespace {
 void LaunchConnectionMaintainerThread(const std::string& address) {
-  std::thread(cvd::EstablishAndMaintainConnection, address).detach();
+  std::thread(cuttlefish::EstablishAndMaintainConnection, address).detach();
 }
 
 std::vector<std::string> ParseAddressList(std::string ports) {
@@ -56,7 +56,7 @@ std::vector<std::string> ParseAddressList(std::string ports) {
 }
 
 void WaitForAdbdToBeStarted(int events_fd) {
-  auto evt_shared_fd = cvd::SharedFD::Dup(events_fd);
+  auto evt_shared_fd = cuttlefish::SharedFD::Dup(events_fd);
   close(events_fd);
   while (evt_shared_fd->IsOpen()) {
     monitor::BootEvent event;

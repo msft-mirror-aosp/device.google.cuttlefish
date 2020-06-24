@@ -29,7 +29,7 @@
 std::vector<std::string> ExtractImages(const std::string& archive_file,
                                        const std::string& target_directory,
                                        const std::vector<std::string>& images) {
-  cvd::Archive archive(archive_file);
+  cuttlefish::Archive archive(archive_file);
   bool extracted =
       images.size() > 0
           ? archive.ExtractFiles(images, target_directory)
@@ -52,9 +52,9 @@ std::vector<std::string> ExtractImages(const std::string& archive_file,
     std::string extracted_file = target_directory + "/" + file;
 
     std::string file_input, file_output;
-    cvd::Command file_cmd("/usr/bin/file");
+    cuttlefish::Command file_cmd("/usr/bin/file");
     file_cmd.AddParameter(extracted_file);
-    auto file_ret = cvd::RunWithManagedStdio(std::move(file_cmd), &file_input,
+    auto file_ret = cuttlefish::RunWithManagedStdio(std::move(file_cmd), &file_input,
                                              &file_output, nullptr);
     if (file_ret != 0) {
       LOG(ERROR) << "Unable to run file on " << file << ", returned" << file_ret;
@@ -65,11 +65,11 @@ std::vector<std::string> ExtractImages(const std::string& archive_file,
       continue;
     }
     std::string inflated_file = extracted_file + ".inflated";
-    cvd::Command simg_cmd("/usr/bin/simg2img");
+    cuttlefish::Command simg_cmd("/usr/bin/simg2img");
     simg_cmd.AddParameter(extracted_file);
     simg_cmd.AddParameter(inflated_file);
-    simg_cmd.RedirectStdIO(cvd::Subprocess::StdIOChannel::kStdOut,
-                           cvd::Subprocess::StdIOChannel::kStdErr);
+    simg_cmd.RedirectStdIO(cuttlefish::Subprocess::StdIOChannel::kStdOut,
+                           cuttlefish::Subprocess::StdIOChannel::kStdErr);
     if (simg_cmd.Start().Wait() != 0) {
       LOG(ERROR) << "Unable to run simg2img on " << file;
       extraction_success = false;

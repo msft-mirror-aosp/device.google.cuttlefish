@@ -27,7 +27,7 @@
 #include "common/libs/fs/shared_fd.h"
 #include "common/libs/thread_safe_queue/thread_safe_queue.h"
 
-namespace cvd {
+namespace cuttlefish {
 
 using TeeBufferPtr = std::shared_ptr<std::vector<char>>;
 using TeeSubscriber = std::function<void(const TeeBufferPtr)>;
@@ -55,8 +55,8 @@ public:
 TeeSubscriber SharedFDWriter(SharedFD fd);
 
 class TeeStderrToFile {
-  cvd::SharedFD log_file_;
-  cvd::SharedFD original_stderr_;
+  cuttlefish::SharedFD log_file_;
+  cuttlefish::SharedFD original_stderr_;
   std::condition_variable notifier_;
   std::mutex mutex_;
   Tee tee_; // This should be destroyed first, so placed last.
@@ -67,4 +67,4 @@ public:
   void SetFile(SharedFD file);
 };
 
-} // namespace cvd
+} // namespace cuttlefish

@@ -44,7 +44,7 @@ static std::string concat(const S& s, const T& t) {
 }
 
 static size_t CalculateVbmetaSize(const vsoc::CuttlefishConfig& config) {
-  auto vbmeta_fd = cvd::SharedFD::Open(config.vbmeta_image_path(), O_RDONLY);
+  auto vbmeta_fd = cuttlefish::SharedFD::Open(config.vbmeta_image_path(), O_RDONLY);
   if (!vbmeta_fd->IsOpen()) {
     LOG(ERROR) << "Could not open vbmeta file \""
                << config.vbmeta_image_path() << "\": "
@@ -53,7 +53,7 @@ static size_t CalculateVbmetaSize(const vsoc::CuttlefishConfig& config) {
   }
 
   auto vbmeta_system_fd =
-      cvd::SharedFD::Open(config.vbmeta_system_image_path(), O_RDONLY);
+      cuttlefish::SharedFD::Open(config.vbmeta_system_image_path(), O_RDONLY);
    if (!vbmeta_system_fd->IsOpen()) {
     LOG(ERROR) << "Could not open vbmeta file \""
                << config.vbmeta_system_image_path() << "\": "
@@ -63,7 +63,7 @@ static size_t CalculateVbmetaSize(const vsoc::CuttlefishConfig& config) {
 
   AvbVBMetaImageHeader vbmeta_header;
 
-  if (cvd::ReadExactBinary(vbmeta_fd, &vbmeta_header) < 0) {
+  if (cuttlefish::ReadExactBinary(vbmeta_fd, &vbmeta_header) < 0) {
     LOG(ERROR) << "Could not read vbmeta file \""
                << config.vbmeta_system_image_path() << '"';
     return 0;
@@ -72,7 +72,7 @@ static size_t CalculateVbmetaSize(const vsoc::CuttlefishConfig& config) {
   avb_vbmeta_image_header_to_host_byte_order(&vbmeta_header,
                                              &vbmeta_header_swapped);
 
-  if (cvd::ReadExactBinary(vbmeta_system_fd, &vbmeta_header) < 0) {
+  if (cuttlefish::ReadExactBinary(vbmeta_system_fd, &vbmeta_header) < 0) {
     LOG(ERROR) << "Could not read vbmeta file \""
                << config.vbmeta_system_image_path() << '"';
     return 0;
@@ -90,14 +90,14 @@ static size_t CalculateVbmetaSize(const vsoc::CuttlefishConfig& config) {
 }
 
 static std::string CalculateVbmetaDigest(const vsoc::CuttlefishConfig& config) {
-  cvd::Command avbtool_cmd(vsoc::DefaultHostArtifactsPath("bin/avbtool"));
+  cuttlefish::Command avbtool_cmd(vsoc::DefaultHostArtifactsPath("bin/avbtool"));
   avbtool_cmd.AddParameter("calculate_vbmeta_digest");
   avbtool_cmd.AddParameter("--image");
   avbtool_cmd.AddParameter(config.vbmeta_image_path());
   avbtool_cmd.AddParameter("--hash_algorithm");
   avbtool_cmd.AddParameter("sha256");
   std::string avbtool_output;
-  auto avbtool_ret = cvd::RunWithManagedStdio(std::move(avbtool_cmd), nullptr,
+  auto avbtool_ret = cuttlefish::RunWithManagedStdio(std::move(avbtool_cmd), nullptr,
                                               &avbtool_output, nullptr);
   if (avbtool_ret != 0) {
     LOG(ERROR) << "`avbtool \"" << config.vbmeta_image_path()
@@ -116,7 +116,7 @@ std::vector<std::string> KernelCommandLineFromConfig(const vsoc::CuttlefishConfi
 
   kernel_cmdline.push_back(concat("androidboot.serialno=", config.serial_number()));
   kernel_cmdline.push_back(concat("androidboot.lcd_density=", config.dpi()));
-  if (config.logcat_mode() == cvd::kLogcatVsockMode) {
+  if (config.logcat_mode() == cuttlefish::kLogcatVsockMode) {
   }
   kernel_cmdline.push_back(concat(
       "androidboot.setupwizard_mode=", config.setupwizard_mode()));

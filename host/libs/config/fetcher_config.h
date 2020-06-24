@@ -23,7 +23,7 @@ namespace Json {
 class Value;
 }
 
-namespace cvd {
+namespace cuttlefish {
 
 // Order in enum is not guaranteed to be stable, serialized as a string.
 enum FileSource {
@@ -80,4 +80,4 @@ public:
   std::map<std::string, CvdFile> get_cvd_files() const;
 };
 
-} // namespace cvd
+} // namespace cuttlefish

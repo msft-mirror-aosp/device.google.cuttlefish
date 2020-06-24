@@ -29,8 +29,8 @@ namespace {
 
 std::string kFetcherConfigFile = "fetcher_config.json";
 
-cvd::FetcherConfig FindFetcherConfig(const std::vector<std::string>& files) {
-  cvd::FetcherConfig fetcher_config;
+cuttlefish::FetcherConfig FindFetcherConfig(const std::vector<std::string>& files) {
+  cuttlefish::FetcherConfig fetcher_config;
   for (const auto& file : files) {
     auto expected_pos = file.size() - kFetcherConfigFile.size();
     if (file.rfind(kFetcherConfigFile) == expected_pos) {
@@ -51,22 +51,22 @@ int main(int argc, char** argv) {
   if (isatty(0)) {
     LOG(FATAL) << "stdin was a tty, expected to be passed the output of a previous stage. "
                << "Did you mean to run launch_cvd?";
-    return cvd::AssemblerExitCodes::kInvalidHostConfiguration;
+    return cuttlefish::AssemblerExitCodes::kInvalidHostConfiguration;
   } else {
     int error_num = errno;
     if (error_num == EBADF) {
       LOG(FATAL) << "stdin was not a valid file descriptor, expected to be passed the output "
                  << "of launch_cvd. Did you mean to run launch_cvd?";
-      return cvd::AssemblerExitCodes::kInvalidHostConfiguration;
+      return cuttlefish::AssemblerExitCodes::kInvalidHostConfiguration;
     }
   }
 
-  cvd::TeeStderrToFile stderr_tee;
+  cuttlefish::TeeStderrToFile stderr_tee;
 
   std::string input_files_str;
   {
-    auto input_fd = cvd::SharedFD::Dup(0);
-    auto bytes_read = cvd::ReadAll(input_fd, &input_files_str);
+    auto input_fd = cuttlefish::SharedFD::Dup(0);
+    auto bytes_read = cuttlefish::ReadAll(input_fd, &input_files_str);
     if (bytes_read < 0) {
       LOG(FATAL) << "Failed to read input files. Error was \"" << input_fd->StrError() << "\"";
     }
@@ -76,10 +76,10 @@ int main(int argc, char** argv) {
   auto config = InitFilesystemAndCreateConfig(&argc, &argv, FindFetcherConfig(input_files));
 
   auto assembler_log_path = config->PerInstancePath("assemble_cvd.log");
-  stderr_tee.SetFile(cvd::SharedFD::Creat(assembler_log_path.c_str(), 0755));
+  stderr_tee.SetFile(cuttlefish::SharedFD::Creat(assembler_log_path.c_str(), 0755));
 
   std::cout << GetConfigFilePath(*config) << "\n";
   std::cout << std::flush;
 
-  return cvd::AssemblerExitCodes::kSuccess;
+  return cuttlefish::AssemblerExitCodes::kSuccess;
 }
