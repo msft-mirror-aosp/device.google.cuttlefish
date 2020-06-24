@@ -167,7 +167,7 @@ class EmulatedCameraFactory {
   Vector<EmulatedBaseCamera*> mEmulatedCameras;
 
   /* Guards access to mEmulatedCameras. */
-  cvd::Mutex mEmulatedCamerasMutex;
+  cuttlefish::Mutex mEmulatedCamerasMutex;
 
   /* Camera callbacks (for status changing) */
   const camera_module_callbacks_t* mCallbacks;
@@ -176,8 +176,8 @@ class EmulatedCameraFactory {
   sp<EmulatedCameraHotplugThread> mHotplugThread;
 
   /* Back- and front camera properties accessed from the vsoc device. */
-  cvd::CameraConfiguration mCameraConfiguration;
-  Vector<cvd::CameraDefinition> mCameraDefinitions;
+  cuttlefish::CameraConfiguration mCameraConfiguration;
+  Vector<cuttlefish::CameraDefinition> mCameraDefinitions;
 
  public:
   /* Contains device open entry point, as required by HAL API. */

@@ -32,19 +32,19 @@ int main(int argc, char** argv) {
 
   auto config = vsoc::CuttlefishConfig::Get();
 
-  cvd::SharedFD server_fd;
+  cuttlefish::SharedFD server_fd;
   if (FLAGS_server_fd < 0) {
     unsigned int port = config->config_server_port();
-    server_fd = cvd::SharedFD::VsockServer(port, SOCK_STREAM);
+    server_fd = cuttlefish::SharedFD::VsockServer(port, SOCK_STREAM);
   } else {
-    server_fd = cvd::SharedFD::Dup(FLAGS_server_fd);
+    server_fd = cuttlefish::SharedFD::Dup(FLAGS_server_fd);
     close(FLAGS_server_fd);
   }
 
   CHECK(server_fd->IsOpen()) << "Error creating or inheriting logcat server: "
                              << server_fd->StrError();
 
-  auto device_config = cvd::DeviceConfig::Get();
+  auto device_config = cuttlefish::DeviceConfig::Get();
   if (!device_config) {
     LOG(ERROR) << "Failed to obtain device configuration";
     return -1;
@@ -52,7 +52,7 @@ int main(int argc, char** argv) {
 
   // Server loop
   while (true) {
-    auto conn = cvd::SharedFD::Accept(*server_fd);
+    auto conn = cuttlefish::SharedFD::Accept(*server_fd);
     LOG(INFO) << "Connection received on configuration server";
 
     bool succeeded = device_config->SendRawData(conn);

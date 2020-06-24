@@ -18,7 +18,7 @@
 #include "host/libs/vm_manager/vm_manager.h"
 
 using vsoc::GetPerInstanceDefault;
-using cvd::LauncherExitCodes;
+using cuttlefish::LauncherExitCodes;
 
 DEFINE_string(
     system_image, "",
@@ -138,7 +138,7 @@ DEFINE_bool(enable_sandbox,
             "Enable crosvm sandbox. Use this when you are sure about what you are doing.");
 
 static const std::string kSeccompDir =
-    std::string("usr/share/cuttlefish/") + cvd::HostArch() + "-linux-gnu/seccomp";
+    std::string("usr/share/cuttlefish/") + cuttlefish::HostArch() + "-linux-gnu/seccomp";
 DEFINE_string(seccomp_policy_dir,
               vsoc::DefaultHostArtifactsPath(kSeccompDir),
               "With sandbox'ed crosvm, overrieds the security comp policy directory");
@@ -284,13 +284,13 @@ bool ResolveInstanceFiles() {
 }
 
 std::string GetCuttlefishEnvPath() {
-  return cvd::StringFromEnv("HOME", ".") + "/.cuttlefish.sh";
+  return cuttlefish::StringFromEnv("HOME", ".") + "/.cuttlefish.sh";
 }
 
 // Initializes the config object and saves it to file. It doesn't return it, all
 // further uses of the config should happen through the singleton
 bool InitializeCuttlefishConfiguration(
-    const cvd::BootImageUnpacker& boot_image_unpacker) {
+    const cuttlefish::BootImageUnpacker& boot_image_unpacker) {
   vsoc::CuttlefishConfig tmp_config_obj;
   // Set this first so that calls to PerInstancePath below are correct
   tmp_config_obj.set_instance_dir(FLAGS_instance_dir);
@@ -326,7 +326,7 @@ bool InitializeCuttlefishConfiguration(
   tmp_config_obj.set_num_screen_buffers(FLAGS_num_screen_buffers);
   tmp_config_obj.set_refresh_rate_hz(FLAGS_refresh_rate_hz);
   tmp_config_obj.set_gdb_flag(FLAGS_qemu_gdb);
-  std::vector<std::string> adb = cvd::StrSplit(FLAGS_adb_mode, ',');
+  std::vector<std::string> adb = cuttlefish::StrSplit(FLAGS_adb_mode, ',');
   tmp_config_obj.set_adb_mode(std::set<std::string>(adb.begin(), adb.end()));
   tmp_config_obj.set_adb_ip_and_port("127.0.0.1:" + std::to_string(GetHostPort()));
 
@@ -375,7 +375,7 @@ bool InitializeCuttlefishConfiguration(
     tmp_config_obj.add_kernel_cmdline(
         concat("androidboot.hardware=", FLAGS_hardware_name));
   }
-  if (FLAGS_logcat_mode == cvd::kLogcatVsockMode) {
+  if (FLAGS_logcat_mode == cuttlefish::kLogcatVsockMode) {
     tmp_config_obj.add_kernel_cmdline(concat("androidboot.vsock_logcat_port=",
                                              FLAGS_logcat_vsock_port));
   }
@@ -528,7 +528,7 @@ void SetDefaultFlagsForQemu() {
                                default_wifi_tap_name.c_str(),
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
   auto default_instance_dir =
-      cvd::StringFromEnv("HOME", ".") + "/cuttlefish_runtime";
+      cuttlefish::StringFromEnv("HOME", ".") + "/cuttlefish_runtime";
   SetCommandLineOptionWithMode("instance_dir",
                                default_instance_dir.c_str(),
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
@@ -536,7 +536,7 @@ void SetDefaultFlagsForQemu() {
   SetCommandLineOptionWithMode("hardware_name", "cutf_cvm",
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
   // TODO(b/144119457) Use the serial port.
-  SetCommandLineOptionWithMode("logcat_mode", cvd::kLogcatVsockMode,
+  SetCommandLineOptionWithMode("logcat_mode", cuttlefish::kLogcatVsockMode,
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
 }
 
@@ -554,7 +554,7 @@ void SetDefaultFlagsForCrosvm() {
                                default_wifi_tap_name.c_str(),
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
   auto default_instance_dir =
-      cvd::StringFromEnv("HOME", ".") + "/cuttlefish_runtime";
+      cuttlefish::StringFromEnv("HOME", ".") + "/cuttlefish_runtime";
   SetCommandLineOptionWithMode("instance_dir",
                                default_instance_dir.c_str(),
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
@@ -567,11 +567,11 @@ void SetDefaultFlagsForCrosvm() {
   // TODO(b/144111429): Consolidate to one hardware name
   SetCommandLineOptionWithMode("hardware_name", "cutf_cvm",
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
-  SetCommandLineOptionWithMode("logcat_mode", cvd::kLogcatVsockMode,
+  SetCommandLineOptionWithMode("logcat_mode", cuttlefish::kLogcatVsockMode,
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
 
   std::string dtb_fstab;
-  if (cvd::HostArch() == "x86_64") {
+  if (cuttlefish::HostArch() == "x86_64") {
     dtb_fstab =
       vsoc::DefaultHostArtifactsPath("config/system-root.fstab");
   } else {
@@ -583,13 +583,13 @@ void SetDefaultFlagsForCrosvm() {
 
   // for now, we support only x86_64 by default
   bool default_enable_sandbox = false;
-  if (cvd::HostArch() == "x86_64") {
+  if (cuttlefish::HostArch() == "x86_64") {
     default_enable_sandbox =
         [](const std::string& var_empty) -> bool {
-          if (cvd::DirectoryExists(var_empty)) {
-            return cvd::IsDirectoryEmpty(var_empty);
+          if (cuttlefish::DirectoryExists(var_empty)) {
+            return cuttlefish::IsDirectoryEmpty(var_empty);
           }
-	  if (cvd::FileExists(var_empty)) {
+	  if (cuttlefish::FileExists(var_empty)) {
             return false;
           }
 	  return (::mkdir(var_empty.c_str(), 0755) == 0);
@@ -602,7 +602,7 @@ void SetDefaultFlagsForCrosvm() {
   // Crosvm requires a specific setting for kernel decompression; it must be
   // on for aarch64 and off for x86, no other mode is supported.
   bool decompress_kernel = false;
-  if (cvd::HostArch() == "aarch64") {
+  if (cuttlefish::HostArch() == "aarch64") {
     decompress_kernel = true;
   }
   SetCommandLineOptionWithMode("decompress_kernel",
@@ -663,15 +663,15 @@ bool CleanPriorFiles() {
 }
 
 bool DecompressKernel(const std::string& src, const std::string& dst) {
-  cvd::Command decomp_cmd(FLAGS_kernel_decompresser_executable);
+  cuttlefish::Command decomp_cmd(FLAGS_kernel_decompresser_executable);
   decomp_cmd.AddParameter(src);
-  auto output_file = cvd::SharedFD::Creat(dst.c_str(), 0666);
+  auto output_file = cuttlefish::SharedFD::Creat(dst.c_str(), 0666);
   if (!output_file->IsOpen()) {
     LOG(ERROR) << "Unable to create decompressed image file: "
                << output_file->StrError();
     return false;
   }
-  decomp_cmd.RedirectStdIO(cvd::Subprocess::StdIOChannel::kStdOut, output_file);
+  decomp_cmd.RedirectStdIO(cuttlefish::Subprocess::StdIOChannel::kStdOut, output_file);
   auto decomp_proc = decomp_cmd.Start(false);
   return decomp_proc.Started() && decomp_proc.Wait() == 0;
 }
@@ -755,9 +755,9 @@ bool ShouldCreateCompositeDisk() {
     // at that point. Therefore, always rebuild on crosvm but check if it is necessary for QEMU.
     return true;
   }
-  auto composite_age = cvd::FileModificationTime(FLAGS_composite_disk);
+  auto composite_age = cuttlefish::FileModificationTime(FLAGS_composite_disk);
   for (auto& partition : disk_config()) {
-    auto partition_age = cvd::FileModificationTime(partition.image_file_path);
+    auto partition_age = cuttlefish::FileModificationTime(partition.image_file_path);
     if (partition_age >= composite_age) {
       LOG(INFO) << "composite disk age was \"" << std::chrono::system_clock::to_time_t(composite_age) << "\", "
                 << "partition age was \"" << std::chrono::system_clock::to_time_t(partition_age) << "\"";
@@ -795,7 +795,7 @@ vsoc::CuttlefishConfig* InitFilesystemAndCreateConfig(int* argc, char*** argv) {
     exit(LauncherExitCodes::kPrioFilesCleanupError);
   }
   // Create instance directory if it doesn't exist.
-  if (!cvd::DirectoryExists(FLAGS_instance_dir.c_str())) {
+  if (!cuttlefish::DirectoryExists(FLAGS_instance_dir.c_str())) {
     LOG(INFO) << "Setting up " << FLAGS_instance_dir;
     if (mkdir(FLAGS_instance_dir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) < 0) {
       LOG(ERROR) << "Failed to create instance directory: "
@@ -804,12 +804,12 @@ vsoc::CuttlefishConfig* InitFilesystemAndCreateConfig(int* argc, char*** argv) {
     }
   }
 
-  if (!cvd::FileHasContent(FLAGS_boot_image)) {
+  if (!cuttlefish::FileHasContent(FLAGS_boot_image)) {
     LOG(ERROR) << "File not found: " << FLAGS_boot_image;
-    exit(cvd::kCuttlefishConfigurationInitError);
+    exit(cuttlefish::kCuttlefishConfigurationInitError);
   }
 
-  auto boot_img_unpacker = cvd::BootImageUnpacker::FromImage(FLAGS_boot_image);
+  auto boot_img_unpacker = cuttlefish::BootImageUnpacker::FromImage(FLAGS_boot_image);
 
   if (!InitializeCuttlefishConfiguration(*boot_img_unpacker)) {
     LOG(ERROR) << "Failed to initialize configuration";
@@ -842,23 +842,23 @@ vsoc::CuttlefishConfig* InitFilesystemAndCreateConfig(int* argc, char*** argv) {
 
   // Create misc if necessary
   if (!InitializeMiscImage(FLAGS_misc_image)) {
-    exit(cvd::kCuttlefishConfigurationInitError);
+    exit(cuttlefish::kCuttlefishConfigurationInitError);
   }
 
   // Create data if necessary
   if (!ApplyDataImagePolicy(*config, FLAGS_data_image)) {
-    exit(cvd::kCuttlefishConfigurationInitError);
+    exit(cuttlefish::kCuttlefishConfigurationInitError);
   }
 
-  if (!cvd::FileExists(FLAGS_metadata_image)) {
+  if (!cuttlefish::FileExists(FLAGS_metadata_image)) {
     CreateBlankImage(FLAGS_metadata_image, FLAGS_blank_metadata_image_mb, "none");
   }
 
-  if (!cvd::FileExists(FLAGS_odm_image)) {
+  if (!cuttlefish::FileExists(FLAGS_odm_image)) {
     CreateBlankImage(FLAGS_odm_image, FLAGS_blank_odm_image_mb, "ext4");
   }
 
-  if (!cvd::FileExists(FLAGS_system_ext_image)) {
+  if (!cuttlefish::FileExists(FLAGS_system_ext_image)) {
     CreateBlankImage(FLAGS_system_ext_image, FLAGS_blank_system_ext_image_mb, "ext4");
   }
 
@@ -868,9 +868,9 @@ vsoc::CuttlefishConfig* InitFilesystemAndCreateConfig(int* argc, char*** argv) {
 
   // Check that the files exist
   for (const auto& file : config->virtual_disk_paths()) {
-    if (!file.empty() && !cvd::FileHasContent(file.c_str())) {
+    if (!file.empty() && !cuttlefish::FileHasContent(file.c_str())) {
       LOG(ERROR) << "File not found: " << file;
-      exit(cvd::kCuttlefishConfigurationInitError);
+      exit(cuttlefish::kCuttlefishConfigurationInitError);
     }
   }
 

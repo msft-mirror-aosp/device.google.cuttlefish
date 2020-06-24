@@ -29,7 +29,7 @@
 #include "common/libs/fs/shared_select.h"
 #include "host/commands/launch/process_monitor.h"
 
-namespace cvd {
+namespace cuttlefish {
 
 namespace {
 
@@ -177,7 +177,7 @@ void ProcessMonitor::MonitorRoutine() {
     // We can't call select while holding the lock as it would lead to a
     // deadlock (restarter thread waiting for notifications from main thread,
     // main thread waiting for the lock)
-    int num_fds = cvd::Select(&read_set, nullptr, nullptr, nullptr);
+    int num_fds = cuttlefish::Select(&read_set, nullptr, nullptr, nullptr);
     if (num_fds < 0) {
       LOG(ERROR) << "Select call returned error on restarter thread: "
                  << strerror(errno);
@@ -212,4 +212,4 @@ void ProcessMonitor::MonitorRoutine() {
   } while (true);
 }
 
-}  // namespace cvd
+}  // namespace cuttlefish

@@ -20,7 +20,7 @@
 #include <string>
 #include <sstream>
 
-std::vector<std::string> cvd::StrSplit(const std::string& src, char delimiter) {
+std::vector<std::string> cuttlefish::StrSplit(const std::string& src, char delimiter) {
   std::istringstream stream{src};
   std::vector<std::string> result;
   for (std::string s; std::getline(stream, s, delimiter); s.clear()) {

@@ -25,7 +25,7 @@
 
 #include <common/libs/fs/shared_fd.h>
 
-namespace cvd {
+namespace cuttlefish {
 class Subprocess;
 using SubprocessStopper = std::function<bool(Subprocess*)>;
 // Kills a process by sending it the SIGKILL signal.
@@ -110,7 +110,7 @@ class Command {
     void Build();
 
    private:
-    cvd::Command* cmd_;
+    cuttlefish::Command* cmd_;
     std::stringstream stream_;
   };
 
@@ -154,7 +154,7 @@ class Command {
   ParameterBuilder GetParameterBuilder() { return ParameterBuilder(this); }
 
   // Redirects the standard IO of the command.
-  bool RedirectStdIO(Subprocess::StdIOChannel channel, cvd::SharedFD shared_fd);
+  bool RedirectStdIO(Subprocess::StdIOChannel channel, cuttlefish::SharedFD shared_fd);
 
   // Starts execution of the command. This method can be called multiple times,
   // effectively staring multiple (possibly concurrent) instances. If
@@ -175,7 +175,7 @@ class Command {
   Subprocess StartHelper(bool with_control_socket, bool in_group) const;
 
   std::vector<std::string> command_;
-  std::map<cvd::SharedFD, int> inherited_fds_{};
+  std::map<cuttlefish::SharedFD, int> inherited_fds_{};
   std::map<Subprocess::StdIOChannel, int> redirects_{};
   bool use_parent_env_ = true;
   std::vector<std::string> env_{};
@@ -190,4 +190,4 @@ int execute(const std::vector<std::string>& command,
             const std::vector<std::string>& env);
 int execute(const std::vector<std::string>& command);
 
-}  // namespace cvd
+}  // namespace cuttlefish

@@ -42,7 +42,7 @@ Json::Value bpttool_input(const std::vector<ImagePartition>& partitions) {
   std::vector<off_t> file_sizes;
   off_t total_size = 20 << 20; // 20 MB for padding
   for (auto& partition : partitions) {
-    off_t partition_file_size = cvd::FileSize(partition.image_file_path);
+    off_t partition_file_size = cuttlefish::FileSize(partition.image_file_path);
     if (partition_file_size == 0) {
       LOG(FATAL) << "Expected partition file \"" << partition.image_file_path
                  << "\" but it was missing";
@@ -123,11 +123,11 @@ CompositeDisk MakeCompositeDiskSpec(const Json::Value& bpt_file,
   return disk;
 }
 
-cvd::SharedFD json_to_fd(const Json::Value& json) {
+cuttlefish::SharedFD json_to_fd(const Json::Value& json) {
   Json::FastWriter json_writer;
   std::string json_string = json_writer.write(json);
-  cvd::SharedFD pipe[2];
-  cvd::SharedFD::Pipe(&pipe[0], &pipe[1]);
+  cuttlefish::SharedFD pipe[2];
+  cuttlefish::SharedFD::Pipe(&pipe[0], &pipe[1]);
   int written = pipe[1]->Write(json_string.c_str(), json_string.size());
   if (written < 0) {
     LOG(FATAL) << "Failed to write to pipe, errno is " << pipe[0]->GetErrno();
@@ -137,9 +137,9 @@ cvd::SharedFD json_to_fd(const Json::Value& json) {
   return pipe[0];
 }
 
-Json::Value fd_to_json(cvd::SharedFD fd) {
+Json::Value fd_to_json(cuttlefish::SharedFD fd) {
   std::string contents;
-  cvd::ReadAll(fd, &contents);
+  cuttlefish::ReadAll(fd, &contents);
   Json::Reader reader;
   Json::Value json;
   if (!reader.parse(contents, json)) {
@@ -148,16 +148,16 @@ Json::Value fd_to_json(cvd::SharedFD fd) {
   return json;
 }
 
-cvd::SharedFD bpttool_make_table(const cvd::SharedFD& input) {
+cuttlefish::SharedFD bpttool_make_table(const cuttlefish::SharedFD& input) {
   auto bpttool_path = vsoc::DefaultHostArtifactsPath(BPTTOOL_FILE_PATH);
-  cvd::Command bpttool_cmd(bpttool_path);
+  cuttlefish::Command bpttool_cmd(bpttool_path);
   bpttool_cmd.AddParameter("make_table");
   bpttool_cmd.AddParameter("--input=/dev/stdin");
-  bpttool_cmd.RedirectStdIO(cvd::Subprocess::StdIOChannel::kStdIn, input);
+  bpttool_cmd.RedirectStdIO(cuttlefish::Subprocess::StdIOChannel::kStdIn, input);
   bpttool_cmd.AddParameter("--output_json=/dev/stdout");
-  cvd::SharedFD output_pipe[2];
-  cvd::SharedFD::Pipe(&output_pipe[0], &output_pipe[1]);
-  bpttool_cmd.RedirectStdIO(cvd::Subprocess::StdIOChannel::kStdOut, output_pipe[1]);
+  cuttlefish::SharedFD output_pipe[2];
+  cuttlefish::SharedFD::Pipe(&output_pipe[0], &output_pipe[1]);
+  bpttool_cmd.RedirectStdIO(cuttlefish::Subprocess::StdIOChannel::kStdOut, output_pipe[1]);
   int success = bpttool_cmd.Start().Wait();
   if (success != 0) {
     LOG(FATAL) << "Unable to run bpttool. Exited with status " << success;
@@ -165,16 +165,16 @@ cvd::SharedFD bpttool_make_table(const cvd::SharedFD& input) {
   return output_pipe[0];
 }
 
-cvd::SharedFD bpttool_make_partition_table(cvd::SharedFD input) {
+cuttlefish::SharedFD bpttool_make_partition_table(cuttlefish::SharedFD input) {
   auto bpttool_path = vsoc::DefaultHostArtifactsPath(BPTTOOL_FILE_PATH);
-  cvd::Command bpttool_cmd(bpttool_path);
+  cuttlefish::Command bpttool_cmd(bpttool_path);
   bpttool_cmd.AddParameter("make_table");
   bpttool_cmd.AddParameter("--input=/dev/stdin");
-  bpttool_cmd.RedirectStdIO(cvd::Subprocess::StdIOChannel::kStdIn, input);
+  bpttool_cmd.RedirectStdIO(cuttlefish::Subprocess::StdIOChannel::kStdIn, input);
   bpttool_cmd.AddParameter("--output_gpt=/dev/stdout");
-  cvd::SharedFD output_pipe[2];
-  cvd::SharedFD::Pipe(&output_pipe[0], &output_pipe[1]);
-  bpttool_cmd.RedirectStdIO(cvd::Subprocess::StdIOChannel::kStdOut, output_pipe[1]);
+  cuttlefish::SharedFD output_pipe[2];
+  cuttlefish::SharedFD::Pipe(&output_pipe[0], &output_pipe[1]);
+  bpttool_cmd.RedirectStdIO(cuttlefish::Subprocess::StdIOChannel::kStdOut, output_pipe[1]);
   int success = bpttool_cmd.Start().Wait();
   if (success != 0) {
     LOG(FATAL) << "Unable to run bpttool. Exited with status " << success;
@@ -182,37 +182,37 @@ cvd::SharedFD bpttool_make_partition_table(cvd::SharedFD input) {
   return output_pipe[0];
 }
 
-void CreateGptFiles(cvd::SharedFD gpt, const std::string& header_file,
+void CreateGptFiles(cuttlefish::SharedFD gpt, const std::string& header_file,
                     const std::string& footer_file) {
   std::string content;
   content.resize(GPT_HEADER_SIZE);
-  if (cvd::ReadExact(gpt, &content) < GPT_HEADER_SIZE) {
+  if (cuttlefish::ReadExact(gpt, &content) < GPT_HEADER_SIZE) {
     LOG(FATAL) << "Unable to run read full gpt. Errno is " << gpt->GetErrno();
   }
-  auto header_fd = cvd::SharedFD::Open(header_file.c_str(), O_CREAT | O_RDWR, 0755);
-  if (cvd::WriteAll(header_fd, content) < GPT_HEADER_SIZE) {
+  auto header_fd = cuttlefish::SharedFD::Open(header_file.c_str(), O_CREAT | O_RDWR, 0755);
+  if (cuttlefish::WriteAll(header_fd, content) < GPT_HEADER_SIZE) {
     LOG(FATAL) << "Unable to run write full gpt. Errno is " << gpt->GetErrno();
   }
   content.resize(GPT_FOOTER_SIZE);
-  if (cvd::ReadExact(gpt, &content) < GPT_FOOTER_SIZE) {
+  if (cuttlefish::ReadExact(gpt, &content) < GPT_FOOTER_SIZE) {
     LOG(FATAL) << "Unable to run read full gpt. Errno is " << gpt->GetErrno();
   }
-  auto footer_fd = cvd::SharedFD::Open(footer_file.c_str(), O_CREAT | O_RDWR, 0755);
-  if (cvd::WriteAll(footer_fd, content) < GPT_FOOTER_SIZE) {
+  auto footer_fd = cuttlefish::SharedFD::Open(footer_file.c_str(), O_CREAT | O_RDWR, 0755);
+  if (cuttlefish::WriteAll(footer_fd, content) < GPT_FOOTER_SIZE) {
     LOG(FATAL) << "Unable to run write full gpt. Errno is " << gpt->GetErrno();
   }
 }
 
 void bpttool_make_disk_image(const std::vector<ImagePartition>& partitions,
-                             cvd::SharedFD table, const std::string& output) {
+                             cuttlefish::SharedFD table, const std::string& output) {
   auto bpttool_path = vsoc::DefaultHostArtifactsPath(BPTTOOL_FILE_PATH);
-  cvd::Command bpttool_cmd(bpttool_path);
+  cuttlefish::Command bpttool_cmd(bpttool_path);
   bpttool_cmd.AddParameter("make_disk_image");
   bpttool_cmd.AddParameter("--input=/dev/stdin");
-  bpttool_cmd.AddParameter("--output=", cvd::AbsolutePath(output));
-  bpttool_cmd.RedirectStdIO(cvd::Subprocess::StdIOChannel::kStdIn, table);
+  bpttool_cmd.AddParameter("--output=", cuttlefish::AbsolutePath(output));
+  bpttool_cmd.RedirectStdIO(cuttlefish::Subprocess::StdIOChannel::kStdIn, table);
   for (auto& partition : partitions) {
-    auto abs_path = cvd::AbsolutePath(partition.image_file_path);
+    auto abs_path = cuttlefish::AbsolutePath(partition.image_file_path);
     bpttool_cmd.AddParameter("--image=" + partition.label + ":" + abs_path);
   }
   int success = bpttool_cmd.Start().Wait();

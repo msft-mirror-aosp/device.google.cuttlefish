@@ -16,12 +16,12 @@
 #include "common/libs/utils/simulated_buffer.h"
 #include <gtest/gtest.h>
 
-using cvd::time::MonotonicTimePoint;
-using cvd::time::MonotonicTimePointFactory;
-using cvd::time::Seconds;
-using cvd::time::Milliseconds;
-using cvd::time::Nanoseconds;
-using cvd::time::kNanosecondsPerSecond;
+using cuttlefish::time::MonotonicTimePoint;
+using cuttlefish::time::MonotonicTimePointFactory;
+using cuttlefish::time::Seconds;
+using cuttlefish::time::Milliseconds;
+using cuttlefish::time::Nanoseconds;
+using cuttlefish::time::kNanosecondsPerSecond;
 
 class MockTimepointFactory : public MonotonicTimePointFactory {
  public:

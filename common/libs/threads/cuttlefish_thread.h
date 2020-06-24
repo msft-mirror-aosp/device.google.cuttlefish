@@ -31,7 +31,7 @@
 #include <pthread.h>
 #include "common/libs/time/monotonic_time.h"
 
-namespace cvd {
+namespace cuttlefish {
 
 class Mutex {
  friend class ConditionVariable;
@@ -94,7 +94,7 @@ class ConditionVariable {
     return pthread_cond_wait(&cond_, mutex_->GetMutex());
   }
 
-  int WaitUntil(const cvd::time::MonotonicTimePoint& tp) {
+  int WaitUntil(const cuttlefish::time::MonotonicTimePoint& tp) {
     struct timespec ts;
     tp.ToTimespec(&ts);
     return pthread_cond_timedwait(&cond_, mutex_->GetMutex(), &ts);
@@ -166,4 +166,4 @@ class ScopedThread {
   ScopedThread& operator= (const ScopedThread&);
 };
 
-}  // namespace cvd
+}  // namespace cuttlefish

@@ -27,7 +27,7 @@
 #include <unistd.h>
 #include <dirent.h>
 
-namespace cvd {
+namespace cuttlefish {
 
 bool FileExists(const std::string& path) {
   struct stat st;
@@ -110,4 +110,4 @@ bool RemoveFile(const std::string& file) {
   return remove(file.c_str()) == 0;
 }
 
-}  // namespace cvd
+}  // namespace cuttlefish

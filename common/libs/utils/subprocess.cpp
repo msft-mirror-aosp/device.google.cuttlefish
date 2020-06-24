@@ -33,8 +33,8 @@ namespace {
 // some inherited file descriptor duped to this file descriptor and the redirect
 // would override that. This function makes sure that doesn't happen.
 bool validate_redirects(
-    const std::map<cvd::Subprocess::StdIOChannel, int>& redirects,
-    const std::map<cvd::SharedFD, int>& inherited_fds) {
+    const std::map<cuttlefish::Subprocess::StdIOChannel, int>& redirects,
+    const std::map<cuttlefish::SharedFD, int>& inherited_fds) {
   // Add the redirected IO channels to a set as integers. This allows converting
   // the enum values into integers instead of the other way around.
   std::set<int> int_redirects;
@@ -53,7 +53,7 @@ bool validate_redirects(
 }
 
 void do_redirects(
-    const std::map<cvd::Subprocess::StdIOChannel, int>& redirects) {
+    const std::map<cuttlefish::Subprocess::StdIOChannel, int>& redirects) {
   for (const auto& entry : redirects) {
     auto std_channel = static_cast<int>(entry.first);
     auto fd = entry.second;
@@ -61,21 +61,21 @@ void do_redirects(
   }
 }
 
-cvd::Subprocess subprocess_impl(
+cuttlefish::Subprocess subprocess_impl(
     const char* const* command, const char* const* envp,
-    const std::map<cvd::Subprocess::StdIOChannel, int>& redirects,
-    const std::map<cvd::SharedFD, int>& inherited_fds, bool with_control_socket,
-    cvd::SubprocessStopper stopper,
+    const std::map<cuttlefish::Subprocess::StdIOChannel, int>& redirects,
+    const std::map<cuttlefish::SharedFD, int>& inherited_fds, bool with_control_socket,
+    cuttlefish::SubprocessStopper stopper,
     bool in_group = false) {
   // The parent socket will get closed on the child on the call to exec, the
   // child socket will be closed on the parent when this function returns and no
   // references to the fd are left
-  cvd::SharedFD parent_socket, child_socket;
+  cuttlefish::SharedFD parent_socket, child_socket;
   if (with_control_socket) {
-    if (!cvd::SharedFD::SocketPair(AF_LOCAL, SOCK_STREAM, 0, &parent_socket,
+    if (!cuttlefish::SharedFD::SocketPair(AF_LOCAL, SOCK_STREAM, 0, &parent_socket,
                                    &child_socket)) {
       LOG(ERROR) << "Unable to create control socket pair: " << strerror(errno);
-      return cvd::Subprocess(-1, {});
+      return cuttlefish::Subprocess(-1, {});
     }
     // Remove FD_CLOEXEC from the child socket, ensure the parent has it
     child_socket->Fcntl(F_SETFD, 0);
@@ -83,7 +83,7 @@ cvd::Subprocess subprocess_impl(
   }
 
   if (!validate_redirects(redirects, inherited_fds)) {
-    return cvd::Subprocess(-1, {});
+    return cuttlefish::Subprocess(-1, {});
   }
 
   pid_t pid = fork();
@@ -119,7 +119,7 @@ cvd::Subprocess subprocess_impl(
   while (command[i]) {
     LOG(INFO) << command[i++];
   }
-  return cvd::Subprocess(pid, parent_socket, stopper);
+  return cuttlefish::Subprocess(pid, parent_socket, stopper);
 }
 
 std::vector<const char*> ToCharPointers(const std::vector<std::string>& vect) {
@@ -131,7 +131,7 @@ std::vector<const char*> ToCharPointers(const std::vector<std::string>& vect) {
   return ret;
 }
 }  // namespace
-namespace cvd {
+namespace cuttlefish {
 
 Subprocess::Subprocess(Subprocess&& subprocess)
     : pid_(subprocess.pid_),
@@ -253,8 +253,8 @@ bool Command::BuildParameter(std::stringstream* stream, SharedFD shared_fd) {
   return true;
 }
 
-bool Command::RedirectStdIO(cvd::Subprocess::StdIOChannel channel,
-                            cvd::SharedFD shared_fd) {
+bool Command::RedirectStdIO(cuttlefish::Subprocess::StdIOChannel channel,
+                            cuttlefish::SharedFD shared_fd) {
   if (!shared_fd->IsOpen()) {
     return false;
   }
@@ -315,4 +315,4 @@ int execute(const std::vector<std::string>& command) {
   }
   return subprocess.Wait();
 }
-}  // namespace cvd
+}  // namespace cuttlefish

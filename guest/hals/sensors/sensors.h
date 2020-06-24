@@ -18,7 +18,7 @@
 #include "common/libs/time/monotonic_time.h"
 #include "guest/hals/sensors/sensors_hal.h"
 
-namespace cvd {
+namespace cuttlefish {
 
 // Stores static information about a sensor.
 // Must be completely compatible with sensor_t (i.e. no additional
@@ -71,12 +71,12 @@ class SensorState {
   // The deadline at which we should report the next sensor event
   // to the framework in order to meet our frequency constraints.
   // For disabled sensors, should be 'infinity'.
-  cvd::time::MonotonicTimePoint deadline_;
+  cuttlefish::time::MonotonicTimePoint deadline_;
   // Delay time between consecutive sensor samples, in ns.
-  cvd::time::Nanoseconds sampling_period_;
+  cuttlefish::time::Nanoseconds sampling_period_;
 
   // Time 'infinity'.
-  static const cvd::time::MonotonicTimePoint kInfinity;
+  static const cuttlefish::time::MonotonicTimePoint kInfinity;
 };
 
 namespace sensors_constants {
@@ -202,5 +202,5 @@ const bool kDeviceTempIsWakeup = false;
 const bool kRelativeHumidityIsWakeup = false;
 
 }  // namespace sensors_constants
-}  // namespace cvd
+}  // namespace cuttlefish
 

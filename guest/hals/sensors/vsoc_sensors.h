@@ -22,7 +22,7 @@
 #include "guest/hals/sensors/sensors.h"
 #include "guest/hals/sensors/sensors_hal.h"
 
-namespace cvd {
+namespace cuttlefish {
 
 // Used for sending control messages to the receiver thread.
 // The sensor_handle field may be left unused if it is not needed.
@@ -158,7 +158,7 @@ class GceSensors : public sensors_poll_device_1 {
   // contiguous up to the number of supported sensors.
   SensorStateVector sensor_states_;
   // Keep track of the time when the thread in Poll() is scheduled to wake.
-  cvd::time::MonotonicTimePoint current_deadline_;
+  cuttlefish::time::MonotonicTimePoint current_deadline_;
 
   // Ordered set of sensor values.
   // TODO(ghartman): Simulate FIFO overflow.
@@ -166,18 +166,18 @@ class GceSensors : public sensors_poll_device_1 {
   // Thread to handle new connections.
   pthread_t receiver_thread_;
   // Socket to receive sensor events on.
-  cvd::SharedFD sensor_listener_socket_;
+  cuttlefish::SharedFD sensor_listener_socket_;
   // Socket for listener thread to receive control messages.
-  cvd::SharedFD control_receiver_socket_;
+  cuttlefish::SharedFD control_receiver_socket_;
   // Socket to send control messages to listener thread.
-  cvd::SharedFD control_sender_socket_;
+  cuttlefish::SharedFD control_sender_socket_;
 
   // Lock to protect shared state, including
   // sensor_states_ and next_deadline_.
   // Associated with deadline_change_ condition variable.
-  cvd::Mutex sensor_state_lock_;
+  cuttlefish::Mutex sensor_state_lock_;
   // Condition variable to signal changes in the deadline.
-  cvd::ConditionVariable deadline_change_;
+  cuttlefish::ConditionVariable deadline_change_;
 
   // When events are arriving from a client, we report only
   // when they arrive, rather than at a fixed cycle. After not
@@ -185,7 +185,7 @@ class GceSensors : public sensors_poll_device_1 {
   // and a given time period, we will give up and resume
   // sending mock events.
   const static int kInjectedEventWaitPeriods;
-  const static cvd::time::Nanoseconds kInjectedEventWaitTime;
+  const static cuttlefish::time::Nanoseconds kInjectedEventWaitTime;
 
   /**
    ** UTILITY FUNCTIONS
@@ -203,7 +203,7 @@ class GceSensors : public sensors_poll_device_1 {
   // This should be called anytime the next deadline may have changed.
   // Can only be called while holding sensor_state_lock_.
   // Returns true if the deadline has changed.
-  cvd::time::MonotonicTimePoint UpdateDeadline();
+  cuttlefish::time::MonotonicTimePoint UpdateDeadline();
 
   // Sends an update for the sensor with the given handle to the remoter.
   // Update will be enqueued for receiver, not send immediately.
@@ -218,5 +218,5 @@ class GceSensors : public sensors_poll_device_1 {
 
 };
 
-} //namespace cvd
+} //namespace cuttlefish
 

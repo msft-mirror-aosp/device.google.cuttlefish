@@ -18,7 +18,7 @@
 
 #include <cstdint>
 
-namespace cvd {
+namespace cuttlefish {
 namespace vnc {
 
 class ScreenConnector {
@@ -35,4 +35,4 @@ class ScreenConnector {
 };
 
 }  // namespace vnc
-}  // namespace cvd
+}  // namespace cuttlefish

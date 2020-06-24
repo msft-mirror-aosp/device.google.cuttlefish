@@ -19,11 +19,11 @@
 #include "common/libs/threads/thunkers.h"
 #include "common/libs/time/monotonic_time.h"
 
-using cvd::ConditionVariable;
-using cvd::Mutex;
-using cvd::ScopedThread;
-using cvd::time::MonotonicTimePoint;
-using cvd::time::Milliseconds;
+using cuttlefish::ConditionVariable;
+using cuttlefish::Mutex;
+using cuttlefish::ScopedThread;
+using cuttlefish::time::MonotonicTimePoint;
+using cuttlefish::time::Milliseconds;
 
 static const int FINISHED = 100;
 
@@ -52,8 +52,8 @@ class MutexTest {
 
   void Run() {
     {
-      ScopedThread thread_a(cvd::thunk<void, &MutexTest::FastThread>, this);
-      ScopedThread thread_b(cvd::thunk<void, &MutexTest::SlowThread>, this);
+      ScopedThread thread_a(cuttlefish::thunk<void, &MutexTest::FastThread>, this);
+      ScopedThread thread_b(cuttlefish::thunk<void, &MutexTest::SlowThread>, this);
     }
     LOG(INFO) << "MutexTest: completed at stage "
               << stage_
@@ -106,11 +106,11 @@ class NotifyOneTest {
   void Run() {
     {
       ScopedThread thread_s(
-          cvd::thunk<void, &NotifyOneTest::SignalThread>, this);
+          cuttlefish::thunk<void, &NotifyOneTest::SignalThread>, this);
       ScopedThread thread_w1(
-          cvd::thunk<void, &NotifyOneTest::WaitThread>, this);
+          cuttlefish::thunk<void, &NotifyOneTest::WaitThread>, this);
       ScopedThread thread_w2(
-          cvd::thunk<void, &NotifyOneTest::WaitThread>, this);
+          cuttlefish::thunk<void, &NotifyOneTest::WaitThread>, this);
     }
     LOG(INFO) << "NotifyOneTest: completed, signalled "
               << signalled_
@@ -156,11 +156,11 @@ class NotifyAllTest {
   void Run() {
     {
       ScopedThread thread_s(
-          cvd::thunk<void, &NotifyAllTest::SignalThread>, this);
+          cuttlefish::thunk<void, &NotifyAllTest::SignalThread>, this);
       ScopedThread thread_w1(
-          cvd::thunk<void, &NotifyAllTest::WaitThread>, this);
+          cuttlefish::thunk<void, &NotifyAllTest::WaitThread>, this);
       ScopedThread thread_w2(
-          cvd::thunk<void, &NotifyAllTest::WaitThread>, this);
+          cuttlefish::thunk<void, &NotifyAllTest::WaitThread>, this);
     }
     printf("NotifyAllTest: completed, signalled %d (%s)\n",
            signalled_, (signalled_ == 2) ? "PASSED" : "FAILED");
@@ -200,9 +200,9 @@ class WaitUntilTest {
     start_ = MonotonicTimePoint::Now();
     {
       ScopedThread thread_s(
-          cvd::thunk<void, &WaitUntilTest::SignalThread>, this);
+          cuttlefish::thunk<void, &WaitUntilTest::SignalThread>, this);
       ScopedThread thread_w2(
-          cvd::thunk<void, &WaitUntilTest::WaitThread>, this);
+          cuttlefish::thunk<void, &WaitUntilTest::WaitThread>, this);
     }
     printf("WaitUntilTest: completed, stage %d (%s)\n",
            stage_, (stage_ == FINISHED) ? "PASSED" : "FAILED");

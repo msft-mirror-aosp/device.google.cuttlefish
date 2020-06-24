@@ -18,7 +18,7 @@
 #include "guest/hals/sensors/vsoc_sensors.h"
 
 static hw_module_methods_t hal_module_methods = {
-  .open = cvd::GceSensors::Open,
+  .open = cuttlefish::GceSensors::Open,
 };
 
 sensors_module_t HAL_MODULE_INFO_SYM = {
@@ -31,6 +31,6 @@ sensors_module_t HAL_MODULE_INFO_SYM = {
     .author = "Google",
     .methods = & hal_module_methods,
   },
-  .get_sensors_list = cvd::GceSensors::GetSensorsList,
-  .set_operation_mode = cvd::GceSensors::SetOperationMode,
+  .get_sensors_list = cuttlefish::GceSensors::GetSensorsList,
+  .set_operation_mode = cuttlefish::GceSensors::SetOperationMode,
 };

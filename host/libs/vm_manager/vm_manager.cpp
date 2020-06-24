@@ -117,7 +117,7 @@ std::vector<std::string> VmManager::GetValidNames() {
 
 bool VmManager::UserInGroup(const std::string& group,
                             std::vector<std::string>* config_commands) {
-  if (!cvd::InGroup(group)) {
+  if (!cuttlefish::InGroup(group)) {
     LOG(ERROR) << "User must be a member of " << group;
     config_commands->push_back("# Add your user to the " + group + " group:");
     config_commands->push_back("sudo usermod -aG " + group + " $USER");

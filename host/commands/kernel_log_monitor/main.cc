@@ -37,7 +37,7 @@ DEFINE_string(subscriber_fds, "",
              "A comma separated list of file descriptors (most likely pipes) to"
              " send boot events to.");
 
-std::vector<cvd::SharedFD> SubscribersFromCmdline() {
+std::vector<cuttlefish::SharedFD> SubscribersFromCmdline() {
   // Validate the parameter
   std::string fd_list = FLAGS_subscriber_fds;
   for (auto c: fd_list) {
@@ -47,11 +47,11 @@ std::vector<cvd::SharedFD> SubscribersFromCmdline() {
     }
   }
 
-  auto fds = cvd::StrSplit(FLAGS_subscriber_fds, ',');
-  std::vector<cvd::SharedFD> shared_fds;
+  auto fds = cuttlefish::StrSplit(FLAGS_subscriber_fds, ',');
+  std::vector<cuttlefish::SharedFD> shared_fds;
   for (auto& fd_str: fds) {
     auto fd = std::stoi(fd_str);
-    auto shared_fd = cvd::SharedFD::Dup(fd);
+    auto shared_fd = cuttlefish::SharedFD::Dup(fd);
     close(fd);
     shared_fds.push_back(shared_fd);
   }
@@ -77,12 +77,12 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  cvd::SharedFD pipe;
+  cuttlefish::SharedFD pipe;
   if (FLAGS_log_pipe_fd < 0) {
     auto log_name = config->kernel_log_pipe_name();
-    pipe = cvd::SharedFD::Open(log_name.c_str(), O_RDONLY);
+    pipe = cuttlefish::SharedFD::Open(log_name.c_str(), O_RDONLY);
   } else {
-    pipe = cvd::SharedFD::Dup(FLAGS_log_pipe_fd);
+    pipe = cuttlefish::SharedFD::Dup(FLAGS_log_pipe_fd);
     close(FLAGS_log_pipe_fd);
   }
 
@@ -115,12 +115,12 @@ int main(int argc, char** argv) {
   }
 
   for (;;) {
-    cvd::SharedFDSet fd_read;
+    cuttlefish::SharedFDSet fd_read;
     fd_read.Zero();
 
     klog.BeforeSelect(&fd_read);
 
-    int ret = cvd::Select(&fd_read, nullptr, nullptr, nullptr);
+    int ret = cuttlefish::Select(&fd_read, nullptr, nullptr, nullptr);
     if (ret <= 0) continue;
 
     klog.AfterSelect(fd_read);

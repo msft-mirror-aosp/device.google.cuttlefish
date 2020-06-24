@@ -20,7 +20,7 @@
 
 #include "common/libs/fs/shared_fd.h"
 
-namespace cvd {
+namespace cuttlefish {
 
 /**
  * Reads from fd until it is closed or errors, storing all data in buf.
@@ -52,4 +52,4 @@ ssize_t ReadExact(SharedFD fd, std::string* buf);
  */
 ssize_t WriteAll(SharedFD fd, const std::string& buf);
 
-} // namespace cvd
+} // namespace cuttlefish

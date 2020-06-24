@@ -31,13 +31,13 @@
 #include "guest/hals/sensors/vsoc_sensors_message.h"
 #include "guest/libs/remoter/remoter_framework_pkt.h"
 
-using cvd::LockGuard;
-using cvd::Mutex;
-using cvd::time::Milliseconds;
-using cvd::time::MonotonicTimePoint;
-using cvd::time::Nanoseconds;
+using cuttlefish::LockGuard;
+using cuttlefish::Mutex;
+using cuttlefish::time::Milliseconds;
+using cuttlefish::time::MonotonicTimePoint;
+using cuttlefish::time::Nanoseconds;
 
-namespace cvd {
+namespace cuttlefish {
 
 int GceSensors::total_sensor_count_ = -1;
 SensorInfo* GceSensors::sensor_infos_ = NULL;
@@ -56,7 +56,7 @@ GceSensors::GceSensors()
   if (control_sender_socket_->IsOpen() || control_receiver_socket_->IsOpen()) {
     ALOGE("%s: Receiver control FDs are opened", __FUNCTION__);
   }
-  if (!cvd::SharedFD::Pipe(&control_receiver_socket_,
+  if (!cuttlefish::SharedFD::Pipe(&control_receiver_socket_,
                            &control_sender_socket_)) {
     ALOGE("%s: Unable to create thread control FDs: %d -> %s", __FUNCTION__,
           errno, strerror(errno));
@@ -99,21 +99,21 @@ int GceSensors::Open(const struct hw_module_t* module, const char* name,
     rval->common.tag = HARDWARE_DEVICE_TAG;
     rval->common.version = VSOC_SENSOR_DEVICE_VERSION;
     rval->common.module = (struct hw_module_t*)module;
-    rval->common.close = cvd::thunk<hw_device_t, &GceSensors::Close>;
+    rval->common.close = cuttlefish::thunk<hw_device_t, &GceSensors::Close>;
 
-    rval->poll = cvd::thunk<sensors_poll_device_t, &GceSensors::Poll>;
-    rval->activate = cvd::thunk<sensors_poll_device_t, &GceSensors::Activate>;
-    rval->setDelay = cvd::thunk<sensors_poll_device_t, &GceSensors::SetDelay>;
+    rval->poll = cuttlefish::thunk<sensors_poll_device_t, &GceSensors::Poll>;
+    rval->activate = cuttlefish::thunk<sensors_poll_device_t, &GceSensors::Activate>;
+    rval->setDelay = cuttlefish::thunk<sensors_poll_device_t, &GceSensors::SetDelay>;
 
-    rval->batch = cvd::thunk<sensors_poll_device_1, &GceSensors::Batch>;
-    rval->flush = cvd::thunk<sensors_poll_device_1, &GceSensors::Flush>;
+    rval->batch = cuttlefish::thunk<sensors_poll_device_1, &GceSensors::Batch>;
+    rval->flush = cuttlefish::thunk<sensors_poll_device_1, &GceSensors::Flush>;
     rval->inject_sensor_data =
-        cvd::thunk<sensors_poll_device_1, &GceSensors::InjectSensorData>;
+        cuttlefish::thunk<sensors_poll_device_1, &GceSensors::InjectSensorData>;
 
     // Spawn a thread to listen for incoming data from the remoter.
     int err = pthread_create(
         &rval->receiver_thread_, NULL,
-        cvd::thunk<void, &GceSensors::Receiver>,
+        cuttlefish::thunk<void, &GceSensors::Receiver>,
         rval);
     if (err) {
       ALOGE("GceSensors::%s: Unable to start receiver thread (%s)",
@@ -234,7 +234,7 @@ int GceSensors::Poll(sensors_event_t* data, int count_unsafe) {
 
 void *GceSensors::Receiver() {
   // Initialize the server.
-  sensor_listener_socket_ = cvd::SharedFD::SocketSeqPacketServer(
+  sensor_listener_socket_ = cuttlefish::SharedFD::SocketSeqPacketServer(
       gce_sensors_message::kSensorsHALSocketName, 0777);
   if (!sensor_listener_socket_->IsOpen()) {
     ALOGE("GceSensors::%s: Could not listen for sensor connections. (%s).",
@@ -250,18 +250,18 @@ void *GceSensors::Receiver() {
     ALOGI("Notified remoter that HAL is ready.");
   }
 
-  typedef std::vector<cvd::SharedFD> FDVec;
+  typedef std::vector<cuttlefish::SharedFD> FDVec;
   FDVec connected;
   // Listen for incoming sensor data and control messages
   // from the HAL.
   while (true) {
-    cvd::SharedFDSet fds;
+    cuttlefish::SharedFDSet fds;
     for (FDVec::iterator it = connected.begin(); it != connected.end(); ++it) {
       fds.Set(*it);
     }
     fds.Set(control_receiver_socket_);
     // fds.Set(sensor_listener_socket_);
-    int res = cvd::Select(&fds, NULL, NULL, NULL);
+    int res = cuttlefish::Select(&fds, NULL, NULL, NULL);
     if (res == -1) {
       ALOGE("%s: select returned %d and failed %d -> %s", __FUNCTION__, res,
             errno, strerror(errno));
@@ -270,7 +270,7 @@ void *GceSensors::Receiver() {
       ALOGE("%s: select timed out", __FUNCTION__);
       break;
     } else if (fds.IsSet(sensor_listener_socket_)) {
-      connected.push_back(cvd::SharedFD::Accept(*sensor_listener_socket_));
+      connected.push_back(cuttlefish::SharedFD::Accept(*sensor_listener_socket_));
       ALOGI("GceSensors::%s: new client connected", __FUNCTION__);
     } else if (fds.IsSet(control_receiver_socket_)) {
       // We received a control message.
@@ -311,7 +311,7 @@ void *GceSensors::Receiver() {
 
         for (FDVec::iterator it = connected.begin(); it != connected.end();
              ++it) {
-          cvd::SharedFD &fd = *it;
+          cuttlefish::SharedFD &fd = *it;
           if (fd->SendMsg(&msg, 0) == -1) {
             ALOGE("GceSensors::%s. Could not send sensor state (%s).",
                   __FUNCTION__, fd->StrError());
@@ -325,7 +325,7 @@ void *GceSensors::Receiver() {
     } else {
       for (FDVec::iterator it = connected.begin(); it != connected.end();
            ++it) {
-        cvd::SharedFD &fd = *it;
+        cuttlefish::SharedFD &fd = *it;
         if (fds.IsSet(fd)) {
           // We received a sensor update from remoter.
           sensors_event_t event;
@@ -506,4 +506,4 @@ int GceSensors::RegisterSensors() {
   return total_sensor_count_;
 }
 
-}  // namespace cvd
+}  // namespace cuttlefish

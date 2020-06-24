@@ -23,7 +23,7 @@
 
 #include "device_config.h"
 
-namespace cvd {
+namespace cuttlefish {
 
 namespace {
 
@@ -190,4 +190,4 @@ void DeviceConfig::InitializeScreenConfiguration(
   data_.screen.refresh_rate = config.refresh_rate_hz();
 }
 
-}  // namespace cvd
+}  // namespace cuttlefish

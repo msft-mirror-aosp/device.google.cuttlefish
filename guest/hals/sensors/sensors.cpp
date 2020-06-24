@@ -19,9 +19,9 @@
 
 #include "guest/hals/sensors/sensors.h"
 
-namespace cvd {
+namespace cuttlefish {
 namespace {
-const cvd::time::Milliseconds kDefaultSamplingRate(200);
+const cuttlefish::time::Milliseconds kDefaultSamplingRate(200);
 
 timespec infinity() {
   timespec ts;
@@ -31,8 +31,8 @@ timespec infinity() {
 }
 }  // namespace
 
-const cvd::time::MonotonicTimePoint SensorState::kInfinity =
-    cvd::time::MonotonicTimePoint(infinity());
+const cuttlefish::time::MonotonicTimePoint SensorState::kInfinity =
+    cuttlefish::time::MonotonicTimePoint(infinity());
 
 SensorState::SensorState(SensorInfo info)
     : enabled_(false),
@@ -183,4 +183,4 @@ SensorInfo RelativeHumiditySensor() {
                     flags);
 }
 
-}  // namespace cvd
+}  // namespace cuttlefish

@@ -19,7 +19,7 @@
 
 #include "device_config.h"
 
-namespace cvd {
+namespace cuttlefish {
 
 namespace {
 
@@ -34,7 +34,7 @@ bool GetRawFromServer(DeviceConfig::RawData* data) {
     return false;
   }
   auto config_server =
-      cvd::SharedFD::VsockClient(2 /*host cid*/, port, SOCK_STREAM);
+      cuttlefish::SharedFD::VsockClient(2 /*host cid*/, port, SOCK_STREAM);
   if (!config_server->IsOpen()) {
     LOG(ERROR) << "Unable to connect to config server: "
                << config_server->StrError();
@@ -72,4 +72,4 @@ DeviceConfig::DeviceConfig(const DeviceConfig::RawData& data) : data_(data) {
   generate_address_and_prefix();
 }
 
-}  // namespace cvd
+}  // namespace cuttlefish

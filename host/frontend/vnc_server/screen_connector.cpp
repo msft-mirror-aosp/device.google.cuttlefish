@@ -27,7 +27,7 @@
 
 DEFINE_int32(frame_server_fd, -1, "");
 
-namespace cvd {
+namespace cuttlefish {
 namespace vnc {
 
 namespace {
@@ -122,4 +122,4 @@ ScreenConnector* ScreenConnector::Get() {
 }
 
 }  // namespace vnc
-}  // namespace cvd
+}  // namespace cuttlefish

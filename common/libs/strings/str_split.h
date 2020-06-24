@@ -20,8 +20,8 @@
 #include <vector>
 #include <string>
 
-namespace cvd {
+namespace cuttlefish {
 std::vector<std::string> StrSplit(const std::string& src, char delimiter);
-}  // namespace cvd
+}  // namespace cuttlefish
 
 #endif

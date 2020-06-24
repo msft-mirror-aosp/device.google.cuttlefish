@@ -10,19 +10,19 @@ int GetHostPort();
 bool AdbUsbEnabled(const vsoc::CuttlefishConfig& config);
 void ValidateAdbModeFlag(const vsoc::CuttlefishConfig& config);
 
-std::vector <cvd::SharedFD> LaunchKernelLogMonitor(
+std::vector <cuttlefish::SharedFD> LaunchKernelLogMonitor(
     const vsoc::CuttlefishConfig& config,
-    cvd::ProcessMonitor* process_monitor,
+    cuttlefish::ProcessMonitor* process_monitor,
     unsigned int number_of_event_pipes);
 void LaunchLogcatReceiverIfEnabled(const vsoc::CuttlefishConfig& config,
-                                   cvd::ProcessMonitor* process_monitor);
+                                   cuttlefish::ProcessMonitor* process_monitor);
 void LaunchConfigServer(const vsoc::CuttlefishConfig& config,
-                        cvd::ProcessMonitor* process_monitor);
+                        cuttlefish::ProcessMonitor* process_monitor);
 bool LaunchVNCServerIfEnabled(const vsoc::CuttlefishConfig& config,
-                              cvd::ProcessMonitor* process_monitor,
-                              std::function<bool(cvd::MonitorEntry*)> callback);
-void LaunchAdbConnectorIfEnabled(cvd::ProcessMonitor* process_monitor,
+                              cuttlefish::ProcessMonitor* process_monitor,
+                              std::function<bool(cuttlefish::MonitorEntry*)> callback);
+void LaunchAdbConnectorIfEnabled(cuttlefish::ProcessMonitor* process_monitor,
                                  const vsoc::CuttlefishConfig& config,
-                                 cvd::SharedFD adbd_events_pipe);
-void LaunchSocketVsockProxyIfEnabled(cvd::ProcessMonitor* process_monitor,
+                                 cuttlefish::SharedFD adbd_events_pipe);
+void LaunchSocketVsockProxyIfEnabled(cuttlefish::ProcessMonitor* process_monitor,
                                  const vsoc::CuttlefishConfig& config);

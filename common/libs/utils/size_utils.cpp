@@ -18,7 +18,7 @@
 
 #include <unistd.h>
 
-namespace cvd {
+namespace cuttlefish {
 
 uint32_t AlignToPageSize(uint32_t val) {
   static uint32_t page_size = sysconf(_SC_PAGESIZE);
@@ -38,4 +38,4 @@ uint32_t AlignToPowerOf2(uint32_t val, uint8_t align_log) {
   return ((val + (align - 1)) / align) * align;
 }
 
-}  // namespace cvd
+}  // namespace cuttlefish

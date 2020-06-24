@@ -40,8 +40,8 @@ std::string GetControlSocketPath(const vsoc::CuttlefishConfig* config) {
   return config->PerInstancePath("crosvm_control.sock");
 }
 
-void AddTapFdParameter(cvd::Command* crosvm_cmd, const std::string& tap_name) {
-  auto tap_fd = cvd::OpenTapInterface(tap_name);
+void AddTapFdParameter(cuttlefish::Command* crosvm_cmd, const std::string& tap_name) {
+  auto tap_fd = cuttlefish::OpenTapInterface(tap_name);
   if (tap_fd->IsOpen()) {
     crosvm_cmd->AddParameter("--tap-fd=", tap_fd);
   } else {
@@ -52,7 +52,7 @@ void AddTapFdParameter(cvd::Command* crosvm_cmd, const std::string& tap_name) {
 
 bool Stop() {
   auto config = vsoc::CuttlefishConfig::Get();
-  cvd::Command command(config->crosvm_binary());
+  cuttlefish::Command command(config->crosvm_binary());
   command.AddParameter("stop");
   command.AddParameter(GetControlSocketPath(config));
 
@@ -89,7 +89,7 @@ bool CrosvmManager::ConfigureGpu(vsoc::CuttlefishConfig* config) {
 void CrosvmManager::ConfigureBootDevices(vsoc::CuttlefishConfig* config) {
   // PCI domain 0, bus 0, device 1, function 0
   // TODO There is no way to control this assignment with crosvm (yet)
-  if (cvd::HostArch() == "x86_64") {
+  if (cuttlefish::HostArch() == "x86_64") {
     config->add_kernel_cmdline(
         "androidboot.boot_devices=pci0000:00/0000:00:01.0");
   } else {
@@ -101,8 +101,8 @@ void CrosvmManager::ConfigureBootDevices(vsoc::CuttlefishConfig* config) {
 CrosvmManager::CrosvmManager(const vsoc::CuttlefishConfig* config)
     : VmManager(config) {}
 
-std::vector<cvd::Command> CrosvmManager::StartCommands(bool with_frontend) {
-  cvd::Command crosvm_cmd(config_->crosvm_binary(), [](cvd::Subprocess* proc) {
+std::vector<cuttlefish::Command> CrosvmManager::StartCommands(bool with_frontend) {
+  cuttlefish::Command crosvm_cmd(config_->crosvm_binary(), [](cuttlefish::Subprocess* proc) {
     auto stopped = Stop();
     if (stopped) {
       return true;
@@ -146,9 +146,9 @@ std::vector<cvd::Command> CrosvmManager::StartCommands(bool with_frontend) {
   AddTapFdParameter(&crosvm_cmd, config_->mobile_tap_name());
 
   if (config_->enable_sandbox()) {
-    const bool seccomp_exists = cvd::DirectoryExists(config_->seccomp_policy_dir());
+    const bool seccomp_exists = cuttlefish::DirectoryExists(config_->seccomp_policy_dir());
     const std::string& var_empty_dir = vsoc::kCrosvmVarEmptyDir;
-    const bool var_empty_available = cvd::DirectoryExists(var_empty_dir);
+    const bool var_empty_available = cuttlefish::DirectoryExists(var_empty_dir);
     if (!var_empty_available || !seccomp_exists) {
       LOG(FATAL) << var_empty_dir << " is not an existing, empty directory."
                  << "seccomp-policy-dir, " << config_->seccomp_policy_dir()
@@ -170,8 +170,8 @@ std::vector<cvd::Command> CrosvmManager::StartCommands(bool with_frontend) {
 
   // Redirect standard input to a pipe for the console forwarder host process
   // to handle.
-  cvd::SharedFD console_in_rd, console_in_wr;
-  if (!cvd::SharedFD::Pipe(&console_in_rd, &console_in_wr)) {
+  cuttlefish::SharedFD console_in_rd, console_in_wr;
+  if (!cuttlefish::SharedFD::Pipe(&console_in_rd, &console_in_wr)) {
     LOG(ERROR) << "Failed to create console pipe for crosvm's stdin: "
                << console_in_rd->StrError();
     return {};
@@ -186,8 +186,8 @@ std::vector<cvd::Command> CrosvmManager::StartCommands(bool with_frontend) {
 
   // This fd will only be read from, but it's open with write access as well to
   // keep the pipe open in case the subprocesses exit.
-  cvd::SharedFD console_out_rd =
-      cvd::SharedFD::Open(console_pipe_name.c_str(), O_RDWR);
+  cuttlefish::SharedFD console_out_rd =
+      cuttlefish::SharedFD::Open(console_pipe_name.c_str(), O_RDWR);
   if (!console_out_rd->IsOpen()) {
     LOG(ERROR) << "Failed to open console fifo for reads: "
                << console_out_rd->StrError();
@@ -200,16 +200,16 @@ std::vector<cvd::Command> CrosvmManager::StartCommands(bool with_frontend) {
   crosvm_cmd.AddParameter("--serial=num=2,type=file,path=", console_pipe_name,
                           ",stdin=true");
 
-  crosvm_cmd.RedirectStdIO(cvd::Subprocess::StdIOChannel::kStdIn,
+  crosvm_cmd.RedirectStdIO(cuttlefish::Subprocess::StdIOChannel::kStdIn,
                            console_in_rd);
-  cvd::Command console_cmd(config_->console_forwarder_binary());
+  cuttlefish::Command console_cmd(config_->console_forwarder_binary());
   console_cmd.AddParameter("--console_in_fd=", console_in_wr);
   console_cmd.AddParameter("--console_out_fd=", console_out_rd);
 
   // This needs to be the last parameter
   crosvm_cmd.AddParameter(config_->GetKernelImageToUse());
 
-  std::vector<cvd::Command> ret;
+  std::vector<cuttlefish::Command> ret;
   ret.push_back(std::move(crosvm_cmd));
   ret.push_back(std::move(console_cmd));
   return ret;

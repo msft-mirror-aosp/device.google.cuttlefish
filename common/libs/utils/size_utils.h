@@ -17,7 +17,7 @@
 
 #include <stdint.h>
 
-namespace cvd {
+namespace cuttlefish {
 
 // Returns the smallest multiple of PAGE_SIZE greater than or equal to val.
 uint32_t AlignToPageSize(uint32_t val);
@@ -28,4 +28,4 @@ uint32_t RoundUpToNextPowerOf2(uint32_t val);
 // Returns the smallest multiple of 2^align_log greater than or equal to val.
 uint32_t AlignToPowerOf2(uint32_t val, uint8_t align_log);
 
-}  // namespace cvd
+}  // namespace cuttlefish

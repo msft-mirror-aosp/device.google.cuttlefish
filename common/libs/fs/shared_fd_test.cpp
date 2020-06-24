@@ -23,8 +23,8 @@
 
 #include <string>
 
-using cvd::InbandMessageHeader;
-using cvd::SharedFD;
+using cuttlefish::InbandMessageHeader;
+using cuttlefish::SharedFD;
 
 char hello[] = "Hello, world!";
 char pipe_message[] = "Testing the pipe";

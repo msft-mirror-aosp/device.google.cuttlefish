@@ -22,7 +22,7 @@
 #include "common/libs/fs/shared_buf.h"
 #include "common/libs/fs/shared_fd.h"
 
-namespace cvd {
+namespace cuttlefish {
 
 namespace {
 
@@ -78,4 +78,4 @@ ssize_t WriteAll(SharedFD fd, const std::string& buf) {
   return total_written;
 }
 
-} // namespace cvd
+} // namespace cuttlefish

@@ -21,7 +21,7 @@
 
 #include "common/libs/device_config/device_config.h"
 
-namespace cvd {
+namespace cuttlefish {
 
 VsocketScreenView::VsocketScreenView()
     : broadcast_thread_([this]() { BroadcastLoop(); }) {
@@ -37,7 +37,7 @@ VsocketScreenView::~VsocketScreenView() {
 }
 
 void VsocketScreenView::GetScreenParameters() {
-  auto device_config = cvd::DeviceConfig::Get();
+  auto device_config = cuttlefish::DeviceConfig::Get();
   if (!device_config) {
     ALOGI(
         "Failed to obtain device configuration from server, running in "
@@ -64,7 +64,7 @@ bool VsocketScreenView::ConnectToScreenServer() {
   }
 
   screen_server_ =
-      cvd::SharedFD::VsockClient(2, vsock_frames_port, SOCK_STREAM);
+      cuttlefish::SharedFD::VsockClient(2, vsock_frames_port, SOCK_STREAM);
   if (!screen_server_->IsOpen()) {
     ALOGE("Unable to connect to screen server: %s", screen_server_->StrError());
     return false;
@@ -128,4 +128,4 @@ int VsocketScreenView::num_buffers() const {
   return inner_buffer_.size() / buffer_size();
 }
 
-}  // namespace cvd
+}  // namespace cuttlefish
