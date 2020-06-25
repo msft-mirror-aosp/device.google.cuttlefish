@@ -78,6 +78,12 @@ PRODUCT_PROPERTY_OVERRIDES += \
 PRODUCT_PROPERTY_OVERRIDES += \
     wlan.driver.status=ok
 
+ifeq ($(LOCAL_ENABLE_CODEC2),)
+# Codec 1.0 requires the OMX services
+DEVICE_MANIFEST_FILE += \
+    device/google/cuttlefish/shared/config/android.hardware.media.omx@1.0.xml
+endif
+
 # Enforce privapp-permissions whitelist.
 PRODUCT_PROPERTY_OVERRIDES += ro.control_privapp_permissions=enforce
 
