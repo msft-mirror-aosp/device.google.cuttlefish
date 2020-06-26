@@ -44,10 +44,8 @@ AB_OTA_PARTITIONS += \
 # Enable Virtual A/B
 $(call inherit-product, $(SRC_TARGET_DIR)/product/virtual_ab_ota.mk)
 
-# Enable Scoped Storage related changes for f2fs
-ifeq ($(TARGET_USERDATAIMAGE_FILE_SYSTEM_TYPE),f2fs)
+# Enable Scoped Storage related
 $(call inherit-product, $(SRC_TARGET_DIR)/product/emulated_storage.mk)
-endif
 
 # Properties that are not vendor-specific. These will go in the product
 # partition, instead of the vendor partition, and do not need vendor
@@ -440,6 +438,9 @@ PRODUCT_HOST_PACKAGES += socket_vsock_proxy
 PRODUCT_EXTRA_VNDK_VERSIONS := 28 29
 
 PRODUCT_SOONG_NAMESPACES += external/mesa3d
+
+#for Confirmation UI
+PRODUCT_SOONG_NAMESPACES += vendor/google_devices/common/proprietary/confirmatioui_hal
 
 # Need this so that the application's loop on reading input can be synchronized
 # with HW VSYNC

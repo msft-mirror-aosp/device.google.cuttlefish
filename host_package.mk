@@ -21,7 +21,6 @@ aarch64_seccomp_files_path := usr/share/cuttlefish/aarch64-linux-gnu/seccomp
 cvd_host_executables := \
     adb \
     adbshell \
-    android.hardware.automotive.vehicle@2.0-virtualization-grpc-server \
     launch_cvd \
     lpmake \
     lpunpack \
@@ -70,6 +69,10 @@ cvd_host_executables := \
     secure_env \
     log_tee \
 
+ifneq ($(wildcard device/google/trout),)
+    cvd_host_executables += android.hardware.automotive.vehicle@2.0-virtualization-grpc-server
+endif
+
 cvd_host_tests := \
     monotonic_time_test \
     cuttlefish_net_tests \
@@ -113,6 +116,7 @@ cvd_host_shared_libraries := \
     tpm2-tss2-sys.so \
     tpm2-tss2-tcti.so \
     tpm2-tss2-util.so \
+    ms-tpm-20-ref-lib.so \
 
 webrtc_assets := \
     index.html \
