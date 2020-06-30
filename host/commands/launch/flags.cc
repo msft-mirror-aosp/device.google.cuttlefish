@@ -774,7 +774,9 @@ void CreateCompositeDisk(const cuttlefish::CuttlefishConfig& config) {
   if (FLAGS_vm_manager == vm_manager::CrosvmManager::name()) {
     std::string header_path = config.PerInstancePath("gpt_header.img");
     std::string footer_path = config.PerInstancePath("gpt_footer.img");
-    create_composite_disk(disk_config(), header_path, footer_path, FLAGS_composite_disk);
+    std::string file_template = config.PerInstancePath("diskXXXXXX");
+    create_composite_disk(
+        disk_config(), header_path, footer_path, FLAGS_composite_disk, file_template);
   } else {
     aggregate_image(disk_config(), FLAGS_composite_disk);
   }
