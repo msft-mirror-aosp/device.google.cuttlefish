@@ -29,4 +29,5 @@ void aggregate_image(const std::vector<ImagePartition>& partitions,
 void create_composite_disk(std::vector<ImagePartition> partitions,
                            const std::string& header_file,
                            const std::string& footer_file,
-                           const std::string& output_path);
+                           const std::string& output_path,
+                           const std::string& create_template_path);
