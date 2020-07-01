@@ -62,7 +62,7 @@ DEFINE_string(kernel_decompresser_executable,
 DEFINE_string(extra_kernel_cmdline, "",
               "Additional flags to put on the kernel command line");
 DEFINE_int32(loop_max_part, 7, "Maximum number of loop partitions");
-DEFINE_string(androidboot_console, "ttyS1",
+DEFINE_string(androidboot_console, "hvc1",
               "Console device for the Android framework");
 DEFINE_string(
     hardware_name, "",

@@ -91,7 +91,7 @@ void CrosvmManager::ConfigureBootDevices(cuttlefish::CuttlefishConfig* config) {
   // TODO There is no way to control this assignment with crosvm (yet)
   if (cuttlefish::HostArch() == "x86_64") {
     config->add_kernel_cmdline(
-        "androidboot.boot_devices=pci0000:00/0000:00:02.0");
+        "androidboot.boot_devices=pci0000:00/0000:00:03.0");
   } else {
     config->add_kernel_cmdline(
         "androidboot.boot_devices=10000.pci");
@@ -204,7 +204,7 @@ std::vector<cuttlefish::Command> CrosvmManager::StartCommands(bool with_frontend
   // crosvm. A file (named pipe) is used here instead of stdout to ensure only
   // the serial port output is received by the console forwarder as crosvm may
   // print other messages to stdout.
-  crosvm_cmd.AddParameter("--serial=hardware=serial,num=2,type=file,path=",
+  crosvm_cmd.AddParameter("--serial=hardware=virtio-console,num=2,type=file,path=",
                           console_pipe_name, ",stdin=true");
 
   crosvm_cmd.RedirectStdIO(cuttlefish::Subprocess::StdIOChannel::kStdIn,
