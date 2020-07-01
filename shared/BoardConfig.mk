@@ -158,5 +158,5 @@ BOARD_KERNEL_CMDLINE += printk.devkmsg=on
 
 BOARD_KERNEL_CMDLINE += init=/init
 BOARD_KERNEL_CMDLINE += androidboot.hardware=cutf_cvm
-BOARD_KERNEL_CMDLINE += androidboot.console=ttyS1
+BOARD_KERNEL_CMDLINE += androidboot.console=hvc1
 BOARD_KERNEL_CMDLINE += mac80211_hwsim.radios=0

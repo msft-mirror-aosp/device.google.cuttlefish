@@ -1,22 +1,22 @@
 # crosvm (x86)
-genfscon sysfs /devices/pci0000:00/0000:00:07.0/virtio6/net u:object_r:sysfs_net:s0 # buried_eth0 & wlan0
-genfscon sysfs /devices/pci0000:00/0000:00:08.0/virtio7/net u:object_r:sysfs_net:s0 # rmnet0
-genfscon sysfs /devices/pci0000:00/0000:00:0a.0/device u:object_r:sysfs_gpu:s0
-genfscon sysfs /devices/pci0000:00/0000:00:0a.0/subsystem_device u:object_r:sysfs_gpu:s0
-genfscon sysfs /devices/pci0000:00/0000:00:0a.0/subsystem_vendor u:object_r:sysfs_gpu:s0
-genfscon sysfs /devices/pci0000:00/0000:00:0a.0/uevent u:object_r:sysfs_gpu:s0
-genfscon sysfs /devices/pci0000:00/0000:00:0a.0/vendor u:object_r:sysfs_gpu:s0
+genfscon sysfs /devices/pci0000:00/0000:00:08.0/virtio7/net u:object_r:sysfs_net:s0 # buried_eth0 & wlan0
+genfscon sysfs /devices/pci0000:00/0000:00:09.0/virtio8/net u:object_r:sysfs_net:s0 # rmnet0
+genfscon sysfs /devices/pci0000:00/0000:00:0b.0/device u:object_r:sysfs_gpu:s0
+genfscon sysfs /devices/pci0000:00/0000:00:0b.0/subsystem_device u:object_r:sysfs_gpu:s0
+genfscon sysfs /devices/pci0000:00/0000:00:0b.0/subsystem_vendor u:object_r:sysfs_gpu:s0
+genfscon sysfs /devices/pci0000:00/0000:00:0b.0/uevent u:object_r:sysfs_gpu:s0
+genfscon sysfs /devices/pci0000:00/0000:00:0b.0/vendor u:object_r:sysfs_gpu:s0
 ## find /sys/devices/platform/* -type d -name 'rtc[0-9]' | sed 's,/rtc[0-9],,'
 ## x86 rtc_cmos on crosvm does not currently expose rtcN/hctosys
 
 # crosvm (arm64)
-genfscon sysfs /devices/platform/10000.pci/pci0000:00/0000:00:07.0/virtio6/net u:object_r:sysfs_net:s0 # buried_eth0 & wlan0
-genfscon sysfs /devices/platform/10000.pci/pci0000:00/0000:00:08.0/virtio7/net u:object_r:sysfs_net:s0 # rmnet0
-genfscon sysfs /devices/platform/10000.pci/pci0000:00/0000:00:0a.0/device u:object_r:sysfs_gpu:s0
-genfscon sysfs /devices/platform/10000.pci/pci0000:00/0000:00:0a.0/subsystem_device u:object_r:sysfs_gpu:s0
-genfscon sysfs /devices/platform/10000.pci/pci0000:00/0000:00:0a.0/subsystem_vendor u:object_r:sysfs_gpu:s0
-genfscon sysfs /devices/platform/10000.pci/pci0000:00/0000:00:0a.0/uevent u:object_r:sysfs_gpu:s0
-genfscon sysfs /devices/platform/10000.pci/pci0000:00/0000:00:0a.0/vendor u:object_r:sysfs_gpu:s0
+genfscon sysfs /devices/platform/10000.pci/pci0000:00/0000:00:08.0/virtio7/net u:object_r:sysfs_net:s0 # buried_eth0 & wlan0
+genfscon sysfs /devices/platform/10000.pci/pci0000:00/0000:00:09.0/virtio8/net u:object_r:sysfs_net:s0 # rmnet0
+genfscon sysfs /devices/platform/10000.pci/pci0000:00/0000:00:0b.0/device u:object_r:sysfs_gpu:s0
+genfscon sysfs /devices/platform/10000.pci/pci0000:00/0000:00:0b.0/subsystem_device u:object_r:sysfs_gpu:s0
+genfscon sysfs /devices/platform/10000.pci/pci0000:00/0000:00:0b.0/subsystem_vendor u:object_r:sysfs_gpu:s0
+genfscon sysfs /devices/platform/10000.pci/pci0000:00/0000:00:0b.0/uevent u:object_r:sysfs_gpu:s0
+genfscon sysfs /devices/platform/10000.pci/pci0000:00/0000:00:0b.0/vendor u:object_r:sysfs_gpu:s0
 ## find /sys/devices/platform/* -type d -name 'rtc[0-9]' | sed 's,/rtc[0-9],,'
 genfscon sysfs /devices/platform/2000.rtc/rtc u:object_r:sysfs_rtc:s0
 
