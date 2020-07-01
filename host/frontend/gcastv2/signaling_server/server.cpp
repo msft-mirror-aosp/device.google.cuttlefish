@@ -27,15 +27,13 @@
 #include "host/frontend/gcastv2/https/include/https/SSLSocket.h"
 #include "host/frontend/gcastv2/https/include/https/SafeCallbackable.h"
 #include "host/frontend/gcastv2/https/include/https/Support.h"
-#include "host/frontend/gcastv2/webrtc/Utils.h"
-#include "host/frontend/gcastv2/webrtc/include/webrtc/STUNClient.h"
-#include "host/frontend/gcastv2/webrtc/include/webrtc/STUNMessage.h"
 
 #include "host/frontend/gcastv2/signaling_server/client_handler.h"
 #include "host/frontend/gcastv2/signaling_server/device_handler.h"
 #include "host/frontend/gcastv2/signaling_server/device_list_handler.h"
 #include "host/frontend/gcastv2/signaling_server/device_registry.h"
 #include "host/frontend/gcastv2/signaling_server/server_config.h"
+#include "host/frontend/gcastv2/signaling_server/utils.h"
 
 DEFINE_int32(http_server_port, 8443, "The port for the http server.");
 DEFINE_bool(use_secure_http, true, "Whether to use HTTPS or HTTP.");

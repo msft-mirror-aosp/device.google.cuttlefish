@@ -10,6 +10,9 @@
 #include <array>
 #include <iostream>
 #include <fstream>
+#include <regex>
+#include <set>
+#include <sstream>
 
 #include <android-base/strings.h>
 #include <gflags/gflags.h>
@@ -135,7 +138,7 @@ DEFINE_string(
 DEFINE_string(
         webrtc_public_ip,
         "127.0.0.1",
-        "[Experimental] Public IPv4 address of your server, a.b.c.d format");
+        "[Deprecated] Ignored, webrtc can figure out its IP address");
 
 DEFINE_bool(
         webrtc_enable_adb_websocket,
@@ -156,6 +159,16 @@ DEFINE_int32(
     "The port of the signaling server if started outside of this launch. If "
     "-start_webrtc_sig_server is given it will choose 8443+instance_num1-1 and "
     "this parameter is ignored.");
+
+// TODO (jemoreira): We need a much bigger range to reliably support several
+// simultaneous connections.
+DEFINE_string(tcp_port_range, "15550:15558",
+              "The minimum and maximum TCP port numbers to allocate for ICE "
+              "candidates as 'min:max'. To use any port just specify '0:0'");
+
+DEFINE_string(udp_port_range, "15550:15558",
+              "The minimum and maximum UDP port numbers to allocate for ICE "
+              "candidates as 'min:max'. To use any port just specify '0:0'");
 
 DEFINE_string(webrtc_sig_server_path, "/register_device",
               "The path section of the URL where the device should be "
@@ -267,6 +280,19 @@ bool ResolveInstanceFiles() {
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
 
   return true;
+}
+
+std::pair<uint16_t, uint16_t> ParsePortRange(const std::string& flag) {
+  static const std::regex rgx("[0-9]+:[0-9]+");
+  CHECK(std::regex_match(flag, rgx))
+      << "Port range flag has invalid value: " << flag;
+  std::pair<uint16_t, uint16_t> port_range;
+  std::stringstream ss(flag);
+  char c;
+  ss >> port_range.first;
+  ss.read(&c, 1);
+  ss >> port_range.second;
+  return port_range;
 }
 
 std::string GetCuttlefishEnvPath() {
@@ -440,7 +466,6 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
   tmp_config_obj.set_webrtc_binary(
       cuttlefish::DefaultHostArtifactsPath("bin/webRTC"));
   tmp_config_obj.set_webrtc_assets_dir(FLAGS_webrtc_assets_dir);
-  tmp_config_obj.set_webrtc_public_ip(FLAGS_webrtc_public_ip);
   tmp_config_obj.set_webrtc_certs_dir(FLAGS_webrtc_certs_dir);
   tmp_config_obj.set_sig_server_binary(
       cuttlefish::DefaultHostArtifactsPath("bin/webrtc_sig_server"));
@@ -449,6 +474,11 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
   tmp_config_obj.set_sig_server_address(FLAGS_webrtc_sig_server_addr);
   tmp_config_obj.set_sig_server_path(FLAGS_webrtc_sig_server_path);
   tmp_config_obj.set_sig_server_strict(FLAGS_verify_sig_server_certificate);
+
+  auto tcp_range  = ParsePortRange(FLAGS_tcp_port_range);
+  tmp_config_obj.set_webrtc_tcp_port_range(tcp_range);
+  auto udp_range  = ParsePortRange(FLAGS_udp_port_range);
+  tmp_config_obj.set_webrtc_udp_port_range(udp_range);
 
   tmp_config_obj.set_webrtc_enable_adb_websocket(
           FLAGS_webrtc_enable_adb_websocket);
