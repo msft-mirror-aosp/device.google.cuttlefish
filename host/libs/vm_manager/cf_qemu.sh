@@ -93,7 +93,7 @@ args=(
     -no-shutdown
     -boot "strict=on"
     -kernel "${kernel_image_path:-${HOME}/kernel}"
-    -append "${kernel_cmdline:-"loop.max_part=7 console=ttyS0 androidboot.console=ttyS1 androidboot.hardware=vsoc enforcing=0 audit=1 androidboot.selinux=permissive mac80211_hwsim.radios=0 security=selinux buildvariant=userdebug  androidboot.serialno=CUTTLEFISHCVD01 androidboot.lcd_density=160 androidboot.boot_devices=pci0000:00/0000:00:03.0"}"
+    -append "${kernel_cmdline:-"loop.max_part=7 console=ttyS0 androidboot.console=ttyS1 androidboot.hardware=vsoc audit=1 androidboot.selinux=permissive mac80211_hwsim.radios=0 buildvariant=userdebug  androidboot.serialno=CUTTLEFISHCVD01 androidboot.lcd_density=160 androidboot.boot_devices=pci0000:00/0000:00:03.0"}"
     -device "virtio-serial-pci,id=virtio-serial0"
 )
 
