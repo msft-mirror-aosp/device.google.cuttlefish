@@ -110,7 +110,7 @@ std::vector<std::string> CrosvmManager::ConfigureBootDevices() {
   // PCI domain 0, bus 0, device 1, function 0
   // TODO There is no way to control this assignment with crosvm (yet)
   if (cvd::HostArch() == "x86_64") {
-    return { "androidboot.boot_devices=pci0000:00/0000:00:02.0" };
+    return { "androidboot.boot_devices=pci0000:00/0000:00:03.0" };
   } else {
     return { "androidboot.boot_devices=10000.pci" };
   }
@@ -215,7 +215,7 @@ std::vector<cvd::Command> CrosvmManager::StartCommands() {
   // crosvm. A file (named pipe) is used here instead of stdout to ensure only
   // the serial port output is received by the console forwarder as crosvm may
   // print other messages to stdout.
-  crosvm_cmd.AddParameter("--serial=hardware=serial,num=2,type=file,path=",
+  crosvm_cmd.AddParameter("--serial=hardware=virtio-console,num=2,type=file,path=",
                           console_pipe_name, ",stdin=true");
 
   crosvm_cmd.RedirectStdIO(cvd::Subprocess::StdIOChannel::kStdIn,
