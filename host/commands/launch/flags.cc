@@ -67,11 +67,8 @@ DEFINE_string(androidboot_console, "ttyS1",
 DEFINE_string(
     hardware_name, "",
     "The codename of the device's hardware, one of {cutf_ivsh, cutf_cvm}");
-DEFINE_string(guest_security, "selinux",
-              "The security module to use in the guest");
 DEFINE_bool(guest_enforce_security, true,
-            "Whether to run in enforcing mode (non permissive). Ignored if "
-            "-guest_security is empty.");
+            "Whether to run in enforcing mode (non permissive).");
 DEFINE_bool(guest_audit_security, true,
             "Whether to log security audits.");
 DEFINE_string(boot_image, "",
@@ -382,19 +379,13 @@ bool InitializeCuttlefishConfiguration(
   tmp_config_obj.add_kernel_cmdline(concat("androidboot.cuttlefish_config_server_port=",
                                            FLAGS_config_server_port));
   tmp_config_obj.set_hardware_name(FLAGS_hardware_name);
-  if (!FLAGS_guest_security.empty()) {
-    tmp_config_obj.add_kernel_cmdline(concat("security=", FLAGS_guest_security));
-    if (FLAGS_guest_enforce_security) {
-      tmp_config_obj.add_kernel_cmdline("enforcing=1");
-    } else {
-      tmp_config_obj.add_kernel_cmdline("enforcing=0");
-      tmp_config_obj.add_kernel_cmdline("androidboot.selinux=permissive");
-    }
-    if (FLAGS_guest_audit_security) {
-      tmp_config_obj.add_kernel_cmdline("audit=1");
-    } else {
-      tmp_config_obj.add_kernel_cmdline("audit=0");
-    }
+  if (!FLAGS_guest_enforce_security) {
+    tmp_config_obj.add_kernel_cmdline("androidboot.selinux=permissive");
+  }
+  if (FLAGS_guest_audit_security) {
+    tmp_config_obj.add_kernel_cmdline("audit=1");
+  } else {
+    tmp_config_obj.add_kernel_cmdline("audit=0");
   }
   if (FLAGS_extra_kernel_cmdline.size()) {
     tmp_config_obj.add_kernel_cmdline(FLAGS_extra_kernel_cmdline);
