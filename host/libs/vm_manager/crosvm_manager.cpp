@@ -176,7 +176,7 @@ std::vector<cvd::Command> CrosvmManager::StartCommands() {
   }
 
   // Redirect the first serial port with the kernel logs to the appropriate file
-  crosvm_cmd.AddParameter("--serial=num=1,type=file,path=",
+  crosvm_cmd.AddParameter("--serial=hardware=serial,num=1,type=file,path=",
                           instance.kernel_log_pipe_name(), ",console=true");
 
   // Redirect standard input to a pipe for the console forwarder host process
@@ -208,8 +208,8 @@ std::vector<cvd::Command> CrosvmManager::StartCommands() {
   // crosvm. A file (named pipe) is used here instead of stdout to ensure only
   // the serial port output is received by the console forwarder as crosvm may
   // print other messages to stdout.
-  crosvm_cmd.AddParameter("--serial=num=2,type=file,path=", console_pipe_name,
-                          ",stdin=true");
+  crosvm_cmd.AddParameter("--serial=hardware=serial,num=2,type=file,path=",
+                          console_pipe_name, ",stdin=true");
 
   crosvm_cmd.RedirectStdIO(cvd::Subprocess::StdIOChannel::kStdIn,
                            console_in_rd);
