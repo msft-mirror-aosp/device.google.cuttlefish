@@ -83,7 +83,7 @@ args=(
     -name "guest=${instance_name:-${default_instance_name}},debug-threads=on"
     -machine "${machine},usb=off,dump-guest-core=off"
     -m "${memory_mb:-2048}"
-    -realtime mlock=off
+    -overcommit "mem-lock=off"
     -smp "${cpus:-2},sockets=${cpus:-2},cores=1,threads=1"
     -uuid "${uuid:-${default_uuid}}"
     -display none
