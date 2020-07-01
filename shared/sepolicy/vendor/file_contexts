@@ -42,7 +42,7 @@
 /dev/input_events  u:object_r:input_events_device:s0
 /dev/screen  u:object_r:region_screen_device:s0
 /dev/socket_forward  u:object_r:socket_forward_device:s0
-/dev/vport[0-9]p[0-9]*  u:object_r:virtual_serial_device:s0
+/dev/hvc[0-9]*  u:object_r:serial_device:s0
 
 #############################
 # Root files
