@@ -3,4 +3,4 @@
 # the /dev filesystem.
 allow logpersist device:dir r_dir_perms;
 allow logpersist device:fifo_file ra_file_perms;
-allow logpersist virtual_serial_device:chr_file ra_file_perms;
+allow logpersist serial_device:chr_file ra_file_perms;
