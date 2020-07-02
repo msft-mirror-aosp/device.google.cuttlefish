@@ -63,14 +63,12 @@ dtc_binary=${dtc_binary:-dtc}
 
 if [[ "${qemu_binary##*/}" = "qemu-system-aarch64" ]]; then
   # On ARM, the early console can be PCI, and ISA is not supported
-  kernel_console_serial="pci-serial"
   machine="virt,gic_version=2"
   romfile=",romfile="
   cpu=cortex-a53
 else
   # On x86, the early console must be ISA, not PCI, so we start to get kernel
   # messages as soon as possible. ISA devices do not have 'addr' assignments.
-  kernel_console_serial="isa-serial"
   machine="pc-i440fx-2.8,accel=kvm"
   romfile=
   cpu=host
@@ -94,8 +92,25 @@ args=(
     -boot "strict=on"
     -kernel "${kernel_image_path:-${HOME}/kernel}"
     -append "${kernel_cmdline:-"loop.max_part=7 console=ttyS0 androidboot.console=ttyS1 androidboot.hardware=vsoc audit=1 androidboot.selinux=permissive mac80211_hwsim.radios=0 buildvariant=userdebug  androidboot.serialno=CUTTLEFISHCVD01 androidboot.lcd_density=160 androidboot.boot_devices=pci0000:00/0000:00:03.0"}"
-    -device "virtio-serial-pci,id=virtio-serial0"
+    -chardev "socket,id=charmonitor,path=${monitor_path:-${default_internal_dir}/qemu_monitor.sock},server,nowait"
+    -mon "chardev=charmonitor,id=monitor,mode=control"
+    -chardev "file,id=earlycon,path=${kernel_log_pipe_name:-${default_internal_dir}/kernel-log},append=on"
+    -serial "chardev:earlycon"
+    -chardev "file,id=hvc0,path=${kernel_log_pipe_name:-${default_internal_dir}/kernel-log},append=on"
+    -device "virtio-serial-pci,max_ports=1,id=virtio-serial0"
+    -device "virtconsole,bus=virtio-serial0.0,chardev=hvc0"
+    -chardev "socket,id=hvc1,path=${console_path:-${default_dir}/console},server,nowait"
+    -device "virtio-serial-pci,max_ports=1,id=virtio-serial1"
+    -device "virtconsole,bus=virtio-serial1.0,chardev=hvc1"
 )
+
+if [[ "${logcat_mode}" == "serial" ]]; then
+    args+=(
+         -chardev "file,id=hvc2,path=${logcat_path:-${default_dir}/logcat},append=on"
+         -device "virtio-serial-pci,max_ports=1,id=virtio-serial2"
+         -device "virtconsole,bus=virtio-serial2.0,chardev=hvc2"
+    )
+fi
 
 IFS=';' read -ra virtual_disk_array <<< "$virtual_disk_paths"
 virtual_disk_index=0
@@ -134,22 +149,6 @@ if [[ "${use_bootloader}" = "true" ]]; then
   args+=(
     -bios "${bootloader}"
   )
-fi
-
-args+=(
-    -chardev "socket,id=charmonitor,path=${monitor_path:-${default_internal_dir}/qemu_monitor.sock},server,nowait"
-    -mon "chardev=charmonitor,id=monitor,mode=control"
-    -chardev "file,id=charserial0,path=${kernel_log_pipe_name:-${default_internal_dir}/kernel-log},append=on"
-    -device "${kernel_console_serial},chardev=charserial0,id=serial0"
-    -chardev "socket,id=charserial1,path=${console_path:-${default_dir}/console},server,nowait"
-    -device "${kernel_console_serial},chardev=charserial1,id=serial1"
-)
-
-if [[ "${logcat_mode}" == "serial" ]]; then
-    args+=(
-        -chardev "file,id=charchannel0,path=${logcat_path:-${default_dir}/logcat},append=on"
-        -device "virtserialport,bus=virtio-serial0.0,nr=1,chardev=charchannel0,id=channel0,name=cf-logcat"
-    )
 fi
 
 if [[ -n "${gdb_flag}" ]]; then
