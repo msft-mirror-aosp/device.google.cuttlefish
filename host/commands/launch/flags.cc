@@ -394,6 +394,24 @@ bool InitializeCuttlefishConfiguration(
   tmp_config_obj.set_dtb_path(FLAGS_dtb);
   tmp_config_obj.set_dtb_fstab_path(FLAGS_dtb_fstab);
 
+  // crosvm sets up the console= earlycon= flags for us, but QEMU does not.
+  // Set them explicitly here to match how we will configure the VM manager
+  if (FLAGS_vm_manager == vm_manager::QemuManager::name()) {
+    tmp_config_obj.add_kernel_cmdline("console=hvc0");
+    if (cuttlefish::HostArch() == "aarch64") {
+      // To update the pl011 address:
+      // $ qemu-system-aarch64 -machine virt -cpu cortex-a57 -machine dumpdtb=virt.dtb
+      // $ dtc -O dts -o virt.dts -I dtb virt.dtb
+      // In the virt.dts file, look for a uart node
+      tmp_config_obj.add_kernel_cmdline("earlycon=pl011,mmio32,0x9000000");
+    } else {
+      // To update the uart8250 address:
+      // $ qemu-system-x86_64 -kernel bzImage -serial stdio | grep ttyS0
+      // Only 'io' mode works; mmio and mmio32 do not
+      tmp_config_obj.add_kernel_cmdline("earlycon=uart8250,io,0x3f8");
+    }
+  }
+
   tmp_config_obj.set_virtual_disk_paths({FLAGS_composite_disk});
 
   tmp_config_obj.set_ramdisk_image_path(ramdisk_path);

@@ -116,10 +116,9 @@ bool QemuManager::ConfigureGpu(cuttlefish::CuttlefishConfig *config) {
 }
 
 void QemuManager::ConfigureBootDevices(cuttlefish::CuttlefishConfig* config) {
-  // PCI domain 0, bus 0, device 3, function 0
-  // This is controlled with 'addr=0x3' in cf_qemu.sh
+  // PCI domain 0, bus 0, device 4, function 0
   config->add_kernel_cmdline(
-    "androidboot.boot_devices=pci0000:00/0000:00:03.0");
+    "androidboot.boot_devices=pci0000:00/0000:00:04.0");
 }
 
 QemuManager::QemuManager(const cuttlefish::CuttlefishConfig* config)
