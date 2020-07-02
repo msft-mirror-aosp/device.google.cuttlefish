@@ -52,6 +52,7 @@ std::vector<std::string> KernelCommandLineFromConfig(const vsoc::CuttlefishConfi
   auto instance = config.ForDefaultInstance();
   std::vector<std::string> kernel_cmdline;
 
+  AppendVector(&kernel_cmdline, config.vm_manager_kernel_cmdline());
   AppendVector(&kernel_cmdline, config.boot_image_kernel_cmdline());
   AppendVector(&kernel_cmdline,
                vm_manager::VmManager::ConfigureGpuMode(config.vm_manager(), config.gpu_mode()));
