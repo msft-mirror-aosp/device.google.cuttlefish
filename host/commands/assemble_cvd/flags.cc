@@ -648,6 +648,9 @@ bool CleanPriorFiles(const vsoc::CuttlefishConfig& config, const std::set<std::s
 bool DecompressKernel(const std::string& src, const std::string& dst) {
   cvd::Command decomp_cmd(vsoc::DefaultHostArtifactsPath("bin/extract-vmlinux"));
   decomp_cmd.AddParameter(src);
+  std::string current_path = getenv("PATH") == nullptr ? "" : getenv("PATH");
+  std::string bin_folder = vsoc::DefaultHostArtifactsPath("bin");
+  decomp_cmd.SetEnvironment({"PATH=" + current_path + ":" + bin_folder});
   auto output_file = cvd::SharedFD::Creat(dst.c_str(), 0666);
   if (!output_file->IsOpen()) {
     LOG(ERROR) << "Unable to create decompressed image file: "
