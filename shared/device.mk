@@ -272,7 +272,6 @@ LOCAL_AUDIO_PRODUCT_PACKAGE ?= \
     android.hardware.audio@6.0-impl:32 \
     android.hardware.audio.effect@6.0-impl:32 \
     android.hardware.audio@2.0-service \
-    android.hardware.soundtrigger@2.3-impl \
 
 LOCAL_AUDIO_PRODUCT_COPY_FILES ?= \
     device/google/cuttlefish/shared/config/audio_policy.conf:$(TARGET_COPY_OUT_VENDOR)/etc/audio_policy.conf \
