@@ -68,10 +68,6 @@ int GetHostPort() {
   return cuttlefish::GetPerInstanceDefault(kFirstHostPort);
 }
 
-bool LogcatReceiverEnabled(const cuttlefish::CuttlefishConfig& config) {
-  return config.logcat_mode() == cuttlefish::kLogcatVsockMode;
-}
-
 void ValidateAdbModeFlag(const cuttlefish::CuttlefishConfig& config) {
   if (!AdbVsockTunnelEnabled(config) && !AdbVsockHalfTunnelEnabled(config)) {
     LOG(INFO) << "ADB not enabled";
@@ -123,11 +119,8 @@ std::vector<cuttlefish::SharedFD> LaunchKernelLogMonitor(
   return ret;
 }
 
-void LaunchLogcatReceiverIfEnabled(const cuttlefish::CuttlefishConfig& config,
-                                   cuttlefish::ProcessMonitor* process_monitor) {
-  if (!LogcatReceiverEnabled(config)) {
-    return;
-  }
+void LaunchLogcatReceiver(const cuttlefish::CuttlefishConfig& config,
+                          cuttlefish::ProcessMonitor* process_monitor) {
   auto port = config.logcat_vsock_port();
   auto socket = cuttlefish::SharedFD::VsockServer(port, SOCK_STREAM);
   if (!socket->IsOpen()) {

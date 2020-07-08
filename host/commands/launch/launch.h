@@ -14,8 +14,8 @@ std::vector <cuttlefish::SharedFD> LaunchKernelLogMonitor(
     const cuttlefish::CuttlefishConfig& config,
     cuttlefish::ProcessMonitor* process_monitor,
     unsigned int number_of_event_pipes);
-void LaunchLogcatReceiverIfEnabled(const cuttlefish::CuttlefishConfig& config,
-                                   cuttlefish::ProcessMonitor* process_monitor);
+void LaunchLogcatReceiver(const cuttlefish::CuttlefishConfig& config,
+                          cuttlefish::ProcessMonitor* process_monitor);
 void LaunchConfigServer(const cuttlefish::CuttlefishConfig& config,
                         cuttlefish::ProcessMonitor* process_monitor);
 bool LaunchVNCServerIfEnabled(const cuttlefish::CuttlefishConfig& config,

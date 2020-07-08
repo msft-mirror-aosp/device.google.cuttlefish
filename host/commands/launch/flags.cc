@@ -205,8 +205,6 @@ DEFINE_bool(restart_subprocesses, true, "Restart any crashed host process");
 DEFINE_string(logcat_receiver_binary,
               cuttlefish::DefaultHostArtifactsPath("bin/logcat_receiver"),
               "Binary for the logcat server");
-DEFINE_string(logcat_mode, "", "How to send android's log messages from "
-                               "guest to host. One of [serial, vsock]");
 DEFINE_int32(logcat_vsock_port, cuttlefish::GetPerInstanceDefault(5620),
              "The port for logcat over vsock");
 DEFINE_string(config_server_binary,
@@ -372,10 +370,8 @@ bool InitializeCuttlefishConfiguration(
     tmp_config_obj.add_kernel_cmdline(
         concat("androidboot.hardware=", FLAGS_hardware_name));
   }
-  if (FLAGS_logcat_mode == cuttlefish::kLogcatVsockMode) {
-    tmp_config_obj.add_kernel_cmdline(concat("androidboot.vsock_logcat_port=",
-                                             FLAGS_logcat_vsock_port));
-  }
+  tmp_config_obj.add_kernel_cmdline(concat("androidboot.vsock_logcat_port=",
+                                           FLAGS_logcat_vsock_port));
   tmp_config_obj.add_kernel_cmdline(concat("androidboot.cuttlefish_config_server_port=",
                                            FLAGS_config_server_port));
   tmp_config_obj.set_hardware_name(FLAGS_hardware_name);
@@ -464,7 +460,6 @@ bool InitializeCuttlefishConfiguration(
   tmp_config_obj.set_blank_data_image_mb(FLAGS_blank_data_image_mb);
   tmp_config_obj.set_blank_data_image_fmt(FLAGS_blank_data_image_fmt);
 
-  tmp_config_obj.set_logcat_mode(FLAGS_logcat_mode);
   tmp_config_obj.set_logcat_vsock_port(FLAGS_logcat_vsock_port);
   tmp_config_obj.set_config_server_port(FLAGS_config_server_port);
   tmp_config_obj.set_frames_vsock_port(FLAGS_frames_vsock_port);
@@ -544,9 +539,6 @@ void SetDefaultFlagsForQemu() {
   // TODO(b/144111429): Consolidate to one hardware name
   SetCommandLineOptionWithMode("hardware_name", "cutf_cvm",
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
-  // TODO(b/144119457) Use the serial port.
-  SetCommandLineOptionWithMode("logcat_mode", cuttlefish::kLogcatVsockMode,
-                               google::FlagSettingMode::SET_FLAGS_DEFAULT);
 }
 
 void SetDefaultFlagsForCrosvm() {
@@ -575,8 +567,6 @@ void SetDefaultFlagsForCrosvm() {
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
   // TODO(b/144111429): Consolidate to one hardware name
   SetCommandLineOptionWithMode("hardware_name", "cutf_cvm",
-                               google::FlagSettingMode::SET_FLAGS_DEFAULT);
-  SetCommandLineOptionWithMode("logcat_mode", cuttlefish::kLogcatVsockMode,
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
 
   std::string dtb_fstab;

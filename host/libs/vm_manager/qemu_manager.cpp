@@ -146,7 +146,6 @@ std::vector<cuttlefish::Command> QemuManager::StartCommands(bool /*with_frontend
   LogAndSetEnv("console_path", config_->console_path());
   LogAndSetEnv("logcat_path", config_->logcat_path());
   LogAndSetEnv("vsock_guest_cid", std::to_string(config_->vsock_guest_cid()));
-  LogAndSetEnv("logcat_mode", config_->logcat_mode());
 
   cuttlefish::Command qemu_cmd(cuttlefish::DefaultHostArtifactsPath("bin/cf_qemu.sh"),
                         [](cuttlefish::Subprocess* proc) {
