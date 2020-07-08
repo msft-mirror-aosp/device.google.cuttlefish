@@ -370,6 +370,10 @@ std::string CuttlefishConfig::InstanceSpecific::console_pipe_name() const {
   return cvd::AbsolutePath(PerInstanceInternalPath("console-pipe"));
 }
 
+std::string CuttlefishConfig::InstanceSpecific::logcat_pipe_name() const {
+  return cvd::AbsolutePath(PerInstanceInternalPath("logcat-pipe"));
+}
+
 bool CuttlefishConfig::deprecated_boot_completed() const {
   return (*dictionary_)[kDeprecatedBootCompleted].asBool();
 }

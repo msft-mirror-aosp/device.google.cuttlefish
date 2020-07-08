@@ -107,10 +107,10 @@ std::vector<std::string> CrosvmManager::ConfigureGpu(const std::string& gpu_mode
 }
 
 std::vector<std::string> CrosvmManager::ConfigureBootDevices() {
-  // PCI domain 0, bus 0, device 1, function 0
   // TODO There is no way to control this assignment with crosvm (yet)
   if (cvd::HostArch() == "x86_64") {
-    return { "androidboot.boot_devices=pci0000:00/0000:00:03.0" };
+    // PCI domain 0, bus 0, device 4, function 0
+    return { "androidboot.boot_devices=pci0000:00/0000:00:04.0" };
   } else {
     return { "androidboot.boot_devices=10000.pci" };
   }
@@ -223,6 +223,10 @@ std::vector<cvd::Command> CrosvmManager::StartCommands() {
   cvd::Command console_cmd(config_->console_forwarder_binary());
   console_cmd.AddParameter("--console_in_fd=", console_in_wr);
   console_cmd.AddParameter("--console_out_fd=", console_out_rd);
+
+  // Serial port for logcat, redirected to a pipe
+  crosvm_cmd.AddParameter("--serial=hardware=virtio-console,num=3,type=file,path=",
+                          instance.logcat_pipe_name());
 
   // This needs to be the last parameter
   crosvm_cmd.AddParameter(config_->GetKernelImageToUse());

@@ -326,6 +326,8 @@ class CuttlefishConfig {
 
     std::string console_pipe_name() const;
 
+    std::string logcat_pipe_name() const;
+
     std::string launcher_log_path() const;
 
     std::string launcher_monitor_socket_path() const;
