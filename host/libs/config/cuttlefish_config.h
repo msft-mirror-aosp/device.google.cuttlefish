@@ -138,6 +138,8 @@ class CuttlefishConfig {
 
   std::string console_pipe_name() const;
 
+  std::string logcat_pipe_name() const;
+
   std::string vbmeta_image_path() const;
   void set_vbmeta_image_path(const std::string& vbmeta_image_path);
 

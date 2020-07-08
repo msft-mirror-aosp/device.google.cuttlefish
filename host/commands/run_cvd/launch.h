@@ -42,11 +42,8 @@ struct ConfigServerPorts {
 ConfigServerPorts LaunchConfigServer(const cuttlefish::CuttlefishConfig& config,
                                      cuttlefish::ProcessMonitor* process_monitor);
 
-struct LogcatServerPorts {
-  std::optional<unsigned int> server_vsock_port;
-};
-LogcatServerPorts LaunchLogcatReceiver(const cuttlefish::CuttlefishConfig& config,
-                                       cuttlefish::ProcessMonitor* process_monitor);
+void LaunchLogcatReceiver(const cuttlefish::CuttlefishConfig& config,
+                          cuttlefish::ProcessMonitor* process_monitor);
 
 StreamerLaunchResult LaunchWebRTC(cuttlefish::ProcessMonitor* process_monitor,
                                   const cuttlefish::CuttlefishConfig& config);

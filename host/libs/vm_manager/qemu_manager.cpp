@@ -117,8 +117,8 @@ std::vector<std::string> QemuManager::ConfigureGpu(const std::string& gpu_mode) 
 }
 
 std::vector<std::string> QemuManager::ConfigureBootDevices() {
-  // PCI domain 0, bus 0, device 4, function 0
-  return { "androidboot.boot_devices=pci0000:00/0000:00:04.0" };
+  // PCI domain 0, bus 0, device 5, function 0
+  return { "androidboot.boot_devices=pci0000:00/0000:00:05.0" };
 }
 
 QemuManager::QemuManager(const cuttlefish::CuttlefishConfig* config)

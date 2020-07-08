@@ -184,12 +184,3 @@ std::vector<std::string> KernelCommandLineFromConfigServer(const ConfigServerPor
     concat("androidboot.cuttlefish_config_server_port=", *config_server.server_vsock_port),
   };
 }
-
-std::vector<std::string> KernelCommandLineFromLogcatServer(const LogcatServerPorts& logcat_server) {
-  if (!logcat_server.server_vsock_port) {
-    return {};
-  }
-  return {
-    concat("androidboot.vsock_logcat_port=", *logcat_server.server_vsock_port),
-  };
-}

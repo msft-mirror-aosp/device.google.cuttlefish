@@ -8,3 +8,6 @@
 
 # media.codec2
 /dev/ion 0664 system system
+
+# seriallogging
+/dev/hvc2 0660 system logd

@@ -414,8 +414,7 @@ int main(int argc, char** argv) {
   SetUpHandlingOfBootEvents(&process_monitor, boot_events_pipe,
                             boot_state_machine);
 
-  auto logcat_server = LaunchLogcatReceiver(*config, &process_monitor);
-  auto logcat_server_args = KernelCommandLineFromLogcatServer(logcat_server);
+  LaunchLogcatReceiver(*config, &process_monitor);
 
   auto config_server = LaunchConfigServer(*config, &process_monitor);
   auto config_server_args = KernelCommandLineFromConfigServer(config_server);
@@ -442,7 +441,6 @@ int main(int argc, char** argv) {
   kernel_args.insert(kernel_args.end(), tombstone_kernel_args.begin(),
                      tombstone_kernel_args.end());
   kernel_args.insert(kernel_args.end(), config_server_args.begin(), config_server_args.end());
-  kernel_args.insert(kernel_args.end(), logcat_server_args.begin(), logcat_server_args.end());
 
   // Start the guest VM
   vm_manager->WithFrontend(streamer_config.launched);

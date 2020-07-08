@@ -166,19 +166,26 @@ std::vector<cuttlefish::SharedFD> LaunchKernelLogMonitor(
   return ret;
 }
 
-LogcatServerPorts LaunchLogcatReceiver(const cuttlefish::CuttlefishConfig& config,
-                                       cuttlefish::ProcessMonitor* process_monitor) {
-  auto socket = cuttlefish::SharedFD::VsockServer(SOCK_STREAM);
-  if (!socket->IsOpen()) {
-    LOG(ERROR) << "Unable to create logcat server socket: "
-               << socket->StrError();
+void LaunchLogcatReceiver(const cuttlefish::CuttlefishConfig& config,
+                          cuttlefish::ProcessMonitor* process_monitor) {
+  auto log_name = config.logcat_pipe_name();
+  if (mkfifo(log_name.c_str(), 0600) != 0) {
+    LOG(ERROR) << "Unable to create named pipe at " << log_name << ": "
+               << strerror(errno);
     std::exit(RunnerExitCodes::kLogcatServerError);
   }
-  cuttlefish::Command cmd(config.logcat_receiver_binary());
-  cmd.AddParameter("-server_fd=", socket);
-  process_monitor->StartSubprocess(std::move(cmd),
+
+  cuttlefish::SharedFD pipe;
+  // Open the pipe here (from the launcher) to ensure the pipe is not deleted
+  // due to the usage counters in the kernel reaching zero. If this is not done
+  // and the logcat_receiver crashes for some reason the VMM may get SIGPIPE.
+  pipe = cuttlefish::SharedFD::Open(log_name.c_str(), O_RDWR);
+  cuttlefish::Command command(config.logcat_receiver_binary());
+  command.AddParameter("-log_pipe_fd=", pipe);
+
+  process_monitor->StartSubprocess(std::move(command),
                                    GetOnSubprocessExitCallback(config));
-  return { socket->VsockServerPort() };
+  return;
 }
 
 ConfigServerPorts LaunchConfigServer(const cuttlefish::CuttlefishConfig& config,
