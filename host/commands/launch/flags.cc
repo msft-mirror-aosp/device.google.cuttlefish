@@ -370,8 +370,6 @@ bool InitializeCuttlefishConfiguration(
     tmp_config_obj.add_kernel_cmdline(
         concat("androidboot.hardware=", FLAGS_hardware_name));
   }
-  tmp_config_obj.add_kernel_cmdline(concat("androidboot.vsock_logcat_port=",
-                                           FLAGS_logcat_vsock_port));
   tmp_config_obj.add_kernel_cmdline(concat("androidboot.cuttlefish_config_server_port=",
                                            FLAGS_config_server_port));
   tmp_config_obj.set_hardware_name(FLAGS_hardware_name);
@@ -413,6 +411,7 @@ bool InitializeCuttlefishConfiguration(
   tmp_config_obj.set_ramdisk_image_path(ramdisk_path);
 
   tmp_config_obj.set_kernel_log_pipe_name(tmp_config_obj.PerInstancePath("kernel-log"));
+  tmp_config_obj.set_logcat_pipe_name(tmp_config_obj.PerInstancePath("logcat-pipe"));
   tmp_config_obj.set_console_pipe_name(tmp_config_obj.PerInstancePath("console-pipe"));
   tmp_config_obj.set_deprecated_boot_completed(FLAGS_deprecated_boot_completed);
   tmp_config_obj.set_console_path(tmp_config_obj.PerInstancePath("console"));

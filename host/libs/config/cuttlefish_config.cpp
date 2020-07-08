@@ -93,6 +93,7 @@ const char* kRamdiskImagePath = "ramdisk_image_path";
 
 const char* kVirtualDiskPaths = "virtual_disk_paths";
 const char* kKernelLogPipeName = "kernel_log_pipe_name";
+const char* kLogcatPipeName = "logcat_pipe_name";
 const char* kConsolePipeName = "console_pipe_name";
 const char* kDeprecatedBootCompleted = "deprecated_boot_completed";
 const char* kConsolePath = "console_path";
@@ -393,6 +394,14 @@ std::string CuttlefishConfig::console_pipe_name() const {
 void CuttlefishConfig::set_console_pipe_name(
     const std::string& console_pipe_name) {
   SetPath(kConsolePipeName, console_pipe_name);
+}
+
+std::string CuttlefishConfig::logcat_pipe_name() const {
+  return (*dictionary_)[kLogcatPipeName].asString();
+}
+void CuttlefishConfig::set_logcat_pipe_name(
+    const std::string& logcat_pipe_name) {
+  (*dictionary_)[kLogcatPipeName] = logcat_pipe_name;
 }
 
 bool CuttlefishConfig::deprecated_boot_completed() const {

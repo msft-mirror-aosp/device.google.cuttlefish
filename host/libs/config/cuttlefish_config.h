@@ -144,6 +144,9 @@ class CuttlefishConfig {
   std::string kernel_log_pipe_name() const;
   void set_kernel_log_pipe_name(const std::string& kernel_log_pipe_name);
 
+  std::string logcat_pipe_name() const;
+  void set_logcat_pipe_name(const std::string& logcat_pipe_name);
+
   std::string console_pipe_name() const;
   void set_console_pipe_name(const std::string& console_pipe_name);
 

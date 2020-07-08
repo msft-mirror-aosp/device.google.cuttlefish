@@ -24,7 +24,7 @@
 				compatible = "android,fstab";
 				vendor {
 					compatible = "android,vendor";
-					dev = "/dev/block/pci/pci0000:00/0000:00:04.0/by-name/vendor";
+					dev = "/dev/block/pci/pci0000:00/0000:00:05.0/by-name/vendor";
 					type = "ext4";
 					mnt_flags = "noatime,ro,errors=panic";
 					fsmgr_flags = "wait,slotselect";
@@ -32,7 +32,7 @@
 
 				product {
 					compatible = "android,product";
-					dev = "/dev/block/pci/pci0000:00/0000:00:04.0/by-name/product";
+					dev = "/dev/block/pci/pci0000:00/0000:00:05.0/by-name/product";
 					type = "ext4";
 					mnt_flags = "noatime,ro,errors=panic";
 					fsmgr_flags = "wait,slotselect";
@@ -40,7 +40,7 @@
 
 				system_ext {
 					compatible = "android,system_ext";
-					dev = "/dev/block/pci/pci0000:00/0000:00:04.0/by-name/system_ext";
+					dev = "/dev/block/pci/pci0000:00/0000:00:05.0/by-name/system_ext";
 					type = "ext4";
 					mnt_flags = "noatime,ro,errors=panic";
 					fsmgr_flags = "wait,slotselect";
