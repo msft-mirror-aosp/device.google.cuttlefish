@@ -27,6 +27,13 @@ PRODUCT_BUILD_BOOT_IMAGE := true
 PRODUCT_USE_DYNAMIC_PARTITIONS := true
 DISABLE_RILD_OEM_HOOK := true
 
+# [b/148163848] Disable product enforcement only for qt-qpr1-dev-plus-aosp
+# branch. It is not merged down to master branch.
+# As qt-qpr1-dev-plus-aosp branch has qt based vendor modules that are not
+# ready for the product enforcement, we may not enable it in this branch.
+PRODUCT_USE_PRODUCT_VNDK_OVERRIDE := false
+OVERRIDE_PRODUCT_ENFORCE_PRODUCT_PARTITION_INTERFACE := false
+
 TARGET_USERDATAIMAGE_FILE_SYSTEM_TYPE ?= f2fs
 
 AB_OTA_UPDATER := true
@@ -60,10 +67,10 @@ PRODUCT_PRODUCT_PROPERTIES += \
 #   ro.opengles.version OpenGLES 3.0
 PRODUCT_PROPERTY_OVERRIDES += \
     tombstoned.max_tombstone_count=500 \
-    bt.rootcanal_test_console=off \
+    vendor.bt.rootcanal_test_console=off \
     debug.hwui.swap_with_damage=0 \
     ro.carrier=unknown \
-    ro.com.android.dataroaming=false \
+    ro.com.android.dataroaming?=false \
     ro.hardware.virtual_device=1 \
     ro.logd.size=1M \
     ro.opengles.version=196608 \
@@ -75,11 +82,16 @@ PRODUCT_PROPERTY_OVERRIDES += \
 PRODUCT_PROPERTY_OVERRIDES += \
     wlan.driver.status=ok
 
-# Codec 2.0 is unstable on x86
+ifeq ($(LOCAL_ENABLE_CODEC2),)
+# Codec 2.0 is unstable on x86; disable it
 PRODUCT_PROPERTY_OVERRIDES += \
     debug.stagefright.ccodec=0
+# Codec 1.0 requires the OMX services
+DEVICE_MANIFEST_FILE += \
+    device/google/cuttlefish/shared/config/android.hardware.media.omx@1.0.xml
+endif
 
-# Enforce privapp-permissions whitelist.
+# Enforce privapp permissions control.
 PRODUCT_PROPERTY_OVERRIDES += ro.control_privapp_permissions=enforce
 
 # aes-256-heh default is not supported in standard kernels.
@@ -98,7 +110,6 @@ PRODUCT_PACKAGES += \
     CuttlefishService \
     wpa_supplicant.vsoc.conf \
     vsoc_input_service \
-    vport_trigger \
     rename_netiface \
     ip_link_add \
     setup_wifi \
@@ -165,6 +176,11 @@ DEVICE_PACKAGE_OVERLAYS := device/google/cuttlefish/shared/overlay
 # pick up every density resources.
 
 #
+# Common manifest for all targets
+#
+DEVICE_MANIFEST_FILE += device/google/cuttlefish/shared/config/manifest.xml
+
+#
 # General files
 #
 PRODUCT_COPY_FILES += \
@@ -194,7 +210,7 @@ PRODUCT_COPY_FILES += \
     frameworks/native/data/etc/android.hardware.camera.front.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.camera.front.xml \
     frameworks/native/data/etc/android.hardware.camera.full.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.camera.full.xml \
     frameworks/native/data/etc/android.hardware.camera.raw.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.camera.raw.xml \
-    frameworks/native/data/etc/android.hardware.faketouch.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.faketouch.xml \
+    frameworks/native/data/etc/android.hardware.ethernet.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.ethernet.xml \
     frameworks/native/data/etc/android.hardware.location.gps.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.location.gps.xml \
     frameworks/native/data/etc/android.hardware.sensor.ambient_temperature.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.sensor.ambient_temperature.xml \
     frameworks/native/data/etc/android.hardware.sensor.barometer.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.sensor.barometer.xml \
@@ -212,20 +228,12 @@ PRODUCT_COPY_FILES += \
     frameworks/native/data/etc/android.software.vulkan.deqp.level-2020-03-01.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.vulkan.deqp.level.xml \
     system/bt/vendor_libs/test_vendor_lib/data/controller_properties.json:vendor/etc/bluetooth/controller_properties.json \
     device/google/cuttlefish/shared/config/task_profiles.json:$(TARGET_COPY_OUT_VENDOR)/etc/task_profiles.json \
-
-ifeq ($(TARGET_USERDATAIMAGE_FILE_SYSTEM_TYPE),f2fs)
-PRODUCT_COPY_FILES += \
-    device/google/cuttlefish/shared/config/fstab:$(TARGET_COPY_OUT_RAMDISK)/fstab.cutf_cvm \
-    device/google/cuttlefish/shared/config/fstab:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.cutf_cvm \
-    device/google/cuttlefish/shared/config/fstab:$(TARGET_COPY_OUT_RECOVERY)/root/first_stage_ramdisk/fstab.cutf_cvm
-endif
-
-ifeq ($(TARGET_USERDATAIMAGE_FILE_SYSTEM_TYPE),ext4)
-PRODUCT_COPY_FILES += \
-    device/google/cuttlefish/shared/config/fstab.ext4:$(TARGET_COPY_OUT_RAMDISK)/fstab.cutf_cvm \
-    device/google/cuttlefish/shared/config/fstab.ext4:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.cutf_cvm \
-    device/google/cuttlefish/shared/config/fstab.ext4:$(TARGET_COPY_OUT_RECOVERY)/root/first_stage_ramdisk/fstab.cutf_cvm
-endif
+    device/google/cuttlefish/shared/config/fstab.f2fs:$(TARGET_COPY_OUT_RAMDISK)/fstab.f2fs \
+    device/google/cuttlefish/shared/config/fstab.f2fs:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.f2fs \
+    device/google/cuttlefish/shared/config/fstab.f2fs:$(TARGET_COPY_OUT_RECOVERY)/root/first_stage_ramdisk/fstab.f2fs \
+    device/google/cuttlefish/shared/config/fstab.ext4:$(TARGET_COPY_OUT_RAMDISK)/fstab.ext4 \
+    device/google/cuttlefish/shared/config/fstab.ext4:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.ext4 \
+    device/google/cuttlefish/shared/config/fstab.ext4:$(TARGET_COPY_OUT_RECOVERY)/root/first_stage_ramdisk/fstab.ext4
 
 # Packages for HAL implementations
 
@@ -275,8 +283,8 @@ PRODUCT_PACKAGES += \
 PRODUCT_PACKAGES += \
     audio.primary.cutf \
     audio.r_submix.default \
-    android.hardware.audio@6.0-impl:32 \
-    android.hardware.audio.effect@6.0-impl:32 \
+    android.hardware.audio@6.0-impl \
+    android.hardware.audio.effect@6.0-impl \
     android.hardware.audio@2.0-service \
     android.hardware.soundtrigger@2.0-impl \
 
@@ -300,12 +308,15 @@ PRODUCT_PACKAGES += $(LOCAL_DUMPSTATE_PRODUCT_PACKAGE)
 #
 # Camera
 #
+ifeq ($(LOCAL_CAMERAPROVIDER_PRODUCT_PACKAGE),)
+    LOCAL_CAMERAPROVIDER_PRODUCT_PACKAGE := android.hardware.camera.provider@2.4-service
+endif
 PRODUCT_PACKAGES += \
     camera.cutf \
     camera.cutf.jpeg \
     camera.device@3.2-impl \
     android.hardware.camera.provider@2.4-impl \
-    android.hardware.camera.provider@2.4-service
+    $(LOCAL_CAMERAPROVIDER_PRODUCT_PACKAGE)
 
 #
 # Gatekeeper
@@ -363,7 +374,7 @@ PRODUCT_PACKAGES += \
 # Keymaster HAL
 #
 PRODUCT_PACKAGES += \
-     android.hardware.keymaster@4.1-service
+     android.hardware.keymaster@4.1-service.remote
 
 #
 # Power HAL

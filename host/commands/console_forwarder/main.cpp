@@ -26,6 +26,7 @@
 #include <common/libs/fs/shared_fd.h>
 #include <common/libs/fs/shared_select.h>
 #include <host/libs/config/cuttlefish_config.h>
+#include <host/libs/config/logging.h>
 
 DEFINE_int32(console_in_fd,
              -1,
@@ -45,11 +46,13 @@ DEFINE_int32(console_out_fd,
 // protected by a mutex.
 class ConsoleForwarder {
  public:
-  ConsoleForwarder(cvd::SharedFD socket,
-                   cvd::SharedFD console_in,
-                   cvd::SharedFD console_out) : socket_(socket),
+  ConsoleForwarder(cuttlefish::SharedFD socket,
+                   cuttlefish::SharedFD console_in,
+                   cuttlefish::SharedFD console_out,
+                   cuttlefish::SharedFD console_log) : socket_(socket),
                                                 console_in_(console_in),
-                                                console_out_(console_out) {}
+                                                console_out_(console_out),
+                                                console_log_(console_log) {}
   [[noreturn]] void StartServer() {
     // Create a new thread to handle writes to the console and to the any client
     // connected to the socket.
@@ -59,21 +62,21 @@ class ConsoleForwarder {
     ReadLoop();
   }
  private:
-  void EnqueueWrite(std::vector<char> buffer, cvd::SharedFD fd) {
+  void EnqueueWrite(std::shared_ptr<std::vector<char>> buf_ptr, cuttlefish::SharedFD fd) {
     std::lock_guard<std::mutex> lock(write_queue_mutex_);
-    write_queue_.emplace_back(fd, std::move(buffer));
+    write_queue_.emplace_back(fd, buf_ptr);
     condvar_.notify_one();
   }
 
   [[noreturn]] void WriteLoop() {
     while (true) {
       while (!write_queue_.empty()) {
-        std::vector<char> buffer;
-        cvd::SharedFD fd;
+        std::shared_ptr<std::vector<char>> buf_ptr;
+        cuttlefish::SharedFD fd;
         {
           std::lock_guard<std::mutex> lock(write_queue_mutex_);
           auto& front = write_queue_.front();
-          buffer = std::move(front.second);
+          buf_ptr = front.second;
           fd = front.first;
           write_queue_.pop_front();
         }
@@ -81,10 +84,10 @@ class ConsoleForwarder {
         // mutex lock should NOT be held while writing to avoid blocking the
         // other thread.
         ssize_t bytes_written = 0;
-        ssize_t bytes_to_write = buffer.size();
+        ssize_t bytes_to_write = buf_ptr->size();
         while (bytes_to_write > 0) {
           bytes_written =
-              fd->Write(buffer.data() + bytes_written, bytes_to_write);
+              fd->Write(buf_ptr->data() + bytes_written, bytes_to_write);
           if (bytes_written < 0) {
             LOG(ERROR) << "Error writing to fd: " << fd->StrError();
             // Don't try to write from this buffer anymore, error handling will
@@ -106,66 +109,68 @@ class ConsoleForwarder {
   }
 
   [[noreturn]] void ReadLoop() {
-    cvd::SharedFD client_fd;
+    cuttlefish::SharedFD client_fd;
     while (true) {
-      cvd::SharedFDSet read_set;
+      cuttlefish::SharedFDSet read_set;
       if (client_fd->IsOpen()) {
         read_set.Set(client_fd);
       } else {
         read_set.Set(socket_);
       }
       read_set.Set(console_out_);
-      cvd::Select(&read_set, nullptr, nullptr, nullptr);
+      cuttlefish::Select(&read_set, nullptr, nullptr, nullptr);
       if (read_set.IsSet(console_out_)) {
-        std::vector<char> buffer(4096);
-        auto bytes_read = console_out_->Read(buffer.data(), buffer.size());
+        std::shared_ptr<std::vector<char>> buf_ptr = std::make_shared<std::vector<char>>(4096);
+        auto bytes_read = console_out_->Read(buf_ptr->data(), buf_ptr->size());
         if (bytes_read <= 0) {
           LOG(ERROR) << "Error reading from console output: "
                      << console_out_->StrError();
           // This is likely unrecoverable, so exit here
           std::exit(-4);
         }
-        buffer.resize(bytes_read);
+        buf_ptr->resize(bytes_read);
+        EnqueueWrite(buf_ptr, console_log_);
         if (client_fd->IsOpen()) {
-          EnqueueWrite(std::move(buffer), client_fd);
+          EnqueueWrite(buf_ptr, client_fd);
         }
       }
       if (read_set.IsSet(socket_)) {
         // socket_ will only be included in the select call (and therefore only
         // present in the read set) if there is no client connected, so this
         // assignment is safe.
-        client_fd = cvd::SharedFD::Accept(*socket_);
+        client_fd = cuttlefish::SharedFD::Accept(*socket_);
         if (!client_fd->IsOpen()) {
           LOG(ERROR) << "Error accepting connection on socket: "
                      << client_fd->StrError();
         }
       }
       if (read_set.IsSet(client_fd)) {
-        std::vector<char> buffer(4096);
-        auto bytes_read = client_fd->Read(buffer.data(), buffer.size());
+        std::shared_ptr<std::vector<char>> buf_ptr = std::make_shared<std::vector<char>>(4096);
+        auto bytes_read = client_fd->Read(buf_ptr->data(), buf_ptr->size());
         if (bytes_read <= 0) {
           LOG(ERROR) << "Error reading from client fd: "
                      << client_fd->StrError();
           client_fd->Close(); // ignore errors here
         } else {
-          buffer.resize(bytes_read);
-          EnqueueWrite(std::move(buffer), console_in_);
+          buf_ptr->resize(bytes_read);
+          EnqueueWrite(buf_ptr, console_in_);
         }
       }
     }
   }
 
-  cvd::SharedFD socket_;
-  cvd::SharedFD console_in_;
-  cvd::SharedFD console_out_;
+  cuttlefish::SharedFD socket_;
+  cuttlefish::SharedFD console_in_;
+  cuttlefish::SharedFD console_out_;
+  cuttlefish::SharedFD console_log_;
   std::thread writer_thread_;
   std::mutex write_queue_mutex_;
   std::condition_variable condvar_;
-  std::deque<std::pair<cvd::SharedFD, std::vector<char>>> write_queue_;
+  std::deque<std::pair<cuttlefish::SharedFD, std::shared_ptr<std::vector<char>>>> write_queue_;
 };
 
 int main(int argc, char** argv) {
-  ::android::base::InitLogging(argv, android::base::StderrLogger);
+  cuttlefish::DefaultSubprocessLogging(argv);
   ::gflags::ParseCommandLineFlags(&argc, &argv, true);
 
   if (FLAGS_console_in_fd < 0 || FLAGS_console_out_fd < 0) {
@@ -174,7 +179,7 @@ int main(int argc, char** argv) {
     return -1;
   }
 
-  auto console_in = cvd::SharedFD::Dup(FLAGS_console_in_fd);
+  auto console_in = cuttlefish::SharedFD::Dup(FLAGS_console_in_fd);
   close(FLAGS_console_in_fd);
   if (!console_in->IsOpen()) {
     LOG(ERROR) << "Error dupping fd " << FLAGS_console_in_fd << ": "
@@ -183,7 +188,7 @@ int main(int argc, char** argv) {
   }
   close(FLAGS_console_in_fd);
 
-  auto console_out = cvd::SharedFD::Dup(FLAGS_console_out_fd);
+  auto console_out = cuttlefish::SharedFD::Dup(FLAGS_console_out_fd);
   close(FLAGS_console_out_fd);
   if (!console_out->IsOpen()) {
     LOG(ERROR) << "Error dupping fd " << FLAGS_console_out_fd << ": "
@@ -191,7 +196,7 @@ int main(int argc, char** argv) {
     return -2;
   }
 
-  auto config = vsoc::CuttlefishConfig::Get();
+  auto config = cuttlefish::CuttlefishConfig::Get();
   if (!config) {
     LOG(ERROR) << "Unable to get config object";
     return -3;
@@ -199,7 +204,7 @@ int main(int argc, char** argv) {
 
   auto instance = config->ForDefaultInstance();
   auto console_socket_name = instance.console_path();
-  auto socket = cvd::SharedFD::SocketLocalServer(console_socket_name.c_str(),
+  auto socket = cuttlefish::SharedFD::SocketLocalServer(console_socket_name.c_str(),
                                                  false,
                                                  SOCK_STREAM,
                                                  0600);
@@ -209,7 +214,9 @@ int main(int argc, char** argv) {
     return -5;
   }
 
-  ConsoleForwarder console_forwarder(socket, console_in, console_out);
+  auto console_log = instance.PerInstancePath("console_log");
+  auto console_log_fd = cuttlefish::SharedFD::Open(console_log.c_str(), O_CREAT | O_APPEND | O_WRONLY, 0666);
+  ConsoleForwarder console_forwarder(socket, console_in, console_out, console_log_fd);
 
   // Don't get a SIGPIPE from the clients
   if (sigaction(SIGPIPE, nullptr, nullptr) != 0) {

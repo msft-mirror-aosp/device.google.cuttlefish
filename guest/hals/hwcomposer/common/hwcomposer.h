@@ -1,4 +1,3 @@
-#pragma once
 /*
  * Copyright (C) 2019 The Android Open Source Project
  *
@@ -14,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#pragma once
 
 #include <memory>
 
@@ -26,8 +26,8 @@
 #define IS_PRIMARY_DISPLAY(x) ((x) == HWC_DISPLAY_PRIMARY)
 #define IS_EXTERNAL_DISPLAY(x) ((x) == HWC_DISPLAY_EXTERNAL)
 
-namespace cvd {
+namespace cuttlefish {
 int cvd_hwc_open(std::unique_ptr<ScreenView> screen_view,
                  const struct hw_module_t* module, const char* name,
                  struct hw_device_t** device);
-}  // namespace cvd
+}  // namespace cuttlefish

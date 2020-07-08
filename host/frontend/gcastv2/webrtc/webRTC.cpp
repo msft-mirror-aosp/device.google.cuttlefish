@@ -18,6 +18,7 @@
 #include <android-base/strings.h>
 
 #include <host/libs/config/cuttlefish_config.h>
+#include <host/libs/config/logging.h>
 
 #include "Utils.h"
 
@@ -52,13 +53,13 @@ DEFINE_bool(write_virtio_input, false,
 DEFINE_string(adb, "", "Interface:port of local adb service.");
 
 int main(int argc, char **argv) {
+  cuttlefish::DefaultSubprocessLogging(argv);
   ::gflags::ParseCommandLineFlags(&argc, &argv, true);
-  ::android::base::InitLogging(argv, android::base::StderrLogger);
 
   SSLSocket::Init();
   DTLS::Init();
 
-  auto config = vsoc::CuttlefishConfig::Get();
+  auto config = cuttlefish::CuttlefishConfig::Get();
 
   auto sig_server_addr = config->sig_server_address();
   auto sig_server_port = config->sig_server_port();

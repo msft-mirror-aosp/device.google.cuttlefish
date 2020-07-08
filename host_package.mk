@@ -67,6 +67,7 @@ cvd_host_executables := \
     tapsetiff \
     newfs_msdos \
     secure_env \
+    log_tee \
 
 cvd_host_tests := \
     monotonic_time_test \
@@ -81,6 +82,8 @@ cvd_host_shared_libraries := \
     liblog.so \
     libnl.so \
     libc++.so \
+    libcutils.so \
+    libpuresoftkeymasterdevice_host.so \
     liblp.so \
     libsparse-host.so \
     libcrypto-host.so \
@@ -103,6 +106,13 @@ cvd_host_shared_libraries := \
     libkeymaster_portable.so \
     libsoft_attestation_cert.so \
     libcuttlefish_security.so \
+    tpm2-tss2-esys.so \
+    tpm2-tss2-mu.so \
+    tpm2-tss2-rc.so \
+    tpm2-tss2-sys.so \
+    tpm2-tss2-tcti.so \
+    tpm2-tss2-util.so \
+    ms-tpm-20-ref-lib.so \
 
 webrtc_assets := \
     index.html \

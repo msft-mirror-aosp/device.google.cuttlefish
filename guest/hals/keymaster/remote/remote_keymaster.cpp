@@ -22,7 +22,7 @@
 
 namespace keymaster {
 
-RemoteKeymaster::RemoteKeymaster(cvd::KeymasterChannel* channel)
+RemoteKeymaster::RemoteKeymaster(cuttlefish::KeymasterChannel* channel)
     : channel_(channel) {}
 
 RemoteKeymaster::~RemoteKeymaster() {
@@ -196,6 +196,21 @@ VerifyAuthorizationResponse RemoteKeymaster::VerifyAuthorization(
         const VerifyAuthorizationRequest& request) {
     VerifyAuthorizationResponse response;
     ForwardCommand(VERIFY_AUTHORIZATION, request, &response);
+    return response;
+}
+
+DeviceLockedResponse RemoteKeymaster::DeviceLocked(
+        const DeviceLockedRequest& request) {
+    DeviceLockedResponse response;
+    ForwardCommand(DEVICE_LOCKED, request, &response);
+    return response;
+}
+
+EarlyBootEndedResponse RemoteKeymaster::EarlyBootEnded() {
+    // Dummy empty buffer to allow ForwardCommand to have something to serialize
+    Buffer request;
+    EarlyBootEndedResponse response;
+    ForwardCommand(EARLY_BOOT_ENDED, request, &response);
     return response;
 }
 

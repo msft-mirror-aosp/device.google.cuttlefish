@@ -18,16 +18,18 @@
 
 #include <memory>
 
+#include "guest/hals/hwcomposer/common/gralloc_utils.h"
 #include "guest/hals/hwcomposer/common/hwcomposer.h"
 #include "guest/hals/hwcomposer/common/screen_view.h"
 
-namespace cvd {
+namespace cuttlefish {
 
 class BaseComposer {
  public:
   BaseComposer(std::unique_ptr<ScreenView> screen_view);
   virtual ~BaseComposer() = default;
 
+  virtual bool IsValidLayer(const hwc_layer_1_t& layer);
   // Sets the composition type of each layer and returns the number of layers
   // to be composited by the hwcomposer.
   virtual int PrepareLayers(size_t num_layers, hwc_layer_1_t* layers);
@@ -42,10 +44,10 @@ class BaseComposer {
 
  protected:
   std::unique_ptr<ScreenView> screen_view_;
-  const gralloc_module_t* gralloc_module_;
+  Gralloc gralloc_;
 
  private:
   // Returns buffer offset or negative on error.
   int PostFrameBufferTarget(buffer_handle_t handle);
 };
-}  // namespace cvd
+}  // namespace cuttlefish

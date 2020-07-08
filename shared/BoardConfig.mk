@@ -115,7 +115,7 @@ BOARD_VENDOR_SEPOLICY_DIRS += device/google/cuttlefish/shared/sepolicy/vendor/go
 PRODUCT_PRIVATE_SEPOLICY_DIRS += device/google/cuttlefish/shared/sepolicy/product/private
 # PRODUCT_PUBLIC_SEPOLICY_DIRS += device/google/cuttlefish/shared/sepolicy/product/public
 # system_ext sepolicy
-# BOARD_PLAT_PRIVATE_SEPOLICY_DIR += device/google/cuttlefish/shared/sepolicy/system_ext/private
+BOARD_PLAT_PRIVATE_SEPOLICY_DIR := device/google/cuttlefish/shared/sepolicy/system_ext/private
 # BOARD_PLAT_PUBLIC_SEPOLICY_DIR := device/google/cuttlefish/shared/sepolicy/system_ext/public
 
 VSOC_STLPORT_INCLUDES :=
@@ -152,7 +152,7 @@ DHCPCD_USE_SCRIPT := yes
 
 TARGET_RECOVERY_PIXEL_FORMAT := ABGR_8888
 TARGET_RECOVERY_UI_LIB := librecovery_ui_cuttlefish
-TARGET_RECOVERY_FSTAB ?= device/google/cuttlefish/shared/config/fstab
+TARGET_RECOVERY_FSTAB ?= device/google/cuttlefish/shared/config/fstab.f2fs
 
 BOARD_SUPER_PARTITION_SIZE := 6442450944
 BOARD_SUPER_PARTITION_GROUPS := google_dynamic_partitions
@@ -162,6 +162,8 @@ BOARD_BUILD_SUPER_IMAGE_BY_DEFAULT := true
 BOARD_SUPER_IMAGE_IN_UPDATE_PACKAGE := true
 TARGET_RELEASETOOLS_EXTENSIONS := device/google/cuttlefish/shared
 
+BOARD_RAMDISK_USE_LZ4 := true
+
 # To see full logs from init, disable ratelimiting.
 # The default is 5 messages per second amortized, with a burst of up to 10.
 BOARD_KERNEL_CMDLINE += printk.devkmsg=on
@@ -169,8 +171,15 @@ BOARD_KERNEL_CMDLINE += firmware_class.path=/vendor/etc/
 
 BOARD_KERNEL_CMDLINE += init=/init
 BOARD_KERNEL_CMDLINE += androidboot.hardware=cutf_cvm
-BOARD_KERNEL_CMDLINE += security=selinux
 BOARD_KERNEL_CMDLINE += androidboot.console=ttyS1
+
+ifeq ($(TARGET_USERDATAIMAGE_FILE_SYSTEM_TYPE),f2fs)
+BOARD_KERNEL_CMDLINE += androidboot.fstab_suffix=f2fs
+endif
+
+ifeq ($(TARGET_USERDATAIMAGE_FILE_SYSTEM_TYPE),ext4)
+BOARD_KERNEL_CMDLINE += androidboot.fstab_suffix=ext4
+endif
 
 BOARD_INCLUDE_DTB_IN_BOOTIMG := true
 BOARD_BOOT_HEADER_VERSION := 3

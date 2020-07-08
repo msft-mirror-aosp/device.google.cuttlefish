@@ -44,8 +44,8 @@ cc_binary_host {
         "libgflags",
         "libjsoncpp",
         "libhttps",
-        "libwebrtc",
         "libcuttlefish_utils",
+        "libcuttlefish_host_config"
     ],
     defaults: ["cuttlefish_host_only"],
 }

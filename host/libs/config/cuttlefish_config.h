@@ -15,6 +15,7 @@
  */
 #pragma once
 
+#include <array>
 #include <memory>
 #include <string>
 #include <set>
@@ -24,12 +25,12 @@ namespace Json {
 class Value;
 }
 
-namespace cvd {
+namespace cuttlefish {
 constexpr char kLogcatSerialMode[] = "serial";
 constexpr char kLogcatVsockMode[] = "vsock";
 }
 
-namespace vsoc {
+namespace cuttlefish {
 
 constexpr char kDefaultUuidPrefix[] = "699acfc4-c8c4-11e7-882b-5065f31dc1";
 constexpr char kCuttlefishConfigEnvVarName[] = "CUTTLEFISH_CONFIG_FILE";
@@ -388,6 +389,8 @@ class CuttlefishConfig {
 
     std::string access_kregistry_path() const;
 
+    std::string pstore_path() const;
+
     std::string console_path() const;
 
     std::string logcat_path() const;
@@ -408,6 +411,9 @@ class CuttlefishConfig {
 
     // Whether this instance should start the webrtc signaling server
     bool start_webrtc_sig_server() const;
+
+    // Wifi MAC address inside the guest
+    std::array<unsigned char, 6> wifi_mac_address() const;
   };
 
   // A view into an existing CuttlefishConfig object for a particular instance.
@@ -443,6 +449,8 @@ class CuttlefishConfig {
     void set_virtual_disk_paths(const std::vector<std::string>& disk_paths);
     void set_webrtc_device_id(const std::string& id);
     void set_start_webrtc_signaling_server(bool start);
+    // Wifi MAC address inside the guest
+    void set_wifi_mac_address(const std::array<unsigned char, 6>&);
   };
 
  private:
@@ -469,6 +477,9 @@ std::string GetGlobalConfigFileLink();
 std::string ForCurrentInstance(const char* prefix);
 int ForCurrentInstance(int base);
 
+// Returns a random serial number appeneded to a given prefix.
+std::string RandomSerialNumber(const std::string& prefix);
+
 std::string GetDefaultMempath();
 int GetDefaultPerInstanceVsockCid();
 
@@ -486,4 +497,4 @@ bool HostSupportsVsock();
 extern const char* const kGpuModeGuestSwiftshader;
 extern const char* const kGpuModeDrmVirgl;
 extern const char* const kGpuModeGfxStream;
-}  // namespace vsoc
+}  // namespace cuttlefish

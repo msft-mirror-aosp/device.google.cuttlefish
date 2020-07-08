@@ -19,11 +19,12 @@
 #include <linux/netlink.h>
 #include <stddef.h>
 
+#include <array>
 #include <memory>
 #include <string>
 #include <vector>
 
-namespace cvd {
+namespace cuttlefish {
 // Abstraction of Network link request.
 // Used to supply kernel with information about which interface needs to be
 // changed, and how.
@@ -56,6 +57,9 @@ class NetlinkRequest {
 
   // Add an address info to a specific interface.
   void AddAddrInfo(int32_t if_index, int prefix_len = 24);
+
+  // Add an ethernet address/mac address
+  void AddMacAddress(const std::array<unsigned char, 6>& address);
 
   // Creates new list.
   // List mimmic recursive structures in a flat, contiuous representation.
@@ -104,5 +108,5 @@ class NetlinkRequest {
   NetlinkRequest(const NetlinkRequest&) = delete;
   NetlinkRequest& operator= (const NetlinkRequest&) = delete;
 };
-}  // namespace cvd
+}  // namespace cuttlefish
 #endif  // COMMON_LIBS_NET_NETLINK_REQUEST_H_

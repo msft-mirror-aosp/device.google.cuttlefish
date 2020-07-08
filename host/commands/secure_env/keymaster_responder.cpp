@@ -19,7 +19,7 @@
 #include <keymaster/android_keymaster_messages.h>
 
 KeymasterResponder::KeymasterResponder(
-    cvd::KeymasterChannel* channel, keymaster::AndroidKeymaster* keymaster)
+    cuttlefish::KeymasterChannel* channel, keymaster::AndroidKeymaster* keymaster)
     : channel_(channel), keymaster_(keymaster) {
 }
 
@@ -78,6 +78,7 @@ bool KeymasterResponder::ProcessMessage() {
     }
     HANDLE_MESSAGE(COMPUTE_SHARED_HMAC, ComputeSharedHmac)
     HANDLE_MESSAGE(VERIFY_AUTHORIZATION, VerifyAuthorization)
+    HANDLE_MESSAGE(DEVICE_LOCKED, DeviceLocked)
 #undef HANDLE_MESSAGE
 #define HANDLE_MESSAGE(ENUM_NAME, METHOD_NAME) \
     case ENUM_NAME: {\
@@ -86,6 +87,7 @@ bool KeymasterResponder::ProcessMessage() {
     }
     HANDLE_MESSAGE(GET_HMAC_SHARING_PARAMETERS, GetHmacSharingParameters)
     HANDLE_MESSAGE(EARLY_BOOT_ENDED, EarlyBootEnded)
+#undef HANDLE_MESSAGE
     case ADD_RNG_ENTROPY: {
       AddEntropyRequest request;
       if (!request.Deserialize(&buffer, end)) {

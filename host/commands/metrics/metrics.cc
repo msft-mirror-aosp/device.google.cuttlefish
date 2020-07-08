@@ -17,30 +17,40 @@
 #include <gflags/gflags.h>
 #include <android-base/logging.h>
 
-#include "common/libs/fs/tee.h"
+#include "common/libs/utils/tee_logging.h"
 #include "host/commands/metrics/metrics_defs.h"
 #include "host/libs/config/cuttlefish_config.h"
 
-using cvd::MetricsExitCodes;
+using cuttlefish::MetricsExitCodes;
 
 int main(int argc, char** argv) {
   ::android::base::InitLogging(argv, android::base::StderrLogger);
-  google::ParseCommandLineFlags(&argc, &argv, false);
+  google::ParseCommandLineFlags(&argc, &argv, true);
 
-  cvd::TeeStderrToFile stderr_tee;
-  auto config = vsoc::CuttlefishConfig::Get();
+  auto config = cuttlefish::CuttlefishConfig::Get();
+
+  CHECK(config) << "Could not open cuttlefish config";
+
   auto instance = config->ForDefaultInstance();
   auto metrics_log_path = instance.PerInstancePath("metrics.log");
-  stderr_tee.SetFile(cvd::SharedFD::Creat(metrics_log_path.c_str(), 0755));
 
-  if (config->enable_metrics() != vsoc::CuttlefishConfig::kYes) {
+  if (config->run_as_daemon()) {
+    android::base::SetLogger(
+        cuttlefish::LogToFiles({metrics_log_path, instance.launcher_log_path()}));
+  } else {
+    android::base::SetLogger(
+        cuttlefish::LogToStderrAndFiles(
+            {metrics_log_path, instance.launcher_log_path()}));
+  }
+
+  if (config->enable_metrics() != cuttlefish::CuttlefishConfig::kYes) {
     LOG(ERROR) << "metrics not enabled, but metrics were launched.";
-    return cvd::MetricsExitCodes::kInvalidHostConfiguration;
+    return cuttlefish::MetricsExitCodes::kInvalidHostConfiguration;
   }
 
   while (true) {
     // do nothing
     sleep(std::numeric_limits<unsigned int>::max());
   }
-  return cvd::MetricsExitCodes::kMetricsError;
+  return cuttlefish::MetricsExitCodes::kMetricsError;
 }

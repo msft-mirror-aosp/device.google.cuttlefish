@@ -19,25 +19,26 @@
 
 #include "common/libs/fs/shared_fd.h"
 #include "host/libs/config/cuttlefish_config.h"
+#include "host/libs/config/logging.h"
 
 DEFINE_int32(
     server_fd, -1,
     "File descriptor to an already created vsock server. Must be specified.");
 
 int main(int argc, char** argv) {
-  ::android::base::InitLogging(argv, android::base::StderrLogger);
+  cuttlefish::DefaultSubprocessLogging(argv);
   google::ParseCommandLineFlags(&argc, &argv, true);
 
-  auto config = vsoc::CuttlefishConfig::Get();
+  auto config = cuttlefish::CuttlefishConfig::Get();
 
   auto instance = config->ForDefaultInstance();
   auto path = instance.logcat_path();
   auto logcat_file =
-      cvd::SharedFD::Open(path.c_str(), O_CREAT | O_APPEND | O_WRONLY, 0666);
+      cuttlefish::SharedFD::Open(path.c_str(), O_CREAT | O_APPEND | O_WRONLY, 0666);
   CHECK(logcat_file->IsOpen())
       << "Unable to open logcat file: " << logcat_file->StrError();
 
-  cvd::SharedFD server_fd = cvd::SharedFD::Dup(FLAGS_server_fd);
+  cuttlefish::SharedFD server_fd = cuttlefish::SharedFD::Dup(FLAGS_server_fd);
   close(FLAGS_server_fd);
 
   CHECK(server_fd->IsOpen()) << "Error creating or inheriting logcat server: "
@@ -45,7 +46,7 @@ int main(int argc, char** argv) {
 
   // Server loop
   while (true) {
-    auto conn = cvd::SharedFD::Accept(*server_fd);
+    auto conn = cuttlefish::SharedFD::Accept(*server_fd);
 
     while (true) {
       char buff[1024];

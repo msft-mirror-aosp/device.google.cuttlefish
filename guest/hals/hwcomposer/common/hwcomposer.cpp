@@ -37,6 +37,7 @@
 #include <sync/sync.h>
 #include <sys/resource.h>
 #include <sys/time.h>
+#include <unistd.h>
 
 #include <sstream>
 #include <string>
@@ -52,17 +53,15 @@
 #include <utils/String8.h>
 #include <utils/Vector.h>
 
-#include "guest/hals/gralloc/legacy/gralloc_vsoc_priv.h"
-
 #include "guest/hals/hwcomposer/common/base_composer.h"
 #include "guest/hals/hwcomposer/common/cpu_composer.h"
 #include "guest/hals/hwcomposer/common/geometry_utils.h"
 #include "guest/hals/hwcomposer/common/hwcomposer.h"
 
 #ifdef USE_OLD_HWCOMPOSER
-typedef cvd::BaseComposer ComposerType;
+typedef cuttlefish::BaseComposer ComposerType;
 #else
-typedef cvd::CpuComposer ComposerType;
+typedef cuttlefish::CpuComposer ComposerType;
 #endif
 
 struct hwc_composer_device_data_t {
@@ -75,7 +74,7 @@ struct hwc_composer_device_data_t {
 struct cvd_hwc_composer_device_1_t {
   hwc_composer_device_1_t base;
   hwc_composer_device_data_t vsync_data;
-  cvd::BaseComposer* composer;
+  cuttlefish::BaseComposer* composer;
 };
 
 struct external_display_config_t {
@@ -181,7 +180,7 @@ void LogLayers(int num_layers, hwc_layer_1_t* layers, int invalid) {
 }
 
 // Ensures that the layer does not include any inconsistencies
-bool IsValidLayer(const hwc_layer_1_t& layer) {
+bool IsValidLayer(hwc_composer_device_1_t* dev, const hwc_layer_1_t& layer) {
   if (layer.flags & HWC_SKIP_LAYER) {
     // A layer we are asked to skip validate should not be marked as skip
     ALOGE("%s: Layer is marked as skip", __FUNCTION__);
@@ -197,13 +196,6 @@ bool IsValidLayer(const hwc_layer_1_t& layer) {
         layer.displayFrame.top, layer.displayFrame.bottom);
     return false;
   }
-  // Validate the handle
-  if (private_handle_t::validate(layer.handle) != 0) {
-    ALOGE("%s: Layer contains an invalid gralloc handle.", __FUNCTION__);
-    return false;
-  }
-  const private_handle_t* p_handle =
-      reinterpret_cast<const private_handle_t*>(layer.handle);
   // Check sourceCrop
   if (layer.sourceCrop.left > layer.sourceCrop.right ||
       layer.sourceCrop.top > layer.sourceCrop.bottom) {
@@ -214,22 +206,13 @@ bool IsValidLayer(const hwc_layer_1_t& layer) {
         layer.sourceCrop.top, layer.sourceCrop.bottom);
     return false;
   }
-  if (layer.sourceCrop.left < 0 || layer.sourceCrop.top < 0 ||
-      layer.sourceCrop.right > p_handle->x_res ||
-      layer.sourceCrop.bottom > p_handle->y_res) {
-    ALOGE(
-        "%s: Invalid sourceCrop for buffer handle: sourceCrop = [left = %d, "
-        "right = %d, top = %d, bottom = %d], handle = [width = %d, height = "
-        "%d]",
-        __FUNCTION__, layer.sourceCrop.left, layer.sourceCrop.right,
-        layer.sourceCrop.top, layer.sourceCrop.bottom, p_handle->x_res,
-        p_handle->y_res);
-    return false;
-  }
-  return true;
+
+  auto* cvd_hwc_dev = reinterpret_cast<cvd_hwc_composer_device_1_t*>(dev);
+  return cvd_hwc_dev->composer->IsValidLayer(layer);
 }
 
-bool IsValidComposition(int num_layers, hwc_layer_1_t* layers, bool on_set) {
+bool IsValidComposition(hwc_composer_device_1_t* dev, int num_layers,
+                        hwc_layer_1_t* layers, bool on_set) {
   if (num_layers == 0) {
     ALOGE("Composition requested with 0 layers");
     return false;
@@ -266,7 +249,7 @@ bool IsValidComposition(int num_layers, hwc_layer_1_t* layers, bool on_set) {
       case HWC_FRAMEBUFFER_TARGET:
         // In the call to prepare() the framebuffer target does not have a valid
         // buffer_handle, so we don't validate it yet.
-        if (on_set && check_fb_target && !IsValidLayer(layers[idx])) {
+        if (on_set && check_fb_target && !IsValidLayer(dev, layers[idx])) {
           ALOGE("%s: Invalid layer found", __FUNCTION__);
           LogLayers(num_layers, layers, idx);
           return false;
@@ -274,7 +257,7 @@ bool IsValidComposition(int num_layers, hwc_layer_1_t* layers, bool on_set) {
         break;
       case HWC_OVERLAY:
         if (!(layers[idx].flags & HWC_SKIP_LAYER) &&
-            !IsValidLayer(layers[idx])) {
+            !IsValidLayer(dev, layers[idx])) {
           ALOGE("%s: Invalid layer found", __FUNCTION__);
           LogLayers(num_layers, layers, idx);
           return false;
@@ -352,7 +335,7 @@ static int cvd_hwc_prepare(hwc_composer_device_1_t* dev, size_t numDisplays,
     hwc_display_contents_1_t* list = displays[disp];
 
     if (!list) return 0;
-    if (!IsValidComposition(list->numHwLayers, &list->hwLayers[0], false)) {
+    if (!IsValidComposition(dev, list->numHwLayers, &list->hwLayers[0], false)) {
       LOG_ALWAYS_FATAL("%s: Invalid composition requested", __FUNCTION__);
       return -1;
     }
@@ -377,7 +360,7 @@ static int cvd_hwc_set(hwc_composer_device_1_t* dev, size_t numDisplays,
       ALOGW("Received request for empty composition, treating as valid noop");
       return 0;
     }
-    if (!IsValidComposition(contents->numHwLayers, layers, true)) {
+    if (!IsValidComposition(dev, contents->numHwLayers, layers, true)) {
       LOG_ALWAYS_FATAL("%s: Invalid composition requested", __FUNCTION__);
       return -1;
     }
@@ -524,7 +507,7 @@ static int cvd_hwc_close(hw_device_t* device) {
   return 0;
 }
 
-namespace cvd {
+namespace cuttlefish {
 
 int cvd_hwc_open(std::unique_ptr<ScreenView> screen_view,
                  const struct hw_module_t* module, const char* name,
@@ -564,7 +547,7 @@ int cvd_hwc_open(std::unique_ptr<ScreenView> screen_view,
   dev->base.getDisplayConfigs = cvd_hwc_get_display_configs;
   dev->base.getDisplayAttributes = cvd_hwc_get_display_attributes;
 #ifdef GATHER_STATS
-  dev->composer = new cvd::StatsKeepingComposer<ComposerType>(
+  dev->composer = new cuttlefish::StatsKeepingComposer<ComposerType>(
       dev->vsync_data.vsync_base_timestamp, std::move(screen_view));
 #else
   dev->composer = new ComposerType(std::move(screen_view));
@@ -589,4 +572,4 @@ int cvd_hwc_open(std::unique_ptr<ScreenView> screen_view,
   return ret;
 }
 
-}  // namespace cvd
+}  // namespace cuttlefish

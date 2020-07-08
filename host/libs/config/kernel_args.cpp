@@ -16,6 +16,8 @@
 
 #include "host/libs/config/kernel_args.h"
 
+#include <array>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -34,7 +36,16 @@ static std::string concat(const S& s, const T& t) {
   return os.str();
 }
 
-std::vector<std::string> KernelCommandLineFromConfig(const vsoc::CuttlefishConfig& config) {
+static std::string mac_to_str(const std::array<unsigned char, 6>& mac) {
+  std::ostringstream stream;
+  stream << std::hex << (int) mac[0];
+  for (int i = 1; i < 6; i++) {
+    stream << ":" << std::hex << (int) mac[i];
+  }
+  return stream.str();
+}
+
+std::vector<std::string> KernelCommandLineFromConfig(const cuttlefish::CuttlefishConfig& config) {
   auto instance = config.ForDefaultInstance();
   std::vector<std::string> kernel_cmdline;
 
@@ -57,10 +68,7 @@ std::vector<std::string> KernelCommandLineFromConfig(const vsoc::CuttlefishConfi
     kernel_cmdline.push_back(concat("androidboot.slot_suffix=", slot_suffix));
   }
   kernel_cmdline.push_back(concat("loop.max_part=", config.loop_max_part()));
-  if (config.guest_enforce_security()) {
-    kernel_cmdline.push_back("enforcing=1");
-  } else {
-    kernel_cmdline.push_back("enforcing=0");
+  if (!config.guest_enforce_security()) {
     kernel_cmdline.push_back("androidboot.selinux=permissive");
   }
   if (config.guest_audit_security()) {
@@ -79,7 +87,7 @@ std::vector<std::string> KernelCommandLineFromConfig(const vsoc::CuttlefishConfi
     kernel_cmdline.push_back("androidboot.tombstone_transmit=0");
   }
 
-  if (config.logcat_mode() == cvd::kLogcatVsockMode && instance.logcat_port()) {
+  if (config.logcat_mode() == cuttlefish::kLogcatVsockMode && instance.logcat_port()) {
     kernel_cmdline.push_back(concat("androidboot.vsock_logcat_port=", instance.logcat_port()));
   }
 
@@ -105,6 +113,12 @@ std::vector<std::string> KernelCommandLineFromConfig(const vsoc::CuttlefishConfi
 
   kernel_cmdline.push_back(concat("androidboot.vsock_keymaster_port=",
                                   instance.keymaster_vsock_port()));
+
+  // TODO(b/158131610): Set this in crosvm instead
+  kernel_cmdline.push_back(concat("androidboot.wifi_mac_address=",
+                                  mac_to_str(instance.wifi_mac_address())));
+
+  kernel_cmdline.push_back("androidboot.verifiedbootstate=orange");
 
   AppendVector(&kernel_cmdline, config.extra_kernel_cmdline());
 

@@ -20,12 +20,10 @@
 
 #include <hardware/gralloc.h>
 
-#include "guest/hals/gralloc/legacy/gralloc_vsoc_priv.h"
-
 #include "guest/hals/hwcomposer/common/base_composer.h"
 #include "guest/hals/hwcomposer/common/hwcomposer.h"
 
-namespace cvd {
+namespace cuttlefish {
 
 class CpuComposer : public BaseComposer {
  public:
@@ -41,9 +39,10 @@ class CpuComposer : public BaseComposer {
   static const int kNumTmpBufferPieces;
   uint8_t* RotateTmpBuffer(unsigned int order);
   uint8_t* GetSpecialTmpBuffer(size_t needed_size);
+  bool CanCompositeLayer(const hwc_layer_1_t& layer);
   void CompositeLayer(hwc_layer_1_t* src_layer, int32_t fb_offset);
   std::vector<uint8_t> tmp_buffer_;
   std::vector<uint8_t> special_tmp_buffer_;
 };
 
-}  // namespace cvd
+}  // namespace cuttlefish
