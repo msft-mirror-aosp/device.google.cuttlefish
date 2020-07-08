@@ -104,7 +104,7 @@ args=(
     -device "virtconsole,bus=virtio-serial1.0,chardev=hvc1"
 )
 
-if [[ "${logcat_mode}" == "serial" ]]; then
+if [[ false ]]; then
     args+=(
          -chardev "file,id=hvc2,path=${logcat_path:-${default_dir}/logcat},append=on"
          -device "virtio-serial-pci,max_ports=1,id=virtio-serial2"

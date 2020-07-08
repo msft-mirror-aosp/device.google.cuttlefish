@@ -414,7 +414,7 @@ int main(int argc, char** argv) {
   SetUpHandlingOfBootEvents(&process_monitor, boot_events_pipe,
                             boot_state_machine);
 
-  auto logcat_server = LaunchLogcatReceiverIfEnabled(*config, &process_monitor);
+  auto logcat_server = LaunchLogcatReceiver(*config, &process_monitor);
   auto logcat_server_args = KernelCommandLineFromLogcatServer(logcat_server);
 
   auto config_server = LaunchConfigServer(*config, &process_monitor);

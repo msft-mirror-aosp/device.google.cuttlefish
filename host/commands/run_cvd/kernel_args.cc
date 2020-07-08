@@ -117,8 +117,6 @@ std::vector<std::string> KernelCommandLineFromConfig(const cuttlefish::Cuttlefis
 
   kernel_cmdline.push_back(concat("androidboot.serialno=", config.serial_number()));
   kernel_cmdline.push_back(concat("androidboot.lcd_density=", config.dpi()));
-  if (config.logcat_mode() == cuttlefish::kLogcatVsockMode) {
-  }
   kernel_cmdline.push_back(concat(
       "androidboot.setupwizard_mode=", config.setupwizard_mode()));
   if (!config.use_bootloader()) {

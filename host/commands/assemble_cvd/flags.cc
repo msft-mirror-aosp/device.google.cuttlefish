@@ -213,8 +213,6 @@ DEFINE_string(crosvm_binary,
               cuttlefish::DefaultHostArtifactsPath("bin/crosvm"),
               "The Crosvm binary to use");
 DEFINE_bool(restart_subprocesses, true, "Restart any crashed host process");
-DEFINE_string(logcat_mode, "", "How to send android's log messages from "
-                               "guest to host. One of [serial, vsock]");
 DEFINE_bool(enable_tombstone_receiver, true, "Enables the tombstone logger on "
             "both the guest and the host");
 DEFINE_bool(use_bootloader, false, "Boots the device using a bootloader");
@@ -446,8 +444,6 @@ bool InitializeCuttlefishConfiguration(
   tmp_config_obj.set_blank_data_image_mb(FLAGS_blank_data_image_mb);
   tmp_config_obj.set_blank_data_image_fmt(FLAGS_blank_data_image_fmt);
 
-  tmp_config_obj.set_logcat_mode(FLAGS_logcat_mode);
-
   tmp_config_obj.set_enable_tombstone_receiver(FLAGS_enable_tombstone_receiver);
   tmp_config_obj.set_tombstone_receiver_binary(
       cuttlefish::DefaultHostArtifactsPath("bin/tombstone_receiver"));
@@ -498,9 +494,6 @@ void SetDefaultFlagsForQemu() {
   SetCommandLineOptionWithMode("instance_dir",
                                default_instance_dir.c_str(),
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
-  // TODO(b/144119457) Use the serial port.
-  SetCommandLineOptionWithMode("logcat_mode", cuttlefish::kLogcatVsockMode,
-                               google::FlagSettingMode::SET_FLAGS_DEFAULT);
 }
 
 void SetDefaultFlagsForCrosvm() {
@@ -509,8 +502,7 @@ void SetDefaultFlagsForCrosvm() {
   SetCommandLineOptionWithMode("instance_dir",
                                default_instance_dir.c_str(),
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
-  SetCommandLineOptionWithMode("logcat_mode", cuttlefish::kLogcatVsockMode,
-                               google::FlagSettingMode::SET_FLAGS_DEFAULT);
+
   // for now, we support only x86_64 by default
   bool default_enable_sandbox = false;
   if (cuttlefish::HostArch() == "x86_64") {
