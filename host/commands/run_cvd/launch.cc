@@ -127,13 +127,8 @@ StreamerLaunchResult CreateStreamerServers(cvd::Command* cmd,
 
 } // namespace
 
-bool LogcatReceiverEnabled(const vsoc::CuttlefishConfig& config) {
-  return config.logcat_mode() == cvd::kLogcatVsockMode;
-}
-
 std::vector<cvd::SharedFD> LaunchKernelLogMonitor(
-    const vsoc::CuttlefishConfig& config,
-    cvd::ProcessMonitor* process_monitor,
+    const vsoc::CuttlefishConfig& config, cvd::ProcessMonitor* process_monitor,
     unsigned int number_of_event_pipes) {
   auto instance = config.ForDefaultInstance();
   auto log_name = instance.kernel_log_pipe_name();
@@ -177,11 +172,8 @@ std::vector<cvd::SharedFD> LaunchKernelLogMonitor(
   return ret;
 }
 
-LogcatServerPorts LaunchLogcatReceiverIfEnabled(const vsoc::CuttlefishConfig& config,
-                                                cvd::ProcessMonitor* process_monitor) {
-  if (!LogcatReceiverEnabled(config)) {
-    return {};
-  }
+LogcatServerPorts LaunchLogcatReceiver(const vsoc::CuttlefishConfig& config,
+                                       cvd::ProcessMonitor* process_monitor) {
   auto socket = cvd::SharedFD::VsockServer(SOCK_STREAM);
   if (!socket->IsOpen()) {
     LOG(ERROR) << "Unable to create logcat server socket: "

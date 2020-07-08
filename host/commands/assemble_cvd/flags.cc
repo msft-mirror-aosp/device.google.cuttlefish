@@ -168,8 +168,6 @@ DEFINE_string(crosvm_binary,
               vsoc::DefaultHostArtifactsPath("bin/crosvm"),
               "The Crosvm binary to use");
 DEFINE_bool(restart_subprocesses, true, "Restart any crashed host process");
-DEFINE_string(logcat_mode, "", "How to send android's log messages from "
-                               "guest to host. One of [serial, vsock]");
 DEFINE_bool(enable_tombstone_receiver, true, "Enables the tombstone logger on "
             "both the guest and the host");
 DEFINE_bool(enable_vehicle_hal_grpc_server, true, "Enables the vehicle HAL "
@@ -397,8 +395,6 @@ vsoc::CuttlefishConfig InitializeCuttlefishConfiguration(
   tmp_config_obj.set_blank_data_image_mb(FLAGS_blank_data_image_mb);
   tmp_config_obj.set_blank_data_image_fmt(FLAGS_blank_data_image_fmt);
 
-  tmp_config_obj.set_logcat_mode(FLAGS_logcat_mode);
-
   tmp_config_obj.set_enable_tombstone_receiver(FLAGS_enable_tombstone_receiver);
   tmp_config_obj.set_tombstone_receiver_binary(
       vsoc::DefaultHostArtifactsPath("bin/tombstone_receiver"));
@@ -492,15 +488,10 @@ bool SaveConfig(const vsoc::CuttlefishConfig& tmp_config_obj) {
 }
 
 void SetDefaultFlagsForQemu() {
-  // TODO(b/144119457) Use the serial port.
-  SetCommandLineOptionWithMode("logcat_mode", cvd::kLogcatVsockMode,
-                               google::FlagSettingMode::SET_FLAGS_DEFAULT);
+  // for now, we don't set non-default options for QEMU
 }
 
 void SetDefaultFlagsForCrosvm() {
-  SetCommandLineOptionWithMode("logcat_mode", cvd::kLogcatVsockMode,
-                               google::FlagSettingMode::SET_FLAGS_DEFAULT);
-
   // Crosvm requires a specific setting for kernel decompression; it must be
   // on for aarch64 and off for x86, no other mode is supported.
   bool decompress_kernel = false;
