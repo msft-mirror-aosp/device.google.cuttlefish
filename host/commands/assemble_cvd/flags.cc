@@ -37,6 +37,9 @@
 using cuttlefish::ForCurrentInstance;
 using cuttlefish::RandomSerialNumber;
 using cuttlefish::AssemblerExitCodes;
+using cuttlefish::vm_manager::CrosvmManager;
+using cuttlefish::vm_manager::QemuManager;
+using cuttlefish::vm_manager::VmManager;
 
 DEFINE_string(cache_image, "", "Location of the cache partition image.");
 DEFINE_string(metadata_image, "", "Location of the metadata partition image "
@@ -100,7 +103,7 @@ DEFINE_string(instance_dir,
               cuttlefish::StringFromEnv("HOME", ".") + "/cuttlefish_runtime",
               "A directory to put all instance specific files");
 DEFINE_string(
-    vm_manager, vm_manager::CrosvmManager::name(),
+    vm_manager, CrosvmManager::name(),
     "What virtual machine manager to use, one of {qemu_cli, crosvm}");
 DEFINE_string(
     gpu_mode, cuttlefish::kGpuModeGuestSwiftshader,
@@ -332,16 +335,16 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
 
   cuttlefish::CuttlefishConfig tmp_config_obj;
   tmp_config_obj.set_assembly_dir(FLAGS_assembly_dir);
-  if (!vm_manager::VmManager::IsValidName(FLAGS_vm_manager)) {
+  if (!VmManager::IsValidName(FLAGS_vm_manager)) {
     LOG(FATAL) << "Invalid vm_manager: " << FLAGS_vm_manager;
   }
-  if (!vm_manager::VmManager::IsValidName(FLAGS_vm_manager)) {
+  if (!VmManager::IsValidName(FLAGS_vm_manager)) {
     LOG(FATAL) << "Invalid vm_manager: " << FLAGS_vm_manager;
   }
   tmp_config_obj.set_vm_manager(FLAGS_vm_manager);
   tmp_config_obj.set_gpu_mode(FLAGS_gpu_mode);
-  if (vm_manager::VmManager::ConfigureGpuMode(tmp_config_obj.vm_manager(),
-                                              tmp_config_obj.gpu_mode()).empty()) {
+  if (VmManager::ConfigureGpuMode(tmp_config_obj.vm_manager(),
+                                  tmp_config_obj.gpu_mode()).empty()) {
     LOG(FATAL) << "Invalid gpu_mode=" << FLAGS_gpu_mode <<
                " does not work with vm_manager=" << FLAGS_vm_manager;
   }
@@ -386,6 +389,25 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
   tmp_config_obj.set_guest_audit_security(FLAGS_guest_audit_security);
   tmp_config_obj.set_guest_force_normal_boot(FLAGS_guest_force_normal_boot);
   tmp_config_obj.set_extra_kernel_cmdline(FLAGS_extra_kernel_cmdline);
+
+  // crosvm sets up the console= earlycon= flags for us, but QEMU does not.
+  // Set them explicitly here to match how we will configure the VM manager
+  if (FLAGS_vm_manager == QemuManager::name()) {
+    std::string console_cmdline = "console=hvc0 ";
+    if (cuttlefish::HostArch() == "aarch64") {
+      // To update the pl011 address:
+      // $ qemu-system-aarch64 -machine virt -cpu cortex-a57 -machine dumpdtb=virt.dtb
+      // $ dtc -O dts -o virt.dts -I dtb virt.dtb
+      // In the virt.dts file, look for a uart node
+      console_cmdline += "earlycon=pl011,mmio32,0x9000000";
+    } else {
+      // To update the uart8250 address:
+      // $ qemu-system-x86_64 -kernel bzImage -serial stdio | grep ttyS0
+      // Only 'io' mode works; mmio and mmio32 do not
+      console_cmdline += "earlycon=uart8250,io,0x3f8";
+    }
+    tmp_config_obj.set_vm_manager_kernel_cmdline(console_cmdline);
+  }
 
   tmp_config_obj.set_ramdisk_image_path(ramdisk_path);
   tmp_config_obj.set_vendor_ramdisk_image_path(vendor_ramdisk_path);
@@ -524,7 +546,7 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
       instance.set_frames_server_port(6900 + num - 1);
     }
 
-    if (FLAGS_vm_manager == vm_manager::QemuManager::name()) {
+    if (FLAGS_vm_manager == QemuManager::name()) {
       instance.set_keyboard_server_port(7000 + num - 1);
       instance.set_touch_server_port(7100 + num - 1);
     }
@@ -647,9 +669,9 @@ void SetDefaultFlagsForCrosvm() {
 bool ParseCommandLineFlags(int* argc, char*** argv) {
   google::ParseCommandLineNonHelpFlags(argc, argv, true);
   bool invalid_manager = false;
-  if (FLAGS_vm_manager == vm_manager::QemuManager::name()) {
+  if (FLAGS_vm_manager == QemuManager::name()) {
     SetDefaultFlagsForQemu();
-  } else if (FLAGS_vm_manager == vm_manager::CrosvmManager::name()) {
+  } else if (FLAGS_vm_manager == CrosvmManager::name()) {
     SetDefaultFlagsForCrosvm();
   } else {
     std::cerr << "Unknown Virtual Machine Manager: " << FLAGS_vm_manager
@@ -791,6 +813,9 @@ bool CleanPriorFiles(const cuttlefish::CuttlefishConfig& config, const std::set<
 bool DecompressKernel(const std::string& src, const std::string& dst) {
   cuttlefish::Command decomp_cmd(cuttlefish::DefaultHostArtifactsPath("bin/extract-vmlinux"));
   decomp_cmd.AddParameter(src);
+  std::string current_path = getenv("PATH") == nullptr ? "" : getenv("PATH");
+  std::string bin_folder = cuttlefish::DefaultHostArtifactsPath("bin");
+  decomp_cmd.SetEnvironment({"PATH=" + current_path + ":" + bin_folder});
   auto output_file = cuttlefish::SharedFD::Creat(dst.c_str(), 0666);
   if (!output_file->IsOpen()) {
     LOG(ERROR) << "Unable to create decompressed image file: "
@@ -929,7 +954,7 @@ bool CreateCompositeDisk(const cuttlefish::CuttlefishConfig& config) {
     LOG(ERROR) << "Could not ensure " << config.composite_disk_path() << " exists";
     return false;
   }
-  if (FLAGS_vm_manager == vm_manager::CrosvmManager::name()) {
+  if (FLAGS_vm_manager == CrosvmManager::name()) {
     // Check if filling in the sparse image would run out of disk space.
     auto existing_sizes = cuttlefish::SparseFileSizes(FLAGS_data_image);
     if (existing_sizes.sparse_size == 0 && existing_sizes.disk_size == 0) {
