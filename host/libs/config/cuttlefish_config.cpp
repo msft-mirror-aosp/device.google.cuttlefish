@@ -162,6 +162,8 @@ const char* kBootImageKernelCmdline = "boot_image_kernel_cmdline";
 const char* kExtraKernelCmdline = "extra_kernel_cmdline";
 const char* kVmManagerKernelCmdline = "vm_manager_kernel_cmdline";
 
+const char* kKgdb = "kgdb";
+
 const char* kWifiMacAddress = "wifi_mac_address";
 }  // namespace
 
@@ -883,6 +885,13 @@ std::vector<std::string> CuttlefishConfig::vm_manager_kernel_cmdline() const {
     cmdline.push_back(arg.asString());
   }
   return cmdline;
+}
+
+void CuttlefishConfig::set_kgdb(bool kgdb) {
+  (*dictionary_)[kKgdb] = kgdb;
+}
+bool CuttlefishConfig::kgdb() const {
+  return (*dictionary_)[kKgdb].asBool();
 }
 
 // Creates the (initially empty) config object and populates it with values from

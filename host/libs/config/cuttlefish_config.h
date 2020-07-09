@@ -265,6 +265,10 @@ class CuttlefishConfig {
   void set_dialog_certs_dir(const std::string& certs_dir);
   std::string dialog_certs_dir() const;
 
+  // KGDB configuration for kernel debugging
+  void set_kgdb(bool kgdb);
+  bool kgdb() const;
+
   class InstanceSpecific;
   class MutableInstanceSpecific;
 
