@@ -109,7 +109,6 @@ PRODUCT_PACKAGES += \
     ip_link_add \
     setup_wifi \
     tombstone_transmit \
-    vsock_logcat \
     tombstone_producer \
     suspend_blocker \
 
