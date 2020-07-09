@@ -11,11 +11,9 @@ ro.boot.hardware.hwcomposer u:object_r:cf_graphics_config_prop:s0 exact string
 ro.boot.lcd_density u:object_r:cf_graphics_config_prop:s0 exact int
 ro.boot.vsock_frames_port  u:object_r:vsock_frames_port_prop:s0
 ro.boot.vsock_keyboard_port  u:object_r:cuttlefish_vsock_keyboard_port:s0
-ro.boot.vsock_logcat_port  u:object_r:vsock_logcat_port_prop:s0
 ro.boot.vsock_touch_port  u:object_r:cuttlefish_vsock_touch_port:s0
 ro.camera.res.fmq.size  u:object_r:hal_camera_prop:s0
 ro.camera.req.fmq.size  u:object_r:hal_camera_prop:s0
 ro.cdma.home.operator.alpha  u:object_r:vendor_init_radio_prop:s0
 ro.cdma.home.operator.numeric  u:object_r:vendor_init_radio_prop:s0
 vendor.ser.  u:object_r:vendor_ser_prop:s0
-vendor.vsock_logcat_status  u:object_r:vsock_logcat_status_prop:s0
