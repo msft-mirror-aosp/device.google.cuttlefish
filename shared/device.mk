@@ -107,7 +107,6 @@ PRODUCT_PACKAGES += \
     CuttlefishService \
     wpa_supplicant.vsoc.conf \
     vsoc_input_service \
-    vport_trigger \
     rename_netiface \
     ip_link_add \
     setup_wifi \
@@ -286,7 +285,6 @@ PRODUCT_PACKAGES += \
     android.hardware.audio@6.0-impl \
     android.hardware.audio.effect@6.0-impl \
     android.hardware.audio@2.0-service \
-    android.hardware.soundtrigger@2.3-impl \
 
 #
 # BiometricsFace HAL
