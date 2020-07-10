@@ -236,8 +236,6 @@ DEFINE_string(tpm_binary, "",
               "The TPM simulator to use. Disabled if empty.");
 DEFINE_string(tpm_device, "", "A host TPM device to pass through commands to.");
 DEFINE_bool(restart_subprocesses, true, "Restart any crashed host process");
-DEFINE_string(logcat_mode, "", "How to send android's log messages from "
-                               "guest to host. One of [serial, vsock]");
 DEFINE_bool(enable_tombstone_receiver, true, "Enables the tombstone logger on "
             "both the guest and the host");
 DEFINE_bool(enable_vehicle_hal_grpc_server, true, "Enables the vehicle HAL "
@@ -257,6 +255,9 @@ DEFINE_bool(resume, true, "Resume using the disk from the last session, if "
 DEFINE_string(report_anonymous_usage_stats, "", "Report anonymous usage "
             "statistics for metrics collection and analysis.");
 DEFINE_string(ril_dns, "8.8.8.8", "DNS address of mobile network (RIL)");
+DEFINE_bool(kgdb, false, "Configure the virtual device for debugging the kernel "
+                         "with kgdb/kdb. The kernel must have been built with "
+                         "kgdb support.");
 
 namespace {
 
@@ -390,24 +391,35 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
   tmp_config_obj.set_guest_force_normal_boot(FLAGS_guest_force_normal_boot);
   tmp_config_obj.set_extra_kernel_cmdline(FLAGS_extra_kernel_cmdline);
 
-  // crosvm sets up the console= earlycon= flags for us, but QEMU does not.
-  // Set them explicitly here to match how we will configure the VM manager
+  std::string console_cmdline = "";
   if (FLAGS_vm_manager == QemuManager::name()) {
-    std::string console_cmdline = "console=hvc0 ";
+    // crosvm sets up the console= earlycon= flags for us, but QEMU does not.
+    // Set them explicitly here to match how we will configure the VM manager
+    console_cmdline += "console=hvc0";
     if (cuttlefish::HostArch() == "aarch64") {
       // To update the pl011 address:
       // $ qemu-system-aarch64 -machine virt -cpu cortex-a57 -machine dumpdtb=virt.dtb
       // $ dtc -O dts -o virt.dts -I dtb virt.dtb
       // In the virt.dts file, look for a uart node
-      console_cmdline += "earlycon=pl011,mmio32,0x9000000";
+      console_cmdline += " earlycon=pl011,mmio32,0x9000000";
+      if (FLAGS_kgdb) {
+        console_cmdline += " androidboot.console=ttyAMA0 kgdboc=ttyAMA0";
+      }
     } else {
       // To update the uart8250 address:
       // $ qemu-system-x86_64 -kernel bzImage -serial stdio | grep ttyS0
       // Only 'io' mode works; mmio and mmio32 do not
-      console_cmdline += "earlycon=uart8250,io,0x3f8";
+      console_cmdline += " earlycon=uart8250,io,0x3f8";
+      if (FLAGS_kgdb) {
+        console_cmdline += " androidboot.console=ttyS0 kgdboc=ttyS0";
+      }
     }
-    tmp_config_obj.set_vm_manager_kernel_cmdline(console_cmdline);
+  } else {
+    if (FLAGS_kgdb) {
+      console_cmdline += "androidboot.console=ttyS0 kgdboc=ttyS0";
+    }
   }
+  tmp_config_obj.set_vm_manager_kernel_cmdline(console_cmdline);
 
   tmp_config_obj.set_ramdisk_image_path(ramdisk_path);
   tmp_config_obj.set_vendor_ramdisk_image_path(vendor_ramdisk_path);
@@ -480,8 +492,6 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
   tmp_config_obj.set_blank_data_image_mb(FLAGS_blank_data_image_mb);
   tmp_config_obj.set_blank_data_image_fmt(FLAGS_blank_data_image_fmt);
 
-  tmp_config_obj.set_logcat_mode(FLAGS_logcat_mode);
-
   tmp_config_obj.set_enable_tombstone_receiver(FLAGS_enable_tombstone_receiver);
   tmp_config_obj.set_tombstone_receiver_binary(
       cuttlefish::DefaultHostArtifactsPath("bin/tombstone_receiver"));
@@ -504,6 +514,8 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
   tmp_config_obj.set_cuttlefish_env_path(GetCuttlefishEnvPath());
 
   tmp_config_obj.set_ril_dns(FLAGS_ril_dns);
+
+  tmp_config_obj.set_kgdb(FLAGS_kgdb);
 
   std::vector<int> instance_nums;
   for (int i = 0; i < FLAGS_num_instances; i++) {
@@ -538,7 +550,6 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
     instance.set_tpm_port(2321 + (num * 2) - 2);
     instance.set_tombstone_receiver_port(6600 + num - 1);
     instance.set_vehicle_hal_server_port(9210 + num - 1);
-    instance.set_logcat_port(6700 + num - 1);
     instance.set_config_server_port(6800 + num - 1);
 
     if (FLAGS_gpu_mode != cuttlefish::kGpuModeDrmVirgl &&
@@ -621,14 +632,10 @@ bool SaveConfig(const cuttlefish::CuttlefishConfig& tmp_config_obj) {
 }
 
 void SetDefaultFlagsForQemu() {
-  // TODO(b/144119457) Use the serial port.
-  SetCommandLineOptionWithMode("logcat_mode", cuttlefish::kLogcatVsockMode,
-                               google::FlagSettingMode::SET_FLAGS_DEFAULT);
+  // for now, we don't set non-default options for QEMU
 }
 
 void SetDefaultFlagsForCrosvm() {
-  SetCommandLineOptionWithMode("logcat_mode", cuttlefish::kLogcatVsockMode,
-                               google::FlagSettingMode::SET_FLAGS_DEFAULT);
   // for now, we support only x86_64 by default
   bool default_enable_sandbox = false;
   std::set<const std::string> supported_archs{std::string("x86_64")};

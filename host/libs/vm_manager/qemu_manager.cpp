@@ -104,8 +104,8 @@ std::vector<std::string> QemuManager::ConfigureGpu(const std::string& gpu_mode) 
 }
 
 std::vector<std::string> QemuManager::ConfigureBootDevices() {
-  // PCI domain 0, bus 0, device 4, function 0
-  return { "androidboot.boot_devices=pci0000:00/0000:00:04.0" };
+  // PCI domain 0, bus 0, device 5, function 0
+  return { "androidboot.boot_devices=pci0000:00/0000:00:05.0" };
 }
 
 QemuManager::QemuManager(const cuttlefish::CuttlefishConfig* config)
@@ -173,9 +173,17 @@ std::vector<cuttlefish::Command> QemuManager::StartCommands() {
   qemu_cmd.AddParameter("-mon");
   qemu_cmd.AddParameter("chardev=charmonitor,id=monitor,mode=control");
 
-  qemu_cmd.AddParameter("-chardev");
-  qemu_cmd.AddParameter("file,id=earlycon,path=",
-                        instance.kernel_log_pipe_name(), ",append=on");
+  // In kgdb mode, earlycon is an interactive console, and so early
+  // dmesg will go there instead of the kernel.log
+  if (config_->kgdb()) {
+    qemu_cmd.AddParameter("-chardev");
+    qemu_cmd.AddParameter("socket,id=earlycon,path=",
+                          instance.console_path(), ",server,nowait");
+  } else {
+    qemu_cmd.AddParameter("-chardev");
+    qemu_cmd.AddParameter("file,id=earlycon,path=",
+                          instance.kernel_log_pipe_name(), ",append=on");
+  }
 
   // On ARM, -serial will imply an AMBA pl011 serial port. On x86, -serial
   // will imply an ISA serial port. We have set up earlycon for each of these
@@ -198,9 +206,19 @@ std::vector<cuttlefish::Command> QemuManager::StartCommands() {
 
   // This handles the Android interactive serial console - /dev/hvc1
 
-  qemu_cmd.AddParameter("-chardev");
-  qemu_cmd.AddParameter("socket,id=hvc1,path=", instance.console_path(),
-                        ",server,nowait");
+  // In kgdb mode, we have the interactive console on ttyS0 (both Android's
+  // console and kdb), so we can disable the virtio-console port usually
+  // allocated to Android's serial console, and redirect it to a sink. This
+  // ensures that that the PCI device assignments (and thus sepolicy) don't
+  // have to change
+  if (config_->kgdb()) {
+    qemu_cmd.AddParameter("-chardev");
+    qemu_cmd.AddParameter("null,id=hvc1");
+  } else {
+    qemu_cmd.AddParameter("-chardev");
+    qemu_cmd.AddParameter("socket,id=hvc1,path=", instance.console_path(),
+                          ",server,nowait");
+  }
 
   qemu_cmd.AddParameter("-device");
   qemu_cmd.AddParameter("virtio-serial-pci,max_ports=1,id=virtio-serial1");
@@ -211,17 +229,15 @@ std::vector<cuttlefish::Command> QemuManager::StartCommands() {
   // If configured, this handles logcat forwarding to the host via serial
   // (instead of vsocket) - /dev/hvc2
 
-  if (config_->logcat_mode() == "serial") {
-    qemu_cmd.AddParameter("-chardev");
-    qemu_cmd.AddParameter("file,id=hvc2,path=", instance.logcat_path(),
-                          ",append=on");
+  qemu_cmd.AddParameter("-chardev");
+  qemu_cmd.AddParameter("file,id=hvc2,path=",
+                        instance.logcat_pipe_name(), ",append=on");
 
-    qemu_cmd.AddParameter("-device");
-    qemu_cmd.AddParameter("virtio-serial-pci,max_ports=1,id=virtio-serial2");
+  qemu_cmd.AddParameter("-device");
+  qemu_cmd.AddParameter("virtio-serial-pci,max_ports=1,id=virtio-serial2");
 
-    qemu_cmd.AddParameter("-device");
-    qemu_cmd.AddParameter("virtconsole,bus=virtio-serial2.0,chardev=hvc2");
-  }
+  qemu_cmd.AddParameter("-device");
+  qemu_cmd.AddParameter("virtconsole,bus=virtio-serial2.0,chardev=hvc2");
 
   for (size_t i = 0; i < instance.virtual_disk_paths().size(); i++) {
     auto bootindex = i == 0 ? ",bootindex=1" : "";

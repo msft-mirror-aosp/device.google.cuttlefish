@@ -133,10 +133,10 @@ std::vector<std::string> CrosvmManager::ConfigureGpu(const std::string& gpu_mode
 }
 
 std::vector<std::string> CrosvmManager::ConfigureBootDevices() {
-  // PCI domain 0, bus 0, device 1, function 0
   // TODO There is no way to control this assignment with crosvm (yet)
   if (cuttlefish::HostArch() == "x86_64") {
-    return { "androidboot.boot_devices=pci0000:00/0000:00:03.0" };
+    // PCI domain 0, bus 0, device 4, function 0
+    return { "androidboot.boot_devices=pci0000:00/0000:00:04.0" };
   } else {
     return { "androidboot.boot_devices=10000.pci" };
   }
@@ -218,8 +218,12 @@ std::vector<cuttlefish::Command> CrosvmManager::StartCommands() {
 
   // Use an 8250 UART (ISA or platform device) for earlycon, as the
   // virtio-console driver may not be available for early messages
-  crosvm_cmd.AddParameter("--serial=hardware=serial,num=1,type=file,path=",
-                          instance.kernel_log_pipe_name(), ",earlycon=true");
+  // In kgdb mode, earlycon is an interactive console, and so early
+  // dmesg will go there instead of the kernel.log
+  if (!config_->kgdb()) {
+    crosvm_cmd.AddParameter("--serial=hardware=serial,num=1,type=file,path=",
+                            instance.kernel_log_pipe_name(), ",earlycon=true");
+  }
 
   // Use a virtio-console instance for the main kernel console. All
   // messages will switch from earlycon to virtio-console after the driver
@@ -256,8 +260,19 @@ std::vector<cuttlefish::Command> CrosvmManager::StartCommands() {
   // crosvm. A file (named pipe) is used here instead of stdout to ensure only
   // the serial port output is received by the console forwarder as crosvm may
   // print other messages to stdout.
-  crosvm_cmd.AddParameter("--serial=hardware=virtio-console,num=2,type=file,path=",
-                          console_pipe_name, ",stdin=true");
+  if (config_->kgdb()) {
+    crosvm_cmd.AddParameter("--serial=hardware=serial,num=1,type=file,path=",
+                            console_pipe_name, ",earlycon=true,stdin=true");
+    // In kgdb mode, we have the interactive console on ttyS0 (both Android's
+    // console and kdb), so we can disable the virtio-console port usually
+    // allocated to Android's serial console, and redirect it to a sink. This
+    // ensures that that the PCI device assignments (and thus sepolicy) don't
+    // have to change
+    crosvm_cmd.AddParameter("--serial=hardware=virtio-console,num=2,type=sink");
+  } else {
+    crosvm_cmd.AddParameter("--serial=hardware=virtio-console,num=2,type=file,path=",
+                            console_pipe_name, ",stdin=true");
+  }
 
   crosvm_cmd.RedirectStdIO(cuttlefish::Subprocess::StdIOChannel::kStdIn,
                            console_in_rd);
@@ -279,6 +294,10 @@ std::vector<cuttlefish::Command> CrosvmManager::StartCommands() {
   cuttlefish::Command log_tee_cmd(cuttlefish::DefaultHostArtifactsPath("bin/log_tee"));
   log_tee_cmd.AddParameter("--process_name=crosvm");
   log_tee_cmd.AddParameter("--log_fd_in=", log_out_rd);
+
+  // Serial port for logcat, redirected to a pipe
+  crosvm_cmd.AddParameter("--serial=hardware=virtio-console,num=3,type=file,path=",
+                          instance.logcat_pipe_name());
 
   // This needs to be the last parameter
   if (config_->use_bootloader()) {
