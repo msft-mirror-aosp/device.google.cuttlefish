@@ -147,8 +147,6 @@ const char* kDataPolicy = "data_policy";
 const char* kBlankDataImageMb = "blank_data_image_mb";
 const char* kBlankDataImageFmt = "blank_data_image_fmt";
 
-const char* kLogcatMode = "logcat_mode";
-const char* kLogcatPort = "logcat_port";
 const char* kLogcatReceiverBinary = "logcat_receiver_binary";
 const char* kConfigServerPort = "config_server_port";
 const char* kConfigServerBinary = "config_server_binary";
@@ -394,6 +392,10 @@ std::string CuttlefishConfig::InstanceSpecific::kernel_log_pipe_name() const {
 
 std::string CuttlefishConfig::InstanceSpecific::console_pipe_name() const {
   return cuttlefish::AbsolutePath(PerInstanceInternalPath("console-pipe"));
+}
+
+std::string CuttlefishConfig::InstanceSpecific::logcat_pipe_name() const {
+  return cuttlefish::AbsolutePath(PerInstanceInternalPath("logcat-pipe"));
 }
 
 bool CuttlefishConfig::deprecated_boot_completed() const {
@@ -682,14 +684,6 @@ void CuttlefishConfig::MutableInstanceSpecific::set_vehicle_hal_server_port(int 
   (*Dictionary())[kVehicleHalServerPort] = vehicle_hal_server_port;
 }
 
-int CuttlefishConfig::InstanceSpecific::logcat_port() const {
-  return (*Dictionary())[kLogcatPort].asInt();
-}
-
-void CuttlefishConfig::MutableInstanceSpecific::set_logcat_port(int logcat_port) {
-  (*Dictionary())[kLogcatPort] = logcat_port;
-}
-
 int CuttlefishConfig::InstanceSpecific::config_server_port() const {
   return (*Dictionary())[kConfigServerPort].asInt();
 }
@@ -838,15 +832,6 @@ std::string CuttlefishConfig::blank_data_image_fmt() const {
 
 void CuttlefishConfig::set_blank_data_image_fmt(const std::string& blank_data_image_fmt) {
   (*dictionary_)[kBlankDataImageFmt] = blank_data_image_fmt;
-}
-
-
-void CuttlefishConfig::set_logcat_mode(const std::string& mode) {
-  (*dictionary_)[kLogcatMode] = mode;
-}
-
-std::string CuttlefishConfig::logcat_mode() const {
-  return (*dictionary_)[kLogcatMode].asString();
 }
 
 void CuttlefishConfig::set_logcat_receiver_binary(const std::string& binary) {

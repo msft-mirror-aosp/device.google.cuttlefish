@@ -241,9 +241,6 @@ class CuttlefishConfig {
   void set_blank_data_image_fmt(const std::string& blank_data_image_fmt);
   std::string blank_data_image_fmt() const;
 
-  void set_logcat_mode(const std::string& mode);
-  std::string logcat_mode() const;
-
   void set_enable_tombstone_receiver(bool enable_tombstone_receiver);
   bool enable_tombstone_receiver() const;
 
@@ -354,8 +351,6 @@ class CuttlefishConfig {
     int vnc_server_port() const;
     // Port number to connect to the tombstone receiver on the host
     int tombstone_receiver_port() const;
-    // Port number to connect to the logcat receiver on the host
-    int logcat_port() const;
     // Port number to connect to the config server on the host
     int config_server_port() const;
     // Port number to connect to the keyboard server on the host. (Only
@@ -410,6 +405,8 @@ class CuttlefishConfig {
 
     std::string console_pipe_name() const;
 
+    std::string logcat_pipe_name() const;
+
     std::string launcher_log_path() const;
 
     std::string launcher_monitor_socket_path() const;
@@ -441,7 +438,6 @@ class CuttlefishConfig {
     void set_serial_number(const std::string& serial_number);
     void set_vnc_server_port(int vnc_server_port);
     void set_tombstone_receiver_port(int tombstone_receiver_port);
-    void set_logcat_port(int logcat_port);
     void set_config_server_port(int config_server_port);
     void set_frames_server_port(int config_server_port);
     void set_touch_server_port(int config_server_port);

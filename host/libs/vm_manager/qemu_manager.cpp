@@ -39,8 +39,8 @@
 #include "common/libs/utils/users.h"
 #include "host/libs/config/cuttlefish_config.h"
 
+namespace cuttlefish {
 namespace vm_manager {
-
 namespace {
 
 std::string GetMonitorPath(const cuttlefish::CuttlefishConfig* config) {
@@ -104,8 +104,8 @@ std::vector<std::string> QemuManager::ConfigureGpu(const std::string& gpu_mode) 
 }
 
 std::vector<std::string> QemuManager::ConfigureBootDevices() {
-  // PCI domain 0, bus 0, device 4, function 0
-  return { "androidboot.boot_devices=pci0000:00/0000:00:04.0" };
+  // PCI domain 0, bus 0, device 5, function 0
+  return { "androidboot.boot_devices=pci0000:00/0000:00:05.0" };
 }
 
 QemuManager::QemuManager(const cuttlefish::CuttlefishConfig* config)
@@ -211,17 +211,15 @@ std::vector<cuttlefish::Command> QemuManager::StartCommands() {
   // If configured, this handles logcat forwarding to the host via serial
   // (instead of vsocket) - /dev/hvc2
 
-  if (config_->logcat_mode() == "serial") {
-    qemu_cmd.AddParameter("-chardev");
-    qemu_cmd.AddParameter("file,id=hvc2,path=", instance.logcat_path(),
-                          ",append=on");
+  qemu_cmd.AddParameter("-chardev");
+  qemu_cmd.AddParameter("file,id=hvc2,path=",
+                        instance.logcat_pipe_name(), ",append=on");
 
-    qemu_cmd.AddParameter("-device");
-    qemu_cmd.AddParameter("virtio-serial-pci,max_ports=1,id=virtio-serial2");
+  qemu_cmd.AddParameter("-device");
+  qemu_cmd.AddParameter("virtio-serial-pci,max_ports=1,id=virtio-serial2");
 
-    qemu_cmd.AddParameter("-device");
-    qemu_cmd.AddParameter("virtconsole,bus=virtio-serial2.0,chardev=hvc2");
-  }
+  qemu_cmd.AddParameter("-device");
+  qemu_cmd.AddParameter("virtconsole,bus=virtio-serial2.0,chardev=hvc2");
 
   for (size_t i = 0; i < instance.virtual_disk_paths().size(); i++) {
     auto bootindex = i == 0 ? ",bootindex=1" : "";
@@ -295,4 +293,6 @@ std::vector<cuttlefish::Command> QemuManager::StartCommands() {
   return ret;
 }
 
-}  // namespace vm_manager
+} // namespace vm_manager
+} // namespace cuttlefish
+

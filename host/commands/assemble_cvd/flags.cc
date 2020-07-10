@@ -37,6 +37,9 @@
 using cuttlefish::ForCurrentInstance;
 using cuttlefish::RandomSerialNumber;
 using cuttlefish::AssemblerExitCodes;
+using cuttlefish::vm_manager::CrosvmManager;
+using cuttlefish::vm_manager::QemuManager;
+using cuttlefish::vm_manager::VmManager;
 
 DEFINE_string(cache_image, "", "Location of the cache partition image.");
 DEFINE_string(metadata_image, "", "Location of the metadata partition image "
@@ -100,7 +103,7 @@ DEFINE_string(instance_dir,
               cuttlefish::StringFromEnv("HOME", ".") + "/cuttlefish_runtime",
               "A directory to put all instance specific files");
 DEFINE_string(
-    vm_manager, vm_manager::CrosvmManager::name(),
+    vm_manager, CrosvmManager::name(),
     "What virtual machine manager to use, one of {qemu_cli, crosvm}");
 DEFINE_string(
     gpu_mode, cuttlefish::kGpuModeGuestSwiftshader,
@@ -233,8 +236,6 @@ DEFINE_string(tpm_binary, "",
               "The TPM simulator to use. Disabled if empty.");
 DEFINE_string(tpm_device, "", "A host TPM device to pass through commands to.");
 DEFINE_bool(restart_subprocesses, true, "Restart any crashed host process");
-DEFINE_string(logcat_mode, "", "How to send android's log messages from "
-                               "guest to host. One of [serial, vsock]");
 DEFINE_bool(enable_tombstone_receiver, true, "Enables the tombstone logger on "
             "both the guest and the host");
 DEFINE_bool(enable_vehicle_hal_grpc_server, true, "Enables the vehicle HAL "
@@ -332,16 +333,16 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
 
   cuttlefish::CuttlefishConfig tmp_config_obj;
   tmp_config_obj.set_assembly_dir(FLAGS_assembly_dir);
-  if (!vm_manager::VmManager::IsValidName(FLAGS_vm_manager)) {
+  if (!VmManager::IsValidName(FLAGS_vm_manager)) {
     LOG(FATAL) << "Invalid vm_manager: " << FLAGS_vm_manager;
   }
-  if (!vm_manager::VmManager::IsValidName(FLAGS_vm_manager)) {
+  if (!VmManager::IsValidName(FLAGS_vm_manager)) {
     LOG(FATAL) << "Invalid vm_manager: " << FLAGS_vm_manager;
   }
   tmp_config_obj.set_vm_manager(FLAGS_vm_manager);
   tmp_config_obj.set_gpu_mode(FLAGS_gpu_mode);
-  if (vm_manager::VmManager::ConfigureGpuMode(tmp_config_obj.vm_manager(),
-                                              tmp_config_obj.gpu_mode()).empty()) {
+  if (VmManager::ConfigureGpuMode(tmp_config_obj.vm_manager(),
+                                  tmp_config_obj.gpu_mode()).empty()) {
     LOG(FATAL) << "Invalid gpu_mode=" << FLAGS_gpu_mode <<
                " does not work with vm_manager=" << FLAGS_vm_manager;
   }
@@ -389,7 +390,7 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
 
   // crosvm sets up the console= earlycon= flags for us, but QEMU does not.
   // Set them explicitly here to match how we will configure the VM manager
-  if (FLAGS_vm_manager == vm_manager::QemuManager::name()) {
+  if (FLAGS_vm_manager == QemuManager::name()) {
     std::string console_cmdline = "console=hvc0 ";
     if (cuttlefish::HostArch() == "aarch64") {
       // To update the pl011 address:
@@ -477,8 +478,6 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
   tmp_config_obj.set_blank_data_image_mb(FLAGS_blank_data_image_mb);
   tmp_config_obj.set_blank_data_image_fmt(FLAGS_blank_data_image_fmt);
 
-  tmp_config_obj.set_logcat_mode(FLAGS_logcat_mode);
-
   tmp_config_obj.set_enable_tombstone_receiver(FLAGS_enable_tombstone_receiver);
   tmp_config_obj.set_tombstone_receiver_binary(
       cuttlefish::DefaultHostArtifactsPath("bin/tombstone_receiver"));
@@ -535,7 +534,6 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
     instance.set_tpm_port(2321 + (num * 2) - 2);
     instance.set_tombstone_receiver_port(6600 + num - 1);
     instance.set_vehicle_hal_server_port(9210 + num - 1);
-    instance.set_logcat_port(6700 + num - 1);
     instance.set_config_server_port(6800 + num - 1);
 
     if (FLAGS_gpu_mode != cuttlefish::kGpuModeDrmVirgl &&
@@ -543,7 +541,7 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
       instance.set_frames_server_port(6900 + num - 1);
     }
 
-    if (FLAGS_vm_manager == vm_manager::QemuManager::name()) {
+    if (FLAGS_vm_manager == QemuManager::name()) {
       instance.set_keyboard_server_port(7000 + num - 1);
       instance.set_touch_server_port(7100 + num - 1);
     }
@@ -618,14 +616,10 @@ bool SaveConfig(const cuttlefish::CuttlefishConfig& tmp_config_obj) {
 }
 
 void SetDefaultFlagsForQemu() {
-  // TODO(b/144119457) Use the serial port.
-  SetCommandLineOptionWithMode("logcat_mode", cuttlefish::kLogcatVsockMode,
-                               google::FlagSettingMode::SET_FLAGS_DEFAULT);
+  // for now, we don't set non-default options for QEMU
 }
 
 void SetDefaultFlagsForCrosvm() {
-  SetCommandLineOptionWithMode("logcat_mode", cuttlefish::kLogcatVsockMode,
-                               google::FlagSettingMode::SET_FLAGS_DEFAULT);
   // for now, we support only x86_64 by default
   bool default_enable_sandbox = false;
   std::set<const std::string> supported_archs{std::string("x86_64")};
@@ -666,9 +660,9 @@ void SetDefaultFlagsForCrosvm() {
 bool ParseCommandLineFlags(int* argc, char*** argv) {
   google::ParseCommandLineNonHelpFlags(argc, argv, true);
   bool invalid_manager = false;
-  if (FLAGS_vm_manager == vm_manager::QemuManager::name()) {
+  if (FLAGS_vm_manager == QemuManager::name()) {
     SetDefaultFlagsForQemu();
-  } else if (FLAGS_vm_manager == vm_manager::CrosvmManager::name()) {
+  } else if (FLAGS_vm_manager == CrosvmManager::name()) {
     SetDefaultFlagsForCrosvm();
   } else {
     std::cerr << "Unknown Virtual Machine Manager: " << FLAGS_vm_manager
@@ -951,7 +945,7 @@ bool CreateCompositeDisk(const cuttlefish::CuttlefishConfig& config) {
     LOG(ERROR) << "Could not ensure " << config.composite_disk_path() << " exists";
     return false;
   }
-  if (FLAGS_vm_manager == vm_manager::CrosvmManager::name()) {
+  if (FLAGS_vm_manager == CrosvmManager::name()) {
     // Check if filling in the sparse image would run out of disk space.
     auto existing_sizes = cuttlefish::SparseFileSizes(FLAGS_data_image);
     if (existing_sizes.sparse_size == 0 && existing_sizes.disk_size == 0) {

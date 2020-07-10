@@ -60,6 +60,7 @@
 
 using cuttlefish::ForCurrentInstance;
 using cuttlefish::RunnerExitCodes;
+using cuttlefish::vm_manager::VmManager;
 
 namespace {
 
@@ -353,7 +354,7 @@ int main(int argc, char** argv) {
     return RunnerExitCodes::kTapDeviceInUse;
   }
 
-  auto vm_manager = vm_manager::VmManager::Get(config->vm_manager(), config);
+  auto vm_manager = VmManager::Get(config->vm_manager(), config);
 
   // Check host configuration
   std::vector<std::string> config_commands;
@@ -428,7 +429,7 @@ int main(int argc, char** argv) {
   SetUpHandlingOfBootEvents(&process_monitor, boot_events_pipe,
                             boot_state_machine);
 
-  LaunchLogcatReceiverIfEnabled(*config, &process_monitor);
+  LaunchLogcatReceiver(*config, &process_monitor);
   LaunchConfigServer(*config, &process_monitor);
   LaunchTombstoneReceiverIfEnabled(*config, &process_monitor);
   LaunchTpm(&process_monitor, *config);
