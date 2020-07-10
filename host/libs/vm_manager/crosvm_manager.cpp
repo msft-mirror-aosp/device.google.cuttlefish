@@ -102,7 +102,7 @@ std::vector<std::string> CrosvmManager::ConfigureGpu(const std::string& gpu_mode
   }
   if (gpu_mode == cuttlefish::kGpuModeGuestSwiftshader) {
     return {
-        "androidboot.hardware.gralloc=cutf_ashmem",
+        "androidboot.hardware.gralloc=minigbm",
         "androidboot.hardware.hwcomposer=cutf_hwc2",
         "androidboot.hardware.egl=swiftshader",
     };
@@ -134,7 +134,11 @@ std::vector<cuttlefish::Command> CrosvmManager::StartCommands() {
   });
   crosvm_cmd.AddParameter("run");
 
-  if (config_->gpu_mode() == cuttlefish::kGpuModeDrmVirgl) {
+  if (config_->gpu_mode() == cuttlefish::kGpuModeGuestSwiftshader) {
+    crosvm_cmd.AddParameter("--gpu=2D,",
+                            "width=", config_->x_res(), ",",
+                            "height=", config_->y_res());
+  } else if (config_->gpu_mode() == cuttlefish::kGpuModeDrmVirgl) {
     crosvm_cmd.AddParameter("--gpu=",
                             "width=", config_->x_res(), ",",
                             "height=", config_->y_res(), ",",
