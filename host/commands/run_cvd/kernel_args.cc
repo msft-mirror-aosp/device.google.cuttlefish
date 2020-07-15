@@ -61,11 +61,16 @@ std::vector<std::string> KernelCommandLineFromConfig(const vsoc::CuttlefishConfi
   if (config.kgdb()) {
     kernel_cmdline.push_back("kgdboc_earlycon");
     kernel_cmdline.push_back("kgdbcon");
+  } else if (config.use_bootloader()) {
+    // However, if the bootloader is enabled, virtio console can't
+    // be used since uboot doesn't support it.
+    kernel_cmdline.push_back("androidboot.console=ttyS1");
   } else {
     // If kgdb is disabled, the Android serial console spawns on a
     // virtio-console port
     kernel_cmdline.push_back("androidboot.console=hvc1");
   }
+
   kernel_cmdline.push_back(concat("androidboot.serialno=", instance.serial_number()));
   kernel_cmdline.push_back(concat("androidboot.lcd_density=", config.dpi()));
   kernel_cmdline.push_back(concat(
