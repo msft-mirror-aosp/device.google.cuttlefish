@@ -21,10 +21,10 @@
 #include "common/libs/utils/environment.h"
 #include "common/libs/utils/files.h"
 #include "host/commands/assemble_cvd/boot_image_unpacker.h"
-#include "host/commands/assemble_cvd/data_image.h"
 #include "host/commands/assemble_cvd/image_aggregator.h"
 #include "host/commands/assemble_cvd/assembler_defs.h"
 #include "host/commands/assemble_cvd/super_image_mixer.h"
+#include "host/libs/config/data_image.h"
 #include "host/libs/config/fetcher_config.h"
 #include "host/libs/vm_manager/crosvm_manager.h"
 #include "host/libs/vm_manager/qemu_manager.h"
@@ -33,7 +33,9 @@
 // Taken from external/avb/libavb/avb_slot_verify.c; this define is not in the headers
 #define VBMETA_MAX_SIZE 65536ul
 
+using cuttlefish::CreateBlankImage;
 using cuttlefish::ForCurrentInstance;
+using cuttlefish::InitializeMiscImage;
 using cuttlefish::RandomSerialNumber;
 using cuttlefish::AssemblerExitCodes;
 using cuttlefish::vm_manager::CrosvmManager;

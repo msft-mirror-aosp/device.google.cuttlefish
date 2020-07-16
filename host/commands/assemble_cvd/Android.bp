@@ -33,7 +33,6 @@ cc_binary_host {
     srcs: [
         "assemble_cvd.cc",
         "boot_image_unpacker.cc",
-        "data_image.cc",
         "flags.cc",
         "image_aggregator.cc",
         "misc_info.cc",
