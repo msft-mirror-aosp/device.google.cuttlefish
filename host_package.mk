@@ -52,6 +52,7 @@ cvd_host_executables := \
     assemble_cvd \
     run_cvd \
     cvd_status \
+    powerwash_cvd \
     webRTC \
     webrtc_operator \
     fsck.f2fs \
