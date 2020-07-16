@@ -368,8 +368,8 @@ std::string CuttlefishConfig::InstanceSpecific::kernel_log_pipe_name() const {
   return cvd::AbsolutePath(PerInstanceInternalPath("kernel-log-pipe"));
 }
 
-std::string CuttlefishConfig::InstanceSpecific::console_pipe_name() const {
-  return cvd::AbsolutePath(PerInstanceInternalPath("console-pipe"));
+std::string CuttlefishConfig::InstanceSpecific::console_out_pipe_name() const {
+  return cvd::AbsolutePath(PerInstanceInternalPath("console-out-pipe"));
 }
 
 std::string CuttlefishConfig::InstanceSpecific::logcat_pipe_name() const {
