@@ -44,7 +44,8 @@ AB_OTA_PARTITIONS += \
     system_ext \
     vbmeta \
     vbmeta_system \
-    vendor
+    vendor \
+    vendor_dlkm \
 
 # Enable Virtual A/B
 $(call inherit-product, $(SRC_TARGET_DIR)/product/virtual_ab_ota.mk)
@@ -114,7 +115,6 @@ PRODUCT_PACKAGES += \
     ip_link_add \
     setup_wifi \
     tombstone_transmit \
-    vsock_logcat \
     tombstone_producer \
     suspend_blocker \
     vtpm_manager \
@@ -286,7 +286,6 @@ PRODUCT_PACKAGES += \
     android.hardware.audio@6.0-impl \
     android.hardware.audio.effect@6.0-impl \
     android.hardware.audio@2.0-service \
-    android.hardware.soundtrigger@2.0-impl \
 
 #
 # Drm HAL

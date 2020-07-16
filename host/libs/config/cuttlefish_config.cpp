@@ -143,8 +143,6 @@ const char* kDataPolicy = "data_policy";
 const char* kBlankDataImageMb = "blank_data_image_mb";
 const char* kBlankDataImageFmt = "blank_data_image_fmt";
 
-const char* kLogcatMode = "logcat_mode";
-const char* kLogcatPort = "logcat_port";
 const char* kLogcatReceiverBinary = "logcat_receiver_binary";
 const char* kConfigServerPort = "config_server_port";
 const char* kConfigServerBinary = "config_server_binary";
@@ -176,12 +174,16 @@ const char* kGuestAuditSecurity = "guest_audit_security";
 const char* kGuestForceNormalBoot = "guest_force_normal_boot";
 const char* kBootImageKernelCmdline = "boot_image_kernel_cmdline";
 const char* kExtraKernelCmdline = "extra_kernel_cmdline";
+const char* kVmManagerKernelCmdline = "vm_manager_kernel_cmdline";
 
 const char* kFramesServerPort = "frames_server_port";
 const char* kTouchServerPort = "touch_server_port";
 const char* kKeyboardServerPort = "keyboard_server_port";
 
 const char* kRilDns = "ril_dns";
+
+const char* kKgdb = "kgdb";
+
 const char* kKeymasterVsockPort = "keymaster_vsock_port";
 const char* kWifiMacAddress = "wifi_mac_address";
 }  // namespace
@@ -389,6 +391,10 @@ std::string CuttlefishConfig::InstanceSpecific::kernel_log_pipe_name() const {
 
 std::string CuttlefishConfig::InstanceSpecific::console_pipe_name() const {
   return cuttlefish::AbsolutePath(PerInstanceInternalPath("console-pipe"));
+}
+
+std::string CuttlefishConfig::InstanceSpecific::logcat_pipe_name() const {
+  return cuttlefish::AbsolutePath(PerInstanceInternalPath("logcat-pipe"));
 }
 
 bool CuttlefishConfig::deprecated_boot_completed() const {
@@ -669,14 +675,6 @@ void CuttlefishConfig::MutableInstanceSpecific::set_tombstone_receiver_port(int 
   (*Dictionary())[kTombstoneReceiverPort] = tombstone_receiver_port;
 }
 
-int CuttlefishConfig::InstanceSpecific::logcat_port() const {
-  return (*Dictionary())[kLogcatPort].asInt();
-}
-
-void CuttlefishConfig::MutableInstanceSpecific::set_logcat_port(int logcat_port) {
-  (*Dictionary())[kLogcatPort] = logcat_port;
-}
-
 int CuttlefishConfig::InstanceSpecific::config_server_port() const {
   return (*Dictionary())[kConfigServerPort].asInt();
 }
@@ -809,15 +807,6 @@ std::string CuttlefishConfig::blank_data_image_fmt() const {
 
 void CuttlefishConfig::set_blank_data_image_fmt(const std::string& blank_data_image_fmt) {
   (*dictionary_)[kBlankDataImageFmt] = blank_data_image_fmt;
-}
-
-
-void CuttlefishConfig::set_logcat_mode(const std::string& mode) {
-  (*dictionary_)[kLogcatMode] = mode;
-}
-
-std::string CuttlefishConfig::logcat_mode() const {
-  return (*dictionary_)[kLogcatMode].asString();
 }
 
 void CuttlefishConfig::set_logcat_receiver_binary(const std::string& binary) {
@@ -1062,11 +1051,33 @@ std::vector<std::string> CuttlefishConfig::extra_kernel_cmdline() const {
   return cmdline;
 }
 
+void CuttlefishConfig::set_vm_manager_kernel_cmdline(std::string vm_manager_cmdline) {
+  Json::Value args_json_obj(Json::arrayValue);
+  for (const auto& arg : android::base::Split(vm_manager_cmdline, " ")) {
+    args_json_obj.append(arg);
+  }
+  (*dictionary_)[kVmManagerKernelCmdline] = args_json_obj;
+}
+std::vector<std::string> CuttlefishConfig::vm_manager_kernel_cmdline() const {
+  std::vector<std::string> cmdline;
+  for (const Json::Value& arg : (*dictionary_)[kVmManagerKernelCmdline]) {
+    cmdline.push_back(arg.asString());
+  }
+  return cmdline;
+}
+
 void CuttlefishConfig::set_ril_dns(const std::string& ril_dns) {
   (*dictionary_)[kRilDns] = ril_dns;
 }
-std::string CuttlefishConfig::ril_dns()const {
+std::string CuttlefishConfig::ril_dns() const {
   return (*dictionary_)[kRilDns].asString();
+}
+
+void CuttlefishConfig::set_kgdb(bool kgdb) {
+  (*dictionary_)[kKgdb] = kgdb;
+}
+bool CuttlefishConfig::kgdb() const {
+  return (*dictionary_)[kKgdb].asBool();
 }
 
 // Creates the (initially empty) config object and populates it with values from

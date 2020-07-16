@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2019 The Android Open Source Project
+// Copyright (C) 2020 The Android Open Source Project
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,21 +13,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <gtest/gtest.h>
+#include <gflags/gflags.h>
 
-cc_binary {
-    name: "vsock_logcat",
-    srcs: [
-        "main.cpp",
-    ],
-    shared_libs: [
-        "libbase",
-        "libcutils",
-        "libcuttlefish_fs",
-        "libcuttlefish_utils",
-        "liblog",
-    ],
-    static_libs: [
-        "libgflags",
-    ],
-    defaults: ["cuttlefish_guest_only"]
+DEFINE_int32(instance_number, 1, "modem simulator instance numbers");
+
+int main(int argc, char** argv) {
+  ::testing::InitGoogleTest(&argc, argv);
+  return RUN_ALL_TESTS();
 }
