@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2020 The Android Open-Source Project
+// Copyright (C) 2018 The Android Open Source Project
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,21 +13,22 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-cc_library {
-    name: "libcuttlefish_security",
-    defaults: ["hidl_defaults", "cuttlefish_host_and_guest"],
+cc_binary_host {
+    name: "powerwash_cvd",
     srcs: [
-        "gatekeeper_channel.cpp",
-        "keymaster_channel.cpp",
-    ],
-    header_libs: [
-        "libhardware_headers",
+        "powerwash_cvd.cc",
     ],
     shared_libs: [
         "libbase",
         "libcuttlefish_fs",
-        "libgatekeeper",
-        "libkeymaster_messages",
-        "liblog",
+        "libcuttlefish_utils",
     ],
+    static_libs: [
+        "libcuttlefish_host_config",
+        "libcuttlefish_vm_manager",
+        "libjsoncpp",
+        "libgflags",
+        "libxml2",
+    ],
+    defaults: ["cuttlefish_host_only", "cuttlefish_libicuuc"],
 }

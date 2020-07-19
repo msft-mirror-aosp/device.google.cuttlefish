@@ -131,7 +131,7 @@ std::vector<cuttlefish::Command> QemuManager::StartCommands() {
   qemu_cmd.AddParameter("guest=", instance.instance_name(), ",debug-threads=on");
 
   qemu_cmd.AddParameter("-machine");
-  auto machine = is_arm ? "virt,gic_version=2" : "pc-i440fx-2.8,accel=kvm";
+  auto machine = is_arm ? "virt,gic-version=2" : "pc-i440fx-2.8,accel=kvm";
   qemu_cmd.AddParameter(machine, ",usb=off,dump-guest-core=off");
 
   qemu_cmd.AddParameter("-m");
@@ -199,7 +199,7 @@ std::vector<cuttlefish::Command> QemuManager::StartCommands() {
                         instance.kernel_log_pipe_name(), ",append=on");
 
   qemu_cmd.AddParameter("-device");
-  qemu_cmd.AddParameter("virtio-serial-pci,max_ports=1,id=virtio-serial0");
+  qemu_cmd.AddParameter("virtio-serial-pci-non-transitional,max_ports=1,id=virtio-serial0");
 
   qemu_cmd.AddParameter("-device");
   qemu_cmd.AddParameter("virtconsole,bus=virtio-serial0.0,chardev=hvc0");
@@ -221,7 +221,7 @@ std::vector<cuttlefish::Command> QemuManager::StartCommands() {
   }
 
   qemu_cmd.AddParameter("-device");
-  qemu_cmd.AddParameter("virtio-serial-pci,max_ports=1,id=virtio-serial1");
+  qemu_cmd.AddParameter("virtio-serial-pci-non-transitional,max_ports=1,id=virtio-serial1");
 
   qemu_cmd.AddParameter("-device");
   qemu_cmd.AddParameter("virtconsole,bus=virtio-serial1.0,chardev=hvc1");
@@ -234,7 +234,7 @@ std::vector<cuttlefish::Command> QemuManager::StartCommands() {
                         instance.logcat_pipe_name(), ",append=on");
 
   qemu_cmd.AddParameter("-device");
-  qemu_cmd.AddParameter("virtio-serial-pci,max_ports=1,id=virtio-serial2");
+  qemu_cmd.AddParameter("virtio-serial-pci-non-transitional,max_ports=1,id=virtio-serial2");
 
   qemu_cmd.AddParameter("-device");
   qemu_cmd.AddParameter("virtconsole,bus=virtio-serial2.0,chardev=hvc2");
@@ -247,43 +247,46 @@ std::vector<cuttlefish::Command> QemuManager::StartCommands() {
     qemu_cmd.AddParameter("file=", disk, ",if=none,id=drive-virtio-disk", i,
                           ",aio=threads", format);
     qemu_cmd.AddParameter("-device");
-    qemu_cmd.AddParameter("virtio-blk-pci,scsi=off,drive=drive-virtio-disk", i,
+    qemu_cmd.AddParameter("virtio-blk-pci-non-transitional,scsi=off,drive=drive-virtio-disk", i,
                           ",id=virtio-disk", i, bootindex);
   }
+
+  qemu_cmd.AddParameter("-object");
+  qemu_cmd.AddParameter("rng-random,id=objrng0,filename=/dev/urandom");
+
+  qemu_cmd.AddParameter("-device");
+  qemu_cmd.AddParameter("virtio-rng-pci-non-transitional,rng=objrng0,id=rng0,",
+                        "max-bytes=1024,period=2000");
+
+  qemu_cmd.AddParameter("-device");
+  qemu_cmd.AddParameter("virtio-balloon-pci-non-transitional,id=balloon0");
 
   qemu_cmd.AddParameter("-netdev");
   qemu_cmd.AddParameter("tap,id=hostnet0,ifname=", instance.wifi_tap_name(),
                         ",script=no,downscript=no");
 
-  auto romfile = is_arm ? ",romfile" : "";
   qemu_cmd.AddParameter("-device");
-  qemu_cmd.AddParameter("virtio-net-pci,netdev=hostnet0,id=net0", romfile);
+  qemu_cmd.AddParameter("virtio-net-pci-non-transitional,netdev=hostnet0,id=net0");
 
   qemu_cmd.AddParameter("-netdev");
   qemu_cmd.AddParameter("tap,id=hostnet1,ifname=", instance.mobile_tap_name(),
                         ",script=no,downscript=no");
 
   qemu_cmd.AddParameter("-device");
-  qemu_cmd.AddParameter("virtio-net-pci,netdev=hostnet1,id=net1", romfile);
-
-  qemu_cmd.AddParameter("-device");
-  qemu_cmd.AddParameter("virtio-balloon-pci,id=balloon0");
+  qemu_cmd.AddParameter("virtio-net-pci-non-transitional,netdev=hostnet1,id=net1");
 
   qemu_cmd.AddParameter("-device");
   qemu_cmd.AddParameter("virtio-gpu-pci,id=gpu0");
-
-  qemu_cmd.AddParameter("-object");
-  qemu_cmd.AddParameter("rng-random,id=objrng0,filename=/dev/urandom");
-
-  qemu_cmd.AddParameter("-device");
-  qemu_cmd.AddParameter("virtio-rng-pci,rng=objrng0,id=rng0,",
-                        "max-bytes=1024,period=2000");
 
   qemu_cmd.AddParameter("-cpu");
   qemu_cmd.AddParameter(is_arm ? "cortex-a53" : "host");
 
   qemu_cmd.AddParameter("-msg");
   qemu_cmd.AddParameter("timestamp=on");
+
+  qemu_cmd.AddParameter("-device");
+  qemu_cmd.AddParameter("vhost-vsock-pci-non-transitional,guest-cid=",
+                        instance.vsock_guest_cid());
 
   qemu_cmd.AddParameter("-device");
   qemu_cmd.AddParameter("AC97");
@@ -300,9 +303,6 @@ std::vector<cuttlefish::Command> QemuManager::StartCommands() {
 
   qemu_cmd.AddParameter("-initrd");
   qemu_cmd.AddParameter(config_->final_ramdisk_path());
-
-  qemu_cmd.AddParameter("-device");
-  qemu_cmd.AddParameter("vhost-vsock-pci,guest-cid=", instance.vsock_guest_cid());
 
   LogAndSetEnv("QEMU_AUDIO_DRV", "none");
 
