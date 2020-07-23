@@ -13,22 +13,30 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "host/commands/modem_simulator/modem_simulator.h"
+
 #include <memory>
 
-#include "modem_simulator.h"
-#include "network_service.h"
-#include "misc_service.h"
-#include "call_service.h"
-#include "sim_service.h"
-#include "data_service.h"
-#include "sms_service.h"
-#include "sup_service.h"
-#include "stk_service.h"
+#include "host/commands/modem_simulator/call_service.h"
+#include "host/commands/modem_simulator/data_service.h"
+#include "host/commands/modem_simulator/misc_service.h"
+#include "host/commands/modem_simulator/network_service.h"
+#include "host/commands/modem_simulator/sim_service.h"
+#include "host/commands/modem_simulator/sms_service.h"
+#include "host/commands/modem_simulator/stk_service.h"
+#include "host/commands/modem_simulator/sup_service.h"
 
 namespace cuttlefish {
 
 ModemSimulator::ModemSimulator(int32_t modem_id)
     : modem_id_(modem_id), thread_looper_(new ThreadLooper()) {}
+
+ModemSimulator::~ModemSimulator() {
+  // this will stop the looper so all the callbacks
+  // will be gone;
+  thread_looper_->Stop();
+  modem_services_.clear();
+}
 
 void ModemSimulator::LoadNvramConfig() {
   auto nvram_config = NvramConfig::Get();
@@ -47,23 +55,24 @@ void ModemSimulator::Initialize(
 
 void ModemSimulator::RegisterModemService() {
   auto netservice = std::make_unique<NetworkService>(
-      modem_id_, channel_monitor_.get(), thread_looper_);
+      modem_id_, channel_monitor_.get(), thread_looper_.get());
   auto simservice = std::make_unique<SimService>(
-      modem_id_, channel_monitor_.get(), thread_looper_);
+      modem_id_, channel_monitor_.get(), thread_looper_.get());
   auto miscservice = std::make_unique<MiscService>(
-      modem_id_, channel_monitor_.get(), thread_looper_);
+      modem_id_, channel_monitor_.get(), thread_looper_.get());
   auto callservice = std::make_unique<CallService>(
-      modem_id_, channel_monitor_.get(), thread_looper_);
+      modem_id_, channel_monitor_.get(), thread_looper_.get());
   auto stkservice = std::make_unique<StkService>(
-      modem_id_, channel_monitor_.get(), thread_looper_);
+      modem_id_, channel_monitor_.get(), thread_looper_.get());
   auto smsservice = std::make_unique<SmsService>(
-      modem_id_, channel_monitor_.get(), thread_looper_);
+      modem_id_, channel_monitor_.get(), thread_looper_.get());
   auto dataservice = std::make_unique<DataService>(
-      modem_id_, channel_monitor_.get(), thread_looper_);
+      modem_id_, channel_monitor_.get(), thread_looper_.get());
   auto supservice = std::make_unique<SupService>(
-      modem_id_, channel_monitor_.get(), thread_looper_);
+      modem_id_, channel_monitor_.get(), thread_looper_.get());
 
-  netservice->SetupDependency(miscservice.get(), simservice.get());
+  netservice->SetupDependency(miscservice.get(), simservice.get(),
+                              dataservice.get());
   simservice->SetupDependency(netservice.get());
   callservice->SetupDependency(simservice.get(), netservice.get());
   stkservice->SetupDependency(simservice.get());

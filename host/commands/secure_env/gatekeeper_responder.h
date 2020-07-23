@@ -15,25 +15,17 @@
 
 #pragma once
 
-#include "host/commands/modem_simulator/modem_service.h"
+#include <gatekeeper/gatekeeper.h>
 
-namespace cuttlefish {
+#include "common/libs/security/gatekeeper_channel.h"
 
-class MiscService : public ModemService, public std::enable_shared_from_this<MiscService>  {
- public:
-  MiscService(int32_t service_id, ChannelMonitor* channel_monitor,
-              ThreadLooper* thread_looper);
-  ~MiscService() = default;
+class GatekeeperResponder {
+private:
+  cuttlefish::GatekeeperChannel* channel_;
+  gatekeeper::GateKeeper* gatekeeper_;
+public:
+  GatekeeperResponder(cuttlefish::GatekeeperChannel* channel,
+                      gatekeeper::GateKeeper* gatekeeper);
 
-  MiscService(const MiscService &) = delete;
-  MiscService &operator=(const MiscService &) = delete;
-
-  void HandleGetIMEI(const Client& client, std::string& command);
-
-  void TimeUpdate();
-
- private:
-  std::vector<CommandHandler> InitializeCommandHandlers();
+  bool ProcessMessage();
 };
-
-}  // namespace cuttlefish
