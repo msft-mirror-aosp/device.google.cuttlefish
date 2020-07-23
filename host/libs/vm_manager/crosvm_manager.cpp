@@ -103,7 +103,7 @@ std::vector<std::string> CrosvmManager::ConfigureGpu(const std::string& gpu_mode
   if (gpu_mode == cuttlefish::kGpuModeGuestSwiftshader) {
     return {
         "androidboot.hardware.gralloc=cutf_ashmem",
-        "androidboot.hardware.hwcomposer=cutf_cvm_ashmem",
+        "androidboot.hardware.hwcomposer=cutf_hwc2",
         "androidboot.hardware.egl=swiftshader",
     };
   }

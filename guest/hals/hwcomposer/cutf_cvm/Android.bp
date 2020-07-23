@@ -19,27 +19,76 @@ cc_library_shared {
     defaults: ["cuttlefish_guest_only"],
     vendor: true,
     srcs: [
-        "vsocket_screen_view.cpp",
         "hwcomposer.cpp",
+        "vsocket_screen_view.cpp",
     ],
     include_dirs: [
         "device/google/cuttlefish",
     ],
     export_include_dirs: ["."],
     static_libs: [
-        "libyuv_static", 
-        "hwcomposer_common"
+        "hwcomposer_common",
+        "libyuv_static",
     ],
     shared_libs: [
-        "liblog",
-        "libhardware",
         "libbase",
         "libcutils",
-        "libutils",
-        "libsync",
-        "libjpeg",
-        "libcuttlefish_utils",
-        "libcuttlefish_fs",
         "libcuttlefish_device_config",
+        "libcuttlefish_fs",
+        "libcuttlefish_utils",
+        "libdrm",
+        "libhardware",
+        "libjpeg",
+        "liblog",
+        "libsync",
+        "libutils",
+    ],
+}
+
+cc_library_shared {
+    name: "hwcomposer.cutf_hwc2",
+    relative_install_path: "hw",
+    defaults: ["cuttlefish_guest_only"],
+    vendor: true,
+
+    clang: true,
+    cflags: [
+        "-Wall",
+        "-Werror",
+    ],
+    cppflags: [
+        "-Wextra",
+        "-Wunused",
+        "-Wunreachable-code",
+
+        // Disabling warning specific to hwc2on1adapter code
+        "-Wno-sign-compare",
+    ],
+
+    srcs: [
+        "HWC2.cpp",
+        "MiniFence.cpp",
+        "vsocket_screen_view.cpp",
+    ],
+
+    include_dirs: [
+        "device/google/cuttlefish",
+    ],
+
+    export_include_dirs: ["."],
+
+    static_libs: [
+        "hwcomposer_common",
+        "libyuv_static",
+    ],
+
+    shared_libs: [
+        "libcutils",
+        "libcuttlefish_device_config",
+        "libcuttlefish_fs",
+        "libcuttlefish_utils",
+        "libhardware",
+        "liblog",
+        "libutils",
     ],
 }

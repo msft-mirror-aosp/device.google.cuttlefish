@@ -1,4 +1,3 @@
-#pragma once
 /*
  * Copyright (C) 2019 The Android Open Source Project
  *
@@ -14,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#pragma once
 
 #include <memory>
 
@@ -24,6 +24,7 @@
 
 #define IS_TARGET_FRAMEBUFFER(x) ((x) == HWC_FRAMEBUFFER_TARGET)
 #define IS_PRIMARY_DISPLAY(x) ((x) == HWC_DISPLAY_PRIMARY)
+#define IS_EXTERNAL_DISPLAY(x) ((x) == HWC_DISPLAY_EXTERNAL)
 
 namespace cuttlefish {
 int cvd_hwc_open(std::unique_ptr<ScreenView> screen_view,
