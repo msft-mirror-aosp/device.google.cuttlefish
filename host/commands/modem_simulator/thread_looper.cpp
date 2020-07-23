@@ -13,11 +13,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <thread>
+#include "host/commands/modem_simulator/thread_looper.h"
 
 #include <android-base/logging.h>
-
-#include "thread_looper.h"
 
 namespace cuttlefish {
 
@@ -26,18 +24,7 @@ ThreadLooper::ThreadLooper()
   looper_thread_ = std::thread([this]() { ThreadLoop(); });
 }
 
-ThreadLooper::~ThreadLooper() {
-  CHECK(looper_thread_.get_id() != std::this_thread::get_id())
-      << "Destructor called from looper thread";
-  {
-    std::lock_guard<std::mutex> autolock(lock_);
-    stopped_ = true;
-  }
-  cond_.notify_all();
-  if (looper_thread_.joinable()) {
-    looper_thread_.join();
-  }
-}
+ThreadLooper::~ThreadLooper() { Stop(); }
 
 bool ThreadLooper::Event::operator<=(const Event &other) const {
   return when <= other.when;
@@ -121,6 +108,22 @@ void ThreadLooper::ThreadLoop() {
       queue_.pop_front();
     }
     cb();
+  }
+}
+
+void ThreadLooper::Stop() {
+  if (stopped_) {
+    return;
+  }
+  CHECK(looper_thread_.get_id() != std::this_thread::get_id())
+      << "Destructor called from looper thread";
+  {
+    std::lock_guard<std::mutex> autolock(lock_);
+    stopped_ = true;
+  }
+  cond_.notify_all();
+  if (looper_thread_.joinable()) {
+    looper_thread_.join();
   }
 }
 
