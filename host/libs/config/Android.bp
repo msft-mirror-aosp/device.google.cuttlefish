@@ -18,6 +18,7 @@ cc_library_host_static {
     srcs: [
         "custom_actions.cpp",
         "cuttlefish_config.cpp",
+        "cuttlefish_config_instance.cpp",
         "data_image.cpp",
         "fetcher_config.cpp",
         "kernel_args.cpp",
