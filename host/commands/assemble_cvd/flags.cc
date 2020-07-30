@@ -345,23 +345,27 @@ vsoc::CuttlefishConfig InitializeCuttlefishConfiguration(
     }
   }
 
-  if (FLAGS_kgdb) {
-    vm_manager_cmdline += " kgdboc_earlycon kgdbcon";
+  std::string console_dev;
+  auto can_use_virtio_console = !FLAGS_kgdb && !FLAGS_use_bootloader;
+  if (can_use_virtio_console) {
+    // If kgdb and the bootloader are disabled, the Android serial console spawns on a
+    // virtio-console port. If the bootloader is enabled, virtio console can't be used
+    // since uboot doesn't support it.
+    console_dev = "hvc1";
+  } else {
     // crosvm ARM does not support ttyAMA. ttyAMA is a part of ARM arch.
     if (FLAGS_vm_manager == vm_manager::QemuManager::name() && cvd::HostArch() == "aarch64") {
-      vm_manager_cmdline += " androidboot.console=ttyAMA0 kgdboc=ttyAMA0";
+      console_dev = "ttyAMA0";
     } else {
-      vm_manager_cmdline += " androidboot.console=ttyS0 kgdboc=ttyS0";
+      console_dev = "ttyS0";
     }
-  } else if (FLAGS_use_bootloader) {
-    // However, if the bootloader is enabled, virtio console can't
-    // be used since uboot doesn't support it.
-    vm_manager_cmdline += " androidboot.console=ttyS1";
-  } else {
-    // If kgdb is disabled, the Android serial console spawns on a
-    // virtio-console port
-    vm_manager_cmdline += " androidboot.console=hvc1";
   }
+
+  vm_manager_cmdline += " androidboot.console=" + console_dev;
+  if (FLAGS_kgdb) {
+    vm_manager_cmdline += " kgdboc_earlycon kgdbcon kgdboc=" + console_dev;
+  }
+
   tmp_config_obj.set_vm_manager_kernel_cmdline(vm_manager_cmdline);
 
   tmp_config_obj.set_ramdisk_image_path(ramdisk_path);
