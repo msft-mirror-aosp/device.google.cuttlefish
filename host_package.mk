@@ -17,6 +17,7 @@ tests_path := $(notdir $(HOST_OUT_NATIVE_TESTS))
 webrtc_files_path := usr/share/webrtc
 x86_64_seccomp_files_path := usr/share/cuttlefish/x86_64-linux-gnu/seccomp
 aarch64_seccomp_files_path := usr/share/cuttlefish/aarch64-linux-gnu/seccomp
+modem_simulator_path := etc/modem_simulator
 
 cvd_host_executables := \
     adb \
@@ -53,6 +54,7 @@ cvd_host_executables := \
     assemble_cvd \
     run_cvd \
     cvd_status \
+    powerwash_cvd \
     webRTC \
     webrtc_sig_server \
     metrics \
@@ -68,10 +70,12 @@ cvd_host_executables := \
     newfs_msdos \
     secure_env \
     log_tee \
+    modem_simulator \
 
 cvd_host_tests := \
     monotonic_time_test \
     cuttlefish_net_tests \
+    modem_simulator_test \
 
 cvd_host_shared_libraries := \
     libbase.so \
@@ -112,6 +116,7 @@ cvd_host_shared_libraries := \
     tpm2-tss2-sys.so \
     tpm2-tss2-tcti.so \
     tpm2-tss2-util.so \
+    libgatekeeper.so \
     ms-tpm-20-ref-lib.so \
 
 webrtc_assets := \
@@ -172,6 +177,10 @@ cvd_host_webrtc_files := \
     $(addprefix assets/,$(webrtc_assets)) \
     $(addprefix certs/,$(webrtc_certs)) \
 
+modem_simulator_files := \
+     iccprofile_for_sim0.xml \
+     numeric_operator.xml \
+
 cvd_host_package_files := \
      $(addprefix $(bin_path)/,$(cvd_host_executables)) \
      $(addprefix $(lib_path)/,$(cvd_host_shared_libraries)) \
@@ -179,6 +188,7 @@ cvd_host_package_files := \
      $(addprefix $(webrtc_files_path)/,$(cvd_host_webrtc_files)) \
      $(addprefix $(x86_64_seccomp_files_path)/,$(x86_64_seccomp_files)) \
      $(addprefix $(aarch64_seccomp_files_path)/,$(aarch64_seccomp_files)) \
+     $(addprefix $(modem_simulator_path)/files/,$(modem_simulator_files)) \
 
 $(cvd_host_package_tar): PRIVATE_FILES := $(cvd_host_package_files)
 $(cvd_host_package_tar): $(addprefix $(HOST_OUT)/,$(cvd_host_package_files))

@@ -313,14 +313,8 @@ StreamerLaunchResult LaunchWebRTC(cuttlefish::ProcessMonitor* process_monitor,
   // time.
 
   cuttlefish::Command webrtc(config.webrtc_binary());
-  webrtc.AddParameter("-public_ip=", config.webrtc_public_ip());
 
   auto server_ret = CreateStreamerServers(&webrtc, config);
-
-  if (config.webrtc_enable_adb_websocket()) {
-    auto instance = config.ForDefaultInstance();
-    webrtc.AddParameter("--adb=", instance.adb_ip_and_port());
-  }
 
   // TODO get from launcher params
   process_monitor->StartSubprocess(std::move(webrtc),
@@ -416,10 +410,15 @@ void LaunchTpm(cuttlefish::ProcessMonitor* process_monitor,
 
 void LaunchSecureEnvironment(cuttlefish::ProcessMonitor* process_monitor,
                              const cuttlefish::CuttlefishConfig& config) {
-  auto port = config.ForDefaultInstance().keymaster_vsock_port();
-  auto server = cuttlefish::SharedFD::VsockServer(port, SOCK_STREAM);
+  auto keymaster_port = config.ForDefaultInstance().keymaster_vsock_port();
+  auto keymaster_server =
+      cuttlefish::SharedFD::VsockServer(keymaster_port, SOCK_STREAM);
+  auto gatekeeper_port = config.ForDefaultInstance().gatekeeper_vsock_port();
+  auto gatekeeper_server =
+      cuttlefish::SharedFD::VsockServer(gatekeeper_port, SOCK_STREAM);
   cuttlefish::Command command(cuttlefish::DefaultHostArtifactsPath("bin/secure_env"));
-  command.AddParameter("-keymaster_fd=", server);
+  command.AddParameter("-keymaster_fd=", keymaster_server);
+  command.AddParameter("-gatekeeper_fd=", gatekeeper_server);
   process_monitor->StartSubprocess(std::move(command),
                                    GetOnSubprocessExitCallback(config));
 }

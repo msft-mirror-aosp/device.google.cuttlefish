@@ -43,6 +43,7 @@ constexpr char kMobileNetworkConnectedMessage[] =
 constexpr char kWifiConnectedMessage[] =
     "VIRTUAL_DEVICE_NETWORK_WIFI_CONNECTED";
 constexpr char kInternalDirName[] = "internal";
+constexpr char kSharedDirName[] = "shared";
 constexpr char kCrosvmVarEmptyDir[] = "/var/empty";
 
 enum class AdbMode {
@@ -79,15 +80,6 @@ class CuttlefishConfig {
 
   std::string gpu_mode() const;
   void set_gpu_mode(const std::string& name);
-
-  std::string serial_number() const;
-  void set_serial_number(const std::string& serial_number);
-
-  std::string wayland_socket() const;
-  void set_wayland_socket(const std::string& path);
-
-  std::string x_display() const;
-  void set_x_display(const std::string& address);
 
   int cpus() const;
   void set_cpus(int cpus);
@@ -205,9 +197,6 @@ class CuttlefishConfig {
   void set_webrtc_assets_dir(const std::string& webrtc_assets_dir);
   std::string webrtc_assets_dir() const;
 
-  void set_webrtc_public_ip(const std::string& webrtc_public_ip);
-  std::string webrtc_public_ip() const;
-
   void set_webrtc_enable_adb_websocket(bool enable);
   bool webrtc_enable_adb_websocket() const;
 
@@ -296,6 +285,14 @@ class CuttlefishConfig {
   void set_sig_server_port(int port);
   int sig_server_port() const;
 
+  // The range of UDP ports available for webrtc sessions.
+  void set_webrtc_udp_port_range(std::pair<uint16_t, uint16_t> range);
+  std::pair<uint16_t, uint16_t> webrtc_udp_port_range() const;
+
+  // The range of TCP ports available for webrtc sessions.
+  void set_webrtc_tcp_port_range(std::pair<uint16_t, uint16_t> range);
+  std::pair<uint16_t, uint16_t> webrtc_tcp_port_range() const;
+
   // The address of the signaling server
   void set_sig_server_address(const std::string& addr);
   std::string sig_server_address() const;
@@ -364,6 +361,8 @@ class CuttlefishConfig {
     int host_port() const;
     // Port number to connect to the tpm server on the host
     int tpm_port() const;
+    // Port number to connect to the gatekeeper server on the host
+    int gatekeeper_vsock_port() const;
     // Port number to connect to the keymaster server on the host
     int keymaster_vsock_port() const;
     std::string adb_ip_and_port() const;
@@ -399,7 +398,8 @@ class CuttlefishConfig {
 
     std::string kernel_log_pipe_name() const;
 
-    std::string console_pipe_name() const;
+    std::string console_in_pipe_name() const;
+    std::string console_out_pipe_name() const;
 
     std::string logcat_pipe_name() const;
 
@@ -438,6 +438,7 @@ class CuttlefishConfig {
     void set_frames_server_port(int config_server_port);
     void set_touch_server_port(int config_server_port);
     void set_keyboard_server_port(int config_server_port);
+    void set_gatekeeper_vsock_port(int gatekeeper_vsock_port);
     void set_keymaster_vsock_port(int keymaster_vsock_port);
     void set_host_port(int host_port);
     void set_tpm_port(int tpm_port);

@@ -53,18 +53,10 @@ std::vector<std::string> KernelCommandLineFromConfig(const cuttlefish::Cuttlefis
 
   AppendVector(&kernel_cmdline, config.vm_manager_kernel_cmdline());
   AppendVector(&kernel_cmdline, config.boot_image_kernel_cmdline());
-  AppendVector(&kernel_cmdline, 
+  AppendVector(&kernel_cmdline,
                VmManager::ConfigureGpuMode(config.vm_manager(), config.gpu_mode()));
   AppendVector(&kernel_cmdline, VmManager::ConfigureBootDevices(config.vm_manager()));
 
-  if (config.kgdb()) {
-    kernel_cmdline.push_back("kgdboc_earlycon");
-    kernel_cmdline.push_back("kgdbcon");
-  } else {
-    // If kgdb is disabled, the Android serial console spawns on a
-    // virtio-console port
-    kernel_cmdline.push_back("androidboot.console=hvc1");
-  }
   kernel_cmdline.push_back(concat("androidboot.serialno=", instance.serial_number()));
   kernel_cmdline.push_back(concat("androidboot.lcd_density=", config.dpi()));
   kernel_cmdline.push_back(concat(
@@ -120,6 +112,8 @@ std::vector<std::string> KernelCommandLineFromConfig(const cuttlefish::Cuttlefis
 
   kernel_cmdline.push_back(concat("androidboot.vsock_keymaster_port=",
                                   instance.keymaster_vsock_port()));
+  kernel_cmdline.push_back(concat("androidboot.vsock_gatekeeper_port=",
+                                  instance.gatekeeper_vsock_port()));
 
   // TODO(b/158131610): Set this in crosvm instead
   kernel_cmdline.push_back(concat("androidboot.wifi_mac_address=",
