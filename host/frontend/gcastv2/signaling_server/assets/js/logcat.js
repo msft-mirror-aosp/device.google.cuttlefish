@@ -1,3 +1,19 @@
+/*
+ * Copyright (C) 2019 The Android Open Source Project
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 let adb_ws;
 let logcat = document.getElementById('logcat');
 
@@ -10,6 +26,8 @@ const A_WRTE = 0x45545257;
 const A_OKAY = 0x59414b4f;
 
 const kLocalChannelId = 666;
+
+let array = new Uint8Array();
 
 function setU32LE(array, offset, x) {
     array[offset] = x & 0xff;
@@ -76,71 +94,79 @@ function adbSendOkay(remoteId) {
     adb_ws.send(arrayBuffer);
 }
 
-function adbOnMessage(ev) {
-    // console.log("adb_ws: onmessage (" + ev.data.byteLength + " bytes)");
+function JoinArrays(arr1, arr2) {
+  let arr = new Uint8Array(arr1.length + arr2.length);
+  arr.set(arr1, 0);
+  arr.set(arr2, arr1.length);
+  return arr;
+}
 
-    let arrayBuffer = ev.data;
-    let array = new Uint8Array(arrayBuffer);
+function adbOnMessage(arrayBuffer) {
+    // console.log("adb_ws: onmessage (" + arrayBuffer.byteLength + " bytes)");
+    array = JoinArrays(array, new Uint8Array(arrayBuffer));
 
-    if (array.length < 24) {
-        console.log("adb message too short.");
-        return;
-    }
-
-    let command = getU32LE(array, 0);
-    let magic = getU32LE(array, 20);
-
-    if (command != ((magic ^ 0xffffffff) >>> 0)) {
-        console.log("command = " + command + ", magic = " + magic);
-        console.log("adb message command vs magic failed.");
-        return;
-    }
-
-    let payloadLength = getU32LE(array, 12);
-
-    if (array.length != 24 + payloadLength) {
-        console.log("adb message length mismatch.");
-        return;
-    }
-
-    let payloadChecksum = getU32LE(array, 16);
-    let checksum = computeChecksum(array.slice(24));
-
-    if (payloadChecksum != checksum) {
-        console.log("adb message checksum mismatch.");
-        return;
-    }
-
-    switch (command) {
-        case A_CNXN:
-        {
-            console.log("connected.");
-
-            adbOpenChannel();
-            break;
+    while (array.length > 0) {
+        if (array.length < 24) {
+            // Incomplete package, must wait for more data.
+            return;
         }
 
-        case A_OKAY:
-        {
-            let remoteId = getU32LE(array, 4);
-            console.log("channel created w/ remoteId " + remoteId);
-            break;
+        let command = getU32LE(array, 0);
+        let magic = getU32LE(array, 20);
+
+        if (command != ((magic ^ 0xffffffff) >>> 0)) {
+            console.log("command = " + command + ", magic = " + magic);
+            console.log("adb message command vs magic failed.");
+            return;
         }
 
-        case A_WRTE:
-        {
-            let payloadText = utf8Decoder.decode(array.slice(24));
+        let payloadLength = getU32LE(array, 12);
 
-            // Limit to 100 lines
-            logcat.value = (logcat.value + payloadText).split('\n').slice(-100).join('\n');
-
-            // Scroll to bottom
-            logcat.scrollTop = logcat.scrollHeight;
-
-            let remoteId = getU32LE(array, 4);
-            adbSendOkay(remoteId);
-            break;
+        if (array.length < 24 + payloadLength) {
+            // Incomplete package, must wait for more data.
+            return;
         }
+
+        let payloadChecksum = getU32LE(array, 16);
+        let checksum = computeChecksum(array.slice(24));
+
+        if (payloadChecksum != checksum) {
+            console.log("adb message checksum mismatch.");
+            return;
+        }
+
+        switch (command) {
+            case A_CNXN:
+            {
+                console.log("connected.");
+
+                adbOpenChannel();
+                break;
+            }
+
+            case A_OKAY:
+            {
+                let remoteId = getU32LE(array, 4);
+                console.log("channel created w/ remoteId " + remoteId);
+                break;
+            }
+
+            case A_WRTE:
+            {
+                let payloadText = utf8Decoder.decode(array.slice(24));
+
+                // Limit to 100 lines
+                logcat.value = (logcat.value + payloadText).split('\n').slice(-100).join('\n');
+
+                // Scroll to bottom
+                logcat.scrollTop = logcat.scrollHeight;
+
+                let remoteId = getU32LE(array, 4);
+                adbSendOkay(remoteId);
+                break;
+            }
+        }
+        array = array.subarray(24 + payloadLength, array.length);
     }
 }
 
@@ -152,7 +178,7 @@ function init_logcat(devConn) {
     };
 
     logcat.style.display = "initial";
-    devConn.onAdbMessage(msg => adbOnMessage({data: msg}));
+    devConn.onAdbMessage(msg => adbOnMessage(msg));
 
     adbOpenConnection();
 }
