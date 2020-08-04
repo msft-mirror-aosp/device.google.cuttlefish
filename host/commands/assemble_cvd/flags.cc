@@ -1144,6 +1144,8 @@ const cuttlefish::CuttlefishConfig* InitFilesystemAndCreateConfig(
       preserving.insert("sdcard.img");
       preserving.insert("access-kregistry");
       preserving.insert("NVChip");
+      preserving.insert("gatekeeper_secure");
+      preserving.insert("gatekeeper_insecure");
       preserving.insert("modem_nvram.json");
       preserving.insert("factory_reset_protected.img");
       std::stringstream ss;
