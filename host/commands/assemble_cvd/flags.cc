@@ -296,10 +296,6 @@ bool InitializeCuttlefishConfiguration(
     LOG(ERROR) << "Invalid vm_manager: " << FLAGS_vm_manager;
     return false;
   }
-  if (!vm_manager::VmManager::IsValidName(FLAGS_vm_manager)) {
-    LOG(ERROR) << "Invalid vm_manager: " << FLAGS_vm_manager;
-    return false;
-  }
   tmp_config_obj.set_vm_manager(FLAGS_vm_manager);
   tmp_config_obj.set_gpu_mode(FLAGS_gpu_mode);
   if (vm_manager::VmManager::ConfigureGpuMode(tmp_config_obj.vm_manager(),
