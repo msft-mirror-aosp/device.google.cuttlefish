@@ -21,6 +21,8 @@ modem_simulator_path := etc/modem_simulator
 
 cvd_host_executables := \
     adb \
+    allocd \
+    allocd_client \
     adbshell \
     launch_cvd \
     lpmake \
@@ -85,6 +87,7 @@ cvd_host_shared_libraries := \
     libbase.so \
     libcuttlefish_fs.so \
     libcuttlefish_utils.so \
+    libcuttlefish_allocd_utils.so \
     cuttlefish_tcp_socket.so \
     cuttlefish_net.so \
     liblog.so \
