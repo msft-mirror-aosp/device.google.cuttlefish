@@ -58,7 +58,7 @@ cvd_host_executables := \
     cvd_status \
     powerwash_cvd \
     webRTC \
-    webrtc_sig_server \
+    webrtc_operator \
     metrics \
     fsck.f2fs \
     resize.f2fs \
@@ -73,6 +73,7 @@ cvd_host_executables := \
     secure_env \
     log_tee \
     modem_simulator \
+    gnss_grpc_proxy \
 
 ifneq ($(wildcard device/google/trout),)
     cvd_host_executables += android.hardware.automotive.vehicle@2.0-virtualization-grpc-server
