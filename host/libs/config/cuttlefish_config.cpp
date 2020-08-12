@@ -18,6 +18,7 @@
 
 #include <algorithm>
 #include <climits>
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
@@ -109,6 +110,9 @@ const char* kVncServerBinary = "vnc_server_binary";
 
 const char* kEnableSandbox = "enable_sandbox";
 const char* kSeccompPolicyDir = "seccomp_policy_dir";
+
+const char* kGnssGrpcProxyBinary = "gnss_grpc_proxy_binary";
+const char* kEnableGnssGrpcProxy = "enable_gnss_grpc_proxy";
 
 const char* kEnableWebRTC = "enable_webrtc";
 const char* kWebRTCBinary = "webrtc_binary";
@@ -395,6 +399,23 @@ std::string CuttlefishConfig::console_forwarder_binary() const {
 void CuttlefishConfig::set_console_forwarder_binary(
     const std::string& binary) {
   (*dictionary_)[kConsoleForwarderBinary] = binary;
+}
+
+std::string CuttlefishConfig::gnss_grpc_proxy_binary() const {
+  return (*dictionary_)[kGnssGrpcProxyBinary].asString();
+}
+
+void CuttlefishConfig::set_gnss_grpc_proxy_binary(
+    const std::string& binary) {
+  (*dictionary_)[kGnssGrpcProxyBinary] = binary;
+}
+
+void CuttlefishConfig::set_enable_gnss_grpc_proxy(const bool enable_gnss_grpc_proxy) {
+  (*dictionary_)[kEnableGnssGrpcProxy] = enable_gnss_grpc_proxy;
+}
+
+bool CuttlefishConfig::enable_gnss_grpc_proxy() const {
+  return (*dictionary_)[kEnableGnssGrpcProxy].asBool();
 }
 
 std::string CuttlefishConfig::kernel_log_monitor_binary() const {

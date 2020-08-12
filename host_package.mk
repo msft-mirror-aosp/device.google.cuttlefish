@@ -21,6 +21,8 @@ modem_simulator_path := etc/modem_simulator
 
 cvd_host_executables := \
     adb \
+    allocd \
+    allocd_client \
     adbshell \
     launch_cvd \
     lpmake \
@@ -56,7 +58,7 @@ cvd_host_executables := \
     cvd_status \
     powerwash_cvd \
     webRTC \
-    webrtc_sig_server \
+    webrtc_operator \
     metrics \
     fsck.f2fs \
     resize.f2fs \
@@ -71,6 +73,7 @@ cvd_host_executables := \
     secure_env \
     log_tee \
     modem_simulator \
+    gnss_grpc_proxy \
 
 cvd_host_tests := \
     monotonic_time_test \
@@ -81,6 +84,7 @@ cvd_host_shared_libraries := \
     libbase.so \
     libcuttlefish_fs.so \
     libcuttlefish_utils.so \
+    libcuttlefish_allocd_utils.so \
     cuttlefish_tcp_socket.so \
     cuttlefish_net.so \
     liblog.so \
