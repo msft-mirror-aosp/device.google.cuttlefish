@@ -4,13 +4,8 @@ on early-init
 on early-init && property:ro.boot.enable_bootanimation=0
     setprop debug.sf.nobootanimation 1
 
-on property:ro.boot.tombstone_transmit=1
-    enable tombstone_transmit
-
-
 service tombstone_transmit /product/bin/tombstone_transmit
     # Start tombstone_transmit after /data is mounted.
     class late_start
     group system
     user root
-    disabled
