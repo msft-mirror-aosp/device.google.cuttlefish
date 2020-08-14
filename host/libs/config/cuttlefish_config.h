@@ -155,13 +155,6 @@ class CuttlefishConfig {
   void set_crosvm_binary(const std::string& crosvm_binary);
   std::string crosvm_binary() const;
 
-  void set_console_forwarder_binary(const std::string& crosvm_binary);
-  std::string console_forwarder_binary() const;
-
-  void set_kernel_log_monitor_binary(
-      const std::string& kernel_log_monitor_binary);
-  std::string kernel_log_monitor_binary() const;
-
   void set_enable_vnc_server(bool enable_vnc_server);
   bool enable_vnc_server() const;
 

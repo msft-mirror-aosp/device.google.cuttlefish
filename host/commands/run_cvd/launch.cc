@@ -139,7 +139,7 @@ std::vector<cuttlefish::SharedFD> LaunchKernelLogMonitor(
   // due to the usage counters in the kernel reaching zero. If this is not done
   // and the kernel_log_monitor crashes for some reason the VMM may get SIGPIPE.
   pipe = cuttlefish::SharedFD::Open(log_name.c_str(), O_RDWR);
-  cuttlefish::Command command(config.kernel_log_monitor_binary());
+  cuttlefish::Command command(cuttlefish::KernelLogMonitorBinary());
   command.AddParameter("-log_pipe_fd=", pipe);
 
   std::vector<cuttlefish::SharedFD> ret;
@@ -504,7 +504,7 @@ void LaunchConsoleForwarderIfEnabled(const cuttlefish::CuttlefishConfig& config,
         return;
     }
 
-    cuttlefish::Command console_forwarder_cmd(config.console_forwarder_binary());
+    cuttlefish::Command console_forwarder_cmd(cuttlefish::ConsoleForwarderBinary());
     auto instance = config.ForDefaultInstance();
 
     auto console_in_pipe_name = instance.console_in_pipe_name();

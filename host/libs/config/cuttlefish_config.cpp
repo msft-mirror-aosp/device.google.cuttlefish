@@ -97,8 +97,6 @@ const char* kEnableBootAnimation = "enable_bootanimation";
 
 const char* kQemuBinary = "qemu_binary";
 const char* kCrosvmBinary = "crosvm_binary";
-const char* kConsoleForwarderBinary = "console_forwarder_binary";
-const char* kKernelLogMonitorBinary = "kernel_log_monitor_binary";
 
 const char* kEnableVncServer = "enable_vnc_server";
 const char *kVncServerBinary = "vnc_server_binary";
@@ -372,24 +370,6 @@ std::string CuttlefishConfig::crosvm_binary() const {
 
 void CuttlefishConfig::set_crosvm_binary(const std::string& crosvm_binary) {
   (*dictionary_)[kCrosvmBinary] = crosvm_binary;
-}
-
-std::string CuttlefishConfig::console_forwarder_binary() const {
-  return (*dictionary_)[kConsoleForwarderBinary].asString();
-}
-
-void CuttlefishConfig::set_console_forwarder_binary(
-    const std::string& binary) {
-  (*dictionary_)[kConsoleForwarderBinary] = binary;
-}
-
-std::string CuttlefishConfig::kernel_log_monitor_binary() const {
-  return (*dictionary_)[kKernelLogMonitorBinary].asString();
-}
-
-void CuttlefishConfig::set_kernel_log_monitor_binary(
-    const std::string& kernel_log_monitor_binary) {
-  (*dictionary_)[kKernelLogMonitorBinary] = kernel_log_monitor_binary;
 }
 
 bool CuttlefishConfig::enable_vnc_server() const {
