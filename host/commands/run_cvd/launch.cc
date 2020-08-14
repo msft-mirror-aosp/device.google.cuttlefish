@@ -247,7 +247,7 @@ StreamerLaunchResult LaunchVNCServer(
   auto instance = config.ForDefaultInstance();
   // Launch the vnc server, don't wait for it to complete
   auto port_options = "-port=" + std::to_string(instance.vnc_server_port());
-  cuttlefish::Command vnc_server(config.vnc_server_binary());
+  cuttlefish::Command vnc_server(cuttlefish::VncServerBinary());
   vnc_server.AddParameter(port_options);
 
   auto server_ret = CreateStreamerServers(&vnc_server, config);
@@ -287,7 +287,7 @@ StreamerLaunchResult LaunchWebRTC(cuttlefish::ProcessMonitor* process_monitor,
                                   const cuttlefish::CuttlefishConfig& config,
                                   cuttlefish::SharedFD kernel_log_events_pipe) {
   if (config.ForDefaultInstance().start_webrtc_sig_server()) {
-    cuttlefish::Command sig_server(config.sig_server_binary());
+    cuttlefish::Command sig_server(cuttlefish::WebRtcSigServerBinary());
     sig_server.AddParameter("-assets_dir=", config.webrtc_assets_dir());
     if (!config.webrtc_certs_dir().empty()) {
       sig_server.AddParameter("-certs_dir=", config.webrtc_certs_dir());
@@ -305,7 +305,7 @@ StreamerLaunchResult LaunchWebRTC(cuttlefish::ProcessMonitor* process_monitor,
   // when connecting to the websocket, so it shouldn't be an issue most of the
   // time.
 
-  cuttlefish::Command webrtc(config.webrtc_binary());
+  cuttlefish::Command webrtc(cuttlefish::WebRtcBinary());
 
   auto server_ret = CreateStreamerServers(&webrtc, config);
   webrtc.AddParameter("-kernel_log_events_fd=", kernel_log_events_pipe);
