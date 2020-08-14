@@ -232,7 +232,7 @@ void LaunchTombstoneReceiver(const cuttlefish::CuttlefishConfig& config,
     std::exit(RunnerExitCodes::kTombstoneServerError);
     return;
   }
-  cuttlefish::Command cmd(config.tombstone_receiver_binary());
+  cuttlefish::Command cmd(cuttlefish::TombstoneReceiverBinary());
   cmd.AddParameter("-server_fd=", socket);
   cmd.AddParameter("-tombstone_dir=", tombstoneDir);
 

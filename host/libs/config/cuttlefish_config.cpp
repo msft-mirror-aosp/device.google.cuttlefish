@@ -118,8 +118,6 @@ const char* kDataPolicy = "data_policy";
 const char* kBlankDataImageMb = "blank_data_image_mb";
 const char* kBlankDataImageFmt = "blank_data_image_fmt";
 
-const char* kTombstoneReceiverBinary = "tombstone_receiver_binary";
-
 const char* kWebRTCCertsDir = "webrtc_certs_dir";
 const char* kSigServerPort = "webrtc_sig_server_port";
 const char* kSigServerAddress = "webrtc_sig_server_addr";
@@ -475,14 +473,6 @@ std::string CuttlefishConfig::blank_data_image_fmt() const {
 
 void CuttlefishConfig::set_blank_data_image_fmt(const std::string& blank_data_image_fmt) {
   (*dictionary_)[kBlankDataImageFmt] = blank_data_image_fmt;
-}
-
-std::string CuttlefishConfig::tombstone_receiver_binary() const {
-  return (*dictionary_)[kTombstoneReceiverBinary].asString();
-}
-
-void CuttlefishConfig::set_tombstone_receiver_binary(const std::string& e2e_test_binary) {
-  (*dictionary_)[kTombstoneReceiverBinary] = e2e_test_binary;
 }
 
 bool CuttlefishConfig::use_bootloader() const {

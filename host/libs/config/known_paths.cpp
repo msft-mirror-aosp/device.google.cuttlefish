@@ -48,6 +48,10 @@ std::string SocketVsockProxyBinary() {
   return DefaultHostArtifactsPath("bin/socket_vsock_proxy");
 }
 
+std::string TombstoneReceiverBinary() {
+  return DefaultHostArtifactsPath("bin/tombstone_receiver");
+}
+
 std::string WebRtcBinary() {
   return DefaultHostArtifactsPath("bin/webRTC");
 }

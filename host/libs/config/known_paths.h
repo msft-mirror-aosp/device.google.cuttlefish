@@ -26,6 +26,7 @@ std::string KernelLogMonitorBinary();
 std::string LogcatReceiverBinary();
 std::string ModemSimulatorBinary();
 std::string SocketVsockProxyBinary();
+std::string TombstoneReceiverBinary();
 std::string WebRtcBinary();
 std::string WebRtcSigServerBinary();
 std::string VncServerBinary();
