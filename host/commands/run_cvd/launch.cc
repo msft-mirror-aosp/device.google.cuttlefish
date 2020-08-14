@@ -11,6 +11,7 @@
 #include "common/libs/utils/size_utils.h"
 #include "host/commands/run_cvd/pre_launch_initializers.h"
 #include "host/commands/run_cvd/runner_defs.h"
+#include "host/libs/config/known_paths.h"
 #include "host/libs/vm_manager/crosvm_manager.h"
 #include "host/libs/vm_manager/qemu_manager.h"
 
@@ -182,7 +183,7 @@ void LaunchLogcatReceiver(const cuttlefish::CuttlefishConfig& config,
   // due to the usage counters in the kernel reaching zero. If this is not done
   // and the logcat_receiver crashes for some reason the VMM may get SIGPIPE.
   pipe = cuttlefish::SharedFD::Open(log_name.c_str(), O_RDWR);
-  cuttlefish::Command command(config.logcat_receiver_binary());
+  cuttlefish::Command command(cuttlefish::LogcatReceiverBinary());
   command.AddParameter("-log_pipe_fd=", pipe);
 
   process_monitor->StartSubprocess(std::move(command),
@@ -200,7 +201,7 @@ void LaunchConfigServer(const cuttlefish::CuttlefishConfig& config,
                << socket->StrError();
     std::exit(RunnerExitCodes::kConfigServerError);
   }
-  cuttlefish::Command cmd(config.config_server_binary());
+  cuttlefish::Command cmd(cuttlefish::ConfigServerBinary());
   cmd.AddParameter("-server_fd=", socket);
   process_monitor->StartSubprocess(std::move(cmd),
                                    GetOnSubprocessExitCallback(config));
