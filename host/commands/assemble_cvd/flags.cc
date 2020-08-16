@@ -67,7 +67,6 @@ DEFINE_bool(decompress_kernel, false,
             "Whether to decompress the kernel image.");
 DEFINE_string(extra_kernel_cmdline, "",
               "Additional flags to put on the kernel command line");
-DEFINE_int32(loop_max_part, 7, "Maximum number of loop partitions");
 DEFINE_bool(guest_enforce_security, true,
             "Whether to run in enforcing mode (non permissive).");
 DEFINE_bool(guest_audit_security, true,
@@ -223,8 +222,6 @@ DEFINE_string(tpm_binary, "",
               "The TPM simulator to use. Disabled if empty.");
 DEFINE_string(tpm_device, "", "A host TPM device to pass through commands to.");
 DEFINE_bool(restart_subprocesses, true, "Restart any crashed host process");
-DEFINE_bool(enable_tombstone_receiver, true, "Enables the tombstone logger on "
-            "both the guest and the host");
 DEFINE_bool(enable_vehicle_hal_grpc_server, true, "Enables the vehicle HAL "
             "emulation gRPC server on the host");
 DEFINE_bool(use_bootloader, false, "Boots the device using a bootloader");
@@ -348,7 +345,6 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
   }
 
   tmp_config_obj.set_boot_image_kernel_cmdline(boot_image_unpacker.kernel_cmdline());
-  tmp_config_obj.set_loop_max_part(FLAGS_loop_max_part);
   tmp_config_obj.set_guest_enforce_security(FLAGS_guest_enforce_security);
   tmp_config_obj.set_guest_audit_security(FLAGS_guest_audit_security);
   tmp_config_obj.set_guest_force_normal_boot(FLAGS_guest_force_normal_boot);
@@ -497,7 +493,6 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
   tmp_config_obj.set_gnss_grpc_proxy_binary(
     cuttlefish::DefaultHostArtifactsPath("bin/gnss_grpc_proxy"));
 
-  tmp_config_obj.set_enable_tombstone_receiver(FLAGS_enable_tombstone_receiver);
   tmp_config_obj.set_tombstone_receiver_binary(
       cuttlefish::DefaultHostArtifactsPath("bin/tombstone_receiver"));
 

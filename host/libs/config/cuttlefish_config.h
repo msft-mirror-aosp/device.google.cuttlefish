@@ -238,9 +238,6 @@ class CuttlefishConfig {
   void set_blank_data_image_fmt(const std::string& blank_data_image_fmt);
   std::string blank_data_image_fmt() const;
 
-  void set_enable_tombstone_receiver(bool enable_tombstone_receiver);
-  bool enable_tombstone_receiver() const;
-
   void set_tombstone_receiver_binary(const std::string& binary);
   std::string tombstone_receiver_binary() const;
 
@@ -252,9 +249,6 @@ class CuttlefishConfig {
 
   void set_boot_slot(const std::string& boot_slot);
   std::string boot_slot() const;
-
-  void set_loop_max_part(int loop_max_part);
-  int loop_max_part() const;
 
   void set_guest_enforce_security(bool guest_enforce_security);
   bool guest_enforce_security() const;

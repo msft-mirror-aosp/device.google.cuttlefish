@@ -77,7 +77,6 @@ std::vector<std::string> KernelCommandLineFromConfig(const cuttlefish::Cuttlefis
     }
     kernel_cmdline.push_back(concat("androidboot.slot_suffix=", slot_suffix));
   }
-  kernel_cmdline.push_back(concat("loop.max_part=", config.loop_max_part()));
   if (!config.guest_enforce_security()) {
     kernel_cmdline.push_back("androidboot.selinux=permissive");
   }
@@ -90,11 +89,8 @@ std::vector<std::string> KernelCommandLineFromConfig(const cuttlefish::Cuttlefis
     kernel_cmdline.push_back("androidboot.force_normal_boot=1");
   }
 
-  if (config.enable_tombstone_receiver() && instance.tombstone_receiver_port()) {
-    kernel_cmdline.push_back("androidboot.tombstone_transmit=1");
+  if (instance.tombstone_receiver_port()) {
     kernel_cmdline.push_back(concat("androidboot.vsock_tombstone_port=", instance.tombstone_receiver_port()));
-  } else {
-    kernel_cmdline.push_back("androidboot.tombstone_transmit=0");
   }
 
   if (instance.config_server_port()) {

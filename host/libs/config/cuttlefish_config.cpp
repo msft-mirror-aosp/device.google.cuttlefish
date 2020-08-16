@@ -136,7 +136,6 @@ const char* kBlankDataImageFmt = "blank_data_image_fmt";
 const char* kLogcatReceiverBinary = "logcat_receiver_binary";
 const char* kConfigServerBinary = "config_server_binary";
 
-const char* kRunTombstoneReceiver = "enable_tombstone_logger";
 const char* kTombstoneReceiverBinary = "tombstone_receiver_binary";
 
 const char* kWebRTCCertsDir = "webrtc_certs_dir";
@@ -156,7 +155,6 @@ const char* kBootSlot = "boot_slot";
 const char* kEnableMetrics = "enable_metrics";
 const char* kMetricsBinary = "metrics_binary";
 
-const char* kLoopMaxPart = "loop_max_part";
 const char* kGuestEnforceSecurity = "guest_enforce_security";
 const char* kGuestAuditSecurity = "guest_audit_security";
 const char* kGuestForceNormalBoot = "guest_force_normal_boot";
@@ -596,14 +594,6 @@ std::string CuttlefishConfig::config_server_binary() const {
   return (*dictionary_)[kConfigServerBinary].asString();
 }
 
-bool CuttlefishConfig::enable_tombstone_receiver() const {
-  return (*dictionary_)[kRunTombstoneReceiver].asBool();
-}
-
-void CuttlefishConfig::set_enable_tombstone_receiver(bool enable_tombstone_receiver) {
-  (*dictionary_)[kRunTombstoneReceiver] = enable_tombstone_receiver;
-}
-
 std::string CuttlefishConfig::tombstone_receiver_binary() const {
   return (*dictionary_)[kTombstoneReceiverBinary].asString();
 }
@@ -738,13 +728,6 @@ void CuttlefishConfig::set_modem_simulator_instance_number(
 
 int CuttlefishConfig::modem_simulator_instance_number() const {
   return (*dictionary_)[kModemSimulatorInstanceNumber].asInt();
-}
-
-void CuttlefishConfig::set_loop_max_part(int loop_max_part) {
-  (*dictionary_)[kLoopMaxPart] = loop_max_part;
-}
-int CuttlefishConfig::loop_max_part() const {
-  return (*dictionary_)[kLoopMaxPart].asInt();
 }
 
 void CuttlefishConfig::set_guest_enforce_security(bool guest_enforce_security) {
