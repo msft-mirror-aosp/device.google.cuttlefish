@@ -44,43 +44,49 @@ DEFINE_bool(run_file_discovery, true,
 DEFINE_int32(num_instances, 1, "Number of Android guests to launch");
 DEFINE_string(report_anonymous_usage_stats, "", "Report anonymous usage "
             "statistics for metrics collection and analysis.");
+DEFINE_int32(base_instance_num,
+             cuttlefish::GetInstance(),
+             "The instance number of the device created. When `-num_instances N`"
+             " is used, N instance numbers are claimed starting at this number.");
+DEFINE_string(verbosity, "INFO", "Console logging verbosity. Options are VERBOSE,"
+                                 "DEBUG,INFO,WARNING,ERROR");
 
 namespace {
 
-std::string kAssemblerBin = vsoc::DefaultHostArtifactsPath("bin/assemble_cvd");
-std::string kRunnerBin = vsoc::DefaultHostArtifactsPath("bin/run_cvd");
+std::string kAssemblerBin = cuttlefish::DefaultHostArtifactsPath("bin/assemble_cvd");
+std::string kRunnerBin = cuttlefish::DefaultHostArtifactsPath("bin/run_cvd");
 
-cvd::Subprocess StartAssembler(cvd::SharedFD assembler_stdin,
-                               cvd::SharedFD assembler_stdout,
+cuttlefish::Subprocess StartAssembler(cuttlefish::SharedFD assembler_stdin,
+                               cuttlefish::SharedFD assembler_stdout,
                                const std::vector<std::string>& argv) {
-  cvd::Command assemble_cmd(kAssemblerBin);
+  cuttlefish::Command assemble_cmd(kAssemblerBin);
   for (const auto& arg : argv) {
     assemble_cmd.AddParameter(arg);
   }
   if (assembler_stdin->IsOpen()) {
-    assemble_cmd.RedirectStdIO(cvd::Subprocess::StdIOChannel::kStdIn, assembler_stdin);
+    assemble_cmd.RedirectStdIO(cuttlefish::Subprocess::StdIOChannel::kStdIn, assembler_stdin);
   }
-  assemble_cmd.RedirectStdIO(cvd::Subprocess::StdIOChannel::kStdOut, assembler_stdout);
+  assemble_cmd.RedirectStdIO(cuttlefish::Subprocess::StdIOChannel::kStdOut, assembler_stdout);
   return assemble_cmd.Start();
 }
 
-cvd::Subprocess StartRunner(cvd::SharedFD runner_stdin,
+cuttlefish::Subprocess StartRunner(cuttlefish::SharedFD runner_stdin,
                             const std::vector<std::string>& argv) {
-  cvd::Command run_cmd(kRunnerBin);
+  cuttlefish::Command run_cmd(kRunnerBin);
   for (const auto& arg : argv) {
     run_cmd.AddParameter(arg);
   }
-  run_cmd.RedirectStdIO(cvd::Subprocess::StdIOChannel::kStdIn, runner_stdin);
+  run_cmd.RedirectStdIO(cuttlefish::Subprocess::StdIOChannel::kStdIn, runner_stdin);
   return run_cmd.Start();
 }
 
-void WriteFiles(cvd::FetcherConfig fetcher_config, cvd::SharedFD out) {
+void WriteFiles(cuttlefish::FetcherConfig fetcher_config, cuttlefish::SharedFD out) {
   std::stringstream output_streambuf;
   for (const auto& file : fetcher_config.get_cvd_files()) {
     output_streambuf << file.first << "\n";
   }
   std::string output_string = output_streambuf.str();
-  int written = cvd::WriteAll(out, output_string);
+  int written = cuttlefish::WriteAll(out, output_string);
   if (written < 0) {
     LOG(FATAL) << "Could not write file report (" << strerror(out->GetErrno())
                << ")";
@@ -89,12 +95,12 @@ void WriteFiles(cvd::FetcherConfig fetcher_config, cvd::SharedFD out) {
 
 std::string ValidateMetricsConfirmation(std::string use_metrics) {
   if (use_metrics == "") {
-    if (vsoc::CuttlefishConfig::ConfigExists()) {
-      auto config = vsoc::CuttlefishConfig::Get();
+    if (cuttlefish::CuttlefishConfig::ConfigExists()) {
+      auto config = cuttlefish::CuttlefishConfig::Get();
       if (config) {
-        if (config->enable_metrics() == vsoc::CuttlefishConfig::kYes) {
+        if (config->enable_metrics() == cuttlefish::CuttlefishConfig::kYes) {
           use_metrics = "y";
-        } else if (config->enable_metrics() == vsoc::CuttlefishConfig::kNo) {
+        } else if (config->enable_metrics() == cuttlefish::CuttlefishConfig::kNo) {
           use_metrics = "n";
         }
       }
@@ -147,17 +153,22 @@ int main(int argc, char** argv) {
 
   gflags::HandleCommandLineHelpFlags();
 
+  setenv("CF_CONSOLE_SEVERITY", FLAGS_verbosity.c_str(), /* replace */ false);
+
   auto use_metrics = FLAGS_report_anonymous_usage_stats;
   FLAGS_report_anonymous_usage_stats = ValidateMetricsConfirmation(use_metrics);
 
-  cvd::SharedFD assembler_stdout, assembler_stdout_capture;
-  cvd::SharedFD::Pipe(&assembler_stdout_capture, &assembler_stdout);
+  cuttlefish::SharedFD assembler_stdout, assembler_stdout_capture;
+  cuttlefish::SharedFD::Pipe(&assembler_stdout_capture, &assembler_stdout);
 
-  cvd::SharedFD launcher_report, assembler_stdin;
+  cuttlefish::SharedFD launcher_report, assembler_stdin;
   bool should_generate_report = FLAGS_run_file_discovery;
   if (should_generate_report) {
-    cvd::SharedFD::Pipe(&assembler_stdin, &launcher_report);
+    cuttlefish::SharedFD::Pipe(&assembler_stdin, &launcher_report);
   }
+
+  auto instance_num_str = std::to_string(FLAGS_base_instance_num);
+  setenv("CUTTLEFISH_INSTANCE", instance_num_str.c_str(), /* overwrite */ 0);
 
   // SharedFDs are std::move-d in to avoid dangling references.
   // Removing the std::move will probably make run_cvd hang as its stdin never closes.
@@ -170,7 +181,7 @@ int main(int argc, char** argv) {
   }
 
   std::string assembler_output;
-  if (cvd::ReadAll(assembler_stdout_capture, &assembler_output) < 0) {
+  if (cuttlefish::ReadAll(assembler_stdout_capture, &assembler_output) < 0) {
     int error_num = errno;
     LOG(ERROR) << "Read error getting output from assemble_cvd: " << strerror(error_num);
     return -1;
@@ -181,20 +192,20 @@ int main(int argc, char** argv) {
     LOG(ERROR) << "assemble_cvd returned " << assemble_ret;
     return assemble_ret;
   } else {
-    LOG(INFO) << "assemble_cvd exited successfully.";
+    LOG(DEBUG) << "assemble_cvd exited successfully.";
   }
 
-  std::vector<cvd::Subprocess> runners;
+  std::vector<cuttlefish::Subprocess> runners;
   for (int i = 0; i < FLAGS_num_instances; i++) {
-    cvd::SharedFD runner_stdin_in, runner_stdin_out;
-    cvd::SharedFD::Pipe(&runner_stdin_out, &runner_stdin_in);
-    std::string instance_name = std::to_string(i + vsoc::GetInstance());
+    cuttlefish::SharedFD runner_stdin_in, runner_stdin_out;
+    cuttlefish::SharedFD::Pipe(&runner_stdin_out, &runner_stdin_in);
+    std::string instance_name = std::to_string(i + FLAGS_base_instance_num);
     setenv("CUTTLEFISH_INSTANCE", instance_name.c_str(), /* overwrite */ 1);
 
     auto run_proc = StartRunner(std::move(runner_stdin_out),
                                 forwarder.ArgvForSubprocess(kRunnerBin));
     runners.push_back(std::move(run_proc));
-    if (cvd::WriteAll(runner_stdin_in, assembler_output) < 0) {
+    if (cuttlefish::WriteAll(runner_stdin_in, assembler_output) < 0) {
       int error_num = errno;
       LOG(ERROR) << "Could not write to run_cvd: " << strerror(error_num);
       return -1;
@@ -208,7 +219,7 @@ int main(int argc, char** argv) {
       run_cvd_failure = true;
       LOG(ERROR) << "run_cvd returned " << run_ret;
     } else {
-      LOG(INFO) << "run_cvd exited successfully.";
+      LOG(DEBUG) << "run_cvd exited successfully.";
     }
   }
   return run_cvd_failure ? -1 : 0;

@@ -30,7 +30,7 @@
 
 #include "common/libs/fs/shared_fd.h"
 
-namespace cvd {
+namespace cuttlefish {
 
 bool FileExists(const std::string& path) {
   struct stat st;
@@ -80,6 +80,10 @@ std::string AbsolutePath(const std::string& path) {
   if (path[0] == '/') {
     return path;
   }
+  if (path[0] == '~') {
+    LOG(WARNING) << "Tilde expansion in path " << path <<" is not supported";
+    return {};
+  }
 
   std::array<char, PATH_MAX> buffer{};
   if (!realpath(".", buffer.data())) {
@@ -109,7 +113,7 @@ std::chrono::system_clock::time_point FileModificationTime(const std::string& pa
 }
 
 bool RenameFile(const std::string& old_name, const std::string& new_name) {
-  LOG(INFO) << "Renaming " << old_name << " to " << new_name;
+  LOG(DEBUG) << "Renaming " << old_name << " to " << new_name;
   if(rename(old_name.c_str(), new_name.c_str())) {
     LOG(ERROR) << "File rename failed due to " << strerror(errno);
     return false;
@@ -119,7 +123,7 @@ bool RenameFile(const std::string& old_name, const std::string& new_name) {
 }
 
 bool RemoveFile(const std::string& file) {
-  LOG(INFO) << "Removing " << file;
+  LOG(DEBUG) << "Removing " << file;
   return remove(file.c_str()) == 0;
 }
 
@@ -149,7 +153,7 @@ FileSizes SparseFileSizes(const std::string& path) {
     return {};
   }
   off_t farthest_seek = fd->LSeek(0, SEEK_END);
-  LOG(INFO) << "Farthest seek: " << farthest_seek;
+  LOG(VERBOSE) << "Farthest seek: " << farthest_seek;
   if (farthest_seek == -1) {
     LOG(ERROR) << "Could not lseek in \"" << path << "\": " << fd->StrError();
     return {};
@@ -189,4 +193,4 @@ FileSizes SparseFileSizes(const std::string& path) {
   return (FileSizes) { .sparse_size = farthest_seek, .disk_size = data_bytes };
 }
 
-}  // namespace cvd
+}  // namespace cuttlefish

@@ -15,7 +15,7 @@
  */
 #pragma once
 
-namespace cvd {
+namespace cuttlefish {
 
 enum RunnerExitCodes : int {
   kSuccess = 0,
@@ -43,10 +43,12 @@ enum RunnerExitCodes : int {
   kInitRamFsConcatError = 22,
   kTapDeviceInUse = 23,
   kTpmPassthroughError = 24,
+  kModemSimulatorServerError = 25,
 };
 
 // Actions supported by the launcher server
 enum class LauncherAction : char {
+  kPowerwash = 'P',
   kStatus = 'I',
   kStop = 'X',
 };
@@ -57,4 +59,4 @@ enum class LauncherResponse : char {
   kError = 'E',
   kUnknownAction = 'U',
 };
-}  // namespace cvd
+}  // namespace cuttlefish

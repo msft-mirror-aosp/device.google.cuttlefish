@@ -1,49 +1,51 @@
 #include "host/commands/assemble_cvd/flags.h"
 
+#include <android-base/logging.h>
+#include <android-base/strings.h>
 #include <dirent.h>
-#include <sys/types.h>
+#include <fcntl.h>
+#include <gflags/gflags.h>
+#include <json/json.h>
 #include <sys/stat.h>
 #include <sys/statvfs.h>
+#include <sys/types.h>
 #include <unistd.h>
 
 #include <algorithm>
 #include <array>
-#include <iostream>
 #include <fstream>
+#include <iostream>
+#include <optional>
+#include <regex>
 #include <set>
-
-#include <android-base/strings.h>
-#include <gflags/gflags.h>
-#include <android-base/logging.h>
+#include <sstream>
 
 #include "common/libs/utils/environment.h"
 #include "common/libs/utils/files.h"
+#include "common/libs/utils/tee_logging.h"
+#include "host/commands/assemble_cvd/assembler_defs.h"
 #include "host/commands/assemble_cvd/boot_config.h"
 #include "host/commands/assemble_cvd/boot_image_unpacker.h"
-#include "host/commands/assemble_cvd/data_image.h"
+#include "host/commands/assemble_cvd/disk_flags.h"
 #include "host/commands/assemble_cvd/image_aggregator.h"
-#include "host/commands/assemble_cvd/assembler_defs.h"
-#include "host/commands/assemble_cvd/super_image_mixer.h"
+#include "host/libs/allocd/request.h"
+#include "host/libs/allocd/utils.h"
+#include "host/libs/config/data_image.h"
 #include "host/libs/config/fetcher_config.h"
 #include "host/libs/vm_manager/crosvm_manager.h"
 #include "host/libs/vm_manager/qemu_manager.h"
 #include "host/libs/vm_manager/vm_manager.h"
 
-// Taken from external/avb/libavb/avb_slot_verify.c; this define is not in the headers
-#define VBMETA_MAX_SIZE 65536ul
+using cuttlefish::CreateBlankImage;
+using cuttlefish::DataImageResult;
+using cuttlefish::ForCurrentInstance;
+using cuttlefish::RandomSerialNumber;
+using cuttlefish::AssemblerExitCodes;
+using cuttlefish::vm_manager::CrosvmManager;
+using cuttlefish::vm_manager::QemuManager;
+using cuttlefish::vm_manager::VmManager;
 
-using vsoc::ForCurrentInstance;
-using cvd::AssemblerExitCodes;
-
-DEFINE_string(cache_image, "", "Location of the cache partition image.");
-DEFINE_string(metadata_image, "", "Location of the metadata partition image "
-              "to be generated.");
-DEFINE_int32(blank_metadata_image_mb, 16,
-             "The size of the blank metadata image to generate, MB.");
-DEFINE_int32(blank_sdcard_image_mb, 2048,
-             "The size of the blank sdcard image to generate, MB.");
 DEFINE_int32(cpus, 2, "Virtual CPU count.");
-DEFINE_string(data_image, "", "Location of the data partition image.");
 DEFINE_string(data_policy, "use_existing", "How to handle userdata partition."
             " Either 'use_existing', 'create_if_missing', 'resize_up_to', or "
             "'always_create'.");
@@ -65,51 +67,30 @@ DEFINE_bool(decompress_kernel, false,
             "Whether to decompress the kernel image.");
 DEFINE_string(extra_kernel_cmdline, "",
               "Additional flags to put on the kernel command line");
-DEFINE_int32(loop_max_part, 7, "Maximum number of loop partitions");
 DEFINE_bool(guest_enforce_security, true,
             "Whether to run in enforcing mode (non permissive).");
 DEFINE_bool(guest_audit_security, true,
             "Whether to log security audits.");
 DEFINE_bool(guest_force_normal_boot, true,
             "Whether to force the boot sequence to skip recovery.");
-DEFINE_string(boot_image, "",
-              "Location of cuttlefish boot image. If empty it is assumed to be "
-              "boot.img in the directory specified by -system_image_dir.");
-DEFINE_string(vendor_boot_image, "",
-              "Location of cuttlefish vendor boot image. If empty it is assumed to "
-              "be vendor_boot.img in the directory specified by -system_image_dir.");
-DEFINE_string(vbmeta_image, "",
-              "Location of cuttlefish vbmeta image. If empty it is assumed to "
-              "be vbmeta.img in the directory specified by -system_image_dir.");
-DEFINE_string(vbmeta_system_image, "",
-              "Location of cuttlefish vbmeta_system image. If empty it is assumed to "
-              "be vbmeta_system.img in the directory specified by -system_image_dir.");
 DEFINE_int32(memory_mb, 2048,
              "Total amount of memory available for guest, MB.");
 DEFINE_string(serial_number, ForCurrentInstance("CUTTLEFISHCVD"),
               "Serial number to use for the device");
+DEFINE_bool(use_random_serial, false,
+            "Whether to use random serial for the device.");
 DEFINE_string(assembly_dir,
-              cvd::StringFromEnv("HOME", ".") + "/cuttlefish_assembly",
+              cuttlefish::StringFromEnv("HOME", ".") + "/cuttlefish_assembly",
               "A directory to put generated files common between instances");
 DEFINE_string(instance_dir,
-              cvd::StringFromEnv("HOME", ".") + "/cuttlefish_runtime",
+              cuttlefish::StringFromEnv("HOME", ".") + "/cuttlefish_runtime",
               "A directory to put all instance specific files");
 DEFINE_string(
-    vm_manager, vm_manager::CrosvmManager::name(),
+    vm_manager, CrosvmManager::name(),
     "What virtual machine manager to use, one of {qemu_cli, crosvm}");
 DEFINE_string(
-    gpu_mode, vsoc::kGpuModeGuestSwiftshader,
+    gpu_mode, cuttlefish::kGpuModeGuestSwiftshader,
     "What gpu configuration to use, one of {guest_swiftshader, drm_virgl}");
-
-DEFINE_string(system_image_dir, vsoc::DefaultGuestImagePath(""),
-              "Location of the system partition images.");
-DEFINE_string(super_image, "", "Location of the super partition image.");
-DEFINE_string(misc_image, "",
-              "Location of the misc partition image. If the image does not "
-              "exist, a blank new misc partition image is created.");
-DEFINE_string(boot_env_image, "",
-              "Location of the boot environment image. If the image does not "
-              "exist, a default boot environment image is created.");
 
 DEFINE_bool(deprecated_boot_completed, false, "Log boot completed message to"
             " host kernel. This is only used during transition of our clients."
@@ -118,6 +99,9 @@ DEFINE_bool(start_vnc_server, false, "Whether to start the vnc server process. "
                                      "The VNC server runs at port 6443 + i for "
                                      "the vsoc-i user or CUTTLEFISH_INSTANCE=i, "
                                      "starting from 1.");
+DEFINE_bool(use_allocd, false,
+            "Acquire static resources from the resource allocator daemon.");
+
 /**
  *
  * crosvm sandbox feature requires /var/empty and seccomp directory
@@ -140,27 +124,27 @@ DEFINE_bool(enable_sandbox,
             "Enable crosvm sandbox. Use this when you are sure about what you are doing.");
 
 static const std::string kSeccompDir =
-    std::string("usr/share/cuttlefish/") + cvd::HostArch() + "-linux-gnu/seccomp";
+    std::string("usr/share/cuttlefish/") + cuttlefish::HostArch() + "-linux-gnu/seccomp";
 DEFINE_string(seccomp_policy_dir,
-              vsoc::DefaultHostArtifactsPath(kSeccompDir),
+              cuttlefish::DefaultHostArtifactsPath(kSeccompDir),
               "With sandbox'ed crosvm, overrieds the security comp policy directory");
 
 DEFINE_bool(start_webrtc, false, "Whether to start the webrtc process.");
 
 DEFINE_string(
         webrtc_assets_dir,
-        vsoc::DefaultHostArtifactsPath("usr/share/webrtc/assets"),
+        cuttlefish::DefaultHostArtifactsPath("usr/share/webrtc/assets"),
         "[Experimental] Path to WebRTC webpage assets.");
 
 DEFINE_string(
         webrtc_certs_dir,
-        vsoc::DefaultHostArtifactsPath("usr/share/webrtc/certs"),
+        cuttlefish::DefaultHostArtifactsPath("usr/share/webrtc/certs"),
         "[Experimental] Path to WebRTC certificates directory.");
 
 DEFINE_string(
         webrtc_public_ip,
         "127.0.0.1",
-        "[Experimental] Public IPv4 address of your server, a.b.c.d format");
+        "[Deprecated] Ignored, webrtc can figure out its IP address");
 
 DEFINE_bool(
         webrtc_enable_adb_websocket,
@@ -181,6 +165,16 @@ DEFINE_int32(
     "The port of the signaling server if started outside of this launch. If "
     "-start_webrtc_sig_server is given it will choose 8443+instance_num1-1 and "
     "this parameter is ignored.");
+
+// TODO (jemoreira): We need a much bigger range to reliably support several
+// simultaneous connections.
+DEFINE_string(tcp_port_range, "15550:15558",
+              "The minimum and maximum TCP port numbers to allocate for ICE "
+              "candidates as 'min:max'. To use any port just specify '0:0'");
+
+DEFINE_string(udp_port_range, "15550:15558",
+              "The minimum and maximum UDP port numbers to allocate for ICE "
+              "candidates as 'min:max'. To use any port just specify '0:0'");
 
 DEFINE_string(webrtc_sig_server_path, "/register_device",
               "The path section of the URL where the device should be "
@@ -207,7 +201,7 @@ DEFINE_bool(run_adb_connector, true,
             "Maintain adb connection by sending 'adb connect' commands to the "
             "server. Only relevant with -adb_mode=tunnel or vsock_tunnel");
 
-DEFINE_string(uuid, vsoc::ForCurrentInstance(vsoc::kDefaultUuidPrefix),
+DEFINE_string(uuid, cuttlefish::ForCurrentInstance(cuttlefish::kDefaultUuidPrefix),
               "UUID to use for the device. Random if not specified");
 DEFINE_bool(daemon, false,
             "Run cuttlefish in background, the launcher exits on boot "
@@ -222,16 +216,12 @@ DEFINE_string(qemu_binary,
               "/usr/bin/qemu-system-x86_64",
               "The qemu binary to use");
 DEFINE_string(crosvm_binary,
-              vsoc::DefaultHostArtifactsPath("bin/crosvm"),
+              cuttlefish::DefaultHostArtifactsPath("bin/crosvm"),
               "The Crosvm binary to use");
 DEFINE_string(tpm_binary, "",
               "The TPM simulator to use. Disabled if empty.");
 DEFINE_string(tpm_device, "", "A host TPM device to pass through commands to.");
 DEFINE_bool(restart_subprocesses, true, "Restart any crashed host process");
-DEFINE_string(logcat_mode, "", "How to send android's log messages from "
-                               "guest to host. One of [serial, vsock]");
-DEFINE_bool(enable_tombstone_receiver, true, "Enables the tombstone logger on "
-            "both the guest and the host");
 DEFINE_bool(use_bootloader, false, "Boots the device using a bootloader");
 DEFINE_string(bootloader, "", "Bootloader binary path");
 DEFINE_string(boot_slot, "", "Force booting into the given slot. If empty, "
@@ -247,6 +237,17 @@ DEFINE_bool(resume, true, "Resume using the disk from the last session, if "
 DEFINE_string(report_anonymous_usage_stats, "", "Report anonymous usage "
             "statistics for metrics collection and analysis.");
 DEFINE_string(ril_dns, "8.8.8.8", "DNS address of mobile network (RIL)");
+DEFINE_bool(kgdb, false, "Configure the virtual device for debugging the kernel "
+                         "with kgdb/kdb. The kernel must have been built with "
+                         "kgdb support.");
+
+DEFINE_bool(start_gnss_proxy, false, "Whether to start the gnss proxy.");
+
+// by default, this modem-simulator is disabled
+DEFINE_bool(enable_modem_simulator, false,
+            "Enable the modem simulator to process RILD AT commands");
+DEFINE_int32(modem_simulator_count, 1,
+             "Modem simulator count corresponding to maximum sim number");
 
 namespace {
 
@@ -254,57 +255,24 @@ const std::string kKernelDefaultPath = "kernel";
 const std::string kInitramfsImg = "initramfs.img";
 const std::string kRamdiskConcatExt = ".concat";
 
-bool ResolveInstanceFiles() {
-  if (FLAGS_system_image_dir.empty()) {
-    LOG(ERROR) << "--system_image_dir must be specified.";
-    return false;
-  }
-
-  // If user did not specify location of either of these files, expect them to
-  // be placed in --system_image_dir location.
-  std::string default_boot_image = FLAGS_system_image_dir + "/boot.img";
-  SetCommandLineOptionWithMode("boot_image", default_boot_image.c_str(),
-                               google::FlagSettingMode::SET_FLAGS_DEFAULT);
-  std::string default_cache_image = FLAGS_system_image_dir + "/cache.img";
-  SetCommandLineOptionWithMode("cache_image", default_cache_image.c_str(),
-                               google::FlagSettingMode::SET_FLAGS_DEFAULT);
-  std::string default_data_image = FLAGS_system_image_dir + "/userdata.img";
-  SetCommandLineOptionWithMode("data_image", default_data_image.c_str(),
-                               google::FlagSettingMode::SET_FLAGS_DEFAULT);
-  std::string default_metadata_image = FLAGS_system_image_dir + "/metadata.img";
-  SetCommandLineOptionWithMode("metadata_image", default_metadata_image.c_str(),
-                               google::FlagSettingMode::SET_FLAGS_DEFAULT);
-  std::string default_super_image = FLAGS_system_image_dir + "/super.img";
-  SetCommandLineOptionWithMode("super_image", default_super_image.c_str(),
-                               google::FlagSettingMode::SET_FLAGS_DEFAULT);
-  std::string default_misc_image = FLAGS_system_image_dir + "/misc.img";
-  SetCommandLineOptionWithMode("misc_image", default_misc_image.c_str(),
-                               google::FlagSettingMode::SET_FLAGS_DEFAULT);
-  std::string default_vendor_boot_image = FLAGS_system_image_dir
-                                        + "/vendor_boot.img";
-  SetCommandLineOptionWithMode("vendor_boot_image",
-                               default_vendor_boot_image.c_str(),
-                               google::FlagSettingMode::SET_FLAGS_DEFAULT);
-  std::string default_boot_env_image = FLAGS_system_image_dir + "/env.img";
-  SetCommandLineOptionWithMode("boot_env_image", default_boot_env_image.c_str(),
-                               google::FlagSettingMode::SET_FLAGS_DEFAULT);
-  std::string default_vbmeta_image = FLAGS_system_image_dir + "/vbmeta.img";
-  SetCommandLineOptionWithMode("vbmeta_image", default_vbmeta_image.c_str(),
-                               google::FlagSettingMode::SET_FLAGS_DEFAULT);
-  std::string default_vbmeta_system_image = FLAGS_system_image_dir
-                                          + "/vbmeta_system.img";
-  SetCommandLineOptionWithMode("vbmeta_system_image",
-                               default_vbmeta_system_image.c_str(),
-                               google::FlagSettingMode::SET_FLAGS_DEFAULT);
-
-  return true;
+std::pair<uint16_t, uint16_t> ParsePortRange(const std::string& flag) {
+  static const std::regex rgx("[0-9]+:[0-9]+");
+  CHECK(std::regex_match(flag, rgx))
+      << "Port range flag has invalid value: " << flag;
+  std::pair<uint16_t, uint16_t> port_range;
+  std::stringstream ss(flag);
+  char c;
+  ss >> port_range.first;
+  ss.read(&c, 1);
+  ss >> port_range.second;
+  return port_range;
 }
 
 std::string GetCuttlefishEnvPath() {
-  return cvd::StringFromEnv("HOME", ".") + "/.cuttlefish.sh";
+  return cuttlefish::StringFromEnv("HOME", ".") + "/.cuttlefish.sh";
 }
 
-std::string GetLegacyConfigFilePath(const vsoc::CuttlefishConfig& config) {
+std::string GetLegacyConfigFilePath(const cuttlefish::CuttlefishConfig& config) {
   return config.ForDefaultInstance().PerInstancePath("cuttlefish_config.json");
 }
 
@@ -321,24 +289,21 @@ std::string StrForInstance(const std::string& prefix, int num) {
 
 // Initializes the config object and saves it to file. It doesn't return it, all
 // further uses of the config should happen through the singleton
-vsoc::CuttlefishConfig InitializeCuttlefishConfiguration(
-    const cvd::BootImageUnpacker& boot_image_unpacker,
-    const cvd::FetcherConfig& fetcher_config) {
+cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
+    const cuttlefish::BootImageUnpacker& boot_image_unpacker,
+    const cuttlefish::FetcherConfig& fetcher_config) {
   // At most one streamer can be started.
   CHECK(NumStreamers() <= 1);
 
-  vsoc::CuttlefishConfig tmp_config_obj;
+  cuttlefish::CuttlefishConfig tmp_config_obj;
   tmp_config_obj.set_assembly_dir(FLAGS_assembly_dir);
-  if (!vm_manager::VmManager::IsValidName(FLAGS_vm_manager)) {
-    LOG(FATAL) << "Invalid vm_manager: " << FLAGS_vm_manager;
-  }
-  if (!vm_manager::VmManager::IsValidName(FLAGS_vm_manager)) {
+  if (!VmManager::IsValidName(FLAGS_vm_manager)) {
     LOG(FATAL) << "Invalid vm_manager: " << FLAGS_vm_manager;
   }
   tmp_config_obj.set_vm_manager(FLAGS_vm_manager);
   tmp_config_obj.set_gpu_mode(FLAGS_gpu_mode);
-  if (vm_manager::VmManager::ConfigureGpuMode(tmp_config_obj.vm_manager(),
-                                              tmp_config_obj.gpu_mode()).empty()) {
+  if (VmManager::ConfigureGpuMode(tmp_config_obj.vm_manager(),
+                                  tmp_config_obj.gpu_mode()).empty()) {
     LOG(FATAL) << "Invalid gpu_mode=" << FLAGS_gpu_mode <<
                " does not work with vm_manager=" << FLAGS_vm_manager;
   }
@@ -378,11 +343,68 @@ vsoc::CuttlefishConfig InitializeCuttlefishConfiguration(
   }
 
   tmp_config_obj.set_boot_image_kernel_cmdline(boot_image_unpacker.kernel_cmdline());
-  tmp_config_obj.set_loop_max_part(FLAGS_loop_max_part);
   tmp_config_obj.set_guest_enforce_security(FLAGS_guest_enforce_security);
   tmp_config_obj.set_guest_audit_security(FLAGS_guest_audit_security);
   tmp_config_obj.set_guest_force_normal_boot(FLAGS_guest_force_normal_boot);
   tmp_config_obj.set_extra_kernel_cmdline(FLAGS_extra_kernel_cmdline);
+
+  std::string vm_manager_cmdline = "";
+  if (FLAGS_vm_manager == QemuManager::name() || FLAGS_use_bootloader) {
+    // crosvm sets up the console= earlycon= pci= reboot= panic= flags for us if
+    // booting straight to the kernel, but QEMU and the bootlaoder via crosvm does not.
+    vm_manager_cmdline += "console=hvc0 pci=noacpi reboot=k panic=-1";
+    if (cuttlefish::HostArch() == "aarch64") {
+      if (FLAGS_vm_manager == QemuManager::name()) {
+        // To update the pl011 address:
+        // $ qemu-system-aarch64 -machine virt -cpu cortex-a57 -machine dumpdtb=virt.dtb
+        // $ dtc -O dts -o virt.dts -I dtb virt.dtb
+        // In the virt.dts file, look for a uart node
+        vm_manager_cmdline += " earlycon=pl011,mmio32,0x9000000";
+      } else {
+        // Crosvm ARM only supports earlycon uart over mmio.
+        vm_manager_cmdline += " earlycon=uart8250,mmio,0x3f8";
+      }
+    } else {
+      // To update the uart8250 address:
+      // $ qemu-system-x86_64 -kernel bzImage -serial stdio | grep ttyS0
+      // Only 'io' mode works; mmio and mmio32 do not
+      vm_manager_cmdline += " earlycon=uart8250,io,0x3f8";
+
+      if (FLAGS_vm_manager == QemuManager::name()) {
+        // crosvm sets up the ramoops.xx= flags for us, but QEMU does not.
+        // See external/crosvm/x86_64/src/lib.rs
+        // this feature is not supported on aarch64
+        vm_manager_cmdline += " ramoops.mem_address=0x100000000";
+        vm_manager_cmdline += " ramoops.mem_size=0x200000";
+        vm_manager_cmdline += " ramoops.console_size=0x80000";
+        vm_manager_cmdline += " ramoops.record_size=0x80000";
+        vm_manager_cmdline += " ramoops.dump_oops=1";
+      }
+    }
+  }
+
+  std::string console_dev;
+  auto can_use_virtio_console = !FLAGS_kgdb && !FLAGS_use_bootloader;
+  if (can_use_virtio_console) {
+    // If kgdb and the bootloader are disabled, the Android serial console spawns on a
+    // virtio-console port. If the bootloader is enabled, virtio console can't be used
+    // since uboot doesn't support it.
+    console_dev = "hvc1";
+  } else {
+    // crosvm ARM does not support ttyAMA. ttyAMA is a part of ARM arch.
+    if (cuttlefish::HostArch() == "aarch64" && FLAGS_vm_manager != CrosvmManager::name()) {
+      console_dev = "ttyAMA0";
+    } else {
+      console_dev = "ttyS0";
+    }
+  }
+
+  vm_manager_cmdline += " androidboot.console=" + console_dev;
+  if (FLAGS_kgdb) {
+    vm_manager_cmdline += " kgdboc_earlycon kgdbcon kgdboc=" + console_dev;
+  }
+
+  tmp_config_obj.set_vm_manager_kernel_cmdline(vm_manager_cmdline);
 
   tmp_config_obj.set_ramdisk_image_path(ramdisk_path);
   tmp_config_obj.set_vendor_ramdisk_image_path(vendor_ramdisk_path);
@@ -404,69 +426,53 @@ vsoc::CuttlefishConfig InitializeCuttlefishConfiguration(
   }
 
   tmp_config_obj.set_deprecated_boot_completed(FLAGS_deprecated_boot_completed);
-  tmp_config_obj.set_logcat_receiver_binary(
-      vsoc::DefaultHostArtifactsPath("bin/logcat_receiver"));
-  tmp_config_obj.set_config_server_binary(
-      vsoc::DefaultHostArtifactsPath("bin/config_server"));
 
   tmp_config_obj.set_qemu_binary(FLAGS_qemu_binary);
   tmp_config_obj.set_crosvm_binary(FLAGS_crosvm_binary);
   tmp_config_obj.set_tpm_binary(FLAGS_tpm_binary);
   tmp_config_obj.set_tpm_device(FLAGS_tpm_device);
-  tmp_config_obj.set_console_forwarder_binary(
-      vsoc::DefaultHostArtifactsPath("bin/console_forwarder"));
-  tmp_config_obj.set_kernel_log_monitor_binary(
-      vsoc::DefaultHostArtifactsPath("bin/kernel_log_monitor"));
 
   tmp_config_obj.set_enable_vnc_server(FLAGS_start_vnc_server);
-  tmp_config_obj.set_vnc_server_binary(
-      vsoc::DefaultHostArtifactsPath("bin/vnc_server"));
 
   tmp_config_obj.set_enable_sandbox(FLAGS_enable_sandbox);
 
   tmp_config_obj.set_seccomp_policy_dir(FLAGS_seccomp_policy_dir);
 
   tmp_config_obj.set_enable_webrtc(FLAGS_start_webrtc);
-  tmp_config_obj.set_webrtc_binary(
-      vsoc::DefaultHostArtifactsPath("bin/webRTC"));
   tmp_config_obj.set_webrtc_assets_dir(FLAGS_webrtc_assets_dir);
-  tmp_config_obj.set_webrtc_public_ip(FLAGS_webrtc_public_ip);
   tmp_config_obj.set_webrtc_certs_dir(FLAGS_webrtc_certs_dir);
-  tmp_config_obj.set_sig_server_binary(
-      vsoc::DefaultHostArtifactsPath("bin/webrtc_sig_server"));
   // Note: This will be overridden if the sig server is started by us
   tmp_config_obj.set_sig_server_port(FLAGS_webrtc_sig_server_port);
   tmp_config_obj.set_sig_server_address(FLAGS_webrtc_sig_server_addr);
   tmp_config_obj.set_sig_server_path(FLAGS_webrtc_sig_server_path);
   tmp_config_obj.set_sig_server_strict(FLAGS_verify_sig_server_certificate);
 
+  auto tcp_range  = ParsePortRange(FLAGS_tcp_port_range);
+  tmp_config_obj.set_webrtc_tcp_port_range(tcp_range);
+  auto udp_range  = ParsePortRange(FLAGS_udp_port_range);
+  tmp_config_obj.set_webrtc_udp_port_range(udp_range);
+
+  tmp_config_obj.set_enable_modem_simulator(FLAGS_enable_modem_simulator);
+  tmp_config_obj.set_modem_simulator_instance_number(
+      FLAGS_modem_simulator_count);
+
   tmp_config_obj.set_webrtc_enable_adb_websocket(
           FLAGS_webrtc_enable_adb_websocket);
 
   tmp_config_obj.set_restart_subprocesses(FLAGS_restart_subprocesses);
   tmp_config_obj.set_run_adb_connector(FLAGS_run_adb_connector);
-  tmp_config_obj.set_adb_connector_binary(
-      vsoc::DefaultHostArtifactsPath("bin/adb_connector"));
-  tmp_config_obj.set_socket_vsock_proxy_binary(
-      vsoc::DefaultHostArtifactsPath("bin/socket_vsock_proxy"));
   tmp_config_obj.set_run_as_daemon(FLAGS_daemon);
 
   tmp_config_obj.set_data_policy(FLAGS_data_policy);
   tmp_config_obj.set_blank_data_image_mb(FLAGS_blank_data_image_mb);
   tmp_config_obj.set_blank_data_image_fmt(FLAGS_blank_data_image_fmt);
 
-  tmp_config_obj.set_logcat_mode(FLAGS_logcat_mode);
-
-  tmp_config_obj.set_enable_tombstone_receiver(FLAGS_enable_tombstone_receiver);
-  tmp_config_obj.set_tombstone_receiver_binary(
-      vsoc::DefaultHostArtifactsPath("bin/tombstone_receiver"));
+  tmp_config_obj.set_enable_gnss_grpc_proxy(FLAGS_start_gnss_proxy);
 
   tmp_config_obj.set_use_bootloader(FLAGS_use_bootloader);
   tmp_config_obj.set_bootloader(FLAGS_bootloader);
 
   tmp_config_obj.set_enable_metrics(FLAGS_report_anonymous_usage_stats);
-  tmp_config_obj.set_metrics_binary(
-      vsoc::DefaultHostArtifactsPath("bin/metrics"));
 
   if (!FLAGS_boot_slot.empty()) {
       tmp_config_obj.set_boot_slot(FLAGS_boot_slot);
@@ -476,24 +482,41 @@ vsoc::CuttlefishConfig InitializeCuttlefishConfiguration(
 
   tmp_config_obj.set_ril_dns(FLAGS_ril_dns);
 
+  tmp_config_obj.set_kgdb(FLAGS_kgdb);
+
   std::vector<int> instance_nums;
   for (int i = 0; i < FLAGS_num_instances; i++) {
-    instance_nums.push_back(vsoc::GetInstance() + i);
+    instance_nums.push_back(cuttlefish::GetInstance() + i);
   }
 
   bool is_first_instance = true;
   for (const auto& num : instance_nums) {
+    auto iface_opt = AcquireIfaces(num);
+    if (!iface_opt.has_value()) {
+      LOG(FATAL) << "Failed to acquire network interfaces";
+    }
+
+    auto iface_config = iface_opt.value();
     auto instance = tmp_config_obj.ForInstance(num);
-    auto const_instance = const_cast<const vsoc::CuttlefishConfig&>(tmp_config_obj)
-        .ForInstance(num);
+    auto const_instance =
+        const_cast<const cuttlefish::CuttlefishConfig&>(tmp_config_obj)
+            .ForInstance(num);
     // Set this first so that calls to PerInstancePath below are correct
     instance.set_instance_dir(FLAGS_instance_dir + "." + std::to_string(num));
-    instance.set_serial_number(FLAGS_serial_number + std::to_string(num));
+    instance.set_use_allocd(FLAGS_use_allocd);
+    if (FLAGS_use_random_serial) {
+      instance.set_serial_number(
+          RandomSerialNumber("CFCVD" + std::to_string(num)));
+    } else {
+      instance.set_serial_number(FLAGS_serial_number + std::to_string(num));
+    }
+
+    instance.set_session_id(iface_config.mobile_tap.session_id);
 
     instance.set_mobile_bridge_name(StrForInstance("cvd-mbr-", num));
-    instance.set_mobile_tap_name(StrForInstance("cvd-mtap-", num));
+    instance.set_mobile_tap_name(iface_config.mobile_tap.name);
 
-    instance.set_wifi_tap_name(StrForInstance("cvd-wtap-", num));
+    instance.set_wifi_tap_name(iface_config.wireless_tap.name);
 
     instance.set_vsock_guest_cid(3 + num - 1);
 
@@ -504,19 +527,20 @@ vsoc::CuttlefishConfig InitializeCuttlefishConfiguration(
     instance.set_adb_ip_and_port("127.0.0.1:" + std::to_string(6520 + num - 1));
     instance.set_tpm_port(2321 + (num * 2) - 2);
     instance.set_tombstone_receiver_port(6600 + num - 1);
-    instance.set_logcat_port(6700 + num - 1);
     instance.set_config_server_port(6800 + num - 1);
 
-    if (FLAGS_gpu_mode != vsoc::kGpuModeDrmVirgl &&
-        FLAGS_gpu_mode != vsoc::kGpuModeGfxStream) {
+    if (FLAGS_gpu_mode != cuttlefish::kGpuModeDrmVirgl &&
+        FLAGS_gpu_mode != cuttlefish::kGpuModeGfxStream) {
       instance.set_frames_server_port(6900 + num - 1);
     }
 
-    if (FLAGS_vm_manager == vm_manager::QemuManager::name()) {
+    if (FLAGS_vm_manager == QemuManager::name()) {
       instance.set_keyboard_server_port(7000 + num - 1);
       instance.set_touch_server_port(7100 + num - 1);
     }
     instance.set_keymaster_vsock_port(7200 + num - 1);
+    instance.set_gatekeeper_vsock_port(7300 + num - 1);
+    instance.set_gnss_grpc_proxy_server_port(7400 + num -1);
 
     instance.set_device_title(FLAGS_device_title);
 
@@ -556,14 +580,22 @@ vsoc::CuttlefishConfig InitializeCuttlefishConfiguration(
       instance.set_start_webrtc_signaling_server(false);
     }
     is_first_instance = false;
+    std::stringstream ss;
+    auto base_port = 7200 + num - 2;
+    for (auto index = 0; index < FLAGS_modem_simulator_count; ++index) {
+      ss << base_port + 1 << ",";
+    }
+    std::string modem_simulator_ports = ss.str();
+    modem_simulator_ports.pop_back();
+    instance.set_modem_simulator_ports(modem_simulator_ports);
   }
 
   return tmp_config_obj;
 }
 
-bool SaveConfig(const vsoc::CuttlefishConfig& tmp_config_obj) {
+bool SaveConfig(const cuttlefish::CuttlefishConfig& tmp_config_obj) {
   auto config_file = GetConfigFilePath(tmp_config_obj);
-  auto config_link = vsoc::GetGlobalConfigFileLink();
+  auto config_link = cuttlefish::GetGlobalConfigFileLink();
   // Save the config object before starting any host process
   if (!tmp_config_obj.SaveToFile(config_file)) {
     LOG(ERROR) << "Unable to save config object";
@@ -574,7 +606,7 @@ bool SaveConfig(const vsoc::CuttlefishConfig& tmp_config_obj) {
     LOG(ERROR) << "Unable to save legacy config object";
     return false;
   }
-  setenv(vsoc::kCuttlefishConfigEnvVarName, config_file.c_str(), true);
+  setenv(cuttlefish::kCuttlefishConfigEnvVarName, config_file.c_str(), true);
   if (symlink(config_file.c_str(), config_link.c_str()) != 0) {
     LOG(ERROR) << "Failed to create symlink to config file at " << config_link
                << ": " << strerror(errno);
@@ -585,33 +617,29 @@ bool SaveConfig(const vsoc::CuttlefishConfig& tmp_config_obj) {
 }
 
 void SetDefaultFlagsForQemu() {
-  // TODO(b/144119457) Use the serial port.
-  SetCommandLineOptionWithMode("logcat_mode", cvd::kLogcatVsockMode,
-                               google::FlagSettingMode::SET_FLAGS_DEFAULT);
+  // for now, we don't set non-default options for QEMU
 }
 
 void SetDefaultFlagsForCrosvm() {
-  SetCommandLineOptionWithMode("logcat_mode", cvd::kLogcatVsockMode,
-                               google::FlagSettingMode::SET_FLAGS_DEFAULT);
   // for now, we support only x86_64 by default
   bool default_enable_sandbox = false;
   std::set<const std::string> supported_archs{std::string("x86_64")};
-  if (supported_archs.find(cvd::HostArch()) != supported_archs.end()) {
+  if (supported_archs.find(cuttlefish::HostArch()) != supported_archs.end()) {
     default_enable_sandbox =
         [](const std::string& var_empty) -> bool {
-          if (cvd::DirectoryExists(var_empty)) {
-            return cvd::IsDirectoryEmpty(var_empty);
+          if (cuttlefish::DirectoryExists(var_empty)) {
+            return cuttlefish::IsDirectoryEmpty(var_empty);
           }
-          if (cvd::FileExists(var_empty)) {
+          if (cuttlefish::FileExists(var_empty)) {
             return false;
           }
           return (::mkdir(var_empty.c_str(), 0755) == 0);
-        }(vsoc::kCrosvmVarEmptyDir);
+        }(cuttlefish::kCrosvmVarEmptyDir);
   }
 
   // Sepolicy rules need to be updated to support gpu mode. Temporarily disable
   // auto-enabling sandbox when gpu is enabled (b/152323505).
-  if (FLAGS_gpu_mode != vsoc::kGpuModeGuestSwiftshader) {
+  if (FLAGS_gpu_mode != cuttlefish::kGpuModeGuestSwiftshader) {
     default_enable_sandbox = false;
   }
 
@@ -622,7 +650,7 @@ void SetDefaultFlagsForCrosvm() {
   // Crosvm requires a specific setting for kernel decompression; it must be
   // on for aarch64 and off for x86, no other mode is supported.
   bool decompress_kernel = false;
-  if (cvd::HostArch() == "aarch64") {
+  if (cuttlefish::HostArch() == "aarch64") {
     decompress_kernel = true;
   }
   SetCommandLineOptionWithMode("decompress_kernel",
@@ -633,9 +661,9 @@ void SetDefaultFlagsForCrosvm() {
 bool ParseCommandLineFlags(int* argc, char*** argv) {
   google::ParseCommandLineNonHelpFlags(argc, argv, true);
   bool invalid_manager = false;
-  if (FLAGS_vm_manager == vm_manager::QemuManager::name()) {
+  if (FLAGS_vm_manager == QemuManager::name()) {
     SetDefaultFlagsForQemu();
-  } else if (FLAGS_vm_manager == vm_manager::CrosvmManager::name()) {
+  } else if (FLAGS_vm_manager == CrosvmManager::name()) {
     SetDefaultFlagsForCrosvm();
   } else {
     std::cerr << "Unknown Virtual Machine Manager: " << FLAGS_vm_manager
@@ -650,7 +678,7 @@ bool ParseCommandLineFlags(int* argc, char*** argv) {
                                  google::FlagSettingMode::SET_FLAGS_DEFAULT);
   }
   // Various temporary workarounds for aarch64
-  if (cvd::HostArch() == "aarch64") {
+  if (cuttlefish::HostArch() == "aarch64") {
     SetCommandLineOptionWithMode("tpm_binary",
                                  "",
                                  google::FlagSettingMode::SET_FLAGS_DEFAULT);
@@ -665,7 +693,7 @@ bool ParseCommandLineFlags(int* argc, char*** argv) {
     return false;
   }
   // Set the env variable to empty (in case the caller passed a value for it).
-  unsetenv(vsoc::kCuttlefishConfigEnvVarName);
+  unsetenv(cuttlefish::kCuttlefishConfigEnvVarName);
 
   return ResolveInstanceFiles();
 }
@@ -679,7 +707,7 @@ std::string cpp_basename(const std::string& str) {
 
 bool CleanPriorFiles(const std::string& path, const std::set<std::string>& preserving) {
   if (preserving.count(cpp_basename(path))) {
-    LOG(INFO) << "Preserving: " << path;
+    LOG(DEBUG) << "Preserving: " << path;
     return true;
   }
   struct stat statbuf;
@@ -693,7 +721,7 @@ bool CleanPriorFiles(const std::string& path, const std::set<std::string>& prese
     }
   }
   if ((statbuf.st_mode & S_IFMT) != S_IFDIR) {
-    LOG(INFO) << "Deleting: " << path;
+    LOG(DEBUG) << "Deleting: " << path;
     if (unlink(path.c_str()) < 0) {
       int error_num = errno;
       LOG(ERROR) << "Could not unlink \"" << path << "\", error was " << strerror(error_num);
@@ -741,7 +769,7 @@ bool CleanPriorFiles(const std::vector<std::string>& paths, const std::set<std::
     bool is_directory = (statbuf.st_mode & S_IFMT) == S_IFDIR;
     prior_files += (is_directory ? (path + "/*") : path) + " ";
   }
-  LOG(INFO) << "Assuming prior files of " << prior_files;
+  LOG(DEBUG) << "Assuming prior files of " << prior_files;
   std::string lsof_cmd = "lsof -t " + prior_files + " >/dev/null 2>&1";
   int rval = std::system(lsof_cmd.c_str());
   // lsof returns 0 if any of the files are open
@@ -758,14 +786,14 @@ bool CleanPriorFiles(const std::vector<std::string>& paths, const std::set<std::
   return true;
 }
 
-bool CleanPriorFiles(const vsoc::CuttlefishConfig& config, const std::set<std::string>& preserving) {
+bool CleanPriorFiles(const cuttlefish::CuttlefishConfig& config, const std::set<std::string>& preserving) {
   std::vector<std::string> paths = {
     // Everything in the assembly directory
     FLAGS_assembly_dir,
     // The environment file
     GetCuttlefishEnvPath(),
     // The global link to the config file
-    vsoc::GetGlobalConfigFileLink(),
+    cuttlefish::GetGlobalConfigFileLink(),
   };
   for (const auto& instance : config.Instances()) {
     paths.push_back(instance.instance_dir());
@@ -774,23 +802,9 @@ bool CleanPriorFiles(const vsoc::CuttlefishConfig& config, const std::set<std::s
   return CleanPriorFiles(paths, preserving);
 }
 
-bool DecompressKernel(const std::string& src, const std::string& dst) {
-  cvd::Command decomp_cmd(vsoc::DefaultHostArtifactsPath("bin/extract-vmlinux"));
-  decomp_cmd.AddParameter(src);
-  auto output_file = cvd::SharedFD::Creat(dst.c_str(), 0666);
-  if (!output_file->IsOpen()) {
-    LOG(ERROR) << "Unable to create decompressed image file: "
-               << output_file->StrError();
-    return false;
-  }
-  decomp_cmd.RedirectStdIO(cvd::Subprocess::StdIOChannel::kStdOut, output_file);
-  auto decomp_proc = decomp_cmd.Start();
-  return decomp_proc.Started() && decomp_proc.Wait() == 0;
-}
-
-void ValidateAdbModeFlag(const vsoc::CuttlefishConfig& config) {
+void ValidateAdbModeFlag(const cuttlefish::CuttlefishConfig& config) {
   auto adb_modes = config.adb_mode();
-  adb_modes.erase(vsoc::AdbMode::Unknown);
+  adb_modes.erase(cuttlefish::AdbMode::Unknown);
   if (adb_modes.size() < 1) {
     LOG(INFO) << "ADB not enabled";
   }
@@ -798,168 +812,40 @@ void ValidateAdbModeFlag(const vsoc::CuttlefishConfig& config) {
 
 } // namespace
 
-namespace {
+#ifndef O_TMPFILE
+# define O_TMPFILE (020000000 | O_DIRECTORY)
+#endif
 
-std::vector<ImagePartition> disk_config() {
-  std::vector<ImagePartition> partitions;
-
-  // Note that if the positions of env or misc change, the environment for
-  // u-boot must be updated as well (see boot_config.cc and
-  // configs/cf-x86_defconfig in external/u-boot).
-  partitions.push_back(ImagePartition {
-    .label = "env",
-    .image_file_path = FLAGS_boot_env_image,
-  });
-  partitions.push_back(ImagePartition {
-    .label = "misc",
-    .image_file_path = FLAGS_misc_image,
-  });
-  partitions.push_back(ImagePartition {
-    .label = "boot_a",
-    .image_file_path = FLAGS_boot_image,
-  });
-  partitions.push_back(ImagePartition {
-    .label = "boot_b",
-    .image_file_path = FLAGS_boot_image,
-  });
-  partitions.push_back(ImagePartition {
-    .label = "vendor_boot_a",
-    .image_file_path = FLAGS_vendor_boot_image,
-  });
-  partitions.push_back(ImagePartition {
-    .label = "vendor_boot_b",
-    .image_file_path = FLAGS_vendor_boot_image,
-  });
-  partitions.push_back(ImagePartition {
-    .label = "vbmeta_a",
-    .image_file_path = FLAGS_vbmeta_image,
-  });
-  partitions.push_back(ImagePartition {
-    .label = "vbmeta_b",
-    .image_file_path = FLAGS_vbmeta_image,
-  });
-  partitions.push_back(ImagePartition {
-    .label = "vbmeta_system_a",
-    .image_file_path = FLAGS_vbmeta_system_image,
-  });
-  partitions.push_back(ImagePartition {
-    .label = "vbmeta_system_b",
-    .image_file_path = FLAGS_vbmeta_system_image,
-  });
-  partitions.push_back(ImagePartition {
-    .label = "super",
-    .image_file_path = FLAGS_super_image,
-  });
-  partitions.push_back(ImagePartition {
-    .label = "userdata",
-    .image_file_path = FLAGS_data_image,
-  });
-  partitions.push_back(ImagePartition {
-    .label = "cache",
-    .image_file_path = FLAGS_cache_image,
-  });
-  partitions.push_back(ImagePartition {
-    .label = "metadata",
-    .image_file_path = FLAGS_metadata_image,
-  });
-  return partitions;
-}
-
-std::chrono::system_clock::time_point LastUpdatedInputDisk() {
-  std::chrono::system_clock::time_point ret;
-  for (auto& partition : disk_config()) {
-    auto partition_mod_time = cvd::FileModificationTime(partition.image_file_path);
-    if (partition_mod_time > ret) {
-      ret = partition_mod_time;
-    }
-  }
-  return ret;
-}
-
-bool ShouldCreateCompositeDisk(const vsoc::CuttlefishConfig& config) {
-  if (!cvd::FileExists(config.composite_disk_path())) {
-    return true;
-  }
-  auto composite_age = cvd::FileModificationTime(config.composite_disk_path());
-  return composite_age < LastUpdatedInputDisk();
-}
-
-bool ConcatRamdisks(const std::string& new_ramdisk_path, const std::string& ramdisk_a_path,
-  const std::string& ramdisk_b_path) {
-  // clear out file of any pre-existing content
-  std::ofstream new_ramdisk(new_ramdisk_path, std::ios_base::binary | std::ios_base::trunc);
-  std::ifstream ramdisk_a(ramdisk_a_path, std::ios_base::binary);
-  std::ifstream ramdisk_b(ramdisk_b_path, std::ios_base::binary);
-
-  if(!new_ramdisk.is_open() || !ramdisk_a.is_open() || !ramdisk_b.is_open()) {
-    return false;
-  }
-
-  new_ramdisk << ramdisk_a.rdbuf() << ramdisk_b.rdbuf();
-  return true;
-}
-
-off_t AvailableSpaceAtPath(const std::string& path) {
-  struct statvfs vfs;
-  if (statvfs(path.c_str(), &vfs) != 0) {
-    int error_num = errno;
-    LOG(ERROR) << "Could not find space available at " << path << ", error was "
-               << strerror(error_num);
-    return 0;
-  }
-  return vfs.f_bsize * vfs.f_bavail; // block size * free blocks for unprivileged users
-}
-
-bool CreateCompositeDisk(const vsoc::CuttlefishConfig& config) {
-  if (!cvd::SharedFD::Open(config.composite_disk_path().c_str(), O_WRONLY | O_CREAT, 0644)->IsOpen()) {
-    LOG(ERROR) << "Could not ensure " << config.composite_disk_path() << " exists";
-    return false;
-  }
-  if (FLAGS_vm_manager == vm_manager::CrosvmManager::name()) {
-    // Check if filling in the sparse image would run out of disk space.
-    auto existing_sizes = cvd::SparseFileSizes(FLAGS_data_image);
-    if (existing_sizes.sparse_size == 0 && existing_sizes.disk_size == 0) {
-      LOG(ERROR) << "Unable to determine size of \"" << FLAGS_data_image
-                 << "\". Does this file exist?";
-    }
-    auto available_space = AvailableSpaceAtPath(FLAGS_data_image);
-    if (available_space < existing_sizes.sparse_size - existing_sizes.disk_size) {
-      // TODO(schuffelen): Duplicate this check in run_cvd when it can run on a separate machine
-      LOG(ERROR) << "Not enough space remaining in fs containing " << FLAGS_data_image;
-      LOG(ERROR) << "Wanted " << (existing_sizes.sparse_size - existing_sizes.disk_size);
-      LOG(ERROR) << "Got " << available_space;
-      return false;
-    } else {
-      LOG(INFO) << "Available space: " << available_space;
-      LOG(INFO) << "Sparse size of \"" << FLAGS_data_image << "\": "
-                << existing_sizes.sparse_size;
-      LOG(INFO) << "Disk size of \"" << FLAGS_data_image << "\": "
-                << existing_sizes.disk_size;
-    }
-    std::string header_path = config.AssemblyPath("gpt_header.img");
-    std::string footer_path = config.AssemblyPath("gpt_footer.img");
-    CreateCompositeDisk(disk_config(), header_path, footer_path,
-                        config.composite_disk_path());
-  } else {
-    // If this doesn't fit into the disk, it will fail while aggregating. The
-    // aggregator doesn't maintain any sparse attributes.
-    AggregateImage(disk_config(), config.composite_disk_path());
-  }
-  return true;
-}
-
-} // namespace
-
-const vsoc::CuttlefishConfig* InitFilesystemAndCreateConfig(
-    int* argc, char*** argv, cvd::FetcherConfig fetcher_config) {
+const cuttlefish::CuttlefishConfig* InitFilesystemAndCreateConfig(
+    int* argc, char*** argv, cuttlefish::FetcherConfig fetcher_config) {
   if (!ParseCommandLineFlags(argc, argv)) {
     LOG(ERROR) << "Failed to parse command arguments";
     exit(AssemblerExitCodes::kArgumentParsingError);
   }
 
-  auto boot_img_unpacker =
-    cvd::BootImageUnpacker::FromImages(FLAGS_boot_image,
-                                      FLAGS_vendor_boot_image);
+  std::string assembly_dir_parent = cuttlefish::AbsolutePath(FLAGS_assembly_dir);
+  while (assembly_dir_parent[assembly_dir_parent.size() - 1] == '/') {
+    assembly_dir_parent =
+        assembly_dir_parent.substr(0, FLAGS_assembly_dir.rfind('/'));
+  }
+  assembly_dir_parent =
+      assembly_dir_parent.substr(0, FLAGS_assembly_dir.rfind('/'));
+  auto log =
+      cuttlefish::SharedFD::Open(
+          assembly_dir_parent,
+          O_WRONLY | O_TMPFILE,
+          S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
+  if (!log->IsOpen()) {
+    LOG(ERROR) << "Could not open O_TMPFILE precursor to assemble_cvd.log: "
+               << log->StrError();
+  } else {
+    android::base::SetLogger(cuttlefish::TeeLogger({
+      {cuttlefish::ConsoleSeverity(), cuttlefish::SharedFD::Dup(2)},
+      {cuttlefish::LogFileSeverity(), log},
+    }));
+  }
+
+  auto boot_img_unpacker = CreateBootImageUnpacker();
   {
     // The config object is created here, but only exists in memory until the
     // SaveConfig line below. Don't launch cuttlefish subprocesses between these
@@ -968,9 +854,9 @@ const vsoc::CuttlefishConfig* InitFilesystemAndCreateConfig(
     auto config = InitializeCuttlefishConfiguration(*boot_img_unpacker, fetcher_config);
     std::set<std::string> preserving;
     if (FLAGS_resume && ShouldCreateCompositeDisk(config)) {
-      LOG(WARNING) << "Requested resuming a previous session (the default behavior) "
-                   << "but the base images have changed under the overlay, making the "
-                   << "overlay incompatible. Wiping the overlay files.";
+      LOG(INFO) << "Requested resuming a previous session (the default behavior) "
+                << "but the base images have changed under the overlay, making the "
+                << "overlay incompatible. Wiping the overlay files.";
     } else if (FLAGS_resume && !ShouldCreateCompositeDisk(config)) {
       preserving.insert("overlay.img");
       preserving.insert("gpt_header.img");
@@ -980,14 +866,22 @@ const vsoc::CuttlefishConfig* InitFilesystemAndCreateConfig(
       preserving.insert("access-kregistry");
       preserving.insert("disk_hole");
       preserving.insert("NVChip");
+      preserving.insert("modem_nvram.json");
+      std::stringstream ss;
+      for (int i = 0; i < FLAGS_modem_simulator_count; i++) {
+        ss.clear();
+        ss << "iccprofile_for_sim" << i << ".xml";
+        preserving.insert(ss.str());
+        ss.str("");
+      }
     }
     if (!CleanPriorFiles(config, preserving)) {
       LOG(ERROR) << "Failed to clean prior files";
       exit(AssemblerExitCodes::kPrioFilesCleanupError);
     }
     // Create assembly directory if it doesn't exist.
-    if (!cvd::DirectoryExists(FLAGS_assembly_dir.c_str())) {
-      LOG(INFO) << "Setting up " << FLAGS_assembly_dir;
+    if (!cuttlefish::DirectoryExists(FLAGS_assembly_dir.c_str())) {
+      LOG(DEBUG) << "Setting up " << FLAGS_assembly_dir;
       if (mkdir(FLAGS_assembly_dir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) < 0
           && errno != EEXIST) {
         LOG(ERROR) << "Failed to create assembly directory: "
@@ -995,9 +889,14 @@ const vsoc::CuttlefishConfig* InitFilesystemAndCreateConfig(
         exit(AssemblerExitCodes::kAssemblyDirCreationError);
       }
     }
+    if (log->LinkAtCwd(config.AssemblyPath("assemble_cvd.log"))) {
+      LOG(ERROR) << "Unable to persist assemble_cvd log at "
+                  << config.AssemblyPath("assemble_cvd.log")
+                  << ": " << log->StrError();
+    }
     std::string disk_hole_dir = FLAGS_assembly_dir + "/disk_hole";
-    if (!cvd::DirectoryExists(disk_hole_dir.c_str())) {
-      LOG(INFO) << "Setting up " << disk_hole_dir << "/disk_hole";
+    if (!cuttlefish::DirectoryExists(disk_hole_dir.c_str())) {
+      LOG(DEBUG) << "Setting up " << disk_hole_dir << "/disk_hole";
       if (mkdir(disk_hole_dir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) < 0
           && errno != EEXIST) {
         LOG(ERROR) << "Failed to create assembly directory: "
@@ -1007,8 +906,8 @@ const vsoc::CuttlefishConfig* InitFilesystemAndCreateConfig(
     }
     for (const auto& instance : config.Instances()) {
       // Create instance directory if it doesn't exist.
-      if (!cvd::DirectoryExists(instance.instance_dir().c_str())) {
-        LOG(INFO) << "Setting up " << FLAGS_instance_dir << ".N";
+      if (!cuttlefish::DirectoryExists(instance.instance_dir().c_str())) {
+        LOG(DEBUG) << "Setting up " << FLAGS_instance_dir << ".N";
         if (mkdir(instance.instance_dir().c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) < 0
             && errno != EEXIST) {
           LOG(ERROR) << "Failed to create instance directory: "
@@ -1016,12 +915,21 @@ const vsoc::CuttlefishConfig* InitFilesystemAndCreateConfig(
           exit(AssemblerExitCodes::kInstanceDirCreationError);
         }
       }
-      auto internal_dir = instance.instance_dir() + "/" + vsoc::kInternalDirName;
-      if (!cvd::DirectoryExists(internal_dir)) {
+      auto internal_dir = instance.instance_dir() + "/" + cuttlefish::kInternalDirName;
+      if (!cuttlefish::DirectoryExists(internal_dir)) {
         if (mkdir(internal_dir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) < 0
            && errno != EEXIST) {
           LOG(ERROR) << "Failed to create internal instance directory: "
                     << internal_dir << ". Error: " << errno;
+          exit(AssemblerExitCodes::kInstanceDirCreationError);
+        }
+      }
+      auto shared_dir = instance.instance_dir() + "/" + cuttlefish::kSharedDirName;
+      if (!cuttlefish::DirectoryExists(shared_dir)) {
+         if (mkdir(shared_dir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) < 0
+           && errno != EEXIST) {
+          LOG(ERROR) << "Failed to create shared instance directory: "
+                    << shared_dir << ". Error: " << errno;
           exit(AssemblerExitCodes::kInstanceDirCreationError);
         }
       }
@@ -1032,163 +940,140 @@ const vsoc::CuttlefishConfig* InitFilesystemAndCreateConfig(
     }
   }
 
-  std::string first_instance = FLAGS_instance_dir + "." + std::to_string(vsoc::GetInstance());
+  std::string first_instance = FLAGS_instance_dir + "." + std::to_string(cuttlefish::GetInstance());
   if (symlink(first_instance.c_str(), FLAGS_instance_dir.c_str()) < 0) {
     LOG(ERROR) << "Could not symlink \"" << first_instance << "\" to \"" << FLAGS_instance_dir << "\"";
-    exit(cvd::kCuttlefishConfigurationInitError);
-  }
-
-  if (!cvd::FileHasContent(FLAGS_boot_image)) {
-    LOG(ERROR) << "File not found: " << FLAGS_boot_image;
-    exit(cvd::kCuttlefishConfigurationInitError);
-  }
-
-  if (!cvd::FileHasContent(FLAGS_vendor_boot_image)) {
-    LOG(ERROR) << "File not found: " << FLAGS_vendor_boot_image;
-    exit(cvd::kCuttlefishConfigurationInitError);
+    exit(cuttlefish::kCuttlefishConfigurationInitError);
   }
 
   // Do this early so that the config object is ready for anything that needs it
-  auto config = vsoc::CuttlefishConfig::Get();
+  auto config = cuttlefish::CuttlefishConfig::Get();
   if (!config) {
     LOG(ERROR) << "Failed to obtain config singleton";
     exit(AssemblerExitCodes::kCuttlefishConfigurationInitError);
   }
 
-  if (!boot_img_unpacker->Unpack(config->ramdisk_image_path(),
-                                 config->vendor_ramdisk_image_path(),
-                                 config->use_unpacked_kernel()
-                                     ? config->kernel_image_path()
-                                     : "")) {
-    LOG(ERROR) << "Failed to unpack boot image";
-    exit(AssemblerExitCodes::kBootImageUnpackError);
-  }
-
-  // TODO(134522463) as part of the bootloader refactor, repack the vendor boot
-  // image and use the bootloader to load both the boot and vendor ramdisk.
-  // Until then, this hack to get gki modules into cuttlefish will suffice.
-
-  // If a vendor ramdisk comes in via this mechanism, let it supercede the one
-  // in the vendor boot image. This flag is what kernel presubmit testing uses
-  // to pass in the kernel ramdisk.
-
-  // If no kernel is passed in or an initramfs is made available, the default
-  // vendor boot ramdisk or the initramfs provided should be appended to the
-  // boot ramdisk. If a kernel IS provided with no initramfs, it is safe to
-  // safe to assume that the kernel was built with no modules and expects no
-  // modules for cf to run properly.
-  std::string discovered_kernel = fetcher_config.FindCvdFileWithSuffix(kKernelDefaultPath);
-  std::string foreign_kernel = FLAGS_kernel_path.size() ? FLAGS_kernel_path : discovered_kernel;
-  std::string discovered_ramdisk = fetcher_config.FindCvdFileWithSuffix(kInitramfsImg);
-  std::string foreign_ramdisk = FLAGS_initramfs_path.size () ? FLAGS_initramfs_path : discovered_ramdisk;
-  if(!foreign_kernel.size() || foreign_ramdisk.size()) {
-    const std::string& vendor_ramdisk_path =
-      config->initramfs_path().size() ? config->initramfs_path()
-                                      : config->vendor_ramdisk_image_path();
-    if(!ConcatRamdisks(config->final_ramdisk_path(),
-                       config->ramdisk_image_path(), vendor_ramdisk_path)) {
-      LOG(ERROR) << "Failed to concatenate ramdisk and vendor ramdisk";
-      exit(AssemblerExitCodes::kInitRamFsConcatError);
-    }
-  }
-
-  if (config->decompress_kernel()) {
-    if (!DecompressKernel(config->kernel_image_path(),
-        config->decompressed_kernel_image_path())) {
-      LOG(ERROR) << "Failed to decompress kernel";
-      exit(AssemblerExitCodes::kKernelDecompressError);
-    }
-  }
-
   ValidateAdbModeFlag(*config);
 
-  // Create misc if necessary
-  if (!InitializeMiscImage(FLAGS_misc_image)) {
-    exit(cvd::kCuttlefishConfigurationInitError);
-  }
-
-  // Create data if necessary
-  DataImageResult dataImageResult = ApplyDataImagePolicy(*config, FLAGS_data_image);
-  if (dataImageResult == DataImageResult::Error) {
-    exit(cvd::kCuttlefishConfigurationInitError);
-  }
-
-  // Create boot_config if necessary
-  if (!InitBootloaderEnvPartition(*config, FLAGS_boot_env_image)) {
-    exit(cvd::kCuttlefishConfigurationInitError);
-  }
-
-  if (!cvd::FileExists(FLAGS_metadata_image)) {
-    CreateBlankImage(FLAGS_metadata_image, FLAGS_blank_metadata_image_mb, "none");
-  }
-
-  for (const auto& instance : config->Instances()) {
-    if (!cvd::FileExists(instance.access_kregistry_path())) {
-      CreateBlankImage(instance.access_kregistry_path(), 2 /* mb */, "none");
-    }
-
-    if (!cvd::FileExists(instance.sdcard_path())) {
-      CreateBlankImage(instance.sdcard_path(),
-                       FLAGS_blank_sdcard_image_mb, "sdcard");
-    }
-  }
-
-  // libavb expects to be able to read the maximum vbmeta size, so we must
-  // provide a partition which matches this or the read will fail
-  for (const auto& vbmeta_image : { FLAGS_vbmeta_image, FLAGS_vbmeta_system_image }) {
-    if (cvd::FileSize(vbmeta_image) != VBMETA_MAX_SIZE) {
-      auto fd = cvd::SharedFD::Open(vbmeta_image, O_RDWR);
-      if (fd->Truncate(VBMETA_MAX_SIZE) != 0) {
-        LOG(ERROR) << "`truncate --size=" << VBMETA_MAX_SIZE << " "
-                   << vbmeta_image << "` failed: " << fd->StrError();
-        exit(cvd::kCuttlefishConfigurationInitError);
-      }
-    }
-  }
-
-  if (SuperImageNeedsRebuilding(fetcher_config, *config)) {
-    if (!RebuildSuperImage(fetcher_config, *config, FLAGS_super_image)) {
-      LOG(ERROR) << "Super image rebuilding requested but could not be completed.";
-      exit(cvd::kCuttlefishConfigurationInitError);
-    }
-  }
-
-  bool oldCompositeDisk = ShouldCreateCompositeDisk(*config);
-  bool newDataImage = dataImageResult == DataImageResult::FileUpdated;
-  if (oldCompositeDisk || newDataImage) {
-    if (!CreateCompositeDisk(*config)) {
-      exit(cvd::kDiskSpaceError);
-    }
-  }
-
-  for (auto instance : config->Instances()) {
-    auto overlay_path = instance.PerInstancePath("overlay.img");
-    bool missingOverlay = !cvd::FileExists(overlay_path);
-    bool newOverlay = cvd::FileModificationTime(overlay_path)
-        < cvd::FileModificationTime(config->composite_disk_path());
-    if (missingOverlay || oldCompositeDisk || !FLAGS_resume || newDataImage || newOverlay) {
-      if (FLAGS_resume) {
-        LOG(WARNING) << "Requested to continue an existing session, but the overlay was "
-                     << "newer than its underlying composite disk. Wiping the overlay.";
-      }
-      CreateQcowOverlay(config->crosvm_binary(), config->composite_disk_path(), overlay_path);
-      CreateBlankImage(instance.access_kregistry_path(), 2 /* mb */, "none");
-    }
-  }
-
-  for (auto instance : config->Instances()) {
-    // Check that the files exist
-    for (const auto& file : instance.virtual_disk_paths()) {
-      if (!file.empty() && !cvd::FileHasContent(file.c_str())) {
-        LOG(ERROR) << "File not found: " << file;
-        exit(cvd::kCuttlefishConfigurationInitError);
-      }
-    }
-  }
+  CreateDynamicDiskFiles(fetcher_config, config, boot_img_unpacker.get());
 
   return config;
 }
 
-std::string GetConfigFilePath(const vsoc::CuttlefishConfig& config) {
+std::string GetConfigFilePath(const cuttlefish::CuttlefishConfig& config) {
   return config.AssemblyPath("cuttlefish_config.json");
+}
+
+std::optional<IfaceConfig> AcquireIfaces(int num) {
+  IfaceConfig config{};
+  if (!FLAGS_use_allocd) {
+    config.mobile_tap.name = StrForInstance("cvd-mtap-", num);
+    config.mobile_tap.resource_id = 0;
+    config.mobile_tap.session_id = 0;
+
+    config.wireless_tap.name = StrForInstance("cvd-wtap-", num);
+    config.wireless_tap.resource_id = 0;
+    config.wireless_tap.session_id = 0;
+    return config;
+  }
+  return RequestIfaces();
+}
+
+std::optional<IfaceConfig> RequestIfaces() {
+  IfaceConfig config{};
+
+  cuttlefish::SharedFD allocd_sock = cuttlefish::SharedFD::SocketLocalClient(
+      cuttlefish::kDefaultLocation, false, SOCK_STREAM);
+  if (!allocd_sock->IsOpen()) {
+    LOG(FATAL) << "Unable to connect to allocd on "
+               << cuttlefish::kDefaultLocation << ": "
+               << allocd_sock->StrError();
+    exit(cuttlefish::kAllocdConnectionError);
+  }
+
+  Json::Value resource_config;
+  Json::Value request_list;
+  Json::Value req;
+  req["request_type"] = "create_interface";
+  req["uid"] = geteuid();
+  req["iface_type"] = "mtap";
+  request_list.append(req);
+  req["iface_type"] = "wtap";
+  request_list.append(req);
+
+  resource_config["config_request"]["request_list"] = request_list;
+
+  if (!cuttlefish::SendJsonMsg(allocd_sock, resource_config)) {
+    LOG(FATAL) << "Failed to send JSON to allocd\n";
+    return std::nullopt;
+  }
+
+  auto resp_opt = cuttlefish::RecvJsonMsg(allocd_sock);
+  if (!resp_opt.has_value()) {
+    LOG(FATAL) << "Bad Response from allocd\n";
+    exit(cuttlefish::kAllocdConnectionError);
+  }
+  auto resp = resp_opt.value();
+
+  if (!resp.isMember("config_status") || !resp["config_status"].isString()) {
+    LOG(FATAL) << "Bad response from allocd: " << resp;
+    exit(cuttlefish::kAllocdConnectionError);
+  }
+
+  if (resp["config_status"].asString() !=
+      cuttlefish::StatusToStr(cuttlefish::RequestStatus::Success)) {
+    LOG(FATAL) << "Failed to allocate interfaces " << resp;
+    exit(cuttlefish::kAllocdConnectionError);
+  }
+
+  if (!resp.isMember("session_id") || !resp["session_id"].isUInt()) {
+    LOG(FATAL) << "Bad response from allocd: " << resp;
+    exit(cuttlefish::kAllocdConnectionError);
+  }
+  auto session_id = resp["session_id"].asUInt();
+
+  if (!resp.isMember("response_list") || !resp["response_list"].isArray()) {
+    LOG(FATAL) << "Bad response from allocd: " << resp;
+    exit(cuttlefish::kAllocdConnectionError);
+  }
+
+  Json::Value resp_list = resp["response_list"];
+  Json::Value mtap_resp;
+  Json::Value wifi_resp;
+  for (Json::Value::ArrayIndex i = 0; i != resp_list.size(); ++i) {
+    auto ty = cuttlefish::StrToIfaceTy(resp_list[i]["iface_type"].asString());
+
+    switch (ty) {
+      case cuttlefish::IfaceType::mtap: {
+        mtap_resp = resp_list[i];
+        break;
+      }
+      case cuttlefish::IfaceType::wtap: {
+        wifi_resp = resp_list[i];
+        break;
+      }
+      default: {
+        break;
+      }
+    }
+  }
+
+  if (!mtap_resp.isMember("iface_type")) {
+    LOG(ERROR) << "Missing mtap response from allocd";
+    return std::nullopt;
+  }
+  if (!wifi_resp.isMember("iface_type")) {
+    LOG(ERROR) << "Missing wtap response from allocd";
+    return std::nullopt;
+  }
+
+  config.mobile_tap.name = mtap_resp["iface_name"].asString();
+  config.mobile_tap.resource_id = mtap_resp["resource_id"].asUInt();
+  config.mobile_tap.session_id = session_id;
+
+  config.wireless_tap.name = wifi_resp["iface_name"].asString();
+  config.wireless_tap.resource_id = wifi_resp["resource_id"].asUInt();
+  config.wireless_tap.session_id = session_id;
+
+  return config;
 }

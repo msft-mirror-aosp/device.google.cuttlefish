@@ -24,6 +24,8 @@
 #include "host/libs/config/cuttlefish_config.h"
 #include "host/libs/vm_manager/vm_manager.h"
 
+using cuttlefish::vm_manager::VmManager;
+
 template<typename T>
 static void AppendVector(std::vector<T>* destination, const std::vector<T>& source) {
   destination->insert(destination->end(), source.begin(), source.end());
@@ -45,14 +47,21 @@ static std::string mac_to_str(const std::array<unsigned char, 6>& mac) {
   return stream.str();
 }
 
-std::vector<std::string> KernelCommandLineFromConfig(const vsoc::CuttlefishConfig& config) {
+std::vector<std::string> KernelCommandLineFromConfig(const cuttlefish::CuttlefishConfig& config) {
   auto instance = config.ForDefaultInstance();
   std::vector<std::string> kernel_cmdline;
 
+  AppendVector(&kernel_cmdline, config.vm_manager_kernel_cmdline());
   AppendVector(&kernel_cmdline, config.boot_image_kernel_cmdline());
   AppendVector(&kernel_cmdline,
-               vm_manager::VmManager::ConfigureGpuMode(config.vm_manager(), config.gpu_mode()));
-  AppendVector(&kernel_cmdline, vm_manager::VmManager::ConfigureBootDevices(config.vm_manager()));
+               VmManager::ConfigureGpuMode(config.vm_manager(), config.gpu_mode()));
+  AppendVector(&kernel_cmdline, VmManager::ConfigureBootDevices(config.vm_manager()));
+
+  if (config.enable_gnss_grpc_proxy()) {
+    kernel_cmdline.push_back("gnss_cmdline.serdev=serial8250/serial0/serial0-0");
+    kernel_cmdline.push_back("gnss_cmdline.type=0");
+    kernel_cmdline.push_back("serdev_ttyport.pdev_tty_port=ttyS3");
+  }
 
   kernel_cmdline.push_back(concat("androidboot.serialno=", instance.serial_number()));
   kernel_cmdline.push_back(concat("androidboot.lcd_density=", config.dpi()));
@@ -67,11 +76,7 @@ std::vector<std::string> KernelCommandLineFromConfig(const vsoc::CuttlefishConfi
     }
     kernel_cmdline.push_back(concat("androidboot.slot_suffix=", slot_suffix));
   }
-  kernel_cmdline.push_back(concat("loop.max_part=", config.loop_max_part()));
-  if (config.guest_enforce_security()) {
-    kernel_cmdline.push_back("enforcing=1");
-  } else {
-    kernel_cmdline.push_back("enforcing=0");
+  if (!config.guest_enforce_security()) {
     kernel_cmdline.push_back("androidboot.selinux=permissive");
   }
   if (config.guest_audit_security()) {
@@ -83,15 +88,8 @@ std::vector<std::string> KernelCommandLineFromConfig(const vsoc::CuttlefishConfi
     kernel_cmdline.push_back("androidboot.force_normal_boot=1");
   }
 
-  if (config.enable_tombstone_receiver() && instance.tombstone_receiver_port()) {
-    kernel_cmdline.push_back("androidboot.tombstone_transmit=1");
+  if (instance.tombstone_receiver_port()) {
     kernel_cmdline.push_back(concat("androidboot.vsock_tombstone_port=", instance.tombstone_receiver_port()));
-  } else {
-    kernel_cmdline.push_back("androidboot.tombstone_transmit=0");
-  }
-
-  if (config.logcat_mode() == cvd::kLogcatVsockMode && instance.logcat_port()) {
-    kernel_cmdline.push_back(concat("androidboot.vsock_logcat_port=", instance.logcat_port()));
   }
 
   if (instance.config_server_port()) {
@@ -116,6 +114,15 @@ std::vector<std::string> KernelCommandLineFromConfig(const vsoc::CuttlefishConfi
 
   kernel_cmdline.push_back(concat("androidboot.vsock_keymaster_port=",
                                   instance.keymaster_vsock_port()));
+
+  kernel_cmdline.push_back(concat("androidboot.vsock_gatekeeper_port=",
+                                  instance.gatekeeper_vsock_port()));
+
+  if (config.enable_modem_simulator() &&
+      instance.modem_simulator_ports() != "") {
+    kernel_cmdline.push_back(concat("androidboot.modem_simulator_ports=",
+                                    instance.modem_simulator_ports()));
+  }
 
   // TODO(b/158131610): Set this in crosvm instead
   kernel_cmdline.push_back(concat("androidboot.wifi_mac_address=",

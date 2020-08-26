@@ -88,7 +88,7 @@ EmulatedCamera::~EmulatedCamera() {}
  * Public API
  ***************************************************************************/
 
-status_t EmulatedCamera::Initialize(const cvd::CameraDefinition&) {
+status_t EmulatedCamera::Initialize(const cuttlefish::CameraDefinition&) {
   /* Preview formats supported by this HAL. */
   char preview_formats[1024];
   snprintf(preview_formats, sizeof(preview_formats), "%s,%s,%s",
@@ -511,7 +511,7 @@ status_t EmulatedCamera::setParameters(const char* parms) {
   return NO_ERROR;
 }
 
-/* A dumb variable indicating "no params" / error on the exit from
+/* A variable indicating "no params" / error on the exit from
  * EmulatedCamera::getParameters(). */
 static char lNoParam = '\0';
 char* EmulatedCamera::getParameters() {

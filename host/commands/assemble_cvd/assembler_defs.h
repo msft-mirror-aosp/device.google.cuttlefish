@@ -15,7 +15,7 @@
  */
 #pragma once
 
-namespace cvd {
+namespace cuttlefish {
 
 enum AssemblerExitCodes : int {
   kSuccess = 0,
@@ -43,6 +43,7 @@ enum AssemblerExitCodes : int {
   kInitRamFsConcatError = 22,
   kAssemblyDirCreationError = 23,
   kDiskSpaceError = 24,
+  kAllocdConnectionError = 25,
 };
 
-}  // namespace cvd
+}  // namespace cuttlefish

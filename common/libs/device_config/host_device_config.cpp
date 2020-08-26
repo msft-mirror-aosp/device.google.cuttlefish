@@ -23,7 +23,7 @@
 
 #include "device_config.h"
 
-namespace cvd {
+namespace cuttlefish {
 
 namespace {
 
@@ -48,12 +48,12 @@ class NetConfig {
     bool ret = ParseInterfaceAttributes(interface);
     if (ret) {
       ril_dns = dns;
-      LOG(INFO) << "Network config:";
-      LOG(INFO) << "ipaddr = " << ril_ipaddr;
-      LOG(INFO) << "gateway = " << ril_gateway;
-      LOG(INFO) << "dns = " << ril_dns;
-      LOG(INFO) << "broadcast = " << ril_broadcast;
-      LOG(INFO) << "prefix length = " << static_cast<int>(ril_prefixlen);
+      LOG(DEBUG) << "Network config:";
+      LOG(DEBUG) << "ipaddr = " << ril_ipaddr;
+      LOG(DEBUG) << "gateway = " << ril_gateway;
+      LOG(DEBUG) << "dns = " << ril_dns;
+      LOG(DEBUG) << "broadcast = " << ril_broadcast;
+      LOG(DEBUG) << "prefix length = " << static_cast<int>(ril_prefixlen);
     }
     return ret;
   }
@@ -139,7 +139,7 @@ inline void CopyChars(char* dest, size_t size, const char* src) {
 }  // namespace
 
 std::unique_ptr<DeviceConfig> DeviceConfig::Get() {
-  auto config = vsoc::CuttlefishConfig::Get();
+  auto config = CuttlefishConfig::Get();
   if (!config) return nullptr;
   std::unique_ptr<DeviceConfig> dev_config(new DeviceConfig());
   if (!dev_config->InitializeNetworkConfiguration(*config)) {
@@ -150,7 +150,7 @@ std::unique_ptr<DeviceConfig> DeviceConfig::Get() {
 }
 
 bool DeviceConfig::InitializeNetworkConfiguration(
-    const vsoc::CuttlefishConfig& config) {
+    const CuttlefishConfig& config) {
   auto instance = config.ForDefaultInstance();
   NetConfig netconfig;
   // Check the mobile bridge first; this was the traditional way we configured
@@ -184,11 +184,11 @@ bool DeviceConfig::InitializeNetworkConfiguration(
 }
 
 void DeviceConfig::InitializeScreenConfiguration(
-    const vsoc::CuttlefishConfig& config) {
+    const CuttlefishConfig& config) {
   data_.screen.x_res = config.x_res();
   data_.screen.y_res = config.y_res();
   data_.screen.dpi = config.dpi();
   data_.screen.refresh_rate = config.refresh_rate_hz();
 }
 
-}  // namespace cvd
+}  // namespace cuttlefish
