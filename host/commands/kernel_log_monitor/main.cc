@@ -71,7 +71,7 @@ int main(int argc, char** argv) {
   new_action.sa_handler = SIG_IGN;
   sigaction(SIGPIPE, &new_action, &old_action);
 
-  auto config = vsoc::CuttlefishConfig::Get();
+  auto config = cuttlefish::CuttlefishConfig::Get();
   if (!config) {
     LOG(ERROR) << "Unable to get config object";
     return 1;

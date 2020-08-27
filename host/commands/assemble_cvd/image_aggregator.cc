@@ -177,7 +177,7 @@ Json::Value FdToJson(cuttlefish::SharedFD fd) {
 }
 
 cuttlefish::SharedFD BpttoolMakeTable(const cuttlefish::SharedFD& input) {
-  auto bpttool_path = vsoc::DefaultHostArtifactsPath(BPTTOOL_FILE_PATH);
+  auto bpttool_path = cuttlefish::DefaultHostArtifactsPath(BPTTOOL_FILE_PATH);
   cuttlefish::Command bpttool_cmd(bpttool_path);
   bpttool_cmd.AddParameter("make_table");
   bpttool_cmd.AddParameter("--input=/dev/stdin");
@@ -194,7 +194,7 @@ cuttlefish::SharedFD BpttoolMakeTable(const cuttlefish::SharedFD& input) {
 }
 
 cuttlefish::SharedFD BpttoolMakePartitionTable(cuttlefish::SharedFD input) {
-  auto bpttool_path = vsoc::DefaultHostArtifactsPath(BPTTOOL_FILE_PATH);
+  auto bpttool_path = cuttlefish::DefaultHostArtifactsPath(BPTTOOL_FILE_PATH);
   cuttlefish::Command bpttool_cmd(bpttool_path);
   bpttool_cmd.AddParameter("make_table");
   bpttool_cmd.AddParameter("--input=/dev/stdin");
@@ -233,7 +233,7 @@ void CreateGptFiles(cuttlefish::SharedFD gpt, const std::string& header_file,
 
 void BptToolMakeDiskImage(const std::vector<ImagePartition>& partitions,
                           cuttlefish::SharedFD table, const std::string& output) {
-  auto bpttool_path = vsoc::DefaultHostArtifactsPath(BPTTOOL_FILE_PATH);
+  auto bpttool_path = cuttlefish::DefaultHostArtifactsPath(BPTTOOL_FILE_PATH);
   cuttlefish::Command bpttool_cmd(bpttool_path);
   bpttool_cmd.AddParameter("make_disk_image");
   bpttool_cmd.AddParameter("--input=/dev/stdin");

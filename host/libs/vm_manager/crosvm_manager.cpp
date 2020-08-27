@@ -35,7 +35,7 @@ namespace vm_manager {
 
 namespace {
 
-std::string GetControlSocketPath(const vsoc::CuttlefishConfig* config) {
+std::string GetControlSocketPath(const cuttlefish::CuttlefishConfig* config) {
   return config->ForDefaultInstance()
       .PerInstanceInternalPath("crosvm_control.sock");
 }
@@ -51,7 +51,7 @@ void AddTapFdParameter(cuttlefish::Command* crosvm_cmd, const std::string& tap_n
 }
 
 bool Stop() {
-  auto config = vsoc::CuttlefishConfig::Get();
+  auto config = cuttlefish::CuttlefishConfig::Get();
   cuttlefish::Command command(config->crosvm_binary());
   command.AddParameter("stop");
   command.AddParameter(GetControlSocketPath(config));
@@ -70,7 +70,7 @@ std::vector<std::string> CrosvmManager::ConfigureGpu(const std::string& gpu_mode
   // the HAL search path allows for fallbacks, and fallbacks in conjunction
   // with properities lead to non-deterministic behavior while loading the
   // HALs.
-  if (gpu_mode == vsoc::kGpuModeGuestSwiftshader) {
+  if (gpu_mode == cuttlefish::kGpuModeGuestSwiftshader) {
     return {
         "androidboot.hardware.gralloc=minigbm",
         "androidboot.hardware.hwcomposer=cutf_hwc2",
@@ -87,14 +87,14 @@ std::vector<std::string> CrosvmManager::ConfigureGpu(const std::string& gpu_mode
   modprobe_cmd.AddParameter("--modeset");
   modprobe_cmd.Start().Wait();
 
-  if (gpu_mode == vsoc::kGpuModeDrmVirgl) {
+  if (gpu_mode == cuttlefish::kGpuModeDrmVirgl) {
     return {
       "androidboot.hardware.gralloc=minigbm",
       "androidboot.hardware.hwcomposer=drm_minigbm",
       "androidboot.hardware.egl=mesa",
     };
   }
-  if (gpu_mode == vsoc::kGpuModeGfxStream) {
+  if (gpu_mode == cuttlefish::kGpuModeGfxStream) {
     return {
         "androidboot.hardware.gralloc=minigbm",
         "androidboot.hardware.hwcomposer=drm_minigbm",
@@ -116,7 +116,7 @@ std::vector<std::string> CrosvmManager::ConfigureBootDevices() {
   }
 }
 
-CrosvmManager::CrosvmManager(const vsoc::CuttlefishConfig* config)
+CrosvmManager::CrosvmManager(const cuttlefish::CuttlefishConfig* config)
     : VmManager(config) {}
 
 std::vector<cuttlefish::Command> CrosvmManager::StartCommands() {
@@ -133,13 +133,13 @@ std::vector<cuttlefish::Command> CrosvmManager::StartCommands() {
 
   auto gpu_mode = config_->gpu_mode();
 
-  if (gpu_mode == vsoc::kGpuModeGuestSwiftshader) {
+  if (gpu_mode == cuttlefish::kGpuModeGuestSwiftshader) {
     crosvm_cmd.AddParameter("--gpu=2D,",
                             "width=", config_->x_res(), ",",
                             "height=", config_->y_res());
-  } else if (gpu_mode == vsoc::kGpuModeDrmVirgl ||
-             gpu_mode == vsoc::kGpuModeGfxStream) {
-    crosvm_cmd.AddParameter(gpu_mode == vsoc::kGpuModeGfxStream ?
+  } else if (gpu_mode == cuttlefish::kGpuModeDrmVirgl ||
+             gpu_mode == cuttlefish::kGpuModeGfxStream) {
+    crosvm_cmd.AddParameter(gpu_mode == cuttlefish::kGpuModeGfxStream ?
                                 "--gpu=gfxstream," : "--gpu=",
                             "width=", config_->x_res(), ",",
                             "height=", config_->y_res(), ",",

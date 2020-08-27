@@ -249,7 +249,7 @@ int main(int argc, char** argv) {
     return -3;
   }
 
-  auto config = vsoc::CuttlefishConfig::Get();
+  auto config = cuttlefish::CuttlefishConfig::Get();
   if (!config) {
     LOG(ERROR) << "Unable to get config object";
     return -4;

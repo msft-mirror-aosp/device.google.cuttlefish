@@ -43,8 +43,8 @@ DEFINE_int32(num_instances, 1, "Number of Android guests to launch");
 
 namespace {
 
-std::string kAssemblerBin = vsoc::DefaultHostArtifactsPath("bin/assemble_cvd");
-std::string kRunnerBin = vsoc::DefaultHostArtifactsPath("bin/run_cvd");
+std::string kAssemblerBin = cuttlefish::DefaultHostArtifactsPath("bin/assemble_cvd");
+std::string kRunnerBin = cuttlefish::DefaultHostArtifactsPath("bin/run_cvd");
 
 cuttlefish::Subprocess StartAssembler(cuttlefish::SharedFD assembler_stdin,
                                cuttlefish::SharedFD assembler_stdout,
@@ -134,7 +134,7 @@ int main(int argc, char** argv) {
   for (int i = 0; i < FLAGS_num_instances; i++) {
     cuttlefish::SharedFD runner_stdin_in, runner_stdin_out;
     cuttlefish::SharedFD::Pipe(&runner_stdin_out, &runner_stdin_in);
-    std::string instance_name = std::to_string(i + vsoc::GetInstance());
+    std::string instance_name = std::to_string(i + cuttlefish::GetInstance());
     setenv("CUTTLEFISH_INSTANCE", instance_name.c_str(), /* overwrite */ 1);
 
     auto run_proc = StartRunner(std::move(runner_stdin_out),
