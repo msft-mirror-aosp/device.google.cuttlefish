@@ -35,7 +35,7 @@ namespace {
 // Sends packets, Shutdown(SHUT_WR) on destruction
 class SocketSender {
  public:
-  explicit SocketSender(cvd::SharedFD socket) : socket_{socket} {}
+  explicit SocketSender(cuttlefish::SharedFD socket) : socket_{socket} {}
 
   SocketSender(SocketSender&&) = default;
   SocketSender& operator=(SocketSender&&) = default;
@@ -69,12 +69,12 @@ class SocketSender {
   }
 
  private:
-  cvd::SharedFD socket_;
+  cuttlefish::SharedFD socket_;
 };
 
 class SocketReceiver {
  public:
-  explicit SocketReceiver(cvd::SharedFD socket) : socket_{socket} {}
+  explicit SocketReceiver(cuttlefish::SharedFD socket) : socket_{socket} {}
 
   SocketReceiver(SocketReceiver&&) = default;
   SocketReceiver& operator=(SocketReceiver&&) = default;
@@ -93,7 +93,7 @@ class SocketReceiver {
   }
 
  private:
-  cvd::SharedFD socket_;
+  cuttlefish::SharedFD socket_;
 };
 
 void SocketToVsock(SocketReceiver socket_receiver,
@@ -127,8 +127,8 @@ void VsockToSocket(SocketSender socket_sender,
 
 // One thread for reading from shm and writing into a socket.
 // One thread for reading from a socket and writing into shm.
-void HandleConnection(cvd::SharedFD vsock,
-                      cvd::SharedFD socket) {
+void HandleConnection(cuttlefish::SharedFD vsock,
+                      cuttlefish::SharedFD socket) {
   auto socket_to_vsock =
       std::thread(SocketToVsock, SocketReceiver{socket}, SocketSender{vsock});
   VsockToSocket(SocketSender{socket}, SocketReceiver{vsock});
@@ -138,14 +138,14 @@ void HandleConnection(cvd::SharedFD vsock,
 [[noreturn]] void TcpServer() {
   LOG(INFO) << "starting TCP server on " << FLAGS_tcp_port << " for vsock port "
             << FLAGS_vsock_port;
-  auto server = cvd::SharedFD::SocketLocalServer(FLAGS_tcp_port, SOCK_STREAM);
+  auto server = cuttlefish::SharedFD::SocketLocalServer(FLAGS_tcp_port, SOCK_STREAM);
   CHECK(server->IsOpen()) << "Could not start server on " << FLAGS_tcp_port;
   LOG(INFO) << "Accepting client connections";
   int last_failure_reason = 0;
   while (true) {
-    auto client_socket = cvd::SharedFD::Accept(*server);
+    auto client_socket = cuttlefish::SharedFD::Accept(*server);
     CHECK(client_socket->IsOpen()) << "error creating client socket";
-    cvd::SharedFD vsock_socket = cvd::SharedFD::VsockClient(
+    cuttlefish::SharedFD vsock_socket = cuttlefish::SharedFD::VsockClient(
         FLAGS_vsock_cid, FLAGS_vsock_port, SOCK_STREAM);
     if (vsock_socket->IsOpen()) {
       last_failure_reason = 0;
@@ -166,9 +166,9 @@ void HandleConnection(cvd::SharedFD vsock,
   }
 }
 
-cvd::SharedFD OpenSocketConnection() {
+cuttlefish::SharedFD OpenSocketConnection() {
   while (true) {
-    auto sock = cvd::SharedFD::SocketLocalClient(FLAGS_tcp_port, SOCK_STREAM);
+    auto sock = cuttlefish::SharedFD::SocketLocalClient(FLAGS_tcp_port, SOCK_STREAM);
     if (sock->IsOpen()) {
       return sock;
     }
@@ -191,9 +191,9 @@ bool socketErrorIsRecoverable(int error) {
 
 [[noreturn]] void VsockServer() {
   LOG(INFO) << "Starting vsock server on " << FLAGS_vsock_port;
-  cvd::SharedFD vsock;
+  cuttlefish::SharedFD vsock;
   do {
-    vsock = cvd::SharedFD::VsockServer(FLAGS_vsock_port, SOCK_STREAM);
+    vsock = cuttlefish::SharedFD::VsockServer(FLAGS_vsock_port, SOCK_STREAM);
     if (!vsock->IsOpen() && !socketErrorIsRecoverable(vsock->GetErrno())) {
       LOG(ERROR) << "Could not open vsock socket: " << vsock->StrError();
       SleepForever();
@@ -202,7 +202,7 @@ bool socketErrorIsRecoverable(int error) {
   CHECK(vsock->IsOpen()) << "Could not start server on " << FLAGS_vsock_port;
   while (true) {
     LOG(INFO) << "waiting for vsock connection";
-    auto vsock_client = cvd::SharedFD::Accept(*vsock);
+    auto vsock_client = cuttlefish::SharedFD::Accept(*vsock);
     CHECK(vsock_client->IsOpen()) << "error creating vsock socket";
     LOG(INFO) << "vsock socket accepted";
     auto client = OpenSocketConnection();

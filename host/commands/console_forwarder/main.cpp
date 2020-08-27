@@ -49,9 +49,9 @@ DEFINE_int32(console_out_fd,
 class ConsoleForwarder {
  public:
   ConsoleForwarder(std::string console_path,
-                   cvd::SharedFD console_in,
-                   cvd::SharedFD console_out,
-                   cvd::SharedFD console_log) :
+                   cuttlefish::SharedFD console_in,
+                   cuttlefish::SharedFD console_out,
+                   cuttlefish::SharedFD console_log) :
                                                 console_path_(console_path),
                                                 console_in_(console_in),
                                                 console_out_(console_out),
@@ -64,7 +64,7 @@ class ConsoleForwarder {
     ReadLoop();
   }
  private:
-  cvd::SharedFD OpenPTY() {
+  cuttlefish::SharedFD OpenPTY() {
     // Remove any stale symlink to a pts device
     auto ret = unlink(console_path_.c_str());
     if (ret < 0 && errno != ENOENT) {
@@ -106,7 +106,7 @@ class ConsoleForwarder {
       std::exit(-10);
     }
 
-    auto pty_shared_fd = cvd::SharedFD::Dup(pty);
+    auto pty_shared_fd = cuttlefish::SharedFD::Dup(pty);
     close(pty);
     if (!pty_shared_fd->IsOpen()) {
       LOG(ERROR) << "Error dupping fd " << pty << ": "
@@ -117,7 +117,7 @@ class ConsoleForwarder {
     return pty_shared_fd;
   }
 
-  void EnqueueWrite(std::shared_ptr<std::vector<char>> buf_ptr, cvd::SharedFD fd) {
+  void EnqueueWrite(std::shared_ptr<std::vector<char>> buf_ptr, cuttlefish::SharedFD fd) {
     std::lock_guard<std::mutex> lock(write_queue_mutex_);
     write_queue_.emplace_back(fd, buf_ptr);
     condvar_.notify_one();
@@ -127,7 +127,7 @@ class ConsoleForwarder {
     while (true) {
       while (!write_queue_.empty()) {
         std::shared_ptr<std::vector<char>> buf_ptr;
-        cvd::SharedFD fd;
+        cuttlefish::SharedFD fd;
         {
           std::lock_guard<std::mutex> lock(write_queue_mutex_);
           auto& front = write_queue_.front();
@@ -168,17 +168,17 @@ class ConsoleForwarder {
   }
 
   [[noreturn]] void ReadLoop() {
-    cvd::SharedFD client_fd;
+    cuttlefish::SharedFD client_fd;
     while (true) {
       if (!client_fd->IsOpen()) {
         client_fd = OpenPTY();
       }
 
-      cvd::SharedFDSet read_set;
+      cuttlefish::SharedFDSet read_set;
       read_set.Set(console_out_);
       read_set.Set(client_fd);
 
-      cvd::Select(&read_set, nullptr, nullptr, nullptr);
+      cuttlefish::Select(&read_set, nullptr, nullptr, nullptr);
       if (read_set.IsSet(console_out_)) {
         std::shared_ptr<std::vector<char>> buf_ptr = std::make_shared<std::vector<char>>(4096);
         auto bytes_read = console_out_->Read(buf_ptr->data(), buf_ptr->size());
@@ -213,13 +213,13 @@ class ConsoleForwarder {
   }
 
   std::string console_path_;
-  cvd::SharedFD console_in_;
-  cvd::SharedFD console_out_;
-  cvd::SharedFD console_log_;
+  cuttlefish::SharedFD console_in_;
+  cuttlefish::SharedFD console_out_;
+  cuttlefish::SharedFD console_log_;
   std::thread writer_thread_;
   std::mutex write_queue_mutex_;
   std::condition_variable condvar_;
-  std::deque<std::pair<cvd::SharedFD, std::shared_ptr<std::vector<char>>>> write_queue_;
+  std::deque<std::pair<cuttlefish::SharedFD, std::shared_ptr<std::vector<char>>>> write_queue_;
 };
 
 int main(int argc, char** argv) {
@@ -232,7 +232,7 @@ int main(int argc, char** argv) {
     return -1;
   }
 
-  auto console_in = cvd::SharedFD::Dup(FLAGS_console_in_fd);
+  auto console_in = cuttlefish::SharedFD::Dup(FLAGS_console_in_fd);
   close(FLAGS_console_in_fd);
   if (!console_in->IsOpen()) {
     LOG(ERROR) << "Error dupping fd " << FLAGS_console_in_fd << ": "
@@ -241,7 +241,7 @@ int main(int argc, char** argv) {
   }
   close(FLAGS_console_in_fd);
 
-  auto console_out = cvd::SharedFD::Dup(FLAGS_console_out_fd);
+  auto console_out = cuttlefish::SharedFD::Dup(FLAGS_console_out_fd);
   close(FLAGS_console_out_fd);
   if (!console_out->IsOpen()) {
     LOG(ERROR) << "Error dupping fd " << FLAGS_console_out_fd << ": "
@@ -258,7 +258,7 @@ int main(int argc, char** argv) {
   auto instance = config->ForDefaultInstance();
   auto console_path = instance.console_path();
   auto console_log = instance.PerInstancePath("console_log");
-  auto console_log_fd = cvd::SharedFD::Open(console_log.c_str(), O_CREAT | O_APPEND | O_WRONLY, 0666);
+  auto console_log_fd = cuttlefish::SharedFD::Open(console_log.c_str(), O_CREAT | O_APPEND | O_WRONLY, 0666);
   ConsoleForwarder console_forwarder(console_path, console_in, console_out, console_log_fd);
 
   // Don't get a SIGPIPE from the clients

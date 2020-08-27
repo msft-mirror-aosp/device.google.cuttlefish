@@ -44,12 +44,12 @@ int main(int argc, char** argv) {
   new_action.sa_handler = SIG_IGN;
   sigaction(SIGPIPE, &new_action, &old_action);
 
-  cvd::SharedFD pipe;
+  cuttlefish::SharedFD pipe;
   if (FLAGS_log_pipe_fd < 0) {
     auto log_name = instance.logcat_pipe_name();
-    pipe = cvd::SharedFD::Open(log_name.c_str(), O_RDONLY);
+    pipe = cuttlefish::SharedFD::Open(log_name.c_str(), O_RDONLY);
   } else {
-    pipe = cvd::SharedFD::Dup(FLAGS_log_pipe_fd);
+    pipe = cuttlefish::SharedFD::Dup(FLAGS_log_pipe_fd);
     close(FLAGS_log_pipe_fd);
   }
 
@@ -60,7 +60,7 @@ int main(int argc, char** argv) {
 
   auto path = instance.logcat_path();
   auto logcat_file =
-      cvd::SharedFD::Open(path.c_str(), O_CREAT | O_APPEND | O_WRONLY, 0666);
+      cuttlefish::SharedFD::Open(path.c_str(), O_CREAT | O_APPEND | O_WRONLY, 0666);
 
   // Server loop
   while (true) {
@@ -70,7 +70,7 @@ int main(int argc, char** argv) {
       LOG(ERROR) << "Could not read logcat: " << pipe->StrError();
       break;
     }
-    auto written = cvd::WriteAll(logcat_file, buff, read);
+    auto written = cuttlefish::WriteAll(logcat_file, buff, read);
     CHECK(written == read)
         << "Error writing to log file: " << logcat_file->StrError()
         << ". This is unrecoverable.";

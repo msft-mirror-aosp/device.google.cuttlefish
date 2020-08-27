@@ -40,8 +40,8 @@ std::string GetControlSocketPath(const vsoc::CuttlefishConfig* config) {
       .PerInstanceInternalPath("crosvm_control.sock");
 }
 
-void AddTapFdParameter(cvd::Command* crosvm_cmd, const std::string& tap_name) {
-  auto tap_fd = cvd::OpenTapInterface(tap_name);
+void AddTapFdParameter(cuttlefish::Command* crosvm_cmd, const std::string& tap_name) {
+  auto tap_fd = cuttlefish::OpenTapInterface(tap_name);
   if (tap_fd->IsOpen()) {
     crosvm_cmd->AddParameter("--tap-fd=", tap_fd);
   } else {
@@ -52,7 +52,7 @@ void AddTapFdParameter(cvd::Command* crosvm_cmd, const std::string& tap_name) {
 
 bool Stop() {
   auto config = vsoc::CuttlefishConfig::Get();
-  cvd::Command command(config->crosvm_binary());
+  cuttlefish::Command command(config->crosvm_binary());
   command.AddParameter("stop");
   command.AddParameter(GetControlSocketPath(config));
 
@@ -83,7 +83,7 @@ std::vector<std::string> CrosvmManager::ConfigureGpu(const std::string& gpu_mode
   // fresh machine after a boot will fail because the Nvidia EGL library will fork to run the
   // nvidia-modprobe command and the main Crosvm process will abort after receiving the exit signal
   // of the forked child which is interpreted as a failure.
-  cvd::Command modprobe_cmd("/usr/bin/nvidia-modprobe");
+  cuttlefish::Command modprobe_cmd("/usr/bin/nvidia-modprobe");
   modprobe_cmd.AddParameter("--modeset");
   modprobe_cmd.Start().Wait();
 
@@ -108,7 +108,7 @@ std::vector<std::string> CrosvmManager::ConfigureGpu(const std::string& gpu_mode
 
 std::vector<std::string> CrosvmManager::ConfigureBootDevices() {
   // TODO There is no way to control this assignment with crosvm (yet)
-  if (cvd::HostArch() == "x86_64") {
+  if (cuttlefish::HostArch() == "x86_64") {
     // PCI domain 0, bus 0, device 4, function 0
     return { "androidboot.boot_devices=pci0000:00/0000:00:04.0" };
   } else {
@@ -119,9 +119,9 @@ std::vector<std::string> CrosvmManager::ConfigureBootDevices() {
 CrosvmManager::CrosvmManager(const vsoc::CuttlefishConfig* config)
     : VmManager(config) {}
 
-std::vector<cvd::Command> CrosvmManager::StartCommands() {
+std::vector<cuttlefish::Command> CrosvmManager::StartCommands() {
   auto instance = config_->ForDefaultInstance();
-  cvd::Command crosvm_cmd(config_->crosvm_binary(), [](cvd::Subprocess* proc) {
+  cuttlefish::Command crosvm_cmd(config_->crosvm_binary(), [](cuttlefish::Subprocess* proc) {
     auto stopped = Stop();
     if (stopped) {
       return true;
@@ -207,15 +207,15 @@ std::vector<cvd::Command> CrosvmManager::StartCommands() {
 
   // These fds will only be read from or written to, but open them with
   // read and write access to keep them open in case the subprocesses exit
-  cvd::SharedFD console_in_wr =
-      cvd::SharedFD::Open(console_in_pipe_name.c_str(), O_RDWR);
+  cuttlefish::SharedFD console_in_wr =
+      cuttlefish::SharedFD::Open(console_in_pipe_name.c_str(), O_RDWR);
   if (!console_in_wr->IsOpen()) {
     LOG(ERROR) << "Failed to open console input fifo for writes: "
                << console_in_wr->StrError();
     return {};
   }
-  cvd::SharedFD console_out_rd =
-      cvd::SharedFD::Open(console_out_pipe_name.c_str(), O_RDWR);
+  cuttlefish::SharedFD console_out_rd =
+      cuttlefish::SharedFD::Open(console_out_pipe_name.c_str(), O_RDWR);
   if (!console_out_rd->IsOpen()) {
     LOG(ERROR) << "Failed to open console output fifo for reads: "
                << console_out_rd->StrError();
@@ -241,7 +241,7 @@ std::vector<cvd::Command> CrosvmManager::StartCommands() {
                             console_out_pipe_name, ",input=", console_in_pipe_name);
   }
 
-  cvd::Command console_cmd(config_->console_forwarder_binary());
+  cuttlefish::Command console_cmd(config_->console_forwarder_binary());
   console_cmd.AddParameter("--console_in_fd=", console_in_wr);
   console_cmd.AddParameter("--console_out_fd=", console_out_rd);
 
@@ -256,7 +256,7 @@ std::vector<cvd::Command> CrosvmManager::StartCommands() {
     crosvm_cmd.AddParameter(config_->GetKernelImageToUse());
   }
 
-  std::vector<cvd::Command> ret;
+  std::vector<cuttlefish::Command> ret;
   ret.push_back(std::move(crosvm_cmd));
   ret.push_back(std::move(console_cmd));
   return ret;

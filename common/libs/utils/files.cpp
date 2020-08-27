@@ -26,7 +26,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-namespace cvd {
+namespace cuttlefish {
 
 bool FileExists(const std::string& path) {
   struct stat st;
@@ -95,4 +95,4 @@ std::string CurrentDirectory() {
   return ret;
 }
 
-}  // namespace cvd
+}  // namespace cuttlefish

@@ -85,7 +85,7 @@ std::vector<std::string> KernelCommandLineFromConfig(const vsoc::CuttlefishConfi
   }
 
   if (config.enable_vehicle_hal_grpc_server() && instance.vehicle_hal_server_port() &&
-      cvd::FileExists(config.vehicle_hal_grpc_server_binary())) {
+      cuttlefish::FileExists(config.vehicle_hal_grpc_server_binary())) {
     constexpr int vehicle_hal_server_cid = 2;
     kernel_cmdline.push_back(concat("androidboot.vendor.vehiclehal.server.cid=", vehicle_hal_server_cid));
     kernel_cmdline.push_back(concat("androidboot.vendor.vehiclehal.server.port=", instance.vehicle_hal_server_port()));

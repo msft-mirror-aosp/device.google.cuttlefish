@@ -31,6 +31,6 @@ int main(int argc, char* argv[]) {
   using ::android::base::ERROR;
   ::android::base::InitLogging(argv, android::base::StderrLogger);
   ::gflags::ParseCommandLineFlags(&argc, &argv, true);
-  cvd::vnc::VncServer vnc_server(FLAGS_port, FLAGS_agressive);
+  cuttlefish::vnc::VncServer vnc_server(FLAGS_port, FLAGS_agressive);
   vnc_server.MainLoop();
 }
