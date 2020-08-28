@@ -199,7 +199,7 @@ DEFINE_string(custom_action_config, "",
               "Path to a custom action config JSON. Defaults to the file provided by "
               "build variable CVD_CUSTOM_ACTION_CONFIG. If this build variable "
               "is empty then the custom action config will be empty as well.");
-DEFINE_bool(use_bootloader, false, "Boots the device using a bootloader");
+DEFINE_bool(use_bootloader, true, "Boots the device using a bootloader");
 DEFINE_string(bootloader, "", "Bootloader binary path");
 DEFINE_string(boot_slot, "", "Force booting into the given slot. If empty, "
              "the slot will be chosen based on the misc partition if using a "
