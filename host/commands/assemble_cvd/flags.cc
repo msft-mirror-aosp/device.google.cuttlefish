@@ -124,7 +124,7 @@ DEFINE_bool(enable_sandbox,
             "Enable crosvm sandbox. Use this when you are sure about what you are doing.");
 
 static const std::string kSeccompDir =
-    std::string("usr/share/cuttlefish/") + cuttlefish::HostArch() + "-linux-gnu/seccomp";
+    std::string("usr/share/crosvm/") + cuttlefish::HostArch() + "-linux-gnu/seccomp";
 DEFINE_string(seccomp_policy_dir,
               cuttlefish::DefaultHostArtifactsPath(kSeccompDir),
               "With sandbox'ed crosvm, overrieds the security comp policy directory");
@@ -244,10 +244,13 @@ DEFINE_bool(kgdb, false, "Configure the virtual device for debugging the kernel 
 DEFINE_bool(start_gnss_proxy, false, "Whether to start the gnss proxy.");
 
 // by default, this modem-simulator is disabled
-DEFINE_bool(enable_modem_simulator, false,
+DEFINE_bool(enable_modem_simulator, true,
             "Enable the modem simulator to process RILD AT commands");
 DEFINE_int32(modem_simulator_count, 1,
              "Modem simulator count corresponding to maximum sim number");
+// modem_simulator_sim_type=2 for test CtsCarrierApiTestCases
+DEFINE_int32(modem_simulator_sim_type, 1,
+             "Sim type: 1 for normal, 2 for CtsCarrierApiTestCases");
 
 namespace {
 
@@ -342,6 +345,23 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
     LOG(FATAL) << "A ramdisk is required, but the boot image did not have one.";
   }
 
+  std::string discovered_ramdisk = fetcher_config.FindCvdFileWithSuffix(kInitramfsImg);
+  std::string foreign_ramdisk = FLAGS_initramfs_path.size () ? FLAGS_initramfs_path : discovered_ramdisk;
+
+  // TODO(rammuthiah) Bootloader boot doesn't work in the following scenarions
+  // 1. QEMU - our config of uboot doesn't currently support QEMU firmware. We need to
+  //    add a new bootloader binary for QEMU.
+  // 2. Arm64 - a arm64 confir of uboot is in progress. This will be fixed when that is
+  //    ready.
+  // 3. If using a ramdisk or kernel besides the one in the boot.img - The boot.img
+  //    doesn't get repackaged in this scenario currently. Once it does, bootloader
+  //    boot will suppprt runtime selected kernels and/or ramdisks.
+  if (FLAGS_vm_manager == QemuManager::name() || cuttlefish::HostArch() == "aarch64" ||
+      foreign_ramdisk.size() || foreign_kernel.size()) {
+    SetCommandLineOptionWithMode("use_bootloader", "false",
+        google::FlagSettingMode::SET_FLAGS_DEFAULT);
+  }
+
   tmp_config_obj.set_boot_image_kernel_cmdline(boot_image_unpacker.kernel_cmdline());
   tmp_config_obj.set_guest_enforce_security(FLAGS_guest_enforce_security);
   tmp_config_obj.set_guest_audit_security(FLAGS_guest_audit_security);
@@ -409,8 +429,6 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
   tmp_config_obj.set_ramdisk_image_path(ramdisk_path);
   tmp_config_obj.set_vendor_ramdisk_image_path(vendor_ramdisk_path);
 
-  std::string discovered_ramdisk = fetcher_config.FindCvdFileWithSuffix(kInitramfsImg);
-  std::string foreign_ramdisk = FLAGS_initramfs_path.size () ? FLAGS_initramfs_path : discovered_ramdisk;
   if (foreign_kernel.size() && !foreign_ramdisk.size()) {
     // If there's a kernel that's passed in without an initramfs, that implies
     // user error or a kernel built with no modules. In either case, let's
@@ -455,6 +473,7 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
   tmp_config_obj.set_enable_modem_simulator(FLAGS_enable_modem_simulator);
   tmp_config_obj.set_modem_simulator_instance_number(
       FLAGS_modem_simulator_count);
+  tmp_config_obj.set_modem_simulator_sim_type(FLAGS_modem_simulator_sim_type);
 
   tmp_config_obj.set_webrtc_enable_adb_websocket(
           FLAGS_webrtc_enable_adb_websocket);
@@ -581,7 +600,7 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
     }
     is_first_instance = false;
     std::stringstream ss;
-    auto base_port = 7200 + num - 2;
+    auto base_port = 9200 + num - 2;
     for (auto index = 0; index < FLAGS_modem_simulator_count; ++index) {
       ss << base_port + 1 << ",";
     }
