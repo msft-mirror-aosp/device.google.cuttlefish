@@ -1,10 +1,5 @@
 bt.rootcanal_mac_address  u:object_r:vendor_bt_rootcanal_prop:s0
 bt.rootcanal_test_console  u:object_r:vendor_bt_rootcanal_prop:s0
-hwc.drm.device u:object_r:vendor_graphics_config_prop:s0 exact string
-hwc.drm.exclude_non_hwfb_imports u:object_r:vendor_graphics_config_prop:s0 exact int
-hwc.drm.primary_display_order u:object_r:vendor_graphics_config_prop:s0 exact string
-hwc.drm.scale_with_gpu u:object_r:vendor_graphics_config_prop:s0 exact int
-hwc.drm.use_overlay_planes u:object_r:vendor_graphics_config_prop:s0 exact int
 ro.boot.cpuvulkan.version  u:object_r:vendor_graphics_config_prop:s0 exact int
 ro.cpuvulkan.version  u:object_r:graphics_config_prop:s0 exact int
 ro.boot.cuttlefish_config_server_port  u:object_r:vendor_cuttlefish_config_server_port_prop:s0
