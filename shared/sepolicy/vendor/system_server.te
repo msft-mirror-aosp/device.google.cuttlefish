@@ -7,3 +7,6 @@
 permissive system_server;
 dontaudit system_server self:process execmem;
 virgl_access(system_server)
+
+# Cuttlefish is still using the legacy wifi HAL (pre-HIDL)
+get_prop(system_server, exported_wifi_prop)
