@@ -24,13 +24,13 @@ cc_binary_host {
     shared_libs: [
         "libbase",
         "libcuttlefish_fs",
+        "libjsoncpp",
         "liblog",
         "libcuttlefish_utils",
     ],
     static_libs: [
         "libcuttlefish_host_config",
         "libgflags",
-        "libjsoncpp",
     ],
     defaults: ["cuttlefish_host_only"],
 }
