@@ -28,9 +28,9 @@ cc_library_host_static {
         "libcuttlefish_utils",
         "libbase",
         "libgflags",
+        "libxml2",
     ],
     static_libs: [
-        "libxml2",
         "libjsoncpp",
     ],
     defaults: ["cuttlefish_host_only"],

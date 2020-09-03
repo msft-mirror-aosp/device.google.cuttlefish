@@ -106,6 +106,7 @@ cvd_host_shared_libraries := \
     libjsoncpp.so \
     libgrpc++.so \
     android.hardware.automotive.vehicle@2.0.so \
+    libxml2.so \
 
 webrtc_assets := \
     index.html \
