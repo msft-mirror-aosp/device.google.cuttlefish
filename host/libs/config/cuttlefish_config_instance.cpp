@@ -157,6 +157,10 @@ std::string CuttlefishConfig::InstanceSpecific::sdcard_path() const {
   return cuttlefish::AbsolutePath(PerInstancePath("sdcard.img"));
 }
 
+std::string CuttlefishConfig::InstanceSpecific::composite_disk_path() const {
+  return cuttlefish::AbsolutePath(PerInstancePath("composite.img"));
+}
+
 std::string CuttlefishConfig::InstanceSpecific::modem_simulator_ports() const {
   return (*Dictionary())[kModemSimulatorPorts].asString();
 }

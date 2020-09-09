@@ -30,6 +30,8 @@ bool RemoveFile(const std::string& file);
 bool RenameFile(const std::string& old_name, const std::string& new_name);
 std::string ReadFile(const std::string& file);
 std::chrono::system_clock::time_point FileModificationTime(const std::string& path);
+std::string cpp_dirname(const std::string& str);
+std::string cpp_basename(const std::string& str);
 
 // The returned value may contain .. or . if these are present in the path
 // argument.

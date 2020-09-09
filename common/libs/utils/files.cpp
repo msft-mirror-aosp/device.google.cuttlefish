@@ -24,6 +24,7 @@
 #include <cstdlib>
 #include <dirent.h>
 #include <fstream>
+#include <libgen.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -180,6 +181,20 @@ FileSizes SparseFileSizes(const std::string& path) {
     }
   }
   return (FileSizes) { .sparse_size = farthest_seek, .disk_size = data_bytes };
+}
+
+std::string cpp_basename(const std::string& str) {
+  char* copy = strdup(str.c_str()); // basename may modify its argument
+  std::string ret(basename(copy));
+  free(copy);
+  return ret;
+}
+
+std::string cpp_dirname(const std::string& str) {
+  char* copy = strdup(str.c_str()); // dirname may modify its argument
+  std::string ret(dirname(copy));
+  free(copy);
+  return ret;
 }
 
 }  // namespace cuttlefish
