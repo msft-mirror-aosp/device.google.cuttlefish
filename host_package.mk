@@ -69,7 +69,6 @@ ifneq ($(wildcard device/google/trout),)
 endif
 
 cvd_host_tests := \
-    monotonic_time_test \
     cuttlefish_net_tests \
     modem_simulator_test \
 
