@@ -78,7 +78,6 @@ cvd_host_shared_libraries := \
     libcutils.so \
     libcuttlefish_fs.so \
     libcuttlefish_utils.so \
-    cuttlefish_tcp_socket.so \
     cuttlefish_net.so \
     liblog.so \
     libnl.so \
