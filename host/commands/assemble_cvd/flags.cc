@@ -961,6 +961,7 @@ const cuttlefish::CuttlefishConfig* InitFilesystemAndCreateConfig(
       preserving.insert("gpt_footer.img");
       preserving.insert("composite.img");
       preserving.insert("sdcard.img");
+      preserving.insert("uboot_env.img");
       preserving.insert("access-kregistry");
       preserving.insert("NVChip");
       preserving.insert("gatekeeper_secure");
