@@ -46,9 +46,6 @@ using cuttlefish::vm_manager::CrosvmManager;
 DEFINE_string(system_image_dir, cuttlefish::DefaultGuestImagePath(""),
               "Location of the system partition images.");
 
-DEFINE_string(boot_env_image, "",
-              "Location of the boot environment image. If the image does not "
-              "exist, a default boot environment image is created.");
 DEFINE_string(boot_image, "",
               "Location of cuttlefish boot image. If empty it is assumed to be "
               "boot.img in the directory specified by -system_image_dir.");
@@ -112,9 +109,6 @@ bool ResolveInstanceFiles() {
   SetCommandLineOptionWithMode("vendor_boot_image",
                                default_vendor_boot_image.c_str(),
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
-  std::string default_boot_env_image = FLAGS_system_image_dir + "/env.img";
-  SetCommandLineOptionWithMode("boot_env_image", default_boot_env_image.c_str(),
-                               google::FlagSettingMode::SET_FLAGS_DEFAULT);
   std::string default_vbmeta_image = FLAGS_system_image_dir + "/vbmeta.img";
   SetCommandLineOptionWithMode("vbmeta_image", default_vbmeta_image.c_str(),
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
@@ -153,20 +147,27 @@ static bool DecompressKernel(const std::string& src, const std::string& dst) {
   return decomp_proc.Started() && decomp_proc.Wait() == 0;
 }
 
-static std::vector<ImagePartition> disk_config() {
+std::vector<ImagePartition> disk_config(
+    const cuttlefish::CuttlefishConfig::InstanceSpecific& instance) {
   std::vector<ImagePartition> partitions;
 
   // Note that if the positions of env or misc change, the environment for
   // u-boot must be updated as well (see boot_config.cc and
   // configs/cf-x86_defconfig in external/u-boot).
   partitions.push_back(ImagePartition {
-    .label = "env",
-    .image_file_path = FLAGS_boot_env_image,
+    .label = "uboot_env",
+    .image_file_path = instance.uboot_env_image_path(),
   });
   partitions.push_back(ImagePartition {
     .label = "misc",
     .image_file_path = FLAGS_misc_image,
   });
+  if(FLAGS_use_bootloader) {
+    partitions.push_back(ImagePartition {
+      .label = "bootloader",
+      .image_file_path = FLAGS_bootloader,
+    });
+  }
   partitions.push_back(ImagePartition {
     .label = "boot_a",
     .image_file_path = FLAGS_boot_image,
@@ -218,9 +219,10 @@ static std::vector<ImagePartition> disk_config() {
   return partitions;
 }
 
-static std::chrono::system_clock::time_point LastUpdatedInputDisk() {
+static std::chrono::system_clock::time_point LastUpdatedInputDisk(
+    const cuttlefish::CuttlefishConfig::InstanceSpecific& instance) {
   std::chrono::system_clock::time_point ret;
-  for (auto& partition : disk_config()) {
+  for (auto& partition : disk_config(instance)) {
     auto partition_mod_time = cuttlefish::FileModificationTime(partition.image_file_path);
     if (partition_mod_time > ret) {
       ret = partition_mod_time;
@@ -229,12 +231,40 @@ static std::chrono::system_clock::time_point LastUpdatedInputDisk() {
   return ret;
 }
 
-bool ShouldCreateCompositeDisk(const cuttlefish::CuttlefishConfig& config) {
-  if (!cuttlefish::FileExists(config.composite_disk_path())) {
+bool ShouldCreateAllCompositeDisks(const cuttlefish::CuttlefishConfig& config) {
+  std::chrono::system_clock::time_point youngest_disk_img;
+  for (auto& partition : disk_config(config.ForDefaultInstance())) {
+    if(partition.label == "uboot_env") {
+      continue;
+    }
+
+    auto partition_mod_time = cuttlefish::FileModificationTime(partition.image_file_path);
+    if (partition_mod_time > youngest_disk_img) {
+      youngest_disk_img = partition_mod_time;
+    }
+  }
+
+  // If the youngest partition img is younger than any composite disk, this fact implies that
+  // the composite disks are all out of date and need to be reinitialized.
+  for (auto& instance : config.Instances()) {
+    if (!cuttlefish::FileExists(instance.composite_disk_path())) {
+      continue;
+    }
+    if (youngest_disk_img > cuttlefish::FileModificationTime(instance.composite_disk_path())) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+bool ShouldCreateCompositeDisk(const cuttlefish::CuttlefishConfig::InstanceSpecific& instance) {
+  if (!cuttlefish::FileExists(instance.composite_disk_path())) {
     return true;
   }
-  auto composite_age = cuttlefish::FileModificationTime(config.composite_disk_path());
-  return composite_age < LastUpdatedInputDisk();
+
+  auto composite_age = cuttlefish::FileModificationTime(instance.composite_disk_path());
+  return composite_age < LastUpdatedInputDisk(instance);
 }
 
 static bool ConcatRamdisks(
@@ -265,9 +295,11 @@ static off_t AvailableSpaceAtPath(const std::string& path) {
   return vfs.f_bsize * vfs.f_bavail; // block size * free blocks for unprivileged users
 }
 
-bool CreateCompositeDisk(const cuttlefish::CuttlefishConfig& config) {
-  if (!cuttlefish::SharedFD::Open(config.composite_disk_path().c_str(), O_WRONLY | O_CREAT, 0644)->IsOpen()) {
-    LOG(ERROR) << "Could not ensure " << config.composite_disk_path() << " exists";
+bool CreateCompositeDisk(const cuttlefish::CuttlefishConfig& config,
+                         const cuttlefish::CuttlefishConfig::InstanceSpecific& instance) {
+  if (!cuttlefish::SharedFD::Open(instance.composite_disk_path().c_str(),
+                                  O_WRONLY | O_CREAT, 0644)->IsOpen()) {
+    LOG(ERROR) << "Could not ensure " << instance.composite_disk_path() << " exists";
     return false;
   }
   if (config.vm_manager() == CrosvmManager::name()) {
@@ -291,14 +323,14 @@ bool CreateCompositeDisk(const cuttlefish::CuttlefishConfig& config) {
       LOG(DEBUG) << "Disk size of \"" << FLAGS_data_image << "\": "
                  << existing_sizes.disk_size;
     }
-    std::string header_path = config.AssemblyPath("gpt_header.img");
-    std::string footer_path = config.AssemblyPath("gpt_footer.img");
-    CreateCompositeDisk(disk_config(), header_path, footer_path,
-                        config.composite_disk_path());
+    std::string header_path = instance.PerInstancePath("gpt_header.img");
+    std::string footer_path = instance.PerInstancePath("gpt_footer.img");
+    CreateCompositeDisk(disk_config(instance), header_path, footer_path,
+                        instance.composite_disk_path());
   } else {
     // If this doesn't fit into the disk, it will fail while aggregating. The
     // aggregator doesn't maintain any sparse attributes.
-    AggregateImage(disk_config(), config.composite_disk_path());
+    AggregateImage(disk_config(instance), instance.composite_disk_path());
   }
   return true;
 }
@@ -378,8 +410,10 @@ void CreateDynamicDiskFiles(const cuttlefish::FetcherConfig& fetcher_config,
   }
 
   // Create boot_config if necessary
-  if (!InitBootloaderEnvPartition(*config, FLAGS_boot_env_image)) {
-    exit(cuttlefish::kCuttlefishConfigurationInitError);
+  for (auto instance : config->Instances()) {
+    if (!InitBootloaderEnvPartition(*config, instance)) {
+      exit(cuttlefish::kCuttlefishConfigurationInitError);
+    }
   }
 
   if (!cuttlefish::FileExists(FLAGS_metadata_image)) {
@@ -426,26 +460,25 @@ void CreateDynamicDiskFiles(const cuttlefish::FetcherConfig& fetcher_config,
     }
   }
 
-  bool oldCompositeDisk = ShouldCreateCompositeDisk(*config);
   bool newDataImage = dataImageResult == DataImageResult::FileUpdated;
-  if (oldCompositeDisk || newDataImage) {
-    if (!CreateCompositeDisk(*config)) {
-      exit(cuttlefish::kDiskSpaceError);
-    }
-  }
 
   for (auto instance : config->Instances()) {
+    bool oldCompositeDisk = ShouldCreateCompositeDisk(instance);
     auto overlay_path = instance.PerInstancePath("overlay.img");
     bool missingOverlay = !cuttlefish::FileExists(overlay_path);
     bool newOverlay = cuttlefish::FileModificationTime(overlay_path)
-        < cuttlefish::FileModificationTime(config->composite_disk_path());
+        < cuttlefish::FileModificationTime(instance.composite_disk_path());
     if (missingOverlay || oldCompositeDisk || !FLAGS_resume || newDataImage || newOverlay) {
       if (FLAGS_resume) {
         LOG(INFO) << "Requested to continue an existing session, (the default) "
                   << "but the disk files have become out of date. Wiping the "
-                  << "old session files and starting a new session.";
+                  << "old session files and starting a new session for device "
+                  << instance.serial_number();
       }
-      CreateQcowOverlay(config->crosvm_binary(), config->composite_disk_path(), overlay_path);
+      if (!CreateCompositeDisk(*config, instance)) {
+        exit(cuttlefish::kDiskSpaceError);
+      }
+      CreateQcowOverlay(config->crosvm_binary(), instance.composite_disk_path(), overlay_path);
       CreateBlankImage(instance.access_kregistry_path(), 2 /* mb */, "none");
       CreateBlankImage(instance.pstore_path(), 2 /* mb */, "none");
     }
