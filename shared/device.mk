@@ -111,7 +111,6 @@ PRODUCT_PACKAGES += \
     wpa_supplicant.vsoc.conf \
     vsoc_input_service \
     rename_netiface \
-    ip_link_add \
     setup_wifi \
     tombstone_transmit \
     tombstone_producer \
@@ -262,8 +261,7 @@ PRODUCT_PACKAGES += \
 #
 PRODUCT_PACKAGES += \
     hwcomposer.drm_minigbm \
-    hwcomposer.cutf_cvm_ashmem \
-    hwcomposer.cutf_hwc2 \
+    hwcomposer.cutf \
     hwcomposer-stats \
     android.hardware.graphics.composer@2.2-impl \
     android.hardware.graphics.composer@2.2-service
@@ -308,6 +306,12 @@ DEVICE_PACKAGE_OVERLAYS += $(LOCAL_AUDIO_DEVICE_PACKAGE_OVERLAYS)
 #
 PRODUCT_PACKAGES += \
     android.hardware.biometrics.face@1.1-service.example
+
+#
+# BiometricsFingerprint HAL
+#
+PRODUCT_PACKAGES += \
+    android.hardware.biometrics.fingerprint-service.example
 
 #
 # Contexthub HAL

@@ -568,12 +568,12 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
     if (FLAGS_gpu_mode != cuttlefish::kGpuModeDrmVirgl &&
         FLAGS_gpu_mode != cuttlefish::kGpuModeGfxStream) {
       instance.set_frames_server_port(6900 + num - 1);
+      if (FLAGS_vm_manager == QemuManager::name()) {
+        instance.set_keyboard_server_port(7000 + num - 1);
+        instance.set_touch_server_port(7100 + num - 1);
+      }
     }
 
-    if (FLAGS_vm_manager == QemuManager::name()) {
-      instance.set_keyboard_server_port(7000 + num - 1);
-      instance.set_touch_server_port(7100 + num - 1);
-    }
     instance.set_keymaster_vsock_port(7200 + num - 1);
     instance.set_gatekeeper_vsock_port(7300 + num - 1);
     instance.set_gnss_grpc_proxy_server_port(7400 + num -1);
@@ -654,9 +654,25 @@ bool SaveConfig(const cuttlefish::CuttlefishConfig& tmp_config_obj) {
 
 void SetDefaultFlagsForQemu() {
   // for now, we don't set non-default options for QEMU
+  if (FLAGS_gpu_mode == cuttlefish::kGpuModeGuestSwiftshader &&
+      NumStreamers() == 0) {
+    // This makes the vnc server the default streamer unless the user requests
+    // another via a --star_<streamer> flag, while at the same time it's
+    // possible to run without any streamer by setting --start_vnc_server=false.
+    SetCommandLineOptionWithMode("start_vnc_server", "true",
+                                 google::FlagSettingMode::SET_FLAGS_DEFAULT);
+  }
 }
 
 void SetDefaultFlagsForCrosvm() {
+  if (NumStreamers() == 0) {
+    // This makes the vnc server the default streamer unless the user requests
+    // another via a --star_<streamer> flag, while at the same time it's
+    // possible to run without any streamer by setting --start_vnc_server=false.
+    SetCommandLineOptionWithMode("start_vnc_server", "true",
+                                 google::FlagSettingMode::SET_FLAGS_DEFAULT);
+  }
+
   // for now, we support only x86_64 by default
   bool default_enable_sandbox = false;
   std::set<const std::string> supported_archs{std::string("x86_64")};
@@ -706,13 +722,6 @@ bool ParseCommandLineFlags(int* argc, char*** argv) {
               << std::endl;
     invalid_manager = true;
   }
-  if (NumStreamers() == 0) {
-    // This makes the vnc server the default streamer unless the user requests
-    // another via a --star_<streamer> flag, while at the same time it's
-    // possible to run without any streamer by setting --start_vnc_server=false.
-    SetCommandLineOptionWithMode("start_vnc_server", "true",
-                                 google::FlagSettingMode::SET_FLAGS_DEFAULT);
-  }
   // Various temporary workarounds for aarch64
   if (cuttlefish::HostArch() == "aarch64") {
     SetCommandLineOptionWithMode("tpm_binary",
@@ -734,15 +743,8 @@ bool ParseCommandLineFlags(int* argc, char*** argv) {
   return ResolveInstanceFiles();
 }
 
-std::string cpp_basename(const std::string& str) {
-  char* copy = strdup(str.c_str()); // basename may modify its argument
-  std::string ret(basename(copy));
-  free(copy);
-  return ret;
-}
-
 bool CleanPriorFiles(const std::string& path, const std::set<std::string>& preserving) {
-  if (preserving.count(cpp_basename(path))) {
+  if (preserving.count(cuttlefish::cpp_basename(path))) {
     LOG(DEBUG) << "Preserving: " << path;
     return true;
   }
@@ -822,7 +824,7 @@ bool CleanPriorFiles(const std::vector<std::string>& paths, const std::set<std::
   return true;
 }
 
-bool CleanPriorFiles(const cuttlefish::CuttlefishConfig& config, const std::set<std::string>& preserving) {
+bool CleanPriorFiles(const std::set<std::string>& preserving) {
   std::vector<std::string> paths = {
     // Everything in the assembly directory
     FLAGS_assembly_dir,
@@ -831,8 +833,19 @@ bool CleanPriorFiles(const cuttlefish::CuttlefishConfig& config, const std::set<
     // The global link to the config file
     cuttlefish::GetGlobalConfigFileLink(),
   };
-  for (const auto& instance : config.Instances()) {
-    paths.push_back(instance.instance_dir());
+
+  std::string runtime_dir_parent =
+      cuttlefish::cpp_dirname(cuttlefish::AbsolutePath(FLAGS_instance_dir));
+  std::string runtime_dirs_basename =
+      cuttlefish::cpp_basename(cuttlefish::AbsolutePath(FLAGS_instance_dir));
+
+  std::regex instance_dir_regex("^.+\\.[1-9]\\d*$");
+  for (const auto& path : cuttlefish::DirectoryContents(runtime_dir_parent)) {
+    std::string absl_path = runtime_dir_parent + "/" + path;
+    if((path.rfind(runtime_dirs_basename, 0) == 0) && std::regex_match(path, instance_dir_regex) &&
+        cuttlefish::DirectoryExists(absl_path)) {
+      paths.push_back(absl_path);
+    }
   }
   paths.push_back(FLAGS_instance_dir);
   return CleanPriorFiles(paths, preserving);
@@ -889,19 +902,22 @@ const cuttlefish::CuttlefishConfig* InitFilesystemAndCreateConfig(
     // disk.
     auto config = InitializeCuttlefishConfiguration(*boot_img_unpacker, fetcher_config);
     std::set<std::string> preserving;
-    if (FLAGS_resume && ShouldCreateCompositeDisk(config)) {
+    if (FLAGS_resume && ShouldCreateAllCompositeDisks(config)) {
       LOG(INFO) << "Requested resuming a previous session (the default behavior) "
                 << "but the base images have changed under the overlay, making the "
                 << "overlay incompatible. Wiping the overlay files.";
-    } else if (FLAGS_resume && !ShouldCreateCompositeDisk(config)) {
+    } else if (FLAGS_resume && !ShouldCreateAllCompositeDisks(config)) {
       preserving.insert("overlay.img");
       preserving.insert("gpt_header.img");
       preserving.insert("gpt_footer.img");
       preserving.insert("composite.img");
       preserving.insert("sdcard.img");
+      preserving.insert("uboot_env.img");
       preserving.insert("access-kregistry");
       preserving.insert("disk_hole");
       preserving.insert("NVChip");
+      preserving.insert("gatekeeper_secure");
+      preserving.insert("gatekeeper_insecure");
       preserving.insert("modem_nvram.json");
       std::stringstream ss;
       for (int i = 0; i < FLAGS_modem_simulator_count; i++) {
@@ -911,7 +927,7 @@ const cuttlefish::CuttlefishConfig* InitFilesystemAndCreateConfig(
         ss.str("");
       }
     }
-    if (!CleanPriorFiles(config, preserving)) {
+    if (!CleanPriorFiles(preserving)) {
       LOG(ERROR) << "Failed to clean prior files";
       exit(AssemblerExitCodes::kPrioFilesCleanupError);
     }
