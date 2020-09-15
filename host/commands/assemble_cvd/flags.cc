@@ -228,7 +228,7 @@ DEFINE_string(tpm_device, "", "A host TPM device to pass through commands to.");
 DEFINE_bool(restart_subprocesses, true, "Restart any crashed host process");
 DEFINE_bool(enable_vehicle_hal_grpc_server, true, "Enables the vehicle HAL "
             "emulation gRPC server on the host");
-DEFINE_bool(use_bootloader, false, "Boots the device using a bootloader");
+DEFINE_bool(use_bootloader, true, "Boots the device using a bootloader");
 DEFINE_string(bootloader, "", "Bootloader binary path");
 DEFINE_string(boot_slot, "", "Force booting into the given slot. If empty, "
              "the slot will be chosen based on the misc partition if using a "
@@ -366,6 +366,11 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
       foreign_ramdisk.size() || foreign_kernel.size()) {
     SetCommandLineOptionWithMode("use_bootloader", "false",
         google::FlagSettingMode::SET_FLAGS_DEFAULT);
+  }
+
+  if(FLAGS_use_bootloader && FLAGS_vm_manager == CrosvmManager::name()) {
+    SetCommandLineOptionWithMode("enable_sandbox", "false",
+                                 google::FlagSettingMode::SET_FLAGS_DEFAULT);
   }
 
   tmp_config_obj.set_boot_image_kernel_cmdline(boot_image_unpacker.kernel_cmdline());
