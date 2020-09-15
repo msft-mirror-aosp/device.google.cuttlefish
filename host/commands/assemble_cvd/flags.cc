@@ -98,6 +98,9 @@ DEFINE_bool(start_vnc_server, false, "Whether to start the vnc server process. "
                                      "The VNC server runs at port 6443 + i for "
                                      "the vsoc-i user or CUTTLEFISH_INSTANCE=i, "
                                      "starting from 1.");
+DEFINE_bool(pause_in_bootloader, false,
+            "Stop the bootflow in u-boot. You can continue the boot by connecting "
+            "to the device console and typing in \"boot\".");
 
 DEFINE_bool(start_webrtc, false, "Whether to start the webrtc process.");
 
