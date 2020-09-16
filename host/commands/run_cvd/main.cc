@@ -301,7 +301,8 @@ bool PowerwashFiles() {
 }
 
 void ServerLoop(cuttlefish::SharedFD server,
-                cuttlefish::ProcessMonitor* process_monitor) {
+                cuttlefish::ProcessMonitor* process_monitor,
+                std::unique_ptr<cuttlefish::TeeStderrToFile> stderr_tee) {
   while (true) {
     // TODO: use select to handle simultaneous connections.
     auto client = cuttlefish::SharedFD::Accept(*server);
@@ -356,6 +357,8 @@ void ServerLoop(cuttlefish::SharedFD server,
           }
           argv[argv_vec.size()] = nullptr;
 
+          stderr_tee.reset();
+
           execv("/proc/self/exe", argv);
           // execve should not return, so something went wrong.
           PLOG(ERROR) << "execv returned: ";
@@ -397,7 +400,8 @@ int main(int argc, char** argv) {
     }
   }
 
-  cuttlefish::TeeStderrToFile stderr_tee;
+  // TODO(schuffelen): Backport the TeeStderrToFile replacement.
+  auto stderr_tee = std::make_unique<cuttlefish::TeeStderrToFile>();
 
   std::string input_files_str;
   {
@@ -423,7 +427,7 @@ int main(int argc, char** argv) {
   auto instance = config->ForDefaultInstance();
 
   auto runner_log_path = instance.PerInstancePath("run_cvd.log");
-  stderr_tee.SetFile(cuttlefish::SharedFD::Creat(runner_log_path.c_str(), 0755));
+  stderr_tee->SetFile(cuttlefish::SharedFD::Creat(runner_log_path.c_str(), 0755));
 
   // Change working directory to the instance directory as early as possible to
   // ensure all host processes have the same working dir. This helps stop_cvd
@@ -485,6 +489,7 @@ int main(int argc, char** argv) {
   }
   cuttlefish::SharedFD foreground_launcher_pipe;
   if (config->run_as_daemon()) {
+    stderr_tee.reset();
     foreground_launcher_pipe = DaemonizeLauncher(*config);
     if (!foreground_launcher_pipe->IsOpen()) {
       return RunnerExitCodes::kDaemonizationError;
@@ -561,7 +566,7 @@ int main(int argc, char** argv) {
   LaunchSocketVsockProxyIfEnabled(&process_monitor, *config);
   LaunchAdbConnectorIfEnabled(&process_monitor, *config, adbd_events_pipe);
 
-  ServerLoop(launcher_monitor_socket, &process_monitor); // Should not return
+  ServerLoop(launcher_monitor_socket, &process_monitor, std::move(stderr_tee)); // Should not return
   LOG(ERROR) << "The server loop returned, it should never happen!!";
   return cuttlefish::RunnerExitCodes::kServerError;
 }
