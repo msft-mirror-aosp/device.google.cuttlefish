@@ -75,8 +75,6 @@ class CuttlefishConfig {
 
   std::string AssemblyPath(const std::string&) const;
 
-  std::string composite_disk_path() const;
-
   std::string vm_manager() const;
   void set_vm_manager(const std::string& name);
 
@@ -183,6 +181,12 @@ class CuttlefishConfig {
   void set_webrtc_enable_adb_websocket(bool enable);
   bool webrtc_enable_adb_websocket() const;
 
+  void set_enable_vehicle_hal_grpc_server(bool enable_vhal_server);
+  bool enable_vehicle_hal_grpc_server() const;
+
+  void set_vehicle_hal_grpc_server_binary(const std::string& vhal_server_binary);
+  std::string vehicle_hal_grpc_server_binary() const;
+
   void set_restart_subprocesses(bool restart_subprocesses);
   bool restart_subprocesses() const;
 
@@ -282,6 +286,10 @@ class CuttlefishConfig {
   void set_kgdb(bool kgdb);
   bool kgdb() const;
 
+  // Configuration flags for a minimal device
+  bool enable_minimal_mode() const;
+  void set_enable_minimal_mode(bool enable_minimal_mode);
+
   void set_enable_modem_simulator(bool enable_modem_simulator);
   bool enable_modem_simulator() const;
 
@@ -333,12 +341,14 @@ class CuttlefishConfig {
     // Port number to connect to the frame server on the host. (Only
     // operational if using swiftshader as the GPU.)
     int frames_server_port() const;
+    // Port number to connect to the vehicle HAL server on the host
+    int vehicle_hal_server_port() const;
+    // Port number to connect to the audiocontrol server on the guest
+    int audiocontrol_server_port() const;
     // Port number to connect to the adb server on the host
     int host_port() const;
     // Port number to connect to the gnss grpc proxy server on the host
     int gnss_grpc_proxy_server_port() const;
-    // Port number to connect to the tpm server on the host
-    int tpm_port() const;
     // Port number to connect to the gatekeeper server on the host
     int gatekeeper_vsock_port() const;
     // Port number to connect to the keymaster server on the host
@@ -356,7 +366,8 @@ class CuttlefishConfig {
     std::string instance_name() const;
     std::vector<std::string> virtual_disk_paths() const;
 
-    // Returns the path to a file with the given name in the instance directory..
+    // Returns the path to a file with the given name in the instance
+    // directory..
     std::string PerInstancePath(const char* file_name) const;
     std::string PerInstanceInternalPath(const char* file_name) const;
 
@@ -392,6 +403,10 @@ class CuttlefishConfig {
 
     std::string sdcard_path() const;
 
+    std::string composite_disk_path() const;
+
+    std::string uboot_env_image_path() const;
+
     // modem simulator related
     std::string modem_simulator_ports() const;
 
@@ -426,8 +441,9 @@ class CuttlefishConfig {
     void set_keyboard_server_port(int config_server_port);
     void set_gatekeeper_vsock_port(int gatekeeper_vsock_port);
     void set_keymaster_vsock_port(int keymaster_vsock_port);
+    void set_vehicle_hal_server_port(int vehicle_server_port);
+    void set_audiocontrol_server_port(int audiocontrol_server_port);
     void set_host_port(int host_port);
-    void set_tpm_port(int tpm_port);
     void set_adb_ip_and_port(const std::string& ip_port);
     void set_device_title(const std::string& title);
     void set_mobile_bridge_name(const std::string& mobile_bridge_name);
@@ -490,6 +506,7 @@ bool HostSupportsQemuCli();
 bool HostSupportsVsock();
 
 // GPU modes
+extern const char* const kGpuModeAuto;
 extern const char* const kGpuModeGuestSwiftshader;
 extern const char* const kGpuModeDrmVirgl;
 extern const char* const kGpuModeGfxStream;

@@ -79,8 +79,8 @@ TARGET_USES_HWC2 := true
 # The compiler will occasionally generate movaps, etc.
 BOARD_MALLOC_ALIGNMENT := 16
 
-# Make the userdata partition 4.25G to accomodate ASAN and CTS
-BOARD_USERDATAIMAGE_PARTITION_SIZE := 4563402752
+# Make the userdata partition 6G to accommodate ASAN and CTS
+BOARD_USERDATAIMAGE_PARTITION_SIZE := 6442450944
 TARGET_USERIMAGES_SPARSE_F2FS_DISABLED := true
 BOARD_USERDATAIMAGE_FILE_SYSTEM_TYPE := $(TARGET_USERDATAIMAGE_FILE_SYSTEM_TYPE)
 TARGET_USERIMAGES_USE_F2FS := true
@@ -125,30 +125,11 @@ BOARD_VENDOR_SEPOLICY_DIRS += device/google/cuttlefish/shared/sepolicy/vendor/go
 PRODUCT_PRIVATE_SEPOLICY_DIRS += device/google/cuttlefish/shared/sepolicy/product/private
 # PRODUCT_PUBLIC_SEPOLICY_DIRS += device/google/cuttlefish/shared/sepolicy/product/public
 # system_ext sepolicy
-BOARD_PLAT_PRIVATE_SEPOLICY_DIR := device/google/cuttlefish/shared/sepolicy/system_ext/private
-# BOARD_PLAT_PUBLIC_SEPOLICY_DIR := device/google/cuttlefish/shared/sepolicy/system_ext/public
-
-VSOC_STLPORT_INCLUDES :=
-VSOC_STLPORT_LIBS :=
-VSOC_STLPORT_STATIC_LIBS :=
-VSOC_TEST_INCLUDES := external/googletest/googlemock/include external/googletest/googletest/include
-VSOC_TEST_LIBRARIES := libgmock_main_host libgtest_host libgmock_host
-VSOC_LIBCXX_STATIC := libc++_static
-VSOC_PROTOBUF_SHARED_LIB := libprotobuf-cpp-full
+BOARD_PLAT_PRIVATE_SEPOLICY_DIR += device/google/cuttlefish/shared/sepolicy/system_ext/private
+# BOARD_PLAT_PUBLIC_SEPOLICY_DIR += device/google/cuttlefish/shared/sepolicy/system_ext/public
 
 CUTTLEFISH_LIBRIL_NAME := libril-modem-lib
 ENABLE_CUTTLEFISH_RILD := true
-
-# TODO(ender): Remove all these once we stop depending on GCE code.
-GCE_VERSION_CFLAGS := -DGCE_PLATFORM_SDK_VERSION=${PLATFORM_SDK_VERSION}
-GCE_STLPORT_INCLUDES := $(VSOC_STLPORT_INCLUDES)
-GCE_STLPORT_LIBS := $(VSOC_STLPORT_LIBS)
-GCE_STLPORT_STATIC_LIBS := $(VSOC_STLPORT_STATIC_LIBS)
-GCE_TEST_INCLUDES := $(VSOC_TEST_INCLUDES)
-GCE_TEST_LIBRARIES := $(VSOC_TEST_LIBRARIES)
-GCE_LIBCXX_STATIC := $(VSOC_LIBCXX_STATIC)
-GCE_PROTOBUF_SHARED_LIB := $(VSOC_PROTOBUF_SHARED_LIB)
-# TODO(ender): up till here.
 
 STAGEFRIGHT_AVCENC_CFLAGS := -DANDROID_GCE
 

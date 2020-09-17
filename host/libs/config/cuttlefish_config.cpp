@@ -114,6 +114,9 @@ const char* kEnableWebRTC = "enable_webrtc";
 const char* kWebRTCAssetsDir = "webrtc_assets_dir";
 const char* kWebRTCEnableADBWebSocket = "webrtc_enable_adb_websocket";
 
+const char* kEnableVehicleHalServer = "enable_vehicle_hal_server";
+const char* kVehicleHalServerBinary = "vehicle_hal_server_binary";
+
 const char* kRestartSubprocesses = "restart_subprocesses";
 const char* kRunAdbConnector = "run_adb_connector";
 
@@ -154,10 +157,14 @@ const char* kModemSimulatorSimType = "modem_simulator_sim_type";
 const char* kRilDns = "ril_dns";
 
 const char* kKgdb = "kgdb";
+
+const char* kEnableMinimalMode = "enable_minimal_mode";
+
 }  // namespace
 
 namespace cuttlefish {
 
+const char* const kGpuModeAuto = "auto";
 const char* const kGpuModeGuestSwiftshader = "guest_swiftshader";
 const char* const kGpuModeDrmVirgl = "drm_virgl";
 const char* const kGpuModeGfxStream = "gfxstream";
@@ -419,6 +426,22 @@ void CuttlefishConfig::set_enable_webrtc(bool enable_webrtc) {
 
 bool CuttlefishConfig::enable_webrtc() const {
   return (*dictionary_)[kEnableWebRTC].asBool();
+}
+
+void CuttlefishConfig::set_enable_vehicle_hal_grpc_server(bool enable_vehicle_hal_grpc_server) {
+  (*dictionary_)[kEnableVehicleHalServer] = enable_vehicle_hal_grpc_server;
+}
+
+bool CuttlefishConfig::enable_vehicle_hal_grpc_server() const {
+  return (*dictionary_)[kEnableVehicleHalServer].asBool();
+}
+
+void CuttlefishConfig::set_vehicle_hal_grpc_server_binary(const std::string& vehicle_hal_server_binary) {
+  (*dictionary_)[kVehicleHalServerBinary] = vehicle_hal_server_binary;
+}
+
+std::string CuttlefishConfig::vehicle_hal_grpc_server_binary() const {
+  return (*dictionary_)[kVehicleHalServerBinary].asString();
 }
 
 void CuttlefishConfig::set_webrtc_assets_dir(const std::string& webrtc_assets_dir) {
@@ -712,6 +735,14 @@ bool CuttlefishConfig::kgdb() const {
   return (*dictionary_)[kKgdb].asBool();
 }
 
+bool CuttlefishConfig::enable_minimal_mode() const {
+  return (*dictionary_)[kEnableMinimalMode].asBool();
+}
+
+void CuttlefishConfig::set_enable_minimal_mode(bool enable_minimal_mode) {
+  (*dictionary_)[kEnableMinimalMode] = enable_minimal_mode;
+}
+
 // Creates the (initially empty) config object and populates it with values from
 // the config file if the CUTTLEFISH_CONFIG_FILE env variable is present.
 // Returns nullptr if there was an error loading from file
@@ -777,10 +808,6 @@ bool CuttlefishConfig::SaveToFile(const std::string& file) const {
 std::string CuttlefishConfig::AssemblyPath(
     const std::string& file_name) const {
   return cuttlefish::AbsolutePath(assembly_dir() + "/" + file_name);
-}
-
-std::string CuttlefishConfig::composite_disk_path() const {
-  return AssemblyPath("composite.img");
 }
 
 CuttlefishConfig::MutableInstanceSpecific CuttlefishConfig::ForInstance(int num) {
