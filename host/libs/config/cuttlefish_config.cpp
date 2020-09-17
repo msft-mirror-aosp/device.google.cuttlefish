@@ -183,6 +183,9 @@ const char* kRilDns = "ril_dns";
 const char* kKgdb = "kgdb";
 
 const char* kWifiMacAddress = "wifi_mac_address";
+
+const char* kConsole = "console";
+
 }  // namespace
 
 namespace cuttlefish {
@@ -1038,6 +1041,13 @@ void CuttlefishConfig::set_kgdb(bool kgdb) {
 }
 bool CuttlefishConfig::kgdb() const {
   return (*dictionary_)[kKgdb].asBool();
+}
+
+void CuttlefishConfig::set_console(bool console) {
+  (*dictionary_)[kConsole] = console;
+}
+bool CuttlefishConfig::console() const {
+  return (*dictionary_)[kConsole].asBool();
 }
 
 // Creates the (initially empty) config object and populates it with values from

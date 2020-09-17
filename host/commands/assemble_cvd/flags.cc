@@ -234,7 +234,7 @@ DEFINE_bool(resume, true, "Resume using the disk from the last session, if "
 DEFINE_string(ril_dns, "8.8.8.8", "DNS address of mobile network (RIL)");
 DEFINE_bool(kgdb, false, "Configure the virtual device for debugging the kernel "
                          "with kgdb/kdb. The kernel must have been built with "
-                         "kgdb support.");
+                         "kgdb support, and serial console must be enabled.");
 
 // by default, this modem-simulator is disabled
 DEFINE_bool(enable_modem_simulator, true,
@@ -244,6 +244,8 @@ DEFINE_int32(modem_simulator_count, 1,
 // modem_simulator_sim_type=2 for test CtsCarrierApiTestCases
 DEFINE_int32(modem_simulator_sim_type, 1,
              "Sim type: 1 for normal, 2 for CtsCarrierApiTestCases");
+
+DEFINE_bool(console, false, "Enable the serial console");
 
 namespace {
 
@@ -431,26 +433,47 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
     }
   }
 
-  std::string console_dev;
-  auto can_use_virtio_console = !FLAGS_kgdb && !FLAGS_use_bootloader;
-  if (can_use_virtio_console) {
-    // If kgdb and the bootloader are disabled, the Android serial console spawns on a
-    // virtio-console port. If the bootloader is enabled, virtio console can't be used
-    // since uboot doesn't support it.
-    console_dev = "hvc1";
-  } else {
-    // crosvm ARM does not support ttyAMA. ttyAMA is a part of ARM arch.
-    if (FLAGS_vm_manager == QemuManager::name() && cuttlefish::HostArch() == "aarch64") {
-      console_dev = "ttyAMA0";
+  if (FLAGS_console) {
+    std::string console_dev;
+    auto can_use_virtio_console = !FLAGS_kgdb && !FLAGS_use_bootloader;
+    if (can_use_virtio_console) {
+      // If kgdb and the bootloader are disabled, the Android serial console spawns on a
+      // virtio-console port. If the bootloader is enabled, virtio console can't be used
+      // since uboot doesn't support it.
+      console_dev = "hvc1";
     } else {
-      console_dev = "ttyS0";
+      // crosvm ARM does not support ttyAMA. ttyAMA is a part of ARM arch.
+      if (FLAGS_vm_manager == QemuManager::name() && cuttlefish::HostArch() == "aarch64") {
+        console_dev = "ttyAMA0";
+      } else {
+        console_dev = "ttyS0";
+      }
     }
+
+    vm_manager_cmdline += " androidboot.console=" + console_dev;
+    if (FLAGS_kgdb) {
+      vm_manager_cmdline += " kgdboc_earlycon kgdbcon kgdboc=" + console_dev;
+    }
+
+    tmp_config_obj.set_kgdb(FLAGS_kgdb);
+  } else {
+    // Specify an invalid path under /dev, so the init process will disable the
+    // console service due to the console not being found. On physical devices,
+    // it is enough to not specify androidboot.console= *and* not specify the
+    // console= kernel command line parameter, because the console and kernel
+    // dmesg are muxed. However, on cuttlefish, we don't need to mux, and would
+    // prefer to retain the kernel dmesg logging, so we must work around init
+    // falling back to the check for /dev/console (which we'll always have).
+    vm_manager_cmdline += " androidboot.console=invalid";
+
+    // Right now 'kdb' is the only way to interact with kgdb. Until we move the
+    // kgdb feature to its own serial port, it doesn't make much to enable kgdb
+    // unless serial console is also enabled. The 'kdb' feature cannot be used
+    // over adb.
+    tmp_config_obj.set_kgdb(false);
   }
 
-  vm_manager_cmdline += " androidboot.console=" + console_dev;
-  if (FLAGS_kgdb) {
-    vm_manager_cmdline += " kgdboc_earlycon kgdbcon kgdboc=" + console_dev;
-  }
+  tmp_config_obj.set_console(FLAGS_console);
 
   tmp_config_obj.set_vm_manager_kernel_cmdline(vm_manager_cmdline);
 

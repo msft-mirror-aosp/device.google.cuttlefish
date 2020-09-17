@@ -290,6 +290,10 @@ class CuttlefishConfig {
   void set_kgdb(bool kgdb);
   bool kgdb() const;
 
+  // Serial console
+  void set_console(bool console);
+  bool console() const;
+
   void set_enable_modem_simulator(bool enable_modem_simulator);
   bool enable_modem_simulator() const;
 
