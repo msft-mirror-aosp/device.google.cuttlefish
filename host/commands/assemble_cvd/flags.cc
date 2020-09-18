@@ -106,6 +106,9 @@ DEFINE_bool(enable_minimal_mode, false,
             "Only enable the minimum features to boot a cuttlefish device and "
             "support minimal UI interactions.\nNote: Currently only supports "
             "handheld/phone targets");
+DEFINE_bool(pause_in_bootloader, false,
+            "Stop the bootflow in u-boot. You can continue the boot by connecting "
+            "to the device console and typing in \"boot\".");
 
 /**
  *
@@ -229,7 +232,7 @@ DEFINE_string(tpm_device, "", "A host TPM device to pass through commands to.");
 DEFINE_bool(restart_subprocesses, true, "Restart any crashed host process");
 DEFINE_bool(enable_vehicle_hal_grpc_server, true, "Enables the vehicle HAL "
             "emulation gRPC server on the host");
-DEFINE_bool(use_bootloader, false, "Boots the device using a bootloader");
+DEFINE_bool(use_bootloader, true, "Boots the device using a bootloader");
 DEFINE_string(bootloader, "", "Bootloader binary path");
 DEFINE_string(boot_slot, "", "Force booting into the given slot. If empty, "
              "the slot will be chosen based on the misc partition if using a "
@@ -357,9 +360,15 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
     LOG(VERBOSE) << GetGraphicsAvailabilityString(graphics_availability);
 
     if (ShouldEnableAcceleratedRendering(graphics_availability)) {
-      LOG(INFO) << "GPU auto mode: detected prerequisites for accelerated "
-                   "rendering support, enabling --gpu_mode=gfxstream.";
-      tmp_config_obj.set_gpu_mode(cuttlefish::kGpuModeGfxStream);
+        LOG(INFO) << "GPU auto mode: detected prerequisites for accelerated "
+                     "rendering support.";
+      if (FLAGS_vm_manager == QemuManager::name()) {
+        LOG(INFO) << "Enabling --gpu_mode=drm_virgl.";
+        tmp_config_obj.set_gpu_mode(cuttlefish::kGpuModeDrmVirgl);
+      } else {
+        LOG(INFO) << "Enabling --gpu_mode=gfxstream.";
+        tmp_config_obj.set_gpu_mode(cuttlefish::kGpuModeGfxStream);
+      }
     } else {
       LOG(INFO) << "GPU auto mode: did not detect prerequisites for "
                    "accelerated rendering support, enabling "
