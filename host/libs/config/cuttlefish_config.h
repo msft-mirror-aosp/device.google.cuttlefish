@@ -75,8 +75,6 @@ class CuttlefishConfig {
 
   std::string AssemblyPath(const std::string&) const;
 
-  std::string composite_disk_path() const;
-
   std::string vm_manager() const;
   void set_vm_manager(const std::string& name);
 
@@ -144,12 +142,6 @@ class CuttlefishConfig {
   bool deprecated_boot_completed() const;
   void set_deprecated_boot_completed(bool deprecated_boot_completed);
 
-  std::string logcat_receiver_binary() const;
-  void set_logcat_receiver_binary(const std::string& binary);
-
-  std::string config_server_binary() const;
-  void set_config_server_binary(const std::string& binary);
-
   void set_cuttlefish_env_path(const std::string& path);
   std::string cuttlefish_env_path() const;
 
@@ -171,18 +163,8 @@ class CuttlefishConfig {
   void set_tpm_device(const std::string& tpm_device);
   std::string tpm_device() const;
 
-  void set_console_forwarder_binary(const std::string& crosvm_binary);
-  std::string console_forwarder_binary() const;
-
-  void set_kernel_log_monitor_binary(
-      const std::string& kernel_log_monitor_binary);
-  std::string kernel_log_monitor_binary() const;
-
   void set_enable_vnc_server(bool enable_vnc_server);
   bool enable_vnc_server() const;
-
-  void set_vnc_server_binary(const std::string& vnc_server_binary);
-  std::string vnc_server_binary() const;
 
   void set_enable_sandbox(const bool enable_sandbox);
   bool enable_sandbox() const;
@@ -193,14 +175,17 @@ class CuttlefishConfig {
   void set_enable_webrtc(bool enable_webrtc);
   bool enable_webrtc() const;
 
-  void set_webrtc_binary(const std::string& webrtc_binary);
-  std::string webrtc_binary() const;
-
   void set_webrtc_assets_dir(const std::string& webrtc_assets_dir);
   std::string webrtc_assets_dir() const;
 
   void set_webrtc_enable_adb_websocket(bool enable);
   bool webrtc_enable_adb_websocket() const;
+
+  void set_enable_vehicle_hal_grpc_server(bool enable_vhal_server);
+  bool enable_vehicle_hal_grpc_server() const;
+
+  void set_vehicle_hal_grpc_server_binary(const std::string& vhal_server_binary);
+  std::string vehicle_hal_grpc_server_binary() const;
 
   void set_restart_subprocesses(bool restart_subprocesses);
   bool restart_subprocesses() const;
@@ -208,17 +193,8 @@ class CuttlefishConfig {
   void set_run_adb_connector(bool run_adb_connector);
   bool run_adb_connector() const;
 
-  void set_adb_connector_binary(const std::string& adb_connector_binary);
-  std::string adb_connector_binary() const;
-
-  void set_gnss_grpc_proxy_binary(const std::string& binary);
-  std::string gnss_grpc_proxy_binary() const;
-
   void set_enable_gnss_grpc_proxy(const bool enable_gnss_grpc_proxy);
   bool enable_gnss_grpc_proxy() const;
-
-  void set_socket_vsock_proxy_binary(const std::string& binary);
-  std::string socket_vsock_proxy_binary() const;
 
   void set_run_as_daemon(bool run_as_daemon);
   bool run_as_daemon() const;
@@ -232,12 +208,6 @@ class CuttlefishConfig {
   void set_blank_data_image_fmt(const std::string& blank_data_image_fmt);
   std::string blank_data_image_fmt() const;
 
-  void set_enable_tombstone_receiver(bool enable_tombstone_receiver);
-  bool enable_tombstone_receiver() const;
-
-  void set_tombstone_receiver_binary(const std::string& binary);
-  std::string tombstone_receiver_binary() const;
-
   void set_use_bootloader(bool use_bootloader);
   bool use_bootloader() const;
 
@@ -246,9 +216,6 @@ class CuttlefishConfig {
 
   void set_boot_slot(const std::string& boot_slot);
   std::string boot_slot() const;
-
-  void set_loop_max_part(int loop_max_part);
-  int loop_max_part() const;
 
   void set_guest_enforce_security(bool guest_enforce_security);
   bool guest_enforce_security() const;
@@ -283,10 +250,6 @@ class CuttlefishConfig {
   // A directory containing the SSL certificates for the signaling server
   void set_webrtc_certs_dir(const std::string& certs_dir);
   std::string webrtc_certs_dir() const;
-
-  // The path to the webrtc signaling server binary
-  void set_sig_server_binary(const std::string& sig_server_binary);
-  std::string sig_server_binary() const;
 
   // The port for the webrtc signaling server. It's used by the signaling server
   // to bind to it and by the webrtc process to connect to and register itself
@@ -323,14 +286,18 @@ class CuttlefishConfig {
   void set_kgdb(bool kgdb);
   bool kgdb() const;
 
+  // Configuration flags for a minimal device
+  bool enable_minimal_mode() const;
+  void set_enable_minimal_mode(bool enable_minimal_mode);
+
   void set_enable_modem_simulator(bool enable_modem_simulator);
   bool enable_modem_simulator() const;
 
-  void set_modem_simulator_binary(const std::string& binary);
-  std::string modem_simulator_binary() const;
-
   void set_modem_simulator_instance_number(int instance_numbers);
   int modem_simulator_instance_number() const;
+
+  void set_modem_simulator_sim_type(int sim_type);
+  int modem_simulator_sim_type() const;
 
   class InstanceSpecific;
   class MutableInstanceSpecific;
@@ -374,12 +341,14 @@ class CuttlefishConfig {
     // Port number to connect to the frame server on the host. (Only
     // operational if using swiftshader as the GPU.)
     int frames_server_port() const;
+    // Port number to connect to the vehicle HAL server on the host
+    int vehicle_hal_server_port() const;
+    // Port number to connect to the audiocontrol server on the guest
+    int audiocontrol_server_port() const;
     // Port number to connect to the adb server on the host
     int host_port() const;
     // Port number to connect to the gnss grpc proxy server on the host
     int gnss_grpc_proxy_server_port() const;
-    // Port number to connect to the tpm server on the host
-    int tpm_port() const;
     // Port number to connect to the gatekeeper server on the host
     int gatekeeper_vsock_port() const;
     // Port number to connect to the keymaster server on the host
@@ -397,7 +366,8 @@ class CuttlefishConfig {
     std::string instance_name() const;
     std::vector<std::string> virtual_disk_paths() const;
 
-    // Returns the path to a file with the given name in the instance directory..
+    // Returns the path to a file with the given name in the instance
+    // directory..
     std::string PerInstancePath(const char* file_name) const;
     std::string PerInstanceInternalPath(const char* file_name) const;
 
@@ -433,6 +403,10 @@ class CuttlefishConfig {
 
     std::string sdcard_path() const;
 
+    std::string composite_disk_path() const;
+
+    std::string uboot_env_image_path() const;
+
     // modem simulator related
     std::string modem_simulator_ports() const;
 
@@ -467,8 +441,9 @@ class CuttlefishConfig {
     void set_keyboard_server_port(int config_server_port);
     void set_gatekeeper_vsock_port(int gatekeeper_vsock_port);
     void set_keymaster_vsock_port(int keymaster_vsock_port);
+    void set_vehicle_hal_server_port(int vehicle_server_port);
+    void set_audiocontrol_server_port(int audiocontrol_server_port);
     void set_host_port(int host_port);
-    void set_tpm_port(int tpm_port);
     void set_adb_ip_and_port(const std::string& ip_port);
     void set_device_title(const std::string& title);
     void set_mobile_bridge_name(const std::string& mobile_bridge_name);

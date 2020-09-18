@@ -300,7 +300,7 @@ bool PowerwashFiles() {
   auto overlay_path = instance.PerInstancePath("overlay.img");
   unlink(overlay_path.c_str());
   if (!CreateQcowOverlay(
-      config->crosvm_binary(), config->composite_disk_path(), overlay_path)) {
+      config->crosvm_binary(), instance.composite_disk_path(), overlay_path)) {
     LOG(ERROR) << "CreateQcowOverlay failed";
     return false;
   }
@@ -432,8 +432,12 @@ int main(int argc, char** argv) {
 
   {
     std::ofstream launcher_log_ofstream(log_path.c_str());
-    auto assemble_log = cuttlefish::ReadFile(config->AssemblyPath("assemble_cvd.log"));
-    launcher_log_ofstream << assemble_log;
+    auto assembly_path = config->AssemblyPath("assemble_cvd.log");
+    std::ifstream assembly_log_ifstream(assembly_path);
+    if (assembly_log_ifstream) {
+      auto assemble_log = cuttlefish::ReadFile(assembly_path);
+      launcher_log_ofstream << assemble_log;
+    }
   }
   ::android::base::SetLogger(cuttlefish::LogToStderrAndFiles({log_path}));
 
@@ -535,10 +539,10 @@ int main(int argc, char** argv) {
 
   LaunchLogcatReceiver(*config, &process_monitor);
   LaunchConfigServer(*config, &process_monitor);
-  LaunchTombstoneReceiverIfEnabled(*config, &process_monitor);
-  LaunchTpm(&process_monitor, *config);
+  LaunchTombstoneReceiver(*config, &process_monitor);
   LaunchGnssGrpcProxyServerIfEnabled(*config, &process_monitor);
   LaunchSecureEnvironment(&process_monitor, *config);
+  LaunchVerhicleHalServerIfEnabled(*config, &process_monitor);
 
   // The streamer needs to launch before the VMM because it serves on several
   // sockets (input devices, vsock frame server) when using crosvm.
@@ -551,7 +555,7 @@ int main(int argc, char** argv) {
     streamer_config = LaunchWebRTC(&process_monitor, *config);
   }
 
-  auto kernel_args = KernelCommandLineFromConfig(*config);
+  auto kernel_args = KernelCommandLineFromConfig(*config, config->ForDefaultInstance());
 
   // Start the guest VM
   vm_manager->WithFrontend(streamer_config.launched);

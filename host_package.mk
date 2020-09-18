@@ -15,8 +15,6 @@ bin_path := $(notdir $(HOST_OUT_EXECUTABLES))
 lib_path := $(notdir $(HOST_OUT_SHARED_LIBRARIES))
 tests_path := $(notdir $(HOST_OUT_NATIVE_TESTS))
 webrtc_files_path := usr/share/webrtc
-x86_64_seccomp_files_path := usr/share/cuttlefish/x86_64-linux-gnu/seccomp
-aarch64_seccomp_files_path := usr/share/cuttlefish/aarch64-linux-gnu/seccomp
 modem_simulator_path := etc/modem_simulator
 
 cvd_host_executables := \
@@ -40,10 +38,6 @@ cvd_host_executables := \
     aarch64-linux-gnu/libminijail.so \
     aarch64-linux-gnu/libvirglrenderer.so.1 \
     x86_64-linux-gnu/crosvm \
-    x86_64-linux-gnu/libepoxy.so.0 \
-    x86_64-linux-gnu/libgbm.so.1 \
-    x86_64-linux-gnu/libminijail.so \
-    x86_64-linux-gnu/libvirglrenderer.so.1 \
     x86_64-linux-gnu/libc++.so.1 \
     x86_64-linux-gnu/libandroid-emu-shared.so \
     x86_64-linux-gnu/libemugl_common.so \
@@ -63,8 +57,6 @@ cvd_host_executables := \
     fsck.f2fs \
     resize.f2fs \
     make_f2fs \
-    tpm_simulator_manager \
-    vtpm_passthrough \
     ms-tpm-20-ref \
     lz4 \
     mkenvimage \
@@ -75,8 +67,11 @@ cvd_host_executables := \
     modem_simulator \
     gnss_grpc_proxy \
 
+ifneq ($(wildcard device/google/trout),)
+    cvd_host_executables += android.hardware.automotive.vehicle@2.0-virtualization-grpc-server
+endif
+
 cvd_host_tests := \
-    monotonic_time_test \
     cuttlefish_net_tests \
     modem_simulator_test \
 
@@ -85,7 +80,6 @@ cvd_host_shared_libraries := \
     libcuttlefish_fs.so \
     libcuttlefish_utils.so \
     libcuttlefish_allocd_utils.so \
-    cuttlefish_tcp_socket.so \
     cuttlefish_net.so \
     liblog.so \
     libnl.so \
@@ -102,7 +96,6 @@ cvd_host_shared_libraries := \
     libicui18n-host.so \
     libandroidicu-host.so \
     libcuttlefish_device_config.so \
-    cdisk_spec.so \
     libprotobuf-cpp-full.so \
     libziparchive.so \
     libvpx.so \
@@ -122,6 +115,20 @@ cvd_host_shared_libraries := \
     tpm2-tss2-util.so \
     libgatekeeper.so \
     ms-tpm-20-ref-lib.so \
+    libhidlbase.so \
+    libutils.so \
+    libjsoncpp.so \
+    libgrpc++.so \
+    android.hardware.automotive.vehicle@2.0.so \
+    libcap.so \
+    libdrm.so \
+    libepoxy.so \
+    libfdt.so \
+    libgbm.so \
+    libminijail.so \
+    libvirglrenderer.so \
+    libwayland_client.so \
+    libxml2.so \
 
 webrtc_assets := \
     index.html \
@@ -136,65 +143,27 @@ webrtc_certs := \
     server.p12 \
     trusted.pem \
 
-x86_64_seccomp_files := \
-    9p_device.policy \
-    balloon_device.policy \
-    block_device.policy \
-    common_device.policy \
-    cras_audio_device.policy \
-    fs_device.policy \
-    gpu_device.policy \
-    input_device.policy \
-    net_device.policy \
-    null_audio_device.policy \
-    pmem_device.policy \
-    rng_device.policy \
-    serial.policy \
-    tpm_device.policy \
-    vfio_device.policy \
-    vhost_net_device.policy \
-    vhost_vsock_device.policy \
-    wl_device.policy \
-    xhci.policy \
-
-aarch64_seccomp_files := \
-    9p_device.policy \
-    balloon_device.policy \
-    block_device.policy \
-    common_device.policy \
-    cras_audio_device.policy \
-    fs_device.policy \
-    gpu_device.policy \
-    input_device.policy \
-    net_device.policy \
-    null_audio_device.policy \
-    pmem_device.policy \
-    rng_device.policy \
-    serial.policy \
-    tpm_device.policy \
-    vhost_net_device.policy \
-    vhost_vsock_device.policy \
-    wl_device.policy \
-    xhci.policy \
-
 cvd_host_webrtc_files := \
     $(addprefix assets/,$(webrtc_assets)) \
     $(addprefix certs/,$(webrtc_certs)) \
 
 modem_simulator_files := \
      iccprofile_for_sim0.xml \
+     iccprofile_for_sim0_for_CtsCarrierApiTestCases.xml \
      numeric_operator.xml \
+
+include external/crosvm/seccomp/host_package.mk
 
 cvd_host_package_files := \
      $(addprefix $(bin_path)/,$(cvd_host_executables)) \
      $(addprefix $(lib_path)/,$(cvd_host_shared_libraries)) \
      $(foreach test,$(cvd_host_tests), ${tests_path}/$(test)/$(test)) \
      $(addprefix $(webrtc_files_path)/,$(cvd_host_webrtc_files)) \
-     $(addprefix $(x86_64_seccomp_files_path)/,$(x86_64_seccomp_files)) \
-     $(addprefix $(aarch64_seccomp_files_path)/,$(aarch64_seccomp_files)) \
      $(addprefix $(modem_simulator_path)/files/,$(modem_simulator_files)) \
+     $(crosvm_inline_seccomp_policy_x86_64) \
+     $(crosvm_inline_seccomp_policy_aarch64) \
 
 $(cvd_host_package_tar): PRIVATE_FILES := $(cvd_host_package_files)
 $(cvd_host_package_tar): $(addprefix $(HOST_OUT)/,$(cvd_host_package_files))
-	$(hide) rm -rf $@ && tar Scfz $@.tmp -C $(HOST_OUT) $(PRIVATE_FILES)
+	$(hide) rm -rf $@ && tar Scfzh $@.tmp -C $(HOST_OUT) $(PRIVATE_FILES)
 	$(hide) mv $@.tmp $@

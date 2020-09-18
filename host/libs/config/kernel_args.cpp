@@ -21,6 +21,7 @@
 #include <string>
 #include <vector>
 
+#include "common/libs/utils/files.h"
 #include "host/libs/config/cuttlefish_config.h"
 #include "host/libs/vm_manager/vm_manager.h"
 
@@ -47,8 +48,8 @@ static std::string mac_to_str(const std::array<unsigned char, 6>& mac) {
   return stream.str();
 }
 
-std::vector<std::string> KernelCommandLineFromConfig(const cuttlefish::CuttlefishConfig& config) {
-  auto instance = config.ForDefaultInstance();
+std::vector<std::string> KernelCommandLineFromConfig(const cuttlefish::CuttlefishConfig& config,
+    const cuttlefish::CuttlefishConfig::InstanceSpecific& instance) {
   std::vector<std::string> kernel_cmdline;
 
   AppendVector(&kernel_cmdline, config.vm_manager_kernel_cmdline());
@@ -76,7 +77,6 @@ std::vector<std::string> KernelCommandLineFromConfig(const cuttlefish::Cuttlefis
     }
     kernel_cmdline.push_back(concat("androidboot.slot_suffix=", slot_suffix));
   }
-  kernel_cmdline.push_back(concat("loop.max_part=", config.loop_max_part()));
   if (!config.guest_enforce_security()) {
     kernel_cmdline.push_back("androidboot.selinux=permissive");
   }
@@ -89,19 +89,12 @@ std::vector<std::string> KernelCommandLineFromConfig(const cuttlefish::Cuttlefis
     kernel_cmdline.push_back("androidboot.force_normal_boot=1");
   }
 
-  if (config.enable_tombstone_receiver() && instance.tombstone_receiver_port()) {
-    kernel_cmdline.push_back("androidboot.tombstone_transmit=1");
+  if (instance.tombstone_receiver_port()) {
     kernel_cmdline.push_back(concat("androidboot.vsock_tombstone_port=", instance.tombstone_receiver_port()));
-  } else {
-    kernel_cmdline.push_back("androidboot.tombstone_transmit=0");
   }
 
   if (instance.config_server_port()) {
     kernel_cmdline.push_back(concat("androidboot.cuttlefish_config_server_port=", instance.config_server_port()));
-  }
-
-  if (config.tpm_binary() != "" && instance.tpm_port()) {
-    kernel_cmdline.push_back(concat("androidboot.tpm_vsock_port=", instance.tpm_port()));
   }
 
   if (instance.keyboard_server_port()) {
@@ -110,6 +103,18 @@ std::vector<std::string> KernelCommandLineFromConfig(const cuttlefish::Cuttlefis
 
   if (instance.touch_server_port()) {
     kernel_cmdline.push_back(concat("androidboot.vsock_touch_port=", instance.touch_server_port()));
+  }
+
+  if (config.enable_vehicle_hal_grpc_server() && instance.vehicle_hal_server_port() &&
+      cuttlefish::FileExists(config.vehicle_hal_grpc_server_binary())) {
+    constexpr int vehicle_hal_server_cid = 2;
+    kernel_cmdline.push_back(concat("androidboot.vendor.vehiclehal.server.cid=", vehicle_hal_server_cid));
+    kernel_cmdline.push_back(concat("androidboot.vendor.vehiclehal.server.port=", instance.vehicle_hal_server_port()));
+  }
+
+  if (instance.audiocontrol_server_port()) {
+    kernel_cmdline.push_back(concat("androidboot.vendor.audiocontrol.server.cid=", instance.vsock_guest_cid()));
+    kernel_cmdline.push_back(concat("androidboot.vendor.audiocontrol.server.port=", instance.audiocontrol_server_port()));
   }
 
   if (instance.frames_server_port()) {

@@ -102,27 +102,23 @@ const char* kTpmDevice = "tpm_device";
 const char* kQemuBinary = "qemu_binary";
 const char* kCrosvmBinary = "crosvm_binary";
 const char* kTpmBinary = "tpm_binary";
-const char* kConsoleForwarderBinary = "console_forwarder_binary";
-const char* kKernelLogMonitorBinary = "kernel_log_monitor_binary";
 
 const char* kEnableVncServer = "enable_vnc_server";
-const char* kVncServerBinary = "vnc_server_binary";
 
 const char* kEnableSandbox = "enable_sandbox";
 const char* kSeccompPolicyDir = "seccomp_policy_dir";
 
-const char* kGnssGrpcProxyBinary = "gnss_grpc_proxy_binary";
 const char* kEnableGnssGrpcProxy = "enable_gnss_grpc_proxy";
 
 const char* kEnableWebRTC = "enable_webrtc";
-const char* kWebRTCBinary = "webrtc_binary";
 const char* kWebRTCAssetsDir = "webrtc_assets_dir";
 const char* kWebRTCEnableADBWebSocket = "webrtc_enable_adb_websocket";
 
+const char* kEnableVehicleHalServer = "enable_vehicle_hal_server";
+const char* kVehicleHalServerBinary = "vehicle_hal_server_binary";
+
 const char* kRestartSubprocesses = "restart_subprocesses";
 const char* kRunAdbConnector = "run_adb_connector";
-const char* kAdbConnectorBinary = "adb_connector_binary";
-const char* kSocketVsockProxyBinary = "socket_vsock_proxy_binary";
 
 const char* kRunAsDaemon = "run_as_daemon";
 
@@ -130,14 +126,7 @@ const char* kDataPolicy = "data_policy";
 const char* kBlankDataImageMb = "blank_data_image_mb";
 const char* kBlankDataImageFmt = "blank_data_image_fmt";
 
-const char* kLogcatReceiverBinary = "logcat_receiver_binary";
-const char* kConfigServerBinary = "config_server_binary";
-
-const char* kRunTombstoneReceiver = "enable_tombstone_logger";
-const char* kTombstoneReceiverBinary = "tombstone_receiver_binary";
-
 const char* kWebRTCCertsDir = "webrtc_certs_dir";
-const char* kSigServerBinary = "webrtc_sig_server_binary";
 const char* kSigServerPort = "webrtc_sig_server_port";
 const char* kSigServerAddress = "webrtc_sig_server_addr";
 const char* kSigServerPath = "webrtc_sig_server_path";
@@ -153,7 +142,6 @@ const char* kBootSlot = "boot_slot";
 const char* kEnableMetrics = "enable_metrics";
 const char* kMetricsBinary = "metrics_binary";
 
-const char* kLoopMaxPart = "loop_max_part";
 const char* kGuestEnforceSecurity = "guest_enforce_security";
 const char* kGuestAuditSecurity = "guest_audit_security";
 const char* kGuestForceNormalBoot = "guest_force_normal_boot";
@@ -163,12 +151,15 @@ const char* kVmManagerKernelCmdline = "vm_manager_kernel_cmdline";
 
 // modem simulator related
 const char* kRunModemSimulator = "enable_modem_simulator";
-const char* kModemSimulatorBinary = "modem_simulator_binary";
 const char* kModemSimulatorInstanceNumber = "modem_simulator_instance_number";
+const char* kModemSimulatorSimType = "modem_simulator_sim_type";
 
 const char* kRilDns = "ril_dns";
 
 const char* kKgdb = "kgdb";
+
+const char* kEnableMinimalMode = "enable_minimal_mode";
+
 }  // namespace
 
 namespace cuttlefish {
@@ -392,24 +383,6 @@ void CuttlefishConfig::set_tpm_device(const std::string& tpm_device) {
   (*dictionary_)[kTpmDevice] = tpm_device;
 }
 
-std::string CuttlefishConfig::console_forwarder_binary() const {
-  return (*dictionary_)[kConsoleForwarderBinary].asString();
-}
-
-void CuttlefishConfig::set_console_forwarder_binary(
-    const std::string& binary) {
-  (*dictionary_)[kConsoleForwarderBinary] = binary;
-}
-
-std::string CuttlefishConfig::gnss_grpc_proxy_binary() const {
-  return (*dictionary_)[kGnssGrpcProxyBinary].asString();
-}
-
-void CuttlefishConfig::set_gnss_grpc_proxy_binary(
-    const std::string& binary) {
-  (*dictionary_)[kGnssGrpcProxyBinary] = binary;
-}
-
 void CuttlefishConfig::set_enable_gnss_grpc_proxy(const bool enable_gnss_grpc_proxy) {
   (*dictionary_)[kEnableGnssGrpcProxy] = enable_gnss_grpc_proxy;
 }
@@ -418,30 +391,12 @@ bool CuttlefishConfig::enable_gnss_grpc_proxy() const {
   return (*dictionary_)[kEnableGnssGrpcProxy].asBool();
 }
 
-std::string CuttlefishConfig::kernel_log_monitor_binary() const {
-  return (*dictionary_)[kKernelLogMonitorBinary].asString();
-}
-
-void CuttlefishConfig::set_kernel_log_monitor_binary(
-    const std::string& kernel_log_monitor_binary) {
-  (*dictionary_)[kKernelLogMonitorBinary] = kernel_log_monitor_binary;
-}
-
 bool CuttlefishConfig::enable_vnc_server() const {
   return (*dictionary_)[kEnableVncServer].asBool();
 }
 
 void CuttlefishConfig::set_enable_vnc_server(bool enable_vnc_server) {
   (*dictionary_)[kEnableVncServer] = enable_vnc_server;
-}
-
-std::string CuttlefishConfig::vnc_server_binary() const {
-  return (*dictionary_)[kVncServerBinary].asString();
-}
-
-void CuttlefishConfig::set_vnc_server_binary(
-    const std::string& vnc_server_binary) {
-  (*dictionary_)[kVncServerBinary] = vnc_server_binary;
 }
 
 void CuttlefishConfig::set_enable_sandbox(const bool enable_sandbox) {
@@ -472,12 +427,20 @@ bool CuttlefishConfig::enable_webrtc() const {
   return (*dictionary_)[kEnableWebRTC].asBool();
 }
 
-void CuttlefishConfig::set_webrtc_binary(const std::string& webrtc_binary) {
-  (*dictionary_)[kWebRTCBinary] = webrtc_binary;
+void CuttlefishConfig::set_enable_vehicle_hal_grpc_server(bool enable_vehicle_hal_grpc_server) {
+  (*dictionary_)[kEnableVehicleHalServer] = enable_vehicle_hal_grpc_server;
 }
 
-std::string CuttlefishConfig::webrtc_binary() const {
-  return (*dictionary_)[kWebRTCBinary].asString();
+bool CuttlefishConfig::enable_vehicle_hal_grpc_server() const {
+  return (*dictionary_)[kEnableVehicleHalServer].asBool();
+}
+
+void CuttlefishConfig::set_vehicle_hal_grpc_server_binary(const std::string& vehicle_hal_server_binary) {
+  (*dictionary_)[kVehicleHalServerBinary] = vehicle_hal_server_binary;
+}
+
+std::string CuttlefishConfig::vehicle_hal_grpc_server_binary() const {
+  return (*dictionary_)[kVehicleHalServerBinary].asString();
 }
 
 void CuttlefishConfig::set_webrtc_assets_dir(const std::string& webrtc_assets_dir) {
@@ -512,24 +475,6 @@ void CuttlefishConfig::set_run_adb_connector(bool run_adb_connector) {
   (*dictionary_)[kRunAdbConnector] = run_adb_connector;
 }
 
-std::string CuttlefishConfig::adb_connector_binary() const {
-  return (*dictionary_)[kAdbConnectorBinary].asString();
-}
-
-void CuttlefishConfig::set_adb_connector_binary(
-    const std::string& adb_connector_binary) {
-  (*dictionary_)[kAdbConnectorBinary] = adb_connector_binary;
-}
-
-std::string CuttlefishConfig::socket_vsock_proxy_binary() const {
-  return (*dictionary_)[kSocketVsockProxyBinary].asString();
-}
-
-void CuttlefishConfig::set_socket_vsock_proxy_binary(
-    const std::string& socket_vsock_proxy_binary) {
-  (*dictionary_)[kSocketVsockProxyBinary] = socket_vsock_proxy_binary;
-}
-
 bool CuttlefishConfig::run_as_daemon() const {
   return (*dictionary_)[kRunAsDaemon].asBool();
 }
@@ -559,38 +504,6 @@ std::string CuttlefishConfig::blank_data_image_fmt() const {
 
 void CuttlefishConfig::set_blank_data_image_fmt(const std::string& blank_data_image_fmt) {
   (*dictionary_)[kBlankDataImageFmt] = blank_data_image_fmt;
-}
-
-void CuttlefishConfig::set_logcat_receiver_binary(const std::string& binary) {
-  SetPath(kLogcatReceiverBinary, binary);
-}
-
-std::string CuttlefishConfig::logcat_receiver_binary() const {
-  return (*dictionary_)[kLogcatReceiverBinary].asString();
-}
-
-void CuttlefishConfig::set_config_server_binary(const std::string& binary) {
-  SetPath(kConfigServerBinary, binary);
-}
-
-std::string CuttlefishConfig::config_server_binary() const {
-  return (*dictionary_)[kConfigServerBinary].asString();
-}
-
-bool CuttlefishConfig::enable_tombstone_receiver() const {
-  return (*dictionary_)[kRunTombstoneReceiver].asBool();
-}
-
-void CuttlefishConfig::set_enable_tombstone_receiver(bool enable_tombstone_receiver) {
-  (*dictionary_)[kRunTombstoneReceiver] = enable_tombstone_receiver;
-}
-
-std::string CuttlefishConfig::tombstone_receiver_binary() const {
-  return (*dictionary_)[kTombstoneReceiverBinary].asString();
-}
-
-void CuttlefishConfig::set_tombstone_receiver_binary(const std::string& e2e_test_binary) {
-  (*dictionary_)[kTombstoneReceiverBinary] = e2e_test_binary;
 }
 
 bool CuttlefishConfig::use_bootloader() const {
@@ -623,14 +536,6 @@ void CuttlefishConfig::set_webrtc_certs_dir(const std::string& certs_dir) {
 
 std::string CuttlefishConfig::webrtc_certs_dir() const {
   return (*dictionary_)[kWebRTCCertsDir].asString();
-}
-
-void CuttlefishConfig::set_sig_server_binary(const std::string& binary) {
-  SetPath(kSigServerBinary, binary);
-}
-
-std::string CuttlefishConfig::sig_server_binary() const {
-  return (*dictionary_)[kSigServerBinary].asString();
 }
 
 void CuttlefishConfig::set_sig_server_port(int port) {
@@ -704,14 +609,6 @@ void CuttlefishConfig::set_enable_modem_simulator(bool enable_modem_simulator) {
   (*dictionary_)[kRunModemSimulator] = enable_modem_simulator;
 }
 
-std::string CuttlefishConfig::modem_simulator_binary() const {
-  return (*dictionary_)[kModemSimulatorBinary].asString();
-}
-
-void CuttlefishConfig::set_modem_simulator_binary(const std::string& binary) {
-  (*dictionary_)[kModemSimulatorBinary] = binary;
-}
-
 void CuttlefishConfig::set_modem_simulator_instance_number(
     int instance_number) {
   (*dictionary_)[kModemSimulatorInstanceNumber] = instance_number;
@@ -721,11 +618,12 @@ int CuttlefishConfig::modem_simulator_instance_number() const {
   return (*dictionary_)[kModemSimulatorInstanceNumber].asInt();
 }
 
-void CuttlefishConfig::set_loop_max_part(int loop_max_part) {
-  (*dictionary_)[kLoopMaxPart] = loop_max_part;
+void CuttlefishConfig::set_modem_simulator_sim_type(int sim_type) {
+  (*dictionary_)[kModemSimulatorSimType] = sim_type;
 }
-int CuttlefishConfig::loop_max_part() const {
-  return (*dictionary_)[kLoopMaxPart].asInt();
+
+int CuttlefishConfig::modem_simulator_sim_type() const {
+  return (*dictionary_)[kModemSimulatorSimType].asInt();
 }
 
 void CuttlefishConfig::set_guest_enforce_security(bool guest_enforce_security) {
@@ -836,6 +734,14 @@ bool CuttlefishConfig::kgdb() const {
   return (*dictionary_)[kKgdb].asBool();
 }
 
+bool CuttlefishConfig::enable_minimal_mode() const {
+  return (*dictionary_)[kEnableMinimalMode].asBool();
+}
+
+void CuttlefishConfig::set_enable_minimal_mode(bool enable_minimal_mode) {
+  (*dictionary_)[kEnableMinimalMode] = enable_minimal_mode;
+}
+
 // Creates the (initially empty) config object and populates it with values from
 // the config file if the CUTTLEFISH_CONFIG_FILE env variable is present.
 // Returns nullptr if there was an error loading from file
@@ -901,10 +807,6 @@ bool CuttlefishConfig::SaveToFile(const std::string& file) const {
 std::string CuttlefishConfig::AssemblyPath(
     const std::string& file_name) const {
   return cuttlefish::AbsolutePath(assembly_dir() + "/" + file_name);
-}
-
-std::string CuttlefishConfig::composite_disk_path() const {
-  return AssemblyPath("composite.img");
 }
 
 CuttlefishConfig::MutableInstanceSpecific CuttlefishConfig::ForInstance(int num) {

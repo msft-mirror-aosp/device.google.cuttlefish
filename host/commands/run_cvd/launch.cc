@@ -10,6 +10,7 @@
 #include "common/libs/utils/size_utils.h"
 #include "host/commands/run_cvd/pre_launch_initializers.h"
 #include "host/commands/run_cvd/runner_defs.h"
+#include "host/libs/config/known_paths.h"
 #include "host/libs/vm_manager/crosvm_manager.h"
 #include "host/libs/vm_manager/qemu_manager.h"
 
@@ -144,7 +145,7 @@ std::vector<cuttlefish::SharedFD> LaunchKernelLogMonitor(
   // due to the usage counters in the kernel reaching zero. If this is not done
   // and the kernel_log_monitor crashes for some reason the VMM may get SIGPIPE.
   pipe = cuttlefish::SharedFD::Open(log_name.c_str(), O_RDWR);
-  cuttlefish::Command command(config.kernel_log_monitor_binary());
+  cuttlefish::Command command(cuttlefish::KernelLogMonitorBinary());
   command.AddParameter("-log_pipe_fd=", pipe);
 
   std::vector<cuttlefish::SharedFD> ret;
@@ -188,7 +189,7 @@ void LaunchLogcatReceiver(const cuttlefish::CuttlefishConfig& config,
   // due to the usage counters in the kernel reaching zero. If this is not done
   // and the logcat_receiver crashes for some reason the VMM may get SIGPIPE.
   pipe = cuttlefish::SharedFD::Open(log_name.c_str(), O_RDWR);
-  cuttlefish::Command command(config.logcat_receiver_binary());
+  cuttlefish::Command command(cuttlefish::LogcatReceiverBinary());
   command.AddParameter("-log_pipe_fd=", pipe);
 
   process_monitor->StartSubprocess(std::move(command),
@@ -206,18 +207,15 @@ void LaunchConfigServer(const cuttlefish::CuttlefishConfig& config,
                << socket->StrError();
     std::exit(RunnerExitCodes::kConfigServerError);
   }
-  cuttlefish::Command cmd(config.config_server_binary());
+  cuttlefish::Command cmd(cuttlefish::ConfigServerBinary());
   cmd.AddParameter("-server_fd=", socket);
   process_monitor->StartSubprocess(std::move(cmd),
                                    GetOnSubprocessExitCallback(config));
   return;
 }
 
-void LaunchTombstoneReceiverIfEnabled(const cuttlefish::CuttlefishConfig& config,
-                                      cuttlefish::ProcessMonitor* process_monitor) {
-  if (!config.enable_tombstone_receiver()) {
-    return;
-  }
+void LaunchTombstoneReceiver(const cuttlefish::CuttlefishConfig& config,
+                             cuttlefish::ProcessMonitor* process_monitor) {
   auto instance = config.ForDefaultInstance();
 
   std::string tombstoneDir = instance.PerInstancePath("tombstones");
@@ -240,7 +238,7 @@ void LaunchTombstoneReceiverIfEnabled(const cuttlefish::CuttlefishConfig& config
     std::exit(RunnerExitCodes::kTombstoneServerError);
     return;
   }
-  cuttlefish::Command cmd(config.tombstone_receiver_binary());
+  cuttlefish::Command cmd(cuttlefish::TombstoneReceiverBinary());
   cmd.AddParameter("-server_fd=", socket);
   cmd.AddParameter("-tombstone_dir=", tombstoneDir);
 
@@ -255,7 +253,7 @@ StreamerLaunchResult LaunchVNCServer(
   auto instance = config.ForDefaultInstance();
   // Launch the vnc server, don't wait for it to complete
   auto port_options = "-port=" + std::to_string(instance.vnc_server_port());
-  cuttlefish::Command vnc_server(config.vnc_server_binary());
+  cuttlefish::Command vnc_server(cuttlefish::VncServerBinary());
   vnc_server.AddParameter(port_options);
 
   auto server_ret = CreateStreamerServers(&vnc_server, config);
@@ -268,7 +266,7 @@ StreamerLaunchResult LaunchVNCServer(
 void LaunchAdbConnectorIfEnabled(cuttlefish::ProcessMonitor* process_monitor,
                                  const cuttlefish::CuttlefishConfig& config,
                                  cuttlefish::SharedFD adbd_events_pipe) {
-  cuttlefish::Command adb_connector(config.adb_connector_binary());
+  cuttlefish::Command adb_connector(cuttlefish::AdbConnectorBinary());
   adb_connector.AddParameter("-adbd_events_fd=", adbd_events_pipe);
   std::set<std::string> addresses;
 
@@ -294,7 +292,7 @@ void LaunchAdbConnectorIfEnabled(cuttlefish::ProcessMonitor* process_monitor,
 StreamerLaunchResult LaunchWebRTC(cuttlefish::ProcessMonitor* process_monitor,
                                   const cuttlefish::CuttlefishConfig& config) {
   if (config.ForDefaultInstance().start_webrtc_sig_server()) {
-    cuttlefish::Command sig_server(config.sig_server_binary());
+    cuttlefish::Command sig_server(cuttlefish::WebRtcSigServerBinary());
     sig_server.AddParameter("-assets_dir=", config.webrtc_assets_dir());
     if (!config.webrtc_certs_dir().empty()) {
       sig_server.AddParameter("-certs_dir=", config.webrtc_certs_dir());
@@ -312,7 +310,7 @@ StreamerLaunchResult LaunchWebRTC(cuttlefish::ProcessMonitor* process_monitor,
   // when connecting to the websocket, so it shouldn't be an issue most of the
   // time.
 
-  cuttlefish::Command webrtc(config.webrtc_binary());
+  cuttlefish::Command webrtc(cuttlefish::WebRtcBinary());
 
   auto server_ret = CreateStreamerServers(&webrtc, config);
 
@@ -375,7 +373,7 @@ void LaunchModemSimulatorIfEnabled(
   }
 
   cuttlefish::Command cmd(
-      config.modem_simulator_binary(), [](cuttlefish::Subprocess* proc) {
+      cuttlefish::ModemSimulatorBinary(), [](cuttlefish::Subprocess* proc) {
         auto stopped = StopModemSimulator();
         if (stopped) {
           return true;
@@ -384,6 +382,9 @@ void LaunchModemSimulatorIfEnabled(
                      << "attempting to KILL";
         return KillSubprocess(proc);
       });
+
+  auto sim_type = config.modem_simulator_sim_type();
+  cmd.AddParameter(std::string{"-sim_type="} + std::to_string(sim_type));
 
   auto instance = config.ForDefaultInstance();
   auto ports = instance.modem_simulator_ports();
@@ -416,7 +417,7 @@ void LaunchSocketVsockProxyIfEnabled(cuttlefish::ProcessMonitor* process_monitor
                                      const cuttlefish::CuttlefishConfig& config) {
   auto instance = config.ForDefaultInstance();
   if (AdbVsockTunnelEnabled(config)) {
-    cuttlefish::Command adb_tunnel(config.socket_vsock_proxy_binary());
+    cuttlefish::Command adb_tunnel(cuttlefish::SocketVsockProxyBinary());
     adb_tunnel.AddParameter("--server=tcp");
     adb_tunnel.AddParameter("--vsock_port=6520");
     adb_tunnel.AddParameter(std::string{"--tcp_port="} +
@@ -427,7 +428,7 @@ void LaunchSocketVsockProxyIfEnabled(cuttlefish::ProcessMonitor* process_monitor
                                      GetOnSubprocessExitCallback(config));
   }
   if (AdbVsockHalfTunnelEnabled(config)) {
-    cuttlefish::Command adb_tunnel(config.socket_vsock_proxy_binary());
+    cuttlefish::Command adb_tunnel(cuttlefish::SocketVsockProxyBinary());
     adb_tunnel.AddParameter("--server=tcp");
     adb_tunnel.AddParameter("--vsock_port=5555");
     adb_tunnel.AddParameter(std::string{"--tcp_port="} +
@@ -439,70 +440,21 @@ void LaunchSocketVsockProxyIfEnabled(cuttlefish::ProcessMonitor* process_monitor
   }
 }
 
-void LaunchTpmSimulator(cuttlefish::ProcessMonitor* process_monitor,
-                   const cuttlefish::CuttlefishConfig& config) {
-  auto instance = config.ForDefaultInstance();
-  auto port = instance.tpm_port();
-  auto socket = cuttlefish::SharedFD::VsockServer(port, SOCK_STREAM);
-  cuttlefish::Command tpm_command(
-      cuttlefish::DefaultHostArtifactsPath("bin/tpm_simulator_manager"));
-  tpm_command.AddParameter("-port=", port);
-  process_monitor->StartSubprocess(std::move(tpm_command),
-                                   GetOnSubprocessExitCallback(config));
-
-  cuttlefish::Command proxy_command(config.socket_vsock_proxy_binary());
-  proxy_command.AddParameter("--server=vsock");
-  proxy_command.AddParameter("--tcp_port=", port);
-  proxy_command.AddParameter("--vsock_port=", port);
-  process_monitor->StartSubprocess(std::move(proxy_command),
-                                   GetOnSubprocessExitCallback(config));
-}
-
 void LaunchMetrics(cuttlefish::ProcessMonitor* process_monitor,
                    const cuttlefish::CuttlefishConfig& config) {
-  cuttlefish::Command metrics(config.metrics_binary());
+  cuttlefish::Command metrics(cuttlefish::MetricsBinary());
 
   process_monitor->StartSubprocess(std::move(metrics),
                                    GetOnSubprocessExitCallback(config));
 }
 
-void LaunchTpmPassthrough(cuttlefish::ProcessMonitor* process_monitor,
-                          const cuttlefish::CuttlefishConfig& config) {
-  auto server = cuttlefish::SharedFD::VsockServer(SOCK_STREAM);
-  if (!server->IsOpen()) {
-    LOG(ERROR) << "Unable to create tpm passthrough server: "
-               << server->StrError();
-    std::exit(RunnerExitCodes::kTpmPassthroughError);
-  }
-  cuttlefish::Command tpm_command(
-      cuttlefish::DefaultHostArtifactsPath("bin/vtpm_passthrough"));
-  tpm_command.AddParameter("-server_fd=", server);
-  tpm_command.AddParameter("-device=", config.tpm_device());
-
-  process_monitor->StartSubprocess(std::move(tpm_command),
-                                   GetOnSubprocessExitCallback(config));
-}
-
-void LaunchTpm(cuttlefish::ProcessMonitor* process_monitor,
-               const cuttlefish::CuttlefishConfig& config) {
-  if (config.tpm_device() != "") {
-    if (config.tpm_binary() != "") {
-      LOG(WARNING)
-          << "Both -tpm_device and -tpm_binary were set. Using -tpm_device.";
-    }
-    LaunchTpmPassthrough(process_monitor, config);
-  } else if (config.tpm_binary() != "") {
-    LaunchTpmSimulator(process_monitor, config);
-  }
-}
-
 void LaunchGnssGrpcProxyServerIfEnabled(const cuttlefish::CuttlefishConfig& config,
                                       cuttlefish::ProcessMonitor* process_monitor) {
     if (!config.enable_gnss_grpc_proxy() ||
-        !cuttlefish::FileExists(config.gnss_grpc_proxy_binary())) {
+        !cuttlefish::FileExists(cuttlefish::GnssGrpcProxyBinary())) {
         return;
     }
-    cuttlefish::Command gnss_grpc_proxy_cmd(config.gnss_grpc_proxy_binary());
+    cuttlefish::Command gnss_grpc_proxy_cmd(cuttlefish::GnssGrpcProxyBinary());
     auto instance = config.ForDefaultInstance();
     auto gnss_in_pipe_name = instance.gnss_in_pipe_name();
 
@@ -560,4 +512,29 @@ void LaunchSecureEnvironment(cuttlefish::ProcessMonitor* process_monitor,
   command.AddParameter("-gatekeeper_fd=", gatekeeper_server);
   process_monitor->StartSubprocess(std::move(command),
                                    GetOnSubprocessExitCallback(config));
+}
+
+void LaunchVerhicleHalServerIfEnabled(const cuttlefish::CuttlefishConfig& config,
+                                                        cuttlefish::ProcessMonitor* process_monitor) {
+    if (!config.enable_vehicle_hal_grpc_server() ||
+        !cuttlefish::FileExists(config.vehicle_hal_grpc_server_binary())) {
+        return;
+    }
+
+    cuttlefish::Command grpc_server(config.vehicle_hal_grpc_server_binary());
+    auto instance = config.ForDefaultInstance();
+
+    const unsigned vhal_server_cid = 2;
+    const unsigned vhal_server_port = instance.vehicle_hal_server_port();
+    const std::string vhal_server_power_state_file =
+        cuttlefish::AbsolutePath(instance.PerInstancePath("power_state"));
+    const std::string vhal_server_power_state_socket =
+        cuttlefish::AbsolutePath(instance.PerInstancePath("power_state_socket"));
+
+    grpc_server.AddParameter("--server_cid=", vhal_server_cid);
+    grpc_server.AddParameter("--server_port=", vhal_server_port);
+    grpc_server.AddParameter("--power_state_file=", vhal_server_power_state_file);
+    grpc_server.AddParameter("--power_state_socket=", vhal_server_power_state_socket);
+    process_monitor->StartSubprocess(std::move(grpc_server),
+                                     GetOnSubprocessExitCallback(config));
 }

@@ -67,7 +67,6 @@ DEFINE_bool(decompress_kernel, false,
             "Whether to decompress the kernel image.");
 DEFINE_string(extra_kernel_cmdline, "",
               "Additional flags to put on the kernel command line");
-DEFINE_int32(loop_max_part, 7, "Maximum number of loop partitions");
 DEFINE_bool(guest_enforce_security, true,
             "Whether to run in enforcing mode (non permissive).");
 DEFINE_bool(guest_audit_security, true,
@@ -102,6 +101,10 @@ DEFINE_bool(start_vnc_server, false, "Whether to start the vnc server process. "
                                      "starting from 1.");
 DEFINE_bool(use_allocd, false,
             "Acquire static resources from the resource allocator daemon.");
+DEFINE_bool(enable_minimal_mode, false,
+            "Only enable the minimum features to boot a cuttlefish device and "
+            "support minimal UI interactions.\nNote: Currently only supports "
+            "handheld/phone targets");
 
 /**
  *
@@ -125,7 +128,7 @@ DEFINE_bool(enable_sandbox,
             "Enable crosvm sandbox. Use this when you are sure about what you are doing.");
 
 static const std::string kSeccompDir =
-    std::string("usr/share/cuttlefish/") + cuttlefish::HostArch() + "-linux-gnu/seccomp";
+    std::string("usr/share/crosvm/") + cuttlefish::HostArch() + "-linux-gnu/seccomp";
 DEFINE_string(seccomp_policy_dir,
               cuttlefish::DefaultHostArtifactsPath(kSeccompDir),
               "With sandbox'ed crosvm, overrieds the security comp policy directory");
@@ -223,9 +226,9 @@ DEFINE_string(tpm_binary, "",
               "The TPM simulator to use. Disabled if empty.");
 DEFINE_string(tpm_device, "", "A host TPM device to pass through commands to.");
 DEFINE_bool(restart_subprocesses, true, "Restart any crashed host process");
-DEFINE_bool(enable_tombstone_receiver, true, "Enables the tombstone logger on "
-            "both the guest and the host");
-DEFINE_bool(use_bootloader, false, "Boots the device using a bootloader");
+DEFINE_bool(enable_vehicle_hal_grpc_server, true, "Enables the vehicle HAL "
+            "emulation gRPC server on the host");
+DEFINE_bool(use_bootloader, true, "Boots the device using a bootloader");
 DEFINE_string(bootloader, "", "Bootloader binary path");
 DEFINE_string(boot_slot, "", "Force booting into the given slot. If empty, "
              "the slot will be chosen based on the misc partition if using a "
@@ -247,10 +250,13 @@ DEFINE_bool(kgdb, false, "Configure the virtual device for debugging the kernel 
 DEFINE_bool(start_gnss_proxy, false, "Whether to start the gnss proxy.");
 
 // by default, this modem-simulator is disabled
-DEFINE_bool(enable_modem_simulator, false,
+DEFINE_bool(enable_modem_simulator, true,
             "Enable the modem simulator to process RILD AT commands");
 DEFINE_int32(modem_simulator_count, 1,
              "Modem simulator count corresponding to maximum sim number");
+// modem_simulator_sim_type=2 for test CtsCarrierApiTestCases
+DEFINE_int32(modem_simulator_sim_type, 1,
+             "Sim type: 1 for normal, 2 for CtsCarrierApiTestCases");
 
 namespace {
 
@@ -345,8 +351,29 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
     LOG(FATAL) << "A ramdisk is required, but the boot image did not have one.";
   }
 
+  std::string discovered_ramdisk = fetcher_config.FindCvdFileWithSuffix(kInitramfsImg);
+  std::string foreign_ramdisk = FLAGS_initramfs_path.size () ? FLAGS_initramfs_path : discovered_ramdisk;
+
+  // TODO(rammuthiah) Bootloader boot doesn't work in the following scenarions
+  // 1. QEMU - our config of uboot doesn't currently support QEMU firmware. We need to
+  //    add a new bootloader binary for QEMU.
+  // 2. Arm64 - a arm64 confir of uboot is in progress. This will be fixed when that is
+  //    ready.
+  // 3. If using a ramdisk or kernel besides the one in the boot.img - The boot.img
+  //    doesn't get repackaged in this scenario currently. Once it does, bootloader
+  //    boot will suppprt runtime selected kernels and/or ramdisks.
+  if (FLAGS_vm_manager == QemuManager::name() || cuttlefish::HostArch() == "aarch64" ||
+      foreign_ramdisk.size() || foreign_kernel.size()) {
+    SetCommandLineOptionWithMode("use_bootloader", "false",
+        google::FlagSettingMode::SET_FLAGS_DEFAULT);
+  }
+
+  if(FLAGS_use_bootloader && FLAGS_vm_manager == CrosvmManager::name()) {
+    SetCommandLineOptionWithMode("enable_sandbox", "false",
+                                 google::FlagSettingMode::SET_FLAGS_DEFAULT);
+  }
+
   tmp_config_obj.set_boot_image_kernel_cmdline(boot_image_unpacker.kernel_cmdline());
-  tmp_config_obj.set_loop_max_part(FLAGS_loop_max_part);
   tmp_config_obj.set_guest_enforce_security(FLAGS_guest_enforce_security);
   tmp_config_obj.set_guest_audit_security(FLAGS_guest_audit_security);
   tmp_config_obj.set_guest_force_normal_boot(FLAGS_guest_force_normal_boot);
@@ -354,9 +381,9 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
 
   std::string vm_manager_cmdline = "";
   if (FLAGS_vm_manager == QemuManager::name() || FLAGS_use_bootloader) {
-    // crosvm sets up the console= earlycon= pci= reboot= panic= flags for us if
-    // booting straight to the kernel, but QEMU and the bootlaoder via crosvm does not.
-    vm_manager_cmdline += "console=hvc0 pci=noacpi reboot=k panic=-1";
+    // crosvm sets up the console= earlycon= panic= flags for us if booting straight to
+    // the kernel, but QEMU and the bootloader via crosvm does not.
+    vm_manager_cmdline += "console=hvc0 panic=-1";
     if (cuttlefish::HostArch() == "aarch64") {
       if (FLAGS_vm_manager == QemuManager::name()) {
         // To update the pl011 address:
@@ -383,6 +410,9 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
         vm_manager_cmdline += " ramoops.console_size=0x80000";
         vm_manager_cmdline += " ramoops.record_size=0x80000";
         vm_manager_cmdline += " ramoops.dump_oops=1";
+      } else {
+        // crosvm requires these additional parameters on x86_64 in bootloader mode
+        vm_manager_cmdline += " pci=noacpi reboot=k";
       }
     }
   }
@@ -413,8 +443,6 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
   tmp_config_obj.set_ramdisk_image_path(ramdisk_path);
   tmp_config_obj.set_vendor_ramdisk_image_path(vendor_ramdisk_path);
 
-  std::string discovered_ramdisk = fetcher_config.FindCvdFileWithSuffix(kInitramfsImg);
-  std::string foreign_ramdisk = FLAGS_initramfs_path.size () ? FLAGS_initramfs_path : discovered_ramdisk;
   if (foreign_kernel.size() && !foreign_ramdisk.size()) {
     // If there's a kernel that's passed in without an initramfs, that implies
     // user error or a kernel built with no modules. In either case, let's
@@ -430,35 +458,21 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
   }
 
   tmp_config_obj.set_deprecated_boot_completed(FLAGS_deprecated_boot_completed);
-  tmp_config_obj.set_logcat_receiver_binary(
-      cuttlefish::DefaultHostArtifactsPath("bin/logcat_receiver"));
-  tmp_config_obj.set_config_server_binary(
-      cuttlefish::DefaultHostArtifactsPath("bin/config_server"));
 
   tmp_config_obj.set_qemu_binary(FLAGS_qemu_binary);
   tmp_config_obj.set_crosvm_binary(FLAGS_crosvm_binary);
   tmp_config_obj.set_tpm_binary(FLAGS_tpm_binary);
   tmp_config_obj.set_tpm_device(FLAGS_tpm_device);
-  tmp_config_obj.set_console_forwarder_binary(
-      cuttlefish::DefaultHostArtifactsPath("bin/console_forwarder"));
-  tmp_config_obj.set_kernel_log_monitor_binary(
-      cuttlefish::DefaultHostArtifactsPath("bin/kernel_log_monitor"));
 
   tmp_config_obj.set_enable_vnc_server(FLAGS_start_vnc_server);
-  tmp_config_obj.set_vnc_server_binary(
-      cuttlefish::DefaultHostArtifactsPath("bin/vnc_server"));
 
   tmp_config_obj.set_enable_sandbox(FLAGS_enable_sandbox);
 
   tmp_config_obj.set_seccomp_policy_dir(FLAGS_seccomp_policy_dir);
 
   tmp_config_obj.set_enable_webrtc(FLAGS_start_webrtc);
-  tmp_config_obj.set_webrtc_binary(
-      cuttlefish::DefaultHostArtifactsPath("bin/webRTC"));
   tmp_config_obj.set_webrtc_assets_dir(FLAGS_webrtc_assets_dir);
   tmp_config_obj.set_webrtc_certs_dir(FLAGS_webrtc_certs_dir);
-  tmp_config_obj.set_sig_server_binary(
-      cuttlefish::DefaultHostArtifactsPath("bin/webrtc_operator"));
   // Note: This will be overridden if the sig server is started by us
   tmp_config_obj.set_sig_server_port(FLAGS_webrtc_sig_server_port);
   tmp_config_obj.set_sig_server_address(FLAGS_webrtc_sig_server_addr);
@@ -470,21 +484,17 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
   auto udp_range  = ParsePortRange(FLAGS_udp_port_range);
   tmp_config_obj.set_webrtc_udp_port_range(udp_range);
 
-  tmp_config_obj.set_enable_modem_simulator(FLAGS_enable_modem_simulator);
-  tmp_config_obj.set_modem_simulator_binary(
-      cuttlefish::DefaultHostArtifactsPath("bin/modem_simulator"));
+  tmp_config_obj.set_enable_modem_simulator(FLAGS_enable_modem_simulator &&
+                                            !FLAGS_enable_minimal_mode);
   tmp_config_obj.set_modem_simulator_instance_number(
       FLAGS_modem_simulator_count);
+  tmp_config_obj.set_modem_simulator_sim_type(FLAGS_modem_simulator_sim_type);
 
   tmp_config_obj.set_webrtc_enable_adb_websocket(
           FLAGS_webrtc_enable_adb_websocket);
 
   tmp_config_obj.set_restart_subprocesses(FLAGS_restart_subprocesses);
   tmp_config_obj.set_run_adb_connector(FLAGS_run_adb_connector);
-  tmp_config_obj.set_adb_connector_binary(
-      cuttlefish::DefaultHostArtifactsPath("bin/adb_connector"));
-  tmp_config_obj.set_socket_vsock_proxy_binary(
-      cuttlefish::DefaultHostArtifactsPath("bin/socket_vsock_proxy"));
   tmp_config_obj.set_run_as_daemon(FLAGS_daemon);
 
   tmp_config_obj.set_data_policy(FLAGS_data_policy);
@@ -492,19 +502,15 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
   tmp_config_obj.set_blank_data_image_fmt(FLAGS_blank_data_image_fmt);
 
   tmp_config_obj.set_enable_gnss_grpc_proxy(FLAGS_start_gnss_proxy);
-  tmp_config_obj.set_gnss_grpc_proxy_binary(
-    cuttlefish::DefaultHostArtifactsPath("bin/gnss_grpc_proxy"));
 
-  tmp_config_obj.set_enable_tombstone_receiver(FLAGS_enable_tombstone_receiver);
-  tmp_config_obj.set_tombstone_receiver_binary(
-      cuttlefish::DefaultHostArtifactsPath("bin/tombstone_receiver"));
+  tmp_config_obj.set_enable_vehicle_hal_grpc_server(FLAGS_enable_vehicle_hal_grpc_server);
+  tmp_config_obj.set_vehicle_hal_grpc_server_binary(
+      cuttlefish::DefaultHostArtifactsPath("bin/android.hardware.automotive.vehicle@2.0-virtualization-grpc-server"));
 
   tmp_config_obj.set_use_bootloader(FLAGS_use_bootloader);
   tmp_config_obj.set_bootloader(FLAGS_bootloader);
 
   tmp_config_obj.set_enable_metrics(FLAGS_report_anonymous_usage_stats);
-  tmp_config_obj.set_metrics_binary(
-      cuttlefish::DefaultHostArtifactsPath("bin/metrics"));
 
   if (!FLAGS_boot_slot.empty()) {
       tmp_config_obj.set_boot_slot(FLAGS_boot_slot);
@@ -515,6 +521,7 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
   tmp_config_obj.set_ril_dns(FLAGS_ril_dns);
 
   tmp_config_obj.set_kgdb(FLAGS_kgdb);
+  tmp_config_obj.set_enable_minimal_mode(FLAGS_enable_minimal_mode);
 
   std::vector<int> instance_nums;
   for (int i = 0; i < FLAGS_num_instances; i++) {
@@ -557,19 +564,20 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
     instance.set_vnc_server_port(6444 + num - 1);
     instance.set_host_port(6520 + num - 1);
     instance.set_adb_ip_and_port("127.0.0.1:" + std::to_string(6520 + num - 1));
-    instance.set_tpm_port(2321 + (num * 2) - 2);
     instance.set_tombstone_receiver_port(6600 + num - 1);
+    instance.set_vehicle_hal_server_port(9210 + num - 1);
+    instance.set_audiocontrol_server_port(9410);  /* OK to use the same port number across instances */
     instance.set_config_server_port(6800 + num - 1);
 
     if (FLAGS_gpu_mode != cuttlefish::kGpuModeDrmVirgl &&
         FLAGS_gpu_mode != cuttlefish::kGpuModeGfxStream) {
       instance.set_frames_server_port(6900 + num - 1);
+      if (FLAGS_vm_manager == QemuManager::name()) {
+        instance.set_keyboard_server_port(7000 + num - 1);
+        instance.set_touch_server_port(7100 + num - 1);
+      }
     }
 
-    if (FLAGS_vm_manager == QemuManager::name()) {
-      instance.set_keyboard_server_port(7000 + num - 1);
-      instance.set_touch_server_port(7100 + num - 1);
-    }
     instance.set_keymaster_vsock_port(7200 + num - 1);
     instance.set_gatekeeper_vsock_port(7300 + num - 1);
     instance.set_gnss_grpc_proxy_server_port(7400 + num -1);
@@ -613,7 +621,7 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
     }
     is_first_instance = false;
     std::stringstream ss;
-    auto base_port = 7200 + num - 2;
+    auto base_port = 9200 + num - 2;
     for (auto index = 0; index < FLAGS_modem_simulator_count; ++index) {
       ss << base_port + 1 << ",";
     }
@@ -650,9 +658,25 @@ bool SaveConfig(const cuttlefish::CuttlefishConfig& tmp_config_obj) {
 
 void SetDefaultFlagsForQemu() {
   // for now, we don't set non-default options for QEMU
+  if (FLAGS_gpu_mode == cuttlefish::kGpuModeGuestSwiftshader &&
+      NumStreamers() == 0) {
+    // This makes the vnc server the default streamer unless the user requests
+    // another via a --star_<streamer> flag, while at the same time it's
+    // possible to run without any streamer by setting --start_vnc_server=false.
+    SetCommandLineOptionWithMode("start_vnc_server", "true",
+                                 google::FlagSettingMode::SET_FLAGS_DEFAULT);
+  }
 }
 
 void SetDefaultFlagsForCrosvm() {
+  if (NumStreamers() == 0) {
+    // This makes the vnc server the default streamer unless the user requests
+    // another via a --star_<streamer> flag, while at the same time it's
+    // possible to run without any streamer by setting --start_vnc_server=false.
+    SetCommandLineOptionWithMode("start_vnc_server", "true",
+                                 google::FlagSettingMode::SET_FLAGS_DEFAULT);
+  }
+
   // for now, we support only x86_64 by default
   bool default_enable_sandbox = false;
   std::set<const std::string> supported_archs{std::string("x86_64")};
@@ -702,13 +726,6 @@ bool ParseCommandLineFlags(int* argc, char*** argv) {
               << std::endl;
     invalid_manager = true;
   }
-  if (NumStreamers() == 0) {
-    // This makes the vnc server the default streamer unless the user requests
-    // another via a --star_<streamer> flag, while at the same time it's
-    // possible to run without any streamer by setting --start_vnc_server=false.
-    SetCommandLineOptionWithMode("start_vnc_server", "true",
-                                 google::FlagSettingMode::SET_FLAGS_DEFAULT);
-  }
   // Various temporary workarounds for aarch64
   if (cuttlefish::HostArch() == "aarch64") {
     SetCommandLineOptionWithMode("tpm_binary",
@@ -730,15 +747,8 @@ bool ParseCommandLineFlags(int* argc, char*** argv) {
   return ResolveInstanceFiles();
 }
 
-std::string cpp_basename(const std::string& str) {
-  char* copy = strdup(str.c_str()); // basename may modify its argument
-  std::string ret(basename(copy));
-  free(copy);
-  return ret;
-}
-
 bool CleanPriorFiles(const std::string& path, const std::set<std::string>& preserving) {
-  if (preserving.count(cpp_basename(path))) {
+  if (preserving.count(cuttlefish::cpp_basename(path))) {
     LOG(DEBUG) << "Preserving: " << path;
     return true;
   }
@@ -818,7 +828,7 @@ bool CleanPriorFiles(const std::vector<std::string>& paths, const std::set<std::
   return true;
 }
 
-bool CleanPriorFiles(const cuttlefish::CuttlefishConfig& config, const std::set<std::string>& preserving) {
+bool CleanPriorFiles(const std::set<std::string>& preserving) {
   std::vector<std::string> paths = {
     // Everything in the assembly directory
     FLAGS_assembly_dir,
@@ -827,8 +837,19 @@ bool CleanPriorFiles(const cuttlefish::CuttlefishConfig& config, const std::set<
     // The global link to the config file
     cuttlefish::GetGlobalConfigFileLink(),
   };
-  for (const auto& instance : config.Instances()) {
-    paths.push_back(instance.instance_dir());
+
+  std::string runtime_dir_parent =
+      cuttlefish::cpp_dirname(cuttlefish::AbsolutePath(FLAGS_instance_dir));
+  std::string runtime_dirs_basename =
+      cuttlefish::cpp_basename(cuttlefish::AbsolutePath(FLAGS_instance_dir));
+
+  std::regex instance_dir_regex("^.+\\.[1-9]\\d*$");
+  for (const auto& path : cuttlefish::DirectoryContents(runtime_dir_parent)) {
+    std::string absl_path = runtime_dir_parent + "/" + path;
+    if((path.rfind(runtime_dirs_basename, 0) == 0) && std::regex_match(path, instance_dir_regex) &&
+        cuttlefish::DirectoryExists(absl_path)) {
+      paths.push_back(absl_path);
+    }
   }
   paths.push_back(FLAGS_instance_dir);
   return CleanPriorFiles(paths, preserving);
@@ -885,19 +906,22 @@ const cuttlefish::CuttlefishConfig* InitFilesystemAndCreateConfig(
     // disk.
     auto config = InitializeCuttlefishConfiguration(*boot_img_unpacker, fetcher_config);
     std::set<std::string> preserving;
-    if (FLAGS_resume && ShouldCreateCompositeDisk(config)) {
+    if (FLAGS_resume && ShouldCreateAllCompositeDisks(config)) {
       LOG(INFO) << "Requested resuming a previous session (the default behavior) "
                 << "but the base images have changed under the overlay, making the "
                 << "overlay incompatible. Wiping the overlay files.";
-    } else if (FLAGS_resume && !ShouldCreateCompositeDisk(config)) {
+    } else if (FLAGS_resume && !ShouldCreateAllCompositeDisks(config)) {
       preserving.insert("overlay.img");
       preserving.insert("gpt_header.img");
       preserving.insert("gpt_footer.img");
       preserving.insert("composite.img");
       preserving.insert("sdcard.img");
+      preserving.insert("uboot_env.img");
       preserving.insert("access-kregistry");
       preserving.insert("disk_hole");
       preserving.insert("NVChip");
+      preserving.insert("gatekeeper_secure");
+      preserving.insert("gatekeeper_insecure");
       preserving.insert("modem_nvram.json");
       std::stringstream ss;
       for (int i = 0; i < FLAGS_modem_simulator_count; i++) {
@@ -907,7 +931,7 @@ const cuttlefish::CuttlefishConfig* InitFilesystemAndCreateConfig(
         ss.str("");
       }
     }
-    if (!CleanPriorFiles(config, preserving)) {
+    if (!CleanPriorFiles(preserving)) {
       LOG(ERROR) << "Failed to clean prior files";
       exit(AssemblerExitCodes::kPrioFilesCleanupError);
     }

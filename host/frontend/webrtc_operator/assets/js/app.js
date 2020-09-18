@@ -46,6 +46,30 @@ function ConnectToDevice(device_id) {
     logcatBtn.remove();
   };
 
+  function createControlPanelButton(command, title, icon_name) {
+    let button = document.createElement('button');
+    document.getElementById('control_panel').appendChild(button);
+    button.title = title;
+    button.dataset.command = command;
+    // Capture mousedown/up/out commands instead of click to enable
+    // hold detection. mouseout is used to catch if the user moves the
+    // mouse outside the button while holding down.
+    button.addEventListener('mousedown', onControlPanelButton);
+    button.addEventListener('mouseup', onControlPanelButton);
+    button.addEventListener('mouseout', onControlPanelButton);
+    // Set the button image using Material Design icons.
+    // See http://google.github.io/material-design-icons
+    // and https://material.io/resources/icons
+    button.classList.add('material-icons');
+    button.innerHTML = icon_name;
+  }
+  createControlPanelButton('power', 'Power', 'power_settings_new');
+  createControlPanelButton('home', 'Home', 'home');
+  createControlPanelButton('menu', 'Menu', 'menu');
+  createControlPanelButton('volumemute', 'Volume Mute', 'volume_mute');
+  createControlPanelButton('volumedown', 'Volume Down', 'volume_down');
+  createControlPanelButton('volumeup', 'Volume Up', 'volume_up');
+
   let options = {
     wsUrl: ((location.protocol == 'http:') ? 'ws://' : 'wss://') +
       location.host + '/connect_client',
@@ -65,7 +89,32 @@ function ConnectToDevice(device_id) {
         deviceScreen.srcObject = videoStream;
       }).catch(e => console.error('Unable to get display stream: ', e));
       startMouseTracking();  // TODO stopMouseTracking() when disconnected
+      // TODO(b/163080005): Call updateDeviceDetails for any dynamic device
+      // details that may change after this initial connection.
+      updateDeviceDetails(deviceConnection.description);
   });
+
+  function updateDeviceDetails(deviceInfo) {
+    if (deviceInfo.hardware) {
+      let cpus = deviceInfo.hardware.cpus;
+      let memory_mb = deviceInfo.hardware.memory_mb;
+      updateDeviceDetails.hardwareDetails =
+          `CPUs - ${cpus}\nDevice RAM - ${memory_mb}mb`;
+    }
+    if (deviceInfo.displays) {
+      let dpi = deviceInfo.displays[0].dpi;
+      let x_res = deviceInfo.displays[0].x_res;
+      let y_res = deviceInfo.displays[0].y_res;
+      updateDeviceDetails.displayDetails =
+          `Display - ${x_res}x${y_res} (${dpi}DPI)`;
+    }
+    document.getElementById('device_details_hardware').textContent = [
+        updateDeviceDetails.hardwareDetails,
+        updateDeviceDetails.displayDetails,
+    ].join('\n');
+  }
+  updateDeviceDetails.hardwareDetails = '';
+  updateDeviceDetails.displayDetails = '';
 
   function onKeyboardCaptureClick(e) {
     const selectedClass = 'selected';
@@ -76,6 +125,17 @@ function ConnectToDevice(device_id) {
       startKeyboardTracking();
       keyboardCaptureButton.classList.add(selectedClass);
     }
+  }
+
+  function onControlPanelButton(e) {
+    if (e.type == 'mouseout' && e.which == 0) {
+      // Ignore mouseout events if no mouse button is pressed.
+      return;
+    }
+    deviceConnection.sendControlMessage(JSON.stringify({
+      command: e.target.dataset.command,
+      state: e.type == 'mousedown' ? "down" : "up",
+    }));
   }
 
   function startMouseTracking() {
