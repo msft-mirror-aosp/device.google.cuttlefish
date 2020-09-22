@@ -237,10 +237,13 @@ DEFINE_bool(kgdb, false, "Configure the virtual device for debugging the kernel 
                          "kgdb support.");
 
 // by default, this modem-simulator is disabled
-DEFINE_bool(enable_modem_simulator, false,
+DEFINE_bool(enable_modem_simulator, true,
             "Enable the modem simulator to process RILD AT commands");
 DEFINE_int32(modem_simulator_count, 1,
              "Modem simulator count corresponding to maximum sim number");
+// modem_simulator_sim_type=2 for test CtsCarrierApiTestCases
+DEFINE_int32(modem_simulator_sim_type, 1,
+             "Sim type: 1 for normal, 2 for CtsCarrierApiTestCases");
 
 namespace {
 
@@ -494,6 +497,7 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
       cuttlefish::DefaultHostArtifactsPath("bin/modem_simulator"));
   tmp_config_obj.set_modem_simulator_instance_number(
       FLAGS_modem_simulator_count);
+  tmp_config_obj.set_modem_simulator_sim_type(FLAGS_modem_simulator_sim_type);
 
   tmp_config_obj.set_webrtc_enable_adb_websocket(
           FLAGS_webrtc_enable_adb_websocket);
@@ -604,7 +608,7 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
     }
     is_first_instance = false;
     std::stringstream ss;
-    auto base_port = 7200 + num - 2;
+    auto base_port = 9200 + num - 2;
     for (auto index = 0; index < FLAGS_modem_simulator_count; ++index) {
       ss << base_port + 1 << ",";
     }
