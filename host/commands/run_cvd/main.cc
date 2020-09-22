@@ -512,6 +512,8 @@ int main(int argc, char** argv) {
   // Monitor and restart host processes supporting the CVD
   cuttlefish::ProcessMonitor process_monitor;
 
+  LaunchModemSimulatorIfEnabled(*config, &process_monitor);
+
   auto event_pipes =
       LaunchKernelLogMonitor(*config, &process_monitor, 2);
   cuttlefish::SharedFD boot_events_pipe = event_pipes[0];

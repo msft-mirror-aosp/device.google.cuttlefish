@@ -104,6 +104,8 @@ const char* kVsockGuestCid = "vsock_guest_cid";
 const char* kUuid = "uuid";
 const char* kCuttlefishEnvPath = "cuttlefish_env_path";
 
+const char* kModemSimulatorPorts = "modem_simulator_ports";
+
 const char* kAdbMode = "adb_mode";
 const char* kHostPort = "host_port";
 const char* kAdbIPAndPort = "adb_ip_and_port";
@@ -169,6 +171,11 @@ const char* kGuestForceNormalBoot = "guest_force_normal_boot";
 const char* kBootImageKernelCmdline = "boot_image_kernel_cmdline";
 const char* kExtraKernelCmdline = "extra_kernel_cmdline";
 const char* kVmManagerKernelCmdline = "vm_manager_kernel_cmdline";
+
+// modem simulator related
+const char* kRunModemSimulator = "enable_modem_simulator";
+const char* kModemSimulatorBinary = "modem_simulator_binary";
+const char* kModemSimulatorInstanceNumber = "modem_simulator_instance_number";
 
 const char* kRilDns = "ril_dns";
 
@@ -406,6 +413,14 @@ std::string CuttlefishConfig::InstanceSpecific::launcher_log_path() const {
 
 std::string CuttlefishConfig::InstanceSpecific::sdcard_path() const {
   return cuttlefish::AbsolutePath(PerInstancePath("sdcard.img"));
+}
+
+std::string CuttlefishConfig::InstanceSpecific::modem_simulator_ports() const {
+  return (*Dictionary())[kModemSimulatorPorts].asString();
+}
+void CuttlefishConfig::MutableInstanceSpecific::set_modem_simulator_ports(
+    const std::string& modem_simulator_ports) {
+  (*Dictionary())[kModemSimulatorPorts] = modem_simulator_ports;
 }
 
 std::string CuttlefishConfig::InstanceSpecific::mobile_bridge_name() const {
@@ -876,6 +891,31 @@ std::string CuttlefishConfig::InstanceSpecific::keyboard_socket_path() const {
 
 std::string CuttlefishConfig::InstanceSpecific::frames_socket_path() const {
   return PerInstanceInternalPath("frames.sock");
+}
+
+bool CuttlefishConfig::enable_modem_simulator() const {
+  return (*dictionary_)[kRunModemSimulator].asBool();
+}
+
+void CuttlefishConfig::set_enable_modem_simulator(bool enable_modem_simulator) {
+  (*dictionary_)[kRunModemSimulator] = enable_modem_simulator;
+}
+
+std::string CuttlefishConfig::modem_simulator_binary() const {
+  return (*dictionary_)[kModemSimulatorBinary].asString();
+}
+
+void CuttlefishConfig::set_modem_simulator_binary(const std::string& binary) {
+  (*dictionary_)[kModemSimulatorBinary] = binary;
+}
+
+void CuttlefishConfig::set_modem_simulator_instance_number(
+    int instance_number) {
+  (*dictionary_)[kModemSimulatorInstanceNumber] = instance_number;
+}
+
+int CuttlefishConfig::modem_simulator_instance_number() const {
+  return (*dictionary_)[kModemSimulatorInstanceNumber].asInt();
 }
 
 void CuttlefishConfig::set_loop_max_part(int loop_max_part) {

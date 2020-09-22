@@ -290,6 +290,15 @@ class CuttlefishConfig {
   void set_kgdb(bool kgdb);
   bool kgdb() const;
 
+  void set_enable_modem_simulator(bool enable_modem_simulator);
+  bool enable_modem_simulator() const;
+
+  void set_modem_simulator_binary(const std::string& binary);
+  std::string modem_simulator_binary() const;
+
+  void set_modem_simulator_instance_number(int instance_numbers);
+  int modem_simulator_instance_number() const;
+
   class InstanceSpecific;
   class MutableInstanceSpecific;
 
@@ -365,6 +374,9 @@ class CuttlefishConfig {
     // Wifi MAC address inside the guest
     std::array<unsigned char, 6> wifi_mac_address() const;
 
+    // modem simulator related
+    std::string modem_simulator_ports() const;
+
     // The device id the webrtc process should use to register with the
     // signaling server
     std::string webrtc_device_id() const;
@@ -397,6 +409,8 @@ class CuttlefishConfig {
     void set_vsock_guest_cid(int vsock_guest_cid);
     void set_uuid(const std::string& uuid);
     void set_instance_dir(const std::string& instance_dir);
+    // modem simulator related
+    void set_modem_simulator_ports(const std::string& modem_simulator_ports);
     void set_virtual_disk_paths(const std::vector<std::string>& disk_paths);
     // Wifi MAC address inside the guest
     void set_wifi_mac_address(const std::array<unsigned char, 6>&);
