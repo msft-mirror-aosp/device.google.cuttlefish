@@ -282,6 +282,10 @@ class CuttlefishConfig {
   void set_sig_server_strict(bool strict);
   bool sig_server_strict() const;
 
+  // The dns address of mobile network (RIL)
+  void set_ril_dns(const std::string& ril_dns);
+  std::string ril_dns() const;
+
   // KGDB configuration for kernel debugging
   void set_kgdb(bool kgdb);
   bool kgdb() const;

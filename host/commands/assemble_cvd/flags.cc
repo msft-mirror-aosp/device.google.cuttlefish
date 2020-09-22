@@ -231,6 +231,7 @@ DEFINE_bool(resume, true, "Resume using the disk from the last session, if "
                           "will be reset to the state it was initially launched "
                           "in. This flag is ignored if the underlying partition "
                           "images have been updated since the first launch.");
+DEFINE_string(ril_dns, "8.8.8.8", "DNS address of mobile network (RIL)");
 DEFINE_bool(kgdb, false, "Configure the virtual device for debugging the kernel "
                          "with kgdb/kdb. The kernel must have been built with "
                          "kgdb support.");
@@ -513,6 +514,8 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
   }
 
   tmp_config_obj.set_cuttlefish_env_path(GetCuttlefishEnvPath());
+
+  tmp_config_obj.set_ril_dns(FLAGS_ril_dns);
 
   tmp_config_obj.set_kgdb(FLAGS_kgdb);
 

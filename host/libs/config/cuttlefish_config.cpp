@@ -170,6 +170,8 @@ const char* kBootImageKernelCmdline = "boot_image_kernel_cmdline";
 const char* kExtraKernelCmdline = "extra_kernel_cmdline";
 const char* kVmManagerKernelCmdline = "vm_manager_kernel_cmdline";
 
+const char* kRilDns = "ril_dns";
+
 const char* kKgdb = "kgdb";
 
 const char* kWifiMacAddress = "wifi_mac_address";
@@ -969,6 +971,13 @@ std::vector<std::string> CuttlefishConfig::vm_manager_kernel_cmdline() const {
     cmdline.push_back(arg.asString());
   }
   return cmdline;
+}
+
+void CuttlefishConfig::set_ril_dns(const std::string& ril_dns) {
+  (*dictionary_)[kRilDns] = ril_dns;
+}
+std::string CuttlefishConfig::ril_dns() const {
+  return (*dictionary_)[kRilDns].asString();
 }
 
 void CuttlefishConfig::set_kgdb(bool kgdb) {
