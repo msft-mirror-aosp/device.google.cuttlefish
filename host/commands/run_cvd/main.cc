@@ -501,17 +501,21 @@ int main(int argc, char** argv) {
 
   PrintStreamingInformation(*config);
 
-  LOG(INFO) << kGreenColor << "To access the console run: screen "
-            << instance.console_path() << kResetColor;
+  if (config->console()) {
+    LOG(INFO) << kGreenColor << "To access the console run: screen "
+              << instance.console_path() << kResetColor;
+  } else {
+    LOG(INFO) << kGreenColor
+              << "Serial console is disabled; use -console=true to enable it"
+              << kResetColor;
+  }
 
   LOG(INFO) << kGreenColor
             << "The following files contain useful debugging information:"
             << kResetColor;
-  if (config->run_as_daemon()) {
-    LOG(INFO) << kGreenColor
-              << "  Launcher log: " << instance.launcher_log_path()
-              << kResetColor;
-  }
+  LOG(INFO) << kGreenColor
+            << "  Launcher log: " << instance.launcher_log_path()
+            << kResetColor;
   LOG(INFO) << kGreenColor
             << "  Android's logcat output: " << instance.logcat_path()
             << kResetColor;
@@ -577,6 +581,7 @@ int main(int argc, char** argv) {
   LaunchGnssGrpcProxyServerIfEnabled(*config, &process_monitor);
   LaunchSecureEnvironment(&process_monitor, *config);
   LaunchVerhicleHalServerIfEnabled(*config, &process_monitor);
+  LaunchConsoleForwarderIfEnabled(*config, &process_monitor);
 
   // The streamer needs to launch before the VMM because it serves on several
   // sockets (input devices, vsock frame server) when using crosvm.
