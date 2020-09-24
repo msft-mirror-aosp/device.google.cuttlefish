@@ -12,11 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# We're forced to use Android.mk here because:
-#   This depends on headers in hardware/ril/libril
-#   hardware/ril/libril is still on Android.mk
-
-ifeq (libril-modem-lib,$(CUTTLEFISH_LIBRIL_NAME))
 LOCAL_PATH:= $(call my-dir)
 include $(CLEAR_VARS)
 
@@ -55,8 +50,7 @@ LOCAL_C_INCLUDES += \
     device/google/cuttlefish \
     hardware/include \
     external/nanopb-c \
-    hardware/ril/include \
-    hardware/ril/libril
+    hardware/ril/include
 
 LOCAL_CFLAGS += \
     -Wextra \
@@ -65,4 +59,3 @@ LOCAL_CFLAGS += \
 LOCAL_EXPORT_C_INCLUDE_DIRS := hardware/ril/include
 
 include $(BUILD_SHARED_LIBRARY)
-endif
