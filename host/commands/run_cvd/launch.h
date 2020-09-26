@@ -48,7 +48,8 @@ void LaunchLogcatReceiver(const cuttlefish::CuttlefishConfig& config,
                           cuttlefish::ProcessMonitor* process_monitor);
 
 StreamerLaunchResult LaunchWebRTC(cuttlefish::ProcessMonitor* process_monitor,
-                                  const cuttlefish::CuttlefishConfig& config);
+                                  const cuttlefish::CuttlefishConfig& config,
+                                  cuttlefish::SharedFD kernel_log_events_pipe);
 
 void LaunchVerhicleHalServerIfEnabled(const cuttlefish::CuttlefishConfig& config,
                                       cuttlefish::ProcessMonitor* process_monitor);

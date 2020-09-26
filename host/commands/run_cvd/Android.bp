@@ -27,6 +27,7 @@ cc_binary_host {
     shared_libs: [
         "libcuttlefish_fs",
         "libcuttlefish_utils",
+        "libcuttlefish_kernel_log_monitor_utils",
         "libbase",
         "libjsoncpp",
         "libnl",
@@ -37,5 +38,8 @@ cc_binary_host {
         "libcuttlefish_vm_manager",
         "libgflags",
     ],
-    defaults: ["cuttlefish_host_only", "cuttlefish_libicuuc"],
+    defaults: [
+        "cuttlefish_host_only",
+        "cuttlefish_libicuuc",
+    ],
 }

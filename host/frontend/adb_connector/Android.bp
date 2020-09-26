@@ -28,6 +28,8 @@ cc_binary_host {
     shared_libs: [
         "libbase",
         "libcuttlefish_fs",
+        "libcuttlefish_kernel_log_monitor_utils",
+        "libjsoncpp",
         "liblog",
     ],
     defaults: ["cuttlefish_host_only"],

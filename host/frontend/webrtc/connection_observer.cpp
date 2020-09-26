@@ -28,6 +28,7 @@
 
 #include "common/libs/fs/shared_buf.h"
 #include "host/frontend/webrtc/adb_handler.h"
+#include "host/frontend/webrtc/kernel_log_events_handler.h"
 #include "host/frontend/webrtc/lib/utils.h"
 #include "host/libs/config/cuttlefish_config.h"
 
@@ -80,9 +81,11 @@ class ConnectionObserverImpl
  public:
   ConnectionObserverImpl(cuttlefish::SharedFD touch_fd,
                          cuttlefish::SharedFD keyboard_fd,
+                         cuttlefish::SharedFD kernel_log_events_fd,
                          std::weak_ptr<DisplayHandler> display_handler)
       : touch_client_(touch_fd),
         keyboard_client_(keyboard_fd),
+        kernel_log_events_client_(kernel_log_events_fd),
         weak_display_handler_(display_handler) {}
   virtual ~ConnectionObserverImpl() = default;
 
@@ -140,6 +143,13 @@ class ConnectionObserverImpl
   void OnAdbMessage(const uint8_t *msg, size_t size) override {
     adb_handler_->handleMessage(msg, size);
   }
+  void OnControlChannelOpen(std::function<bool(const Json::Value)>
+                            control_message_sender) override {
+    LOG(VERBOSE) << "Control Channel open";
+    kernel_log_events_handler_.reset(new cuttlefish::webrtc_streaming::KernelLogEventsHandler(
+        kernel_log_events_client_,
+        control_message_sender));
+  }
   void OnControlMessage(const uint8_t* msg, size_t size) override {
     Json::Value evt;
     Json::Reader json_reader;
@@ -182,18 +192,23 @@ class ConnectionObserverImpl
  private:
   cuttlefish::SharedFD touch_client_;
   cuttlefish::SharedFD keyboard_client_;
+  cuttlefish::SharedFD kernel_log_events_client_;
   std::shared_ptr<cuttlefish::webrtc_streaming::AdbHandler> adb_handler_;
+  std::shared_ptr<cuttlefish::webrtc_streaming::KernelLogEventsHandler> kernel_log_events_handler_;
   std::weak_ptr<DisplayHandler> weak_display_handler_;
 };
 
 CfConnectionObserverFactory::CfConnectionObserverFactory(
-    cuttlefish::SharedFD touch_fd, cuttlefish::SharedFD keyboard_fd)
-    : touch_fd_(touch_fd), keyboard_fd_(keyboard_fd) {}
+    cuttlefish::SharedFD touch_fd, cuttlefish::SharedFD keyboard_fd,
+    cuttlefish::SharedFD kernel_log_events_fd)
+    : touch_fd_(touch_fd), keyboard_fd_(keyboard_fd),
+      kernel_log_events_fd_(kernel_log_events_fd) {}
 
 std::shared_ptr<cuttlefish::webrtc_streaming::ConnectionObserver>
 CfConnectionObserverFactory::CreateObserver() {
   return std::shared_ptr<cuttlefish::webrtc_streaming::ConnectionObserver>(
       new ConnectionObserverImpl(touch_fd_, keyboard_fd_,
+                                 kernel_log_events_fd_,
                                  weak_display_handler_));
 }
 

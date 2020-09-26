@@ -77,6 +77,7 @@ cvd_host_shared_libraries := \
     libbase.so \
     libcutils.so \
     libcuttlefish_fs.so \
+    libcuttlefish_kernel_log_monitor_utils.so \
     libcuttlefish_utils.so \
     cuttlefish_net.so \
     liblog.so \

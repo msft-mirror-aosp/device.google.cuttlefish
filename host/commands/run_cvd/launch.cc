@@ -155,7 +155,7 @@ std::vector<cuttlefish::SharedFD> LaunchKernelLogMonitor(
     for (unsigned int i = 0; i < number_of_event_pipes; ++i) {
       cuttlefish::SharedFD event_pipe_write_end, event_pipe_read_end;
       if (!cuttlefish::SharedFD::Pipe(&event_pipe_read_end, &event_pipe_write_end)) {
-        LOG(ERROR) << "Unable to create boot events pipe: " << strerror(errno);
+        LOG(ERROR) << "Unable to create kernel log events pipe: " << strerror(errno);
         std::exit(RunnerExitCodes::kPipeIOError);
       }
       if (i > 0) {
@@ -289,7 +289,8 @@ void LaunchAdbConnectorIfEnabled(cuttlefish::ProcessMonitor* process_monitor,
 }
 
 StreamerLaunchResult LaunchWebRTC(cuttlefish::ProcessMonitor* process_monitor,
-                                  const cuttlefish::CuttlefishConfig& config) {
+                                  const cuttlefish::CuttlefishConfig& config,
+                                  cuttlefish::SharedFD kernel_log_events_pipe) {
   if (config.ForDefaultInstance().start_webrtc_sig_server()) {
     cuttlefish::Command sig_server(config.sig_server_binary());
     sig_server.AddParameter("-assets_dir=", config.webrtc_assets_dir());
@@ -312,6 +313,7 @@ StreamerLaunchResult LaunchWebRTC(cuttlefish::ProcessMonitor* process_monitor,
   cuttlefish::Command webrtc(config.webrtc_binary());
 
   auto server_ret = CreateStreamerServers(&webrtc, config);
+  webrtc.AddParameter("-kernel_log_events_fd=", kernel_log_events_pipe);
 
   // TODO get from launcher params
   process_monitor->StartSubprocess(std::move(webrtc),

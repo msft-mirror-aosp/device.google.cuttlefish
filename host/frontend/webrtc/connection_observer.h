@@ -28,7 +28,8 @@ class CfConnectionObserverFactory
     : public cuttlefish::webrtc_streaming::ConnectionObserverFactory {
  public:
   CfConnectionObserverFactory(cuttlefish::SharedFD touch_fd,
-                              cuttlefish::SharedFD keyboard_fd);
+                              cuttlefish::SharedFD keyboard_fd,
+                              cuttlefish::SharedFD kernel_log_events_fd);
   ~CfConnectionObserverFactory() override = default;
 
   std::shared_ptr<cuttlefish::webrtc_streaming::ConnectionObserver> CreateObserver()
@@ -39,6 +40,7 @@ class CfConnectionObserverFactory
  private:
   cuttlefish::SharedFD touch_fd_;
   cuttlefish::SharedFD keyboard_fd_;
+  cuttlefish::SharedFD kernel_log_events_fd_;
   std::weak_ptr<DisplayHandler> weak_display_handler_;
 };
 
