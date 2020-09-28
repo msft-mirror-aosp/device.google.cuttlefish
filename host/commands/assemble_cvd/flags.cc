@@ -336,13 +336,13 @@ bool InitializeCuttlefishConfiguration(
   }
   tmp_config_obj.set_vm_manager(FLAGS_vm_manager);
 
+  const cuttlefish::GraphicsAvailability graphics_availability =
+    GetGraphicsAvailabilityWithSubprocessCheck();
+
+  LOG(VERBOSE) << GetGraphicsAvailabilityString(graphics_availability);
+
   tmp_config_obj.set_gpu_mode(FLAGS_gpu_mode);
   if (tmp_config_obj.gpu_mode() == cuttlefish::kGpuModeAuto) {
-    const cuttlefish::GraphicsAvailability graphics_availability =
-      GetGraphicsAvailabilityWithSubprocessCheck();
-
-    LOG(VERBOSE) << GetGraphicsAvailabilityString(graphics_availability);
-
     if (ShouldEnableAcceleratedRendering(graphics_availability)) {
       LOG(INFO) << "GPU auto mode: detected prerequisites for accelerated "
                    "rendering support, enabling --gpu_mode=drm_virgl.";
@@ -352,6 +352,15 @@ bool InitializeCuttlefishConfiguration(
                    "accelerated rendering support, enabling "
                    "--gpu_mode=guest_swiftshader.";
       tmp_config_obj.set_gpu_mode(cuttlefish::kGpuModeGuestSwiftshader);
+    }
+  } else if (tmp_config_obj.gpu_mode() == cuttlefish::kGpuModeDrmVirgl) {
+    if (!ShouldEnableAcceleratedRendering(graphics_availability)) {
+      LOG(ERROR) << "--gpu_mode="
+                 << tmp_config_obj.gpu_mode()
+                 << " was requested but the prerequisites for accelerated "
+                    "rendering were not detected so the device may not "
+                    "function correctly. Please consider switching to "
+                    "--gpu_mode=auto or --gpu_mode=guest_swiftshader.";
     }
   }
   // Sepolicy rules need to be updated to support gpu mode. Temporarily disable
