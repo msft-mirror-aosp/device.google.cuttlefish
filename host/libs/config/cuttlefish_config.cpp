@@ -183,6 +183,9 @@ const char* kRilDns = "ril_dns";
 const char* kKgdb = "kgdb";
 
 const char* kWifiMacAddress = "wifi_mac_address";
+
+const char* kConsole = "console";
+
 }  // namespace
 
 namespace cuttlefish {
@@ -371,12 +374,16 @@ std::string CuttlefishConfig::InstanceSpecific::kernel_log_pipe_name() const {
   return cuttlefish::AbsolutePath(PerInstanceInternalPath("kernel-log-pipe"));
 }
 
+std::string CuttlefishConfig::InstanceSpecific::console_pipe_prefix() const {
+  return cuttlefish::AbsolutePath(PerInstanceInternalPath("console"));
+}
+
 std::string CuttlefishConfig::InstanceSpecific::console_in_pipe_name() const {
-  return cuttlefish::AbsolutePath(PerInstanceInternalPath("console-in-pipe"));
+  return console_pipe_prefix() + ".in";
 }
 
 std::string CuttlefishConfig::InstanceSpecific::console_out_pipe_name() const {
-  return cuttlefish::AbsolutePath(PerInstanceInternalPath("console-out-pipe"));
+  return console_pipe_prefix() + ".out";
 }
 
 std::string CuttlefishConfig::InstanceSpecific::logcat_pipe_name() const {
@@ -393,6 +400,10 @@ void CuttlefishConfig::set_deprecated_boot_completed(
 
 std::string CuttlefishConfig::InstanceSpecific::access_kregistry_path() const {
   return cuttlefish::AbsolutePath(PerInstancePath("access-kregistry"));
+}
+
+std::string CuttlefishConfig::InstanceSpecific::pstore_path() const {
+  return cuttlefish::AbsolutePath(PerInstancePath("pstore"));
 }
 
 std::string CuttlefishConfig::InstanceSpecific::console_path() const {
@@ -1034,6 +1045,13 @@ void CuttlefishConfig::set_kgdb(bool kgdb) {
 }
 bool CuttlefishConfig::kgdb() const {
   return (*dictionary_)[kKgdb].asBool();
+}
+
+void CuttlefishConfig::set_console(bool console) {
+  (*dictionary_)[kConsole] = console;
+}
+bool CuttlefishConfig::console() const {
+  return (*dictionary_)[kConsole].asBool();
 }
 
 // Creates the (initially empty) config object and populates it with values from

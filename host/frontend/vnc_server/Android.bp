@@ -31,8 +31,8 @@ cc_binary_host {
     shared_libs: [
         "libcuttlefish_fs",
         "libcuttlefish_utils",
-        "cuttlefish_tcp_socket",
         "libbase",
+        "libjsoncpp",
         "liblog",
     ],
     static_libs: [
@@ -40,7 +40,6 @@ cc_binary_host {
         "libcuttlefish_screen_connector",
         "libcuttlefish_wayland_server",
         "libffi",
-        "libjsoncpp",
         "libjpeg",
         "libgflags",
         "libwayland_server",

@@ -149,6 +149,24 @@ static std::string StderrOutputGenerator(const struct tm& now, int pid, uint64_t
   return output_string;
 }
 
+// TODO(schuffelen): Do something less primitive.
+static std::string StripColorCodes(const std::string& str) {
+  std::stringstream sstream;
+  bool in_color_code = false;
+  for (char c : str) {
+    if (c == '\033') {
+      in_color_code = true;
+    }
+    if (!in_color_code) {
+      sstream << c;
+    }
+    if (c == 'm') {
+      in_color_code = false;
+    }
+  }
+  return sstream.str();
+}
+
 void TeeLogger::operator()(
     android::base::LogId,
     android::base::LogSeverity severity,
@@ -164,7 +182,11 @@ void TeeLogger::operator()(
           now, getpid(), GetThreadId(), severity, tag, file, line, message);
   for (const auto& destination : destinations_) {
     if (severity >= destination.severity) {
-      cuttlefish::WriteAll(destination.target, output_string);
+      if (destination.target->IsATTY()) {
+        WriteAll(destination.target, output_string);
+      } else {
+        WriteAll(destination.target, StripColorCodes(output_string));
+      }
     }
   }
 }
@@ -174,7 +196,7 @@ static std::vector<SeverityTarget> SeverityTargetsForFiles(
   std::vector<SeverityTarget> log_severities;
   for (const auto& file : files) {
     auto log_file_fd =
-        cuttlefish::SharedFD::Open(
+        SharedFD::Open(
           file,
           O_CREAT | O_WRONLY | O_APPEND,
           S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);

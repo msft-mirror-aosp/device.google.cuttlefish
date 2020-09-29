@@ -69,7 +69,6 @@ ifneq ($(wildcard device/google/trout),)
 endif
 
 cvd_host_tests := \
-    monotonic_time_test \
     cuttlefish_net_tests \
     modem_simulator_test \
 
@@ -78,7 +77,6 @@ cvd_host_shared_libraries := \
     libcutils.so \
     libcuttlefish_fs.so \
     libcuttlefish_utils.so \
-    cuttlefish_tcp_socket.so \
     cuttlefish_net.so \
     liblog.so \
     libnl.so \
@@ -93,7 +91,6 @@ cvd_host_shared_libraries := \
     libicui18n-host.so \
     libandroidicu-host.so \
     libcuttlefish_device_config.so \
-    cdisk_spec.so \
     libprotobuf-cpp-full.so \
     libziparchive.so \
     libvpx.so \
@@ -106,6 +103,7 @@ cvd_host_shared_libraries := \
     libjsoncpp.so \
     libgrpc++.so \
     android.hardware.automotive.vehicle@2.0.so \
+    libxml2.so \
 
 webrtc_assets := \
     index.html \

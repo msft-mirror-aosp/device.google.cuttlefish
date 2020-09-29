@@ -65,6 +65,9 @@ using cuttlefish::vm_manager::VmManager;
 
 namespace {
 
+constexpr char kGreenColor[] = "\033[1;32m";
+constexpr char kResetColor[] = "\033[0m";
+
 cuttlefish::OnSocketReadyCb GetOnSubprocessExitCallback(
     const cuttlefish::CuttlefishConfig& config) {
   if (config.restart_subprocesses()) {
@@ -381,6 +384,21 @@ std::string GetConfigFilePath(const cuttlefish::CuttlefishConfig& config) {
   return instance.PerInstancePath("cuttlefish_config.json");
 }
 
+void PrintStreamingInformation(const cuttlefish::CuttlefishConfig& config) {
+  if (config.ForDefaultInstance().start_webrtc_sig_server()) {
+    // TODO (jemoreira): Change this when webrtc is moved to the debian package.
+    LOG(INFO) << kGreenColor << "Point your browser to https://"
+              << config.sig_server_address() << ":" << config.sig_server_port()
+              << " to interact with the device." << kResetColor;
+  } else if (config.enable_vnc_server()) {
+    LOG(INFO) << kGreenColor << "VNC server started on port "
+              << config.ForDefaultInstance().vnc_server_port() << kResetColor;
+  }
+  // When WebRTC is enabled but an operator other than the one launched by
+  // run_cvd is used there is no way to know the url to which to point the
+  // browser to.
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -469,15 +487,35 @@ int main(int argc, char** argv) {
     LOG(ERROR) << "Unable to write cuttlefish environment file";
   }
 
-  LOG(INFO) << "The following files contain useful debugging information:";
-  if (config->run_as_daemon()) {
-    LOG(INFO) << "  Launcher log: " << instance.launcher_log_path();
+  PrintStreamingInformation(*config);
+
+  if (config->console()) {
+    LOG(INFO) << kGreenColor << "To access the console run: screen "
+              << instance.console_path() << kResetColor;
+  } else {
+    LOG(INFO) << kGreenColor
+              << "Serial console is disabled; use -console=true to enable it"
+              << kResetColor;
   }
-  LOG(INFO) << "  Android's logcat output: " << instance.logcat_path();
-  LOG(INFO) << "  Kernel log: " << instance.PerInstancePath("kernel.log");
-  LOG(INFO) << "  Instance configuration: " << GetConfigFilePath(*config);
-  LOG(INFO) << "  Instance environment: " << config->cuttlefish_env_path();
-  LOG(INFO) << "To access the console run: screen " << instance.console_path();
+
+  LOG(INFO) << kGreenColor
+            << "The following files contain useful debugging information:"
+            << kResetColor;
+  LOG(INFO) << kGreenColor
+            << "  Launcher log: " << instance.launcher_log_path()
+            << kResetColor;
+  LOG(INFO) << kGreenColor
+            << "  Android's logcat output: " << instance.logcat_path()
+            << kResetColor;
+  LOG(INFO) << kGreenColor
+            << "  Kernel log: " << instance.PerInstancePath("kernel.log")
+            << kResetColor;
+  LOG(INFO) << kGreenColor
+            << "  Instance configuration: " << GetConfigFilePath(*config)
+            << kResetColor;
+  LOG(INFO) << kGreenColor
+            << "  Instance environment: " << config->cuttlefish_env_path()
+            << kResetColor;
 
   auto launcher_monitor_path = instance.launcher_monitor_socket_path();
   auto launcher_monitor_socket = cuttlefish::SharedFD::SocketLocalServer(
@@ -534,6 +572,7 @@ int main(int argc, char** argv) {
   auto tombstone_kernel_args = KernelCommandLineFromTombstone(tombstone_server);
 
   LaunchVerhicleHalServerIfEnabled(*config, &process_monitor);
+  LaunchConsoleForwarderIfEnabled(*config, &process_monitor);
 
   // The streamer needs to launch before the VMM because it serves on several
   // sockets (input devices, vsock frame server) when using crosvm.

@@ -290,6 +290,10 @@ class CuttlefishConfig {
   void set_kgdb(bool kgdb);
   bool kgdb() const;
 
+  // Serial console
+  void set_console(bool console);
+  bool console() const;
+
   void set_enable_modem_simulator(bool enable_modem_simulator);
   bool enable_modem_simulator() const;
 
@@ -357,12 +361,15 @@ class CuttlefishConfig {
 
     std::string access_kregistry_path() const;
 
+    std::string pstore_path() const;
+
     std::string console_path() const;
 
     std::string logcat_path() const;
 
     std::string kernel_log_pipe_name() const;
 
+    std::string console_pipe_prefix() const;
     std::string console_in_pipe_name() const;
     std::string console_out_pipe_name() const;
 

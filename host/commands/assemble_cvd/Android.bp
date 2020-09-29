@@ -13,8 +13,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-cc_library_host_shared {
-    name: "cdisk_spec",
+cc_library {
+    name: "libcdisk_spec",
     srcs: [
         "cdisk_spec.proto",
     ],
@@ -43,22 +43,22 @@ cc_binary_host {
         "cuttlefish_glog",
     ],
     shared_libs: [
-        "cdisk_spec",
         "libcuttlefish_fs",
         "libcuttlefish_utils",
         "libbase",
+        "libjsoncpp",
         "libnl",
         "libprotobuf-cpp-full",
+        "libxml2",
         "libziparchive",
         "libz",
     ],
     static_libs: [
+        "libcdisk_spec",
         "libsparse",
         "libcuttlefish_host_config",
         "libcuttlefish_vm_manager",
         "libgflags",
-        "libxml2",
-        "libjsoncpp",
     ],
     defaults: ["cuttlefish_host_only", "cuttlefish_libicuuc"],
 }

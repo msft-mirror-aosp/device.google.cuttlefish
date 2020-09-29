@@ -102,7 +102,6 @@ PRODUCT_PACKAGES += \
     wpa_supplicant.vsoc.conf \
     vsoc_input_service \
     rename_netiface \
-    ip_link_add \
     setup_wifi \
     tombstone_transmit \
     tombstone_producer \
@@ -247,8 +246,7 @@ PRODUCT_PACKAGES += \
 #
 PRODUCT_PACKAGES += \
     hwcomposer.drm_minigbm \
-    hwcomposer.cutf_cvm_ashmem \
-    hwcomposer.cutf_hwc2 \
+    hwcomposer.cutf \
     hwcomposer-stats \
     android.hardware.graphics.composer@2.2-impl \
     android.hardware.graphics.composer@2.2-service
@@ -425,7 +423,7 @@ PRODUCT_PACKAGES += \
 
 # WLAN driver configuration files
 PRODUCT_COPY_FILES += \
-    $(LOCAL_PATH)/wpa_supplicant_overlay.conf:$(TARGET_COPY_OUT_VENDOR)/etc/wifi/wpa_supplicant_overlay.conf
+    $(LOCAL_PATH)/config/wpa_supplicant_overlay.conf:$(TARGET_COPY_OUT_VENDOR)/etc/wifi/wpa_supplicant_overlay.conf
 
 # Recovery mode
 ifneq ($(TARGET_NO_RECOVERY),true)
