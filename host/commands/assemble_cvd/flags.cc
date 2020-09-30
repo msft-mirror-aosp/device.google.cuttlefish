@@ -32,6 +32,7 @@
 #include "host/libs/allocd/utils.h"
 #include "host/libs/config/data_image.h"
 #include "host/libs/config/fetcher_config.h"
+#include "host/libs/config/host_tools_version.h"
 #include "host/libs/graphics_detector/graphics_detector.h"
 #include "host/libs/vm_manager/crosvm_manager.h"
 #include "host/libs/vm_manager/qemu_manager.h"
@@ -354,13 +355,13 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
   }
   tmp_config_obj.set_vm_manager(FLAGS_vm_manager);
 
+  const cuttlefish::GraphicsAvailability graphics_availability =
+    GetGraphicsAvailabilityWithSubprocessCheck();
+
+  LOG(VERBOSE) << GetGraphicsAvailabilityString(graphics_availability);
+
   tmp_config_obj.set_gpu_mode(FLAGS_gpu_mode);
   if (tmp_config_obj.gpu_mode() == cuttlefish::kGpuModeAuto) {
-    const cuttlefish::GraphicsAvailability graphics_availability =
-      GetGraphicsAvailabilityWithSubprocessCheck();
-
-    LOG(VERBOSE) << GetGraphicsAvailabilityString(graphics_availability);
-
     if (ShouldEnableAcceleratedRendering(graphics_availability)) {
         LOG(INFO) << "GPU auto mode: detected prerequisites for accelerated "
                      "rendering support.";
@@ -376,6 +377,16 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
                    "accelerated rendering support, enabling "
                    "--gpu_mode=guest_swiftshader.";
       tmp_config_obj.set_gpu_mode(cuttlefish::kGpuModeGuestSwiftshader);
+    }
+  } else if (tmp_config_obj.gpu_mode() == cuttlefish::kGpuModeGfxStream ||
+             tmp_config_obj.gpu_mode() == cuttlefish::kGpuModeDrmVirgl) {
+    if (!ShouldEnableAcceleratedRendering(graphics_availability)) {
+      LOG(ERROR) << "--gpu_mode="
+                 << tmp_config_obj.gpu_mode()
+                 << " was requested but the prerequisites for accelerated "
+                    "rendering were not detected so the device may not "
+                    "function correctly. Please consider switching to "
+                    "--gpu_mode=auto or --gpu_mode=guest_swiftshader.";
     }
   }
   // Sepolicy rules need to be updated to support gpu mode. Temporarily disable
@@ -557,6 +568,8 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
       tmp_config_obj.set_initramfs_path(foreign_ramdisk);
     }
   }
+
+  tmp_config_obj.set_host_tools_version(cuttlefish::HostToolsCrc());
 
   tmp_config_obj.set_deprecated_boot_completed(FLAGS_deprecated_boot_completed);
 
