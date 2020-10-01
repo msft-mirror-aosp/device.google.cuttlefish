@@ -60,14 +60,18 @@ const std::set<std::string> kDefaultTargetImages = {
   "IMAGES/boot.img",
   "IMAGES/cache.img",
   "IMAGES/odm.img",
+  "IMAGES/odm_dlkm.img",
   "IMAGES/recovery.img",
   "IMAGES/userdata.img",
   "IMAGES/vbmeta.img",
   "IMAGES/vendor.img",
+  "IMAGES/vendor_dlkm.img",
 };
 const std::set<std::string> kDefaultTargetBuildProp = {
+  "ODM/build.prop",
   "ODM/etc/build.prop",
   "VENDOR/build.prop",
+  "VENDOR/etc/build.prop",
 };
 
 void FindImports(cuttlefish::Archive* archive, const std::string& build_prop_file) {
@@ -131,15 +135,12 @@ bool CombineTargetZipFiles(const std::string& default_target_zip,
   }
   auto output_misc = default_misc;
   auto system_super_partitions = SuperPartitionComponents(system_misc);
-  if (std::find(system_super_partitions.begin(), system_super_partitions.end(),
-                "odm") == system_super_partitions.end()) {
-    // odm is not one of the partitions skipped by the system check
-    system_super_partitions.push_back("odm");
-  }
-  if (std::find(system_super_partitions.begin(), system_super_partitions.end(),
-                "vendor") == system_super_partitions.end()) {
-    // vendor is always required, but may be missing from the system partitions
-    system_super_partitions.push_back("vendor");
+  // Ensure specific skipped partitions end up in the misc_info.txt
+  for (auto partition : {"odm", "odm_dlkm", "vendor", "vendor_dlkm"}) {
+    if (std::find(system_super_partitions.begin(), system_super_partitions.end(),
+                  partition) == system_super_partitions.end()) {
+      system_super_partitions.push_back(partition);
+    }
   }
   SetSuperPartitionComponents(system_super_partitions, &output_misc);
   auto misc_output_path = output_path + "/" + kMiscInfoPath;
@@ -182,30 +183,6 @@ bool CombineTargetZipFiles(const std::string& default_target_zip,
       LOG(ERROR) << "Failed to extract " << name << " from the default target zip";
       return false;
     }
-    auto name_parts = android::base::Split(name, "/");
-    if (name_parts.size() < 2) {
-      LOG(WARNING) << name << " does not appear to have a partition";
-      continue;
-    }
-    auto etc_path = output_path + "/" + name_parts[0] + "/etc";
-    LOG(INFO) << "Creating directory " << etc_path;
-    if (mkdir(etc_path.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) < 0
-        && errno != EEXIST) {
-      PLOG(ERROR) << "Could not mkdir " << etc_path;
-    }
-    std::string_view name_suffix(name.data(), name.size());
-    if (!android::base::ConsumePrefix(&name_suffix, name_parts[0] + "/")) {
-      LOG(ERROR) << name << " did not start with " << name_parts[0] + "/";
-      return false;
-    }
-    auto initial_path = output_path + "/" + name;
-    auto dest_path = output_path + "/" + name_parts[0] + "/etc/" +
-                     std::string(name_suffix);
-    LOG(INFO) << "Linking " << initial_path << " to " << dest_path;
-    if (link(initial_path.c_str(), dest_path.c_str())) {
-      PLOG(ERROR) << "Could not link " << initial_path << " to " << dest_path;
-      return false;
-    }
   }
 
   for (const auto& name : system_target_contents) {
@@ -232,30 +209,6 @@ bool CombineTargetZipFiles(const std::string& default_target_zip,
     LOG(INFO) << "Writing " << name;
     if (!system_target_archive.ExtractFiles({name}, output_path)) {
       LOG(ERROR) << "Failed to extract " << name << " from the default target zip";
-      return false;
-    }
-    auto name_parts = android::base::Split(name, "/");
-    if (name_parts.size() < 2) {
-      LOG(WARNING) << name << " does not appear to have a partition";
-      continue;
-    }
-    auto etc_path = output_path + "/" + name_parts[0] + "/etc";
-    LOG(INFO) << "Creating directory " << etc_path;
-    if (mkdir(etc_path.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) < 0
-        && errno != EEXIST) {
-      PLOG(ERROR) << "Could not mkdir " << etc_path;
-    }
-    std::string_view name_suffix(name.data(), name.size());
-    if (!android::base::ConsumePrefix(&name_suffix, name_parts[0] + "/")) {
-      LOG(ERROR) << name << " did not start with " << name_parts[0] + "/";
-      return false;
-    }
-    auto initial_path = output_path + "/" + name;
-    auto dest_path = output_path + "/" + name_parts[0] + "/etc/" +
-                     std::string(name_suffix);
-    LOG(INFO) << "Linking " << initial_path << " to " << dest_path;
-    if (link(initial_path.c_str(), dest_path.c_str())) {
-      PLOG(ERROR) << "Could not link " << initial_path << " to " << dest_path;
       return false;
     }
   }

@@ -52,6 +52,7 @@
 #include "host/commands/run_cvd/runner_defs.h"
 #include "host/commands/run_cvd/process_monitor.h"
 #include "host/libs/config/cuttlefish_config.h"
+#include "host/libs/config/data_image.h"
 #include "host/libs/config/kernel_args.h"
 #include "host/commands/kernel_log_monitor/kernel_log_server.h"
 #include <host/libs/vm_manager/crosvm_manager.h>
@@ -63,6 +64,9 @@ using cuttlefish::RunnerExitCodes;
 using cuttlefish::vm_manager::VmManager;
 
 namespace {
+
+constexpr char kGreenColor[] = "\033[1;32m";
+constexpr char kResetColor[] = "\033[0m";
 
 cuttlefish::OnSocketReadyCb GetOnSubprocessExitCallback(
     const cuttlefish::CuttlefishConfig& config) {
@@ -143,9 +147,9 @@ void SetUpHandlingOfBootEvents(
     cuttlefish::ProcessMonitor* process_monitor, cuttlefish::SharedFD boot_events_pipe,
     std::shared_ptr<CvdBootStateMachine> state_machine) {
   process_monitor->MonitorExistingSubprocess(
-      // A dummy command, so logs are desciptive
+      // An unused command, so logs are desciptive
       cuttlefish::Command("boot_events_listener"),
-      // A dummy subprocess, with the boot events pipe as control socket
+      // An unused subprocess, with the boot events pipe as control socket
       cuttlefish::Subprocess(-1, boot_events_pipe),
       [boot_events_pipe, state_machine](cuttlefish::MonitorEntry*) {
         auto sent_code = state_machine->OnBootEvtReceived(boot_events_pipe);
@@ -242,6 +246,70 @@ cuttlefish::SharedFD DaemonizeLauncher(const cuttlefish::CuttlefishConfig& confi
   }
 }
 
+bool CreateQcowOverlay(const std::string& crosvm_path,
+                       const std::string& backing_file,
+                       const std::string& output_overlay_path) {
+  cuttlefish::Command crosvm_qcow2_cmd(crosvm_path);
+  crosvm_qcow2_cmd.AddParameter("create_qcow2");
+  crosvm_qcow2_cmd.AddParameter("--backing_file=", backing_file);
+  crosvm_qcow2_cmd.AddParameter(output_overlay_path);
+  int success = crosvm_qcow2_cmd.Start().Wait();
+  if (success != 0) {
+    LOG(ERROR) << "Unable to run crosvm create_qcow2. Exited with status " << success;
+    return false;
+  }
+  return true;
+}
+
+bool PowerwashFiles() {
+  auto config = cuttlefish::CuttlefishConfig::Get();
+  if (!config) {
+    LOG(ERROR) << "Could not load the config.";
+    return false;
+  }
+  using cuttlefish::CreateBlankImage;
+  auto instance = config->ForDefaultInstance();
+
+  // TODO(schuffelen): Create these FIFOs in assemble_cvd instead of run_cvd.
+  auto kernel_log_pipe = instance.kernel_log_pipe_name();
+  unlink(kernel_log_pipe.c_str());
+
+  auto console_in_pipe = instance.console_in_pipe_name();
+  unlink(console_in_pipe.c_str());
+
+  auto console_out_pipe = instance.console_out_pipe_name();
+  unlink(console_out_pipe.c_str());
+
+  auto logcat_pipe = instance.logcat_pipe_name();
+  unlink(logcat_pipe.c_str());
+
+// TODO(schuffelen): Clean up duplication with assemble_cvd
+  auto kregistry_path = instance.access_kregistry_path();
+  unlink(kregistry_path.c_str());
+  CreateBlankImage(kregistry_path, 2 /* mb */, "none");
+
+  auto pstore_path = instance.pstore_path();
+  unlink(pstore_path.c_str());
+  CreateBlankImage(pstore_path, 2 /* mb */, "none");
+
+  auto sdcard_path = instance.sdcard_path();
+  auto sdcard_size = cuttlefish::FileSize(sdcard_path);
+  unlink(sdcard_path.c_str());
+  // round up
+  auto sdcard_mb_size = (sdcard_size + (1 << 20) - 1) / (1 << 20);
+  LOG(DEBUG) << "Size in mb is " << sdcard_mb_size;
+  CreateBlankImage(sdcard_path, sdcard_mb_size, "sdcard");
+
+  auto overlay_path = instance.PerInstancePath("overlay.img");
+  unlink(overlay_path.c_str());
+  if (!CreateQcowOverlay(
+      config->crosvm_binary(), instance.composite_disk_path(), overlay_path)) {
+    LOG(ERROR) << "CreateQcowOverlay failed";
+    return false;
+  }
+  return true;
+}
+
 void ServerLoop(cuttlefish::SharedFD server,
                 cuttlefish::ProcessMonitor* process_monitor) {
   while (true) {
@@ -266,6 +334,45 @@ void ServerLoop(cuttlefish::SharedFD server,
           client->Write(&response, sizeof(response));
           break;
         }
+        case cuttlefish::LauncherAction::kPowerwash: {
+          LOG(INFO) << "Received a Powerwash request from the monitor socket";
+          if (!process_monitor->StopMonitoredProcesses()) {
+            LOG(ERROR) << "Stopping processes failed.";
+            auto response = cuttlefish::LauncherResponse::kError;
+            client->Write(&response, sizeof(response));
+            break;
+          }
+          if (!PowerwashFiles()) {
+            LOG(ERROR) << "Powerwashing files failed.";
+            auto response = cuttlefish::LauncherResponse::kError;
+            client->Write(&response, sizeof(response));
+            break;
+          }
+          auto response = cuttlefish::LauncherResponse::kSuccess;
+          client->Write(&response, sizeof(response));
+
+          auto config = cuttlefish::CuttlefishConfig::Get();
+          auto config_path = config->AssemblyPath("cuttlefish_config.json");
+          auto followup_stdin =
+              cuttlefish::SharedFD::MemfdCreate("pseudo_stdin");
+          cuttlefish::WriteAll(followup_stdin, config_path + "\n");
+          followup_stdin->LSeek(0, SEEK_SET);
+          followup_stdin->UNMANAGED_Dup2(0);
+
+          auto argv_vec = gflags::GetArgvs();
+          char** argv = new char*[argv_vec.size() + 1];
+          for (size_t i = 0; i < argv_vec.size(); i++) {
+            argv[i] = argv_vec[i].data();
+          }
+          argv[argv_vec.size()] = nullptr;
+
+          execv("/proc/self/exe", argv);
+          // execve should not return, so something went wrong.
+          PLOG(ERROR) << "execv returned: ";
+          response = cuttlefish::LauncherResponse::kError;
+          client->Write(&response, sizeof(response));
+          break;
+        }
         default:
           LOG(ERROR) << "Unrecognized launcher action: "
                      << static_cast<char>(action);
@@ -279,6 +386,21 @@ void ServerLoop(cuttlefish::SharedFD server,
 std::string GetConfigFilePath(const cuttlefish::CuttlefishConfig& config) {
   auto instance = config.ForDefaultInstance();
   return instance.PerInstancePath("cuttlefish_config.json");
+}
+
+void PrintStreamingInformation(const cuttlefish::CuttlefishConfig& config) {
+  if (config.ForDefaultInstance().start_webrtc_sig_server()) {
+    // TODO (jemoreira): Change this when webrtc is moved to the debian package.
+    LOG(INFO) << kGreenColor << "Point your browser to https://"
+              << config.sig_server_address() << ":" << config.sig_server_port()
+              << " to interact with the device." << kResetColor;
+  } else if (config.enable_vnc_server()) {
+    LOG(INFO) << kGreenColor << "VNC server started on port "
+              << config.ForDefaultInstance().vnc_server_port() << kResetColor;
+  }
+  // When WebRTC is enabled but an operator other than the one launched by
+  // run_cvd is used there is no way to know the url to which to point the
+  // browser to.
 }
 
 }  // namespace
@@ -328,8 +450,12 @@ int main(int argc, char** argv) {
 
   {
     std::ofstream launcher_log_ofstream(log_path.c_str());
-    auto assemble_log = cuttlefish::ReadFile(config->AssemblyPath("assemble_cvd.log"));
-    launcher_log_ofstream << assemble_log;
+    auto assembly_path = config->AssemblyPath("assemble_cvd.log");
+    std::ifstream assembly_log_ifstream(assembly_path);
+    if (assembly_log_ifstream) {
+      auto assemble_log = cuttlefish::ReadFile(assembly_path);
+      launcher_log_ofstream << assemble_log;
+    }
   }
   ::android::base::SetLogger(cuttlefish::LogToStderrAndFiles({log_path}));
 
@@ -373,16 +499,35 @@ int main(int argc, char** argv) {
     LOG(ERROR) << "Unable to write cuttlefish environment file";
   }
 
-  LOG(INFO) << "The following files contain useful debugging information:";
-  if (config->run_as_daemon()) {
-    LOG(INFO) << "  Launcher log: " << instance.launcher_log_path();
+  PrintStreamingInformation(*config);
+
+  if (config->console()) {
+    LOG(INFO) << kGreenColor << "To access the console run: screen "
+              << instance.console_path() << kResetColor;
+  } else {
+    LOG(INFO) << kGreenColor
+              << "Serial console is disabled; use -console=true to enable it"
+              << kResetColor;
   }
-  LOG(INFO) << "  Android's logcat output: " << instance.logcat_path();
-  LOG(INFO) << "  Kernel log: " << instance.PerInstancePath("kernel.log");
-  LOG(INFO) << "  Instance configuration: " << GetConfigFilePath(*config);
-  LOG(INFO) << "  Instance environment: " << config->cuttlefish_env_path();
-  LOG(INFO) << "To access the console run: socat file:$(tty),raw,echo=0 "
-            << instance.console_path();
+
+  LOG(INFO) << kGreenColor
+            << "The following files contain useful debugging information:"
+            << kResetColor;
+  LOG(INFO) << kGreenColor
+            << "  Launcher log: " << instance.launcher_log_path()
+            << kResetColor;
+  LOG(INFO) << kGreenColor
+            << "  Android's logcat output: " << instance.logcat_path()
+            << kResetColor;
+  LOG(INFO) << kGreenColor
+            << "  Kernel log: " << instance.PerInstancePath("kernel.log")
+            << kResetColor;
+  LOG(INFO) << kGreenColor
+            << "  Instance configuration: " << GetConfigFilePath(*config)
+            << kResetColor;
+  LOG(INFO) << kGreenColor
+            << "  Instance environment: " << config->cuttlefish_env_path()
+            << kResetColor;
 
   auto launcher_monitor_path = instance.launcher_monitor_socket_path();
   auto launcher_monitor_socket = cuttlefish::SharedFD::SocketLocalServer(
@@ -419,6 +564,7 @@ int main(int argc, char** argv) {
   if (config->enable_metrics() == cuttlefish::CuttlefishConfig::kYes) {
     LaunchMetrics(&process_monitor, *config);
   }
+  LaunchModemSimulatorIfEnabled(*config, &process_monitor);
 
   auto event_pipes =
       LaunchKernelLogMonitor(*config, &process_monitor, 2);
@@ -431,9 +577,11 @@ int main(int argc, char** argv) {
 
   LaunchLogcatReceiver(*config, &process_monitor);
   LaunchConfigServer(*config, &process_monitor);
-  LaunchTombstoneReceiverIfEnabled(*config, &process_monitor);
-  LaunchTpm(&process_monitor, *config);
+  LaunchTombstoneReceiver(*config, &process_monitor);
+  LaunchGnssGrpcProxyServerIfEnabled(*config, &process_monitor);
   LaunchSecureEnvironment(&process_monitor, *config);
+  LaunchVerhicleHalServerIfEnabled(*config, &process_monitor);
+  LaunchConsoleForwarderIfEnabled(*config, &process_monitor);
 
   // The streamer needs to launch before the VMM because it serves on several
   // sockets (input devices, vsock frame server) when using crosvm.
@@ -446,7 +594,7 @@ int main(int argc, char** argv) {
     streamer_config = LaunchWebRTC(&process_monitor, *config);
   }
 
-  auto kernel_args = KernelCommandLineFromConfig(*config);
+  auto kernel_args = KernelCommandLineFromConfig(*config, config->ForDefaultInstance());
 
   // Start the guest VM
   vm_manager->WithFrontend(streamer_config.launched);

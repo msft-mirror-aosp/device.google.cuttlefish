@@ -40,8 +40,8 @@
 #include "common/libs/fs/shared_fd.h"
 #include "common/libs/utils/files.h"
 #include "common/libs/utils/subprocess.h"
-#include "host/commands/assemble_cvd/mbr.h"
 #include "host/libs/config/cuttlefish_config.h"
+#include "host/libs/config/mbr.h"
 #include "device/google/cuttlefish/host/commands/assemble_cvd/cdisk_spec.pb.h"
 
 namespace {
@@ -49,7 +49,7 @@ namespace {
 constexpr int GPT_NUM_PARTITIONS = 128;
 
 /**
- * Creates a "Protective" Master Boot Record Partition Table header. The GUID
+ * Creates a "Protective" MBR Partition Table header. The GUID
  * Partition Table Specification recommends putting this on the first sector
  * of the disk, to protect against old disk formatting tools from misidentifying
  * the GUID Partition Table later and doing the wrong thing.
@@ -215,7 +215,7 @@ public:
 
   /*
    * Returns a GUID Partition Table header structure for all the disks that have
-   * been added with `AppendDisk`. Includes a protective Master Boot Record.
+   * been added with `AppendDisk`. Includes a protective MBR.
    *
    * This method is not deterministic: some data is generated such as the disk
    * uuids.

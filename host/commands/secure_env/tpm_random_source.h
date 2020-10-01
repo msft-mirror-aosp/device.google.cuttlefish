@@ -13,6 +13,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#pragma once
+
 #include <keymaster/random_source.h>
 
 struct ESYS_CONTEXT;
@@ -29,6 +31,8 @@ public:
 
   keymaster_error_t GenerateRandom(
       uint8_t* buffer, size_t length) const override;
+
+  keymaster_error_t AddRngEntropy(const uint8_t*, size_t) const;
 private:
   ESYS_CONTEXT* esys_;
 };

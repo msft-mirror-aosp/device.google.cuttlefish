@@ -345,6 +345,13 @@ class FileInstance {
     return rval;
   }
 
+  int GetSockOpt(int level, int optname, void* optval, socklen_t* optlen) {
+    errno = 0;
+    int rval = getsockopt(fd_, level, optname, optval, optlen);
+    errno_ = errno;
+    return rval;
+  }
+
   const char* StrError() const {
     errno = 0;
     FileInstance* s = const_cast<FileInstance*>(this);
@@ -371,6 +378,13 @@ class FileInstance {
   ssize_t Write(const void* buf, size_t count) {
     errno = 0;
     ssize_t rval = TEMP_FAILURE_RETRY(write(fd_, buf, count));
+    errno_ = errno;
+    return rval;
+  }
+
+  bool IsATTY() {
+    errno = 0;
+    int rval = isatty(fd_);
     errno_ = errno;
     return rval;
   }

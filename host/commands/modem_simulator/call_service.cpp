@@ -13,10 +13,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "host/libs/config/cuttlefish_config.h"
+#include "host/commands/modem_simulator/call_service.h"
 
-#include "call_service.h"
-#include "nvram_config.h"
+#include <android-base/logging.h>
+
+#include <chrono>
+#include <iostream>
+#include <thread>
+
+#include "host/commands/modem_simulator/nvram_config.h"
 
 namespace cuttlefish {
 
@@ -60,7 +65,7 @@ std::vector<CommandHandler> CallService::InitializeCommandHandlers() {
                      [this](const Client& client, std::string& cmd) {
                        this->HandleHangup(client, cmd);
                      }),
-      CommandHandler("+CMUT=",
+      CommandHandler("+CMUT",
                      [this](const Client& client, std::string& cmd) {
                        this->HandleMute(client, cmd);
                      }),
@@ -216,10 +221,9 @@ void CallService::HandleDial(const Client& client, const std::string& command) {
     auto call_token = std::make_pair(index, call_status.number);
     call_status.timeout_serial = thread_looper_->PostWithDelay(
         std::chrono::minutes(1),
-        makeSafeCallback<CallService>(
-            weak_from_this(), [call_token](CallService* me) {
-              me->TimerWaitingRemoteCallResponse(call_token);
-            }));
+        makeSafeCallback<CallService>(this, [call_token](CallService* me) {
+          me->TimerWaitingRemoteCallResponse(call_token);
+        }));
 
     active_calls_[index] = call_status;
   } else {
@@ -238,7 +242,7 @@ void CallService::HandleDial(const Client& client, const std::string& command) {
   }
 
   client.SendCommandResponse("OK");
-  sleep(2);
+  std::this_thread::sleep_for(std::chrono::seconds(2));
 }
 
 void CallService::SendCallStatusToRemote(CallStatus& call,
@@ -280,8 +284,9 @@ void CallService::HandleRejectCall(const Client& client) {
     if (iter->second.isCallIncoming()) {
       SendCallStatusToRemote(iter->second, CallStatus::CALL_STATE_HANGUP);
       iter = active_calls_.erase(iter);
+    } else {
+      ++iter;
     }
-    ++iter;
   }
 
   client.SendCommandResponse("OK");

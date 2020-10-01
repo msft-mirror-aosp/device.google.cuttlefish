@@ -13,8 +13,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "stk_service.h"
+#include "host/commands/modem_simulator/stk_service.h"
 
+#include <android-base/logging.h>
 namespace cuttlefish {
 
 StkService::StkService(int32_t service_id, ChannelMonitor* channel_monitor,

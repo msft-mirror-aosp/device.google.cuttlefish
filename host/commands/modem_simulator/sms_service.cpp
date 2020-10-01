@@ -13,8 +13,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "sms_service.h"
-#include "pdu_parser.h"
+#include "host/commands/modem_simulator/sms_service.h"
+
+#include <android-base/logging.h>
+
+#include "host/commands/modem_simulator/pdu_parser.h"
 
 namespace cuttlefish {
 
@@ -295,9 +298,9 @@ void SmsService::HandleSendSMSPDU(const Client& client, std::string& command) {
     if (GetHostPort() == remote_host_port) {  // Send SMS to local host port
       thread_looper_->PostWithDelay(
           std::chrono::seconds(1),
-          makeSafeCallback<SmsService>(
-              weak_from_this(),
-              [&sms_pdu](SmsService* me) { me->HandleReceiveSMS(sms_pdu); }));
+          makeSafeCallback<SmsService>(this, [&sms_pdu](SmsService* me) {
+            me->HandleReceiveSMS(sms_pdu);
+          }));
     } else {  // Send SMS to remote host port
       SendSmsToRemote(remote_host_port, sms_pdu);
     }
@@ -305,9 +308,9 @@ void SmsService::HandleSendSMSPDU(const Client& client, std::string& command) {
     /* Local phone number */
     thread_looper_->PostWithDelay(
         std::chrono::seconds(1),
-        makeSafeCallback<SmsService>(
-            weak_from_this(),
-            [sms_pdu](SmsService* me) { me->HandleReceiveSMS(sms_pdu); }));
+        makeSafeCallback<SmsService>(this, [sms_pdu](SmsService* me) {
+          me->HandleReceiveSMS(sms_pdu);
+        }));
   } /* else pretend send SMS success */
 
   std::stringstream ss;
@@ -320,10 +323,9 @@ void SmsService::HandleSendSMSPDU(const Client& client, std::string& command) {
     int ref = message_reference_;
     thread_looper_->PostWithDelay(
         std::chrono::seconds(1),
-        makeSafeCallback<SmsService>(weak_from_this(),
-                                     [sms_pdu, ref](SmsService* me) {
-                                       me->HandleSMSStatuReport(sms_pdu, ref);
-                                     }));
+        makeSafeCallback<SmsService>(this, [sms_pdu, ref](SmsService* me) {
+          me->HandleSMSStatuReport(sms_pdu, ref);
+        }));
   }
 }
 

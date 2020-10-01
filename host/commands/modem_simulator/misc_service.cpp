@@ -13,10 +13,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "host/commands/modem_simulator/misc_service.h"
+
 #include <ctime>
 #include <iomanip>
-
-#include "misc_service.h"
 
 namespace cuttlefish {
 
@@ -70,7 +70,7 @@ std::vector<CommandHandler> MiscService::InitializeCommandHandlers() {
 }
 
 void MiscService::HandleGetIMEI(const Client& client, std::string& command) {
-  const std::string identityGsmImei = "12345678902468";
+  const std::string identityGsmImei = "867400022047199";
   const std::string identityGsmSvn = "01";
   const std::string information = "modem simulator";
 

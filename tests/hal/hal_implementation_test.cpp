@@ -27,6 +27,8 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.frameworks.bufferhub@1.0",
     "android.frameworks.cameraservice.device@2.0",
     "android.frameworks.vr.composer@1.0",
+    "android.frameworks.vr.composer@2.0",
+    "android.frameworks.automotive.display@1.0",
     "android.hardware.audio@2.0",
     "android.hardware.audio@4.0",
     "android.hardware.audio@5.0",
@@ -34,26 +36,27 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hardware.audio.effect@4.0",
     "android.hardware.audio.effect@5.0",
     "android.hardware.automotive.audiocontrol@1.0",
-    "android.hardware.automotive.evs@1.0",
+    "android.hardware.automotive.audiocontrol@2.0",
+    "android.hardware.automotive.can@1.0",
+    "android.hardware.automotive.evs@1.1",
+    "android.hardware.automotive.sv@1.0",
     "android.hardware.automotive.vehicle@2.0",
-    "android.hardware.biometrics.face@1.0",
-    "android.hardware.biometrics.fingerprint@2.1",
+    "android.hardware.biometrics.fingerprint@2.2",
     "android.hardware.bluetooth.a2dp@1.0",
     "android.hardware.broadcastradio@1.1",
     "android.hardware.broadcastradio@2.0",
-    "android.hardware.camera.provider@2.5",
-    "android.hardware.cas@1.2",
     "android.hardware.cas.native@1.0",
     "android.hardware.confirmationui@1.0",
-    "android.hardware.contexthub@1.0",
     "android.hardware.configstore@1.1", // deprecated, see b/149050985, b/149050733
     "android.hardware.fastboot@1.0",
-    "android.hardware.gnss.measurement_corrections@1.0",
+    "android.hardware.gnss.measurement_corrections@1.1", // is sub-interface of gnss
     "android.hardware.gnss.visibility_control@1.0",
+    "android.hardware.graphics.allocator@2.0",
     "android.hardware.graphics.allocator@3.0",
     "android.hardware.graphics.bufferqueue@1.0",
     "android.hardware.graphics.bufferqueue@2.0",
-    "android.hardware.graphics.composer@2.3",
+    "android.hardware.graphics.composer@2.4",
+    "android.hardware.graphics.mapper@2.1",
     "android.hardware.graphics.mapper@3.0",
     "android.hardware.health@1.0",
     "android.hardware.ir@1.0",
@@ -68,9 +71,9 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hardware.radio.config@1.2",
     "android.hardware.radio.deprecated@1.0",
     "android.hardware.renderscript@1.0",
+    "android.hardware.soundtrigger@2.3",
     "android.hardware.secure_element@1.2",
     "android.hardware.sensors@1.0",
-    "android.hardware.soundtrigger@2.2",
     "android.hardware.tetheroffload.config@1.0",
     "android.hardware.tetheroffload.control@1.0",
     "android.hardware.thermal@1.1",
@@ -79,12 +82,12 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hardware.tv.input@1.0",
     "android.hardware.tv.tuner@1.0",
     "android.hardware.usb@1.2",
-    "android.hardware.usb.gadget@1.0",
+    "android.hardware.usb.gadget@1.1",
     "android.hardware.vibrator@1.3",
     "android.hardware.vr@1.0",
     "android.hardware.weaver@1.0",
-    "android.hardware.wifi@1.3",
-    "android.hardware.wifi.hostapd@1.1",
+    "android.hardware.wifi@1.4",
+    "android.hardware.wifi.hostapd@1.2",
     "android.hardware.wifi.offload@1.0",
     "android.hidl.base@1.0",
     "android.hidl.memory.token@1.0",
@@ -92,14 +95,13 @@ static const std::set<std::string> kKnownMissingHidl = {
 
 static const std::set<std::string> kKnownMissingAidl = {
     // types-only packages, which never expect a default implementation
-    // none right now
+    "android.hardware.common.",
+    "android.hardware.graphics.common.",
 
     // These KeyMaster types are in an AIDL types-only HAL because they're used
     // by the Identity Credential AIDL HAL. Remove this when fully porting
     // KeyMaster to AIDL.
-    "android.hardware.keymaster.HardwareAuthToken",
-    "android.hardware.keymaster.HardwareAuthenticatorType",
-    "android.hardware.keymaster.Timestamp",
+    "android.hardware.keymaster.",
 };
 
 // AOSP packages which are never considered
@@ -243,6 +245,13 @@ TEST(Hal, AllAidlInterfacesAreInAosp) {
     }
 }
 
+// android.hardware.foo.IFoo -> android.hardware.foo.
+std::string getAidlPackage(const std::string& aidlType) {
+    size_t lastDot = aidlType.rfind('.');
+    CHECK(lastDot != std::string::npos);
+    return aidlType.substr(0, lastDot + 1);
+}
+
 TEST(Hal, AidlInterfacesImplemented) {
     std::set<std::string> manifest = allAidlManifestInterfaces();
     std::set<std::string> thoughtMissing = kKnownMissingAidl;
@@ -256,7 +265,7 @@ TEST(Hal, AidlInterfacesImplemented) {
         bool knownMissing = false;
         for (const std::string& type : iface.types) {
             if (manifest.erase(type) > 0) hasRegistration = true;
-            if (thoughtMissing.erase(type) > 0) knownMissing = true;
+            if (thoughtMissing.erase(getAidlPackage(type)) > 0) knownMissing = true;
         }
 
         if (knownMissing) {
