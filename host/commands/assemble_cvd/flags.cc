@@ -193,6 +193,11 @@ DEFINE_bool(verify_sig_server_certificate, false,
             "Whether to verify the signaling server's certificate with a "
             "trusted signing authority (Disallow self signed certificates).");
 
+DEFINE_string(sig_server_headers_file, "",
+              "Path to a file containing HTTP headers to be included in the "
+              "connection to the signaling server. Each header should be on a "
+              "line by itself in the form <name>: <value>");
+
 DEFINE_string(
     webrtc_device_id, "cvd-{num}",
     "The for the device to register with the signaling server. Every "
@@ -590,6 +595,7 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
   tmp_config_obj.set_sig_server_address(FLAGS_webrtc_sig_server_addr);
   tmp_config_obj.set_sig_server_path(FLAGS_webrtc_sig_server_path);
   tmp_config_obj.set_sig_server_strict(FLAGS_verify_sig_server_certificate);
+  tmp_config_obj.set_sig_server_headers_path(FLAGS_sig_server_headers_file);
 
   auto tcp_range  = ParsePortRange(FLAGS_tcp_port_range);
   tmp_config_obj.set_webrtc_tcp_port_range(tcp_range);
@@ -771,20 +777,20 @@ void SetDefaultFlagsForQemu() {
   // for now, we don't set non-default options for QEMU
   if (FLAGS_gpu_mode == cuttlefish::kGpuModeGuestSwiftshader &&
       NumStreamers() == 0) {
-    // This makes the vnc server the default streamer unless the user requests
+    // This makes WebRTC the default streamer unless the user requests
     // another via a --star_<streamer> flag, while at the same time it's
-    // possible to run without any streamer by setting --start_vnc_server=false.
-    SetCommandLineOptionWithMode("start_vnc_server", "true",
+    // possible to run without any streamer by setting --start_webrtc=false.
+    SetCommandLineOptionWithMode("start_webrtc", "true",
                                  google::FlagSettingMode::SET_FLAGS_DEFAULT);
   }
 }
 
 void SetDefaultFlagsForCrosvm() {
   if (NumStreamers() == 0) {
-    // This makes the vnc server the default streamer unless the user requests
+    // This makes WebRTC the default streamer unless the user requests
     // another via a --star_<streamer> flag, while at the same time it's
-    // possible to run without any streamer by setting --start_vnc_server=false.
-    SetCommandLineOptionWithMode("start_vnc_server", "true",
+    // possible to run without any streamer by setting --start_webrtc=false.
+    SetCommandLineOptionWithMode("start_webrtc", "true",
                                  google::FlagSettingMode::SET_FLAGS_DEFAULT);
   }
 
