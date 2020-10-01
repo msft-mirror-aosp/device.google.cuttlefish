@@ -13,22 +13,31 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 #pragma once
 
-#include <memory>
-
-#include "host/frontend/webrtc/lib/video_frame_buffer.h"
+#include <string>
 
 namespace cuttlefish {
-namespace webrtc_streaming {
 
-class VideoSink {
- public:
-  virtual ~VideoSink() = default;
-  virtual void OnFrame(std::shared_ptr<VideoFrameBuffer> frame,
-                       int64_t timestamp_us) = 0;
+struct GraphicsAvailability {
+  bool has_gl = false;
+  bool has_gles1 = false;
+  bool has_gles2 = false;
+  bool has_egl = false;
+  bool has_egl_default_display = false;
+  std::string egl_client_extensions;
+  std::string egl_version;
+  std::string egl_vendor;
+  std::string egl_extensions;
+  bool has_egl_surfaceless_with_gles = false;
+  bool has_vulkan = false;
+  bool has_discrete_gpu = false;
+  std::string discrete_gpu_device_name;
+  std::string discrete_gpu_device_extensions;
 };
 
-}  // namespace webrtc_streaming
+GraphicsAvailability GetGraphicsAvailability();
+
+std::string GetGraphicsAvailabilityString(const GraphicsAvailability& info);
+
 }  // namespace cuttlefish

@@ -160,10 +160,13 @@ const char* kKgdb = "kgdb";
 
 const char* kEnableMinimalMode = "enable_minimal_mode";
 
+const char* kConsole = "console";
+
 }  // namespace
 
 namespace cuttlefish {
 
+const char* const kGpuModeAuto = "auto";
 const char* const kGpuModeGuestSwiftshader = "guest_swiftshader";
 const char* const kGpuModeDrmVirgl = "drm_virgl";
 const char* const kGpuModeGfxStream = "gfxstream";
@@ -740,6 +743,13 @@ bool CuttlefishConfig::enable_minimal_mode() const {
 
 void CuttlefishConfig::set_enable_minimal_mode(bool enable_minimal_mode) {
   (*dictionary_)[kEnableMinimalMode] = enable_minimal_mode;
+}
+
+void CuttlefishConfig::set_console(bool console) {
+  (*dictionary_)[kConsole] = console;
+}
+bool CuttlefishConfig::console() const {
+  return (*dictionary_)[kConsole].asBool();
 }
 
 // Creates the (initially empty) config object and populates it with values from

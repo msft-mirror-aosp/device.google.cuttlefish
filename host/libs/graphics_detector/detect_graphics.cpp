@@ -14,21 +14,20 @@
  * limitations under the License.
  */
 
-#pragma once
 
-#include <memory>
+#include <string>
 
-#include "host/frontend/webrtc/lib/video_frame_buffer.h"
+#include <gflags/gflags.h>
 
-namespace cuttlefish {
-namespace webrtc_streaming {
+#include "android-base/logging.h"
+#include "host/libs/graphics_detector/graphics_detector.h"
 
-class VideoSink {
- public:
-  virtual ~VideoSink() = default;
-  virtual void OnFrame(std::shared_ptr<VideoFrameBuffer> frame,
-                       int64_t timestamp_us) = 0;
-};
+int main(int argc, char* argv[]) {
+  ::android::base::InitLogging(argv, android::base::StderrLogger);
+  ::gflags::ParseCommandLineFlags(&argc, &argv, true);
 
-}  // namespace webrtc_streaming
-}  // namespace cuttlefish
+  const cuttlefish::GraphicsAvailability graphics_availability =
+  	cuttlefish::GetGraphicsAvailability();
+
+  LOG(INFO) << GetGraphicsAvailabilityString(graphics_availability);
+}
