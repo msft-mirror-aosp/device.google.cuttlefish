@@ -56,6 +56,7 @@ cc_binary_host {
     static_libs: [
         "libcdisk_spec",
         "libsparse",
+        "libcuttlefish_graphics_detector",
         "libcuttlefish_host_config",
         "libcuttlefish_vm_manager",
         "libgflags",

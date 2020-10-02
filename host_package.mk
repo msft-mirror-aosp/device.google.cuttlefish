@@ -20,6 +20,7 @@ modem_simulator_path := etc/modem_simulator
 cvd_host_executables := \
     adb \
     adbshell \
+    detect_graphics \
     launch_cvd \
     lpmake \
     lpunpack \
