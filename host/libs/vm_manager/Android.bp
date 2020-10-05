@@ -22,6 +22,7 @@ cc_library_host_static {
     ],
     header_libs: [
         "cuttlefish_glog",
+        "vulkan_headers",
     ],
     shared_libs: [
         "libcuttlefish_fs",

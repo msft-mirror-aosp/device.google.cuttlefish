@@ -32,6 +32,7 @@
 
 #include <android-base/strings.h>
 #include <glog/logging.h>
+#include <vulkan/vulkan.h>
 
 #include "common/libs/fs/shared_select.h"
 #include "common/libs/utils/files.h"
@@ -91,11 +92,13 @@ std::vector<std::string> QemuManager::ConfigureGpu(const std::string& gpu_mode) 
   if (gpu_mode != cuttlefish::kGpuModeGuestSwiftshader) {
     return {};
   }
+
   // Override the default HAL search paths in all cases. We do this because
   // the HAL search path allows for fallbacks, and fallbacks in conjunction
   // with properities lead to non-deterministic behavior while loading the
   // HALs.
   return {
+      "androidboot.cpuvulkan.version=" + std::to_string(VK_API_VERSION_1_1),
       "androidboot.hardware.gralloc=minigbm",
       "androidboot.hardware.hwcomposer=cutf",
       "androidboot.hardware.egl=swiftshader",
