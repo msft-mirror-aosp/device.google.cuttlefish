@@ -110,7 +110,7 @@ cvd_host_shared_libraries := \
 webrtc_assets := \
     index.html \
     style.css \
-    js/logcat.js \
+    js/adb.js \
     js/app.js \
     js/cf_webrtc.js \
 
