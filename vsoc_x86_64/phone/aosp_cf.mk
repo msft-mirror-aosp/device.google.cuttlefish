@@ -48,4 +48,5 @@ $(call inherit-product, device/google/cuttlefish/vsoc_x86_64/device.mk)
 
 PRODUCT_NAME := aosp_cf_x86_64_phone
 PRODUCT_DEVICE := vsoc_x86_64
+PRODUCT_MANUFACTURER := Google
 PRODUCT_MODEL := Cuttlefish x86_64 phone
