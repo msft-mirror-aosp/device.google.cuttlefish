@@ -25,6 +25,6 @@
 #include <stdlib.h>
 #include <sys/time.h>
 
-#include <guest/hals/ril/libril/ril.h>
+#include <guest/hals/ril/reference-libril/ril.h>
 
 #include <telephony/ril_cdma_sms.h>
