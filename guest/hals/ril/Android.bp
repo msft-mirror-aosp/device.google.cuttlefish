@@ -1,5 +1,4 @@
-//
-// Copyright (C) 2017 The Android Open Source Project
+// Copyright (C) 2020 The Android Open Source Project
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,26 +12,28 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-cc_library_static {
-    name: "libcuttlefish_vm_manager",
-    srcs: [
-        "crosvm_manager.cpp",
-        "host_configuration.cpp",
-        "qemu_manager.cpp",
-        "vm_manager.cpp",
+cc_library {
+    name: "libcuttlefish-ril",
+    vendor: true,
+    cflags: [
+        "-Wall",
+        "-Werror",
     ],
-    header_libs: [
-        "vulkan_headers",
+    srcs: [
+        "cuttlefish_ril.cpp",
+    ],
+    include_dirs: [
+        "device/google/cuttlefish",
+        "hardware/ril/include",
     ],
     shared_libs: [
-        "libcuttlefish_fs",
-        "libcuttlefish_utils",
+        "cuttlefish_net",
         "libbase",
-        "libjsoncpp",
-        "libxml2",
+        "libcutils",
+        "libcuttlefish_device_config",
+        "libcuttlefish_fs",
+        "liblog",
+        "libril-modem-lib",
+        "libutils",
     ],
-    static_libs: [
-        "libcuttlefish_host_config",
-    ],
-    defaults: ["cuttlefish_host_and_guest", "cuttlefish_libicuuc"],
 }
