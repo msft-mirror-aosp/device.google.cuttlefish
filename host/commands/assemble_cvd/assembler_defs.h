@@ -43,6 +43,8 @@ enum AssemblerExitCodes : int {
   kInitRamFsConcatError = 22,
   kAssemblyDirCreationError = 23,
   kDiskSpaceError = 24,
+  kBootImgRepackError = 26,
+  kDiskConfigVerificationError = 27,
 };
 
 }  // namespace cuttlefish

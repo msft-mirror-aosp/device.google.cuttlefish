@@ -54,6 +54,8 @@ cvd_host_executables := \
     run_cvd \
     cvd_status \
     powerwash_cvd \
+    mkbootimg \
+    unpack_bootimg \
     webRTC \
     webrtc_operator \
     fsck.f2fs \

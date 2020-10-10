@@ -154,9 +154,8 @@ std::vector<cuttlefish::Command> CrosvmManager::StartCommands() {
   }
   crosvm_cmd.AddParameter("--wayland-sock");
   crosvm_cmd.AddParameter(instance.frames_socket_path());
-  if (!config_->final_ramdisk_path().empty()) {
-    crosvm_cmd.AddParameter("--initrd");
-    crosvm_cmd.AddParameter(config_->final_ramdisk_path());
+  if (!config_->use_bootloader() && !config_->final_ramdisk_path().empty()) {
+    crosvm_cmd.AddParameter("--initrd=", config_->final_ramdisk_path());
   }
   crosvm_cmd.AddParameter("--mem");
   crosvm_cmd.AddParameter(config_->memory_mb());
