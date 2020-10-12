@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2017 The Android Open Source Project
+# Copyright (C) 2020 The Android Open Source Project
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,11 +14,9 @@
 # limitations under the License.
 #
 
-$(call inherit-product, device/google/cuttlefish/shared/tv/device.mk)
-$(call inherit-product, device/google/cuttlefish/vsoc_x86_64/kernel.mk)
-$(call inherit-product, device/google/cuttlefish/vsoc_x86_64/bootloader.mk)
-
-PRODUCT_NAME := aosp_cf_x86_tv
-PRODUCT_DEVICE := vsoc_x86
-PRODUCT_MANUFACTURER := Google
-PRODUCT_MODEL := Cuttlefish x86 tv
+TARGET_NO_BOOTLOADER := false
+# FIXME: Copying the QEMU bootloader for now, but this should be updated..
+BOARD_PREBUILT_BOOTLOADER := \
+    device/google/cuttlefish_prebuilts/bootloader/qemu_aarch64/u-boot.bin
+PRODUCT_COPY_FILES += \
+    device/google/cuttlefish_prebuilts/bootloader/qemu_aarch64/u-boot.bin:bootloader.qemu

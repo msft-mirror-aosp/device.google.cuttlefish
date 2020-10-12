@@ -45,6 +45,7 @@ $(call inherit-product, device/google/cuttlefish/shared/phone/device_vendor.mk)
 # Special settings for the target
 #
 $(call inherit-product, device/google/cuttlefish/vsoc_arm64/kernel.mk)
+$(call inherit-product, device/google/cuttlefish/vsoc_arm64/bootloader.mk)
 
 PRODUCT_NAME := aosp_cf_arm64_only_phone
 PRODUCT_DEVICE := vsoc_arm64_only
