@@ -28,6 +28,7 @@ LOCAL_SHARED_LIBRARIES := \
   cuttlefish_net \
   libbase \
   libcuttlefish_device_config \
+  libcuttlefish_device_config_proto
 
 LOCAL_C_INCLUDES := \
     device/google/cuttlefish

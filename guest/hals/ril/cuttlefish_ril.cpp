@@ -56,7 +56,7 @@ typedef enum {
   RUIM_NETWORK_PERSONALIZATION = 11
 } SIM_Status;
 
-static std::unique_ptr<cuttlefish::DeviceConfig> global_ril_config = nullptr;
+static std::unique_ptr<cuttlefish::DeviceConfigHelper> device_config_helper = nullptr;
 
 static const struct RIL_Env* gce_ril_env;
 
@@ -180,11 +180,12 @@ static int request_or_send_data_calllist(RIL_Token* t) {
         break;
     }
 
+    const auto& ril_config = device_config_helper->GetDeviceConfig().ril_config();
     responses[index].ifname = (char*)"rmnet0";
     responses[index].addresses =
-      const_cast<char*>(global_ril_config->ril_address_and_prefix());
-    responses[index].dnses = const_cast<char*>(global_ril_config->ril_dns());
-    responses[index].gateways = const_cast<char*>(global_ril_config->ril_gateway());
+      const_cast<char*>(ril_config.ipaddr().c_str());
+    responses[index].dnses = const_cast<char*>(ril_config.dns().c_str());
+    responses[index].gateways = const_cast<char*>(ril_config.gateway().c_str());
     responses[index].pcscf = (char*)"";
     responses[index].mtu = 1440;
   }
@@ -305,9 +306,10 @@ static void request_setup_data_call(void* data, size_t datalen, RIL_Token t) {
   }
 
   if (gDataCalls.empty()) {
-    SetUpNetworkInterface(global_ril_config->ril_ipaddr(),
-                          global_ril_config->ril_prefixlen(),
-                          global_ril_config->ril_broadcast());
+    const auto& ril_config = device_config_helper->GetDeviceConfig().ril_config();
+    SetUpNetworkInterface(ril_config.ipaddr().c_str(),
+                          ril_config.prefixlen(),
+                          ril_config.broadcast().c_str());
   }
 
   gDataCalls[gNextDataCallId] = call;
@@ -2610,8 +2612,8 @@ const RIL_RadioFunctions* RIL_Init(const struct RIL_Env* env, int /*argc*/,
   time(&gce_ril_start_time);
   gce_ril_env = env;
 
-  global_ril_config = cuttlefish::DeviceConfig::Get();
-  if (!global_ril_config) {
+  device_config_helper = cuttlefish::DeviceConfigHelper::Get();
+  if (!device_config_helper) {
     ALOGE("Failed to open device configuration!!!");
     return nullptr;
   }

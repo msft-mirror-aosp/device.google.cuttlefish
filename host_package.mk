@@ -82,6 +82,8 @@ cvd_host_tests := \
 cvd_host_shared_libraries := \
     libbase.so \
     libcutils.so \
+    libcuttlefish_device_config.so \
+    libcuttlefish_device_config_proto.so \
     libcuttlefish_fs.so \
     libcuttlefish_kernel_log_monitor_utils.so \
     libcuttlefish_utils.so \

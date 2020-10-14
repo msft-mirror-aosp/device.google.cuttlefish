@@ -29,25 +29,21 @@ int main(int argc, char** argv) {
   ::android::base::InitLogging(argv, android::base::StderrLogger);
   google::ParseCommandLineFlags(&argc, &argv, true);
 
-  CHECK(cuttlefish::CuttlefishConfig::Get()) << "Could not open config";
+  auto device_config_helper = cuttlefish::DeviceConfigHelper::Get();
+
+  CHECK(device_config_helper) << "Could not open device config";
 
   cuttlefish::SharedFD server_fd = cuttlefish::SharedFD::Dup(FLAGS_server_fd);
 
   CHECK(server_fd->IsOpen()) << "Inheriting logcat server: "
                              << server_fd->StrError();
 
-  auto device_config = cuttlefish::DeviceConfig::Get();
-  if (!device_config) {
-    LOG(ERROR) << "Failed to obtain device configuration";
-    return -1;
-  }
-
   // Server loop
   while (true) {
     auto conn = cuttlefish::SharedFD::Accept(*server_fd);
     LOG(INFO) << "Connection received on configuration server";
 
-    bool succeeded = device_config->SendRawData(conn);
+    bool succeeded = device_config_helper->SendDeviceConfig(conn);
     if (succeeded) {
       LOG(INFO) << "Successfully sent device configuration";
     } else {
