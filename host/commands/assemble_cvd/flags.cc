@@ -272,6 +272,14 @@ DEFINE_bool(console, false, "Enable the serial console");
 
 DEFINE_bool(vhost_net, false, "Enable vhost acceleration of networking");
 
+DEFINE_int32(vsock_guest_cid,
+             cuttlefish::GetDefaultVsockCid(),
+             "Override vsock cid with this option if vsock cid the instance should be"
+             "separated from the instance number: e.g. cuttlefish instance inside a container."
+             "If --vsock_guest_cid=C --num_instances=N are given,"
+             "the vsock cid of the i th instance would be C + i where i is in [1, N]"
+             "If --num_instances is not given, the default value of N is used.");
+
 namespace {
 
 const std::string kKernelDefaultPath = "kernel";
@@ -400,9 +408,8 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
   // Sepolicy rules need to be updated to support gpu mode. Temporarily disable
   // auto-enabling sandbox when gpu is enabled (b/152323505).
   if (tmp_config_obj.gpu_mode() != cuttlefish::kGpuModeGuestSwiftshader) {
-    tmp_config_obj.set_enable_sandbox(false);
-  } else {
-    tmp_config_obj.set_enable_sandbox(FLAGS_enable_sandbox);
+    SetCommandLineOptionWithMode("enable_sandbox", "false",
+                                 google::FlagSettingMode::SET_FLAGS_DEFAULT);
   }
 
   if (vmm->ConfigureGpuMode(tmp_config_obj.gpu_mode()).empty()) {
@@ -466,6 +473,11 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
   tmp_config_obj.set_guest_audit_security(FLAGS_guest_audit_security);
   tmp_config_obj.set_guest_force_normal_boot(FLAGS_guest_force_normal_boot);
   tmp_config_obj.set_extra_kernel_cmdline(FLAGS_extra_kernel_cmdline);
+
+  if (FLAGS_console) {
+    SetCommandLineOptionWithMode("enable_sandbox", "false",
+                                 google::FlagSettingMode::SET_FLAGS_DEFAULT);
+  }
 
   tmp_config_obj.set_console(FLAGS_console);
   tmp_config_obj.set_kgdb(FLAGS_console && FLAGS_kgdb);
@@ -555,13 +567,13 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
 
   tmp_config_obj.set_vhost_net(FLAGS_vhost_net);
 
-  std::vector<int> instance_nums;
+  std::vector<int> num_instances;
   for (int i = 0; i < FLAGS_num_instances; i++) {
-    instance_nums.push_back(cuttlefish::GetInstance() + i);
+    num_instances.push_back(cuttlefish::GetInstance() + i);
   }
 
   bool is_first_instance = true;
-  for (const auto& num : instance_nums) {
+  for (const auto& num : num_instances) {
     auto iface_opt = AcquireIfaces(num);
     if (!iface_opt.has_value()) {
       LOG(FATAL) << "Failed to acquire network interfaces";
@@ -589,7 +601,7 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
 
     instance.set_wifi_tap_name(iface_config.wireless_tap.name);
 
-    instance.set_vsock_guest_cid(3 + num - 1);
+    instance.set_vsock_guest_cid(FLAGS_vsock_guest_cid + num - cuttlefish::GetInstance());
 
     instance.set_uuid(FLAGS_uuid);
 
@@ -661,6 +673,8 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
     modem_simulator_ports.pop_back();
     instance.set_modem_simulator_ports(modem_simulator_ports);
   }
+
+  tmp_config_obj.set_enable_sandbox(FLAGS_enable_sandbox);
 
   return tmp_config_obj;
 }
