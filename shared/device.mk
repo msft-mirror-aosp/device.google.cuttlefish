@@ -30,6 +30,7 @@ DISABLE_RILD_OEM_HOOK := true
 PRODUCT_SOONG_NAMESPACES += device/generic/goldfish-opengl # for vulkan
 
 TARGET_USERDATAIMAGE_FILE_SYSTEM_TYPE ?= f2fs
+PRODUCT_FS_COMPRESSION := 1
 
 AB_OTA_UPDATER := true
 AB_OTA_PARTITIONS += \
@@ -303,13 +304,19 @@ PRODUCT_COPY_FILES += $(LOCAL_AUDIO_PRODUCT_COPY_FILES)
 DEVICE_PACKAGE_OVERLAYS += $(LOCAL_AUDIO_DEVICE_PACKAGE_OVERLAYS)
 
 #
-# BiometricsFace HAL
+# BiometricsFace HAL (HIDL)
 #
 PRODUCT_PACKAGES += \
     android.hardware.biometrics.face@1.1-service.example
 
 #
-# BiometricsFingerprint HAL
+# BiometricsFace HAL (AIDL)
+#
+PRODUCT_PACKAGES += \
+    android.hardware.biometrics.face-service.example
+
+#
+# BiometricsFingerprint HAL (AIDL)
 #
 PRODUCT_PACKAGES += \
     android.hardware.biometrics.fingerprint-service.example
