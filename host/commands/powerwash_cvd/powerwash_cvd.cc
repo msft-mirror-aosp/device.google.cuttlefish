@@ -38,6 +38,7 @@
 #include <gflags/gflags.h>
 #include <android-base/logging.h>
 
+#include "common/libs/fs/shared_buf.h"
 #include "common/libs/fs/shared_fd.h"
 #include "common/libs/fs/shared_select.h"
 #include "common/libs/utils/environment.h"
@@ -104,18 +105,31 @@ int main(int argc, char** argv) {
                << monitor_socket->StrError();
     return 7;
   }
+  LOG(INFO) << "Requesting powerwash";
   if (response != cuttlefish::LauncherResponse::kSuccess) {
     LOG(ERROR) << "Received '" << static_cast<char>(response)
-               << "' response from launcher monitor";
+               << "' response from launcher monitor for powerwash request";
     return 8;
   }
-  bytes_recv = monitor_socket->Recv(&response, sizeof(response), 0);
-  if (bytes_recv != 0) {
-    LOG(ERROR) << "execv must have failed in the launcher.";
-    if (bytes_recv < 0) {
-      LOG(ERROR) << monitor_socket->StrError();
-    }
+  LOG(INFO) << "Waiting for device to boot up again";
+  cuttlefish::RunnerExitCodes exit_code;
+
+  bytes_recv = cuttlefish::ReadExactBinary(monitor_socket, &exit_code);
+  if (bytes_recv < 0) {
+    LOG(ERROR) << "Error in stream response: " << monitor_socket->StrError();
     return 9;
+  } else if (bytes_recv == 0) {
+    LOG(ERROR) << "Launcher socket closed unexpectedly";
+    return 10;
+  } else if (bytes_recv != sizeof(exit_code)) {
+    LOG(ERROR) << "Launcher response was too short";
+    return 11;
+  } else if (exit_code == cuttlefish::RunnerExitCodes::kVirtualDeviceBootFailed) {
+    LOG(ERROR) << "Boot failed";
+    return 12;
+  } else if (exit_code != cuttlefish::RunnerExitCodes::kSuccess) {
+    LOG(ERROR) << "Unknown response: " << (int) exit_code;
+    return 13;
   }
   LOG(INFO) << "Powerwash successful";
   return 0;
