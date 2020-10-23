@@ -19,6 +19,7 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -75,6 +76,14 @@ class Streamer {
                                                 bool touch_enabled) = 0;
 
   virtual void SetHardwareSpecs(int cpus, int memory_mb) = 0;
+
+  // Add a custom button to the control panel.
+  //   If this button should be handled by an action server, use nullopt (the
+  //   default) for shell_command.
+  virtual void AddCustomControlPanelButton(
+      const std::string& command, const std::string& title,
+      const std::string& icon_name,
+      const std::optional<std::string>& shell_command = std::nullopt) = 0;
 
   // TODO (b/128328845): Implement audio, return a shared_ptr to a class
   // equivalent to webrtc::AudioSinkInterface.

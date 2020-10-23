@@ -16,6 +16,7 @@ lib_path := $(notdir $(HOST_OUT_SHARED_LIBRARIES))
 tests_path := $(notdir $(HOST_OUT_NATIVE_TESTS))
 webrtc_files_path := usr/share/webrtc
 modem_simulator_path := etc/modem_simulator
+cvd_custom_action_config_path := etc/cvd_custom_action_config
 
 cvd_host_executables := \
     adb \
@@ -67,6 +68,12 @@ cvd_host_executables := \
 
 ifneq ($(wildcard device/google/trout),)
     cvd_host_executables += android.hardware.automotive.vehicle@2.0-virtualization-grpc-server
+endif
+
+cvd_custom_action_config :=
+ifneq ($(SOONG_CONFIG_cvd_custom_action_config),)
+    cvd_custom_action_config := $(cvd_custom_action_config_path)/$(SOONG_CONFIG_cvd_custom_action_config)
+    cvd_host_executables += $(SOONG_CONFIG_cvd_custom_action_servers)
 endif
 
 cvd_host_tests := \
@@ -135,6 +142,7 @@ cvd_host_package_files := \
      $(foreach test,$(cvd_host_tests), ${tests_path}/$(test)/$(test)) \
      $(addprefix $(webrtc_files_path)/,$(cvd_host_webrtc_files)) \
      $(addprefix $(modem_simulator_path)/files/,$(modem_simulator_files)) \
+     $(cvd_custom_action_config) \
 
 $(cvd_host_package_tar): PRIVATE_FILES := $(cvd_host_package_files)
 $(cvd_host_package_tar): $(addprefix $(HOST_OUT)/,$(cvd_host_package_files))

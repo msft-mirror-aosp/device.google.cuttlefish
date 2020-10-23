@@ -3,6 +3,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
+#include <android-base/strings.h>
 #include <glog/logging.h>
 
 #include "common/libs/fs/shared_fd.h"
@@ -315,6 +316,8 @@ StreamerLaunchResult LaunchWebRTC(cuttlefish::ProcessMonitor* process_monitor,
   auto server_ret = CreateStreamerServers(&webrtc, config);
   webrtc.AddParameter("-kernel_log_events_fd=", kernel_log_events_pipe);
 
+  LaunchCustomActionServers(webrtc, process_monitor, config);
+
   // TODO get from launcher params
   process_monitor->StartSubprocess(std::move(webrtc),
                                    GetOnSubprocessExitCallback(config));
@@ -438,6 +441,40 @@ void LaunchSocketVsockProxyIfEnabled(cuttlefish::ProcessMonitor* process_monitor
                             std::to_string(instance.vsock_guest_cid()));
     process_monitor->StartSubprocess(std::move(adb_tunnel),
                                      GetOnSubprocessExitCallback(config));
+  }
+}
+
+void LaunchCustomActionServers(cuttlefish::Command& webrtc_cmd,
+                               cuttlefish::ProcessMonitor* process_monitor,
+                               const cuttlefish::CuttlefishConfig& config) {
+  bool first = true;
+  for (const auto& custom_action : config.custom_actions()) {
+    if (custom_action.server) {
+      // Create a socket pair that will be used for communication between
+      // WebRTC and the action server.
+      cuttlefish::SharedFD webrtc_socket, action_server_socket;
+      if (!cuttlefish::SharedFD::SocketPair(AF_LOCAL, SOCK_STREAM, 0,
+                                            &webrtc_socket, &action_server_socket)) {
+        LOG(ERROR) << "Unable to create custom action server socket pair: "
+                   << strerror(errno);
+        continue;
+      }
+
+      // Launch the action server, providing its socket pair fd as the only argument.
+      std::string binary = "bin/" + *(custom_action.server);
+      cuttlefish::Command command(cuttlefish::DefaultHostArtifactsPath(binary));
+      command.AddParameter(action_server_socket);
+      process_monitor->StartSubprocess(std::move(command),
+                                       GetOnSubprocessExitCallback(config));
+
+      // Pass the WebRTC socket pair fd to WebRTC.
+      if (first) {
+        first = false;
+        webrtc_cmd.AddParameter("-action_servers=", *custom_action.server, ":", webrtc_socket);
+      } else {
+        webrtc_cmd.AppendToLastParameter(",", *custom_action.server, ":", webrtc_socket);
+      }
+    }
   }
 }
 

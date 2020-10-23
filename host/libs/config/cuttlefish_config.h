@@ -17,9 +17,12 @@
 
 #include <array>
 #include <memory>
+#include <optional>
 #include <string>
 #include <set>
 #include <vector>
+
+#include "host/libs/config/custom_actions.h"
 
 namespace Json {
 class Value;
@@ -187,6 +190,9 @@ class CuttlefishConfig {
 
   void set_vehicle_hal_grpc_server_binary(const std::string& vhal_server_binary);
   std::string vehicle_hal_grpc_server_binary() const;
+
+  void set_custom_actions(const std::vector<CustomActionConfig>& actions);
+  std::vector<CustomActionConfig> custom_actions() const;
 
   void set_restart_subprocesses(bool restart_subprocesses);
   bool restart_subprocesses() const;

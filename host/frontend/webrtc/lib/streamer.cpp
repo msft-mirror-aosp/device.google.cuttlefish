@@ -51,6 +51,11 @@ constexpr auto kDisplaysField = "displays";
 constexpr auto kCpusField = "cpus";
 constexpr auto kMemoryMbField = "memory_mb";
 constexpr auto kHardwareField = "hardware";
+constexpr auto kControlPanelButtonCommand = "command";
+constexpr auto kControlPanelButtonTitle = "title";
+constexpr auto kControlPanelButtonIconName = "icon_name";
+constexpr auto kControlPanelButtonShellCommand = "shell_command";
+constexpr auto kCustomControlPanelButtonsField = "custom_control_panel_buttons";
 
 void SendJson(WsConnection* ws_conn, const Json::Value& data) {
   Json::FastWriter json_writer;
@@ -94,6 +99,10 @@ class StreamerImpl : public Streamer {
                                         int height, int dpi,
                                         bool touch_enabled) override;
   void SetHardwareSpecs(int cpus, int memory_mb) override;
+  void AddCustomControlPanelButton(
+      const std::string& command, const std::string& title,
+      const std::string& icon_name,
+      const std::optional<std::string>& shell_command = std::nullopt) override;
   void AddAudio(const std::string& label) override;
   void Register(std::weak_ptr<OperatorObserver> operator_observer) override;
   void Unregister() override;
@@ -123,6 +132,12 @@ class StreamerImpl : public Streamer {
     int dpi;
     bool touch_enabled;
     rtc::scoped_refptr<webrtc::VideoTrackSourceInterface> source;
+  };
+  struct ControlPanelButtonDescriptor {
+    std::string command;
+    std::string title;
+    std::string icon_name;
+    std::optional<std::string> shell_command;
   };
   struct HardwareDescriptor {
     int cpus;
@@ -163,6 +178,7 @@ class StreamerImpl : public Streamer {
   std::shared_ptr<WsObserver> ws_observer_;
   std::weak_ptr<OperatorObserver> operator_observer_;
   HardwareDescriptor hardware_;
+  std::vector<ControlPanelButtonDescriptor> custom_control_panel_buttons_;
 };
 
 StreamerImpl::StreamerImpl(
@@ -204,6 +220,15 @@ std::shared_ptr<VideoSink> StreamerImpl::AddDisplay(const std::string& label,
 void StreamerImpl::SetHardwareSpecs(int cpus, int memory_mb) {
   hardware_.cpus = cpus;
   hardware_.memory_mb = memory_mb;
+}
+
+void StreamerImpl::AddCustomControlPanelButton(
+    const std::string& command, const std::string& title,
+    const std::string& icon_name,
+    const std::optional<std::string>& shell_command) {
+  ControlPanelButtonDescriptor button = {command, title, icon_name,
+                                         shell_command};
+  custom_control_panel_buttons_.push_back(button);
 }
 
 void StreamerImpl::AddAudio(const std::string& label) {
@@ -266,6 +291,18 @@ void StreamerImpl::OnOpen() {
     hardware[kCpusField] = hardware_.cpus;
     hardware[kMemoryMbField] = hardware_.memory_mb;
     device_info[kHardwareField] = hardware;
+    Json::Value custom_control_panel_buttons(Json::arrayValue);
+    for (const auto& button : custom_control_panel_buttons_) {
+      Json::Value button_entry;
+      button_entry[kControlPanelButtonCommand] = button.command;
+      button_entry[kControlPanelButtonTitle] = button.title;
+      button_entry[kControlPanelButtonIconName] = button.icon_name;
+      if (button.shell_command) {
+        button_entry[kControlPanelButtonShellCommand] = *(button.shell_command);
+      }
+      custom_control_panel_buttons.append(button_entry);
+    }
+    device_info[kCustomControlPanelButtonsField] = custom_control_panel_buttons;
     register_obj[cuttlefish::webrtc_signaling::kDeviceInfoField] = device_info;
     SendJson(server_connection_.get(), register_obj);
     // Do this last as OnRegistered() is user code and may take some time to

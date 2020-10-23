@@ -51,6 +51,10 @@ StreamerLaunchResult LaunchWebRTC(cuttlefish::ProcessMonitor* process_monitor,
                                   const cuttlefish::CuttlefishConfig& config,
                                   cuttlefish::SharedFD kernel_log_events_pipe);
 
+void LaunchCustomActionServers(cuttlefish::Command& webrtc_cmd,
+                               cuttlefish::ProcessMonitor* process_monitor,
+                               const cuttlefish::CuttlefishConfig& config);
+
 void LaunchVerhicleHalServerIfEnabled(const cuttlefish::CuttlefishConfig& config,
                                       cuttlefish::ProcessMonitor* process_monitor);
 
