@@ -108,16 +108,17 @@ PRODUCT_SOONG_NAMESPACES += hardware/google/camera/devices/EmulatedCamera
 # Packages for various GCE-specific utilities
 #
 PRODUCT_PACKAGES += \
-    socket_vsock_proxy \
     CuttlefishService \
-    wpa_supplicant.vsoc.conf \
-    vsoc_input_service \
+    cuttlefish_rotate \
     rename_netiface \
     setup_wifi \
+    socket_vsock_proxy \
     tombstone_transmit \
     tombstone_producer \
     suspend_blocker \
+    vsoc_input_service \
     vtpm_manager \
+    wpa_supplicant.vsoc.conf \
 
 #
 # Packages for AOSP-available stuff we use from the framework
@@ -287,7 +288,7 @@ PRODUCT_PACKAGES += \
 #
 PRODUCT_PACKAGES += \
     android.hardware.bluetooth@1.1-service.sim \
-    android.hardware.bluetooth.audio@2.0-impl
+    android.hardware.bluetooth.audio@2.1-impl
 
 #
 # Audio HAL
