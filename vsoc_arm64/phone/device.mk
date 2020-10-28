@@ -18,6 +18,10 @@ $(call inherit-product, $(SRC_TARGET_DIR)/product/core_64_bit.mk)
 $(call inherit-product, device/google/cuttlefish/shared/phone/device.mk)
 $(call inherit-product, device/google/cuttlefish/vsoc_arm64/device.mk)
 
+# Exclude features that are not available on AOSP devices.
+PRODUCT_COPY_FILES += \
+    frameworks/native/data/etc/aosp_excluded_hardware.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/aosp_excluded_hardware.xml
+
 PRODUCT_NAME := aosp_cf_arm64_phone
 PRODUCT_DEVICE := vsoc_arm64
 PRODUCT_MODEL := Cuttlefish arm64 phone
