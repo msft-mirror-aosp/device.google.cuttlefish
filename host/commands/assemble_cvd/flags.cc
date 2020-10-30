@@ -152,7 +152,7 @@ DEFINE_string(
 
 DEFINE_string(
         webrtc_public_ip,
-        "127.0.0.1",
+        "0.0.0.0",
         "[Deprecated] Ignored, webrtc can figure out its IP address");
 
 DEFINE_bool(
@@ -166,7 +166,7 @@ DEFINE_bool(
     "the first instance, if multiple instances are launched they'll share the "
     "same signaling server, which is owned by the first one.");
 
-DEFINE_string(webrtc_sig_server_addr, "127.0.0.1",
+DEFINE_string(webrtc_sig_server_addr, "0.0.0.0",
               "The address of the webrtc signaling server.");
 
 DEFINE_int32(
@@ -211,7 +211,7 @@ DEFINE_string(adb_mode, "vsock_half_tunnel",
               "vsock, 'vsock_half_tunnel' for a TCP connection forwarded to "
               "the guest ADB server, or a comma separated list of types as in "
               "'native_vsock,vsock_half_tunnel'");
-DEFINE_bool(run_adb_connector, true,
+DEFINE_bool(run_adb_connector, !cuttlefish::IsRunningInContainer(),
             "Maintain adb connection by sending 'adb connect' commands to the "
             "server. Only relevant with -adb_mode=tunnel or vsock_tunnel");
 
@@ -279,6 +279,8 @@ DEFINE_int32(vsock_guest_cid,
              "If --vsock_guest_cid=C --num_instances=N are given,"
              "the vsock cid of the i th instance would be C + i where i is in [1, N]"
              "If --num_instances is not given, the default value of N is used.");
+
+DECLARE_string(system_image_dir);
 
 namespace {
 
@@ -455,14 +457,12 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
   std::string foreign_ramdisk = FLAGS_initramfs_path.size () ? FLAGS_initramfs_path : discovered_ramdisk;
 
   // TODO(rammuthiah) Bootloader boot doesn't work in the following scenarions
-  // 1. QEMU - our config of uboot doesn't currently support QEMU firmware. We need to
-  //    add a new bootloader binary for QEMU.
-  // 2. Arm64 - a arm64 confir of uboot is in progress. This will be fixed when that is
-  //    ready.
-  // 3. If using a ramdisk or kernel besides the one in the boot.img - The boot.img
+  // 1. Arm64 - On QEMU, there are some outstanding bugs in the boot image handling
+  //            to fix. On Crosvm, we have no implementation currently.
+  // 2. If using a ramdisk or kernel besides the one in the boot.img - The boot.img
   //    doesn't get repackaged in this scenario currently. Once it does, bootloader
   //    boot will suppprt runtime selected kernels and/or ramdisks.
-  if (FLAGS_vm_manager == QemuManager::name() || cuttlefish::HostArch() == "aarch64") {
+  if (cuttlefish::HostArch() == "aarch64") {
     SetCommandLineOptionWithMode("use_bootloader", "false",
         google::FlagSettingMode::SET_FLAGS_DEFAULT);
   }
@@ -606,7 +606,7 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
 
     instance.set_vnc_server_port(6444 + num - 1);
     instance.set_host_port(6520 + num - 1);
-    instance.set_adb_ip_and_port("127.0.0.1:" + std::to_string(6520 + num - 1));
+    instance.set_adb_ip_and_port("0.0.0.0:" + std::to_string(6520 + num - 1));
     instance.set_tombstone_receiver_port(6600 + num - 1);
     instance.set_vehicle_hal_server_port(9210 + num - 1);
     instance.set_audiocontrol_server_port(9410);  /* OK to use the same port number across instances */
@@ -709,6 +709,10 @@ void SetDefaultFlagsForQemu() {
     SetCommandLineOptionWithMode("start_vnc_server", "true",
                                  google::FlagSettingMode::SET_FLAGS_DEFAULT);
   }
+  std::string default_bootloader = FLAGS_system_image_dir + "/bootloader.qemu";
+  SetCommandLineOptionWithMode("bootloader",
+                               default_bootloader.c_str(),
+                               google::FlagSettingMode::SET_FLAGS_DEFAULT);
 }
 
 void SetDefaultFlagsForCrosvm() {
@@ -748,6 +752,11 @@ void SetDefaultFlagsForCrosvm() {
   }
   SetCommandLineOptionWithMode("decompress_kernel",
                                (decompress_kernel ? "true" : "false"),
+                               google::FlagSettingMode::SET_FLAGS_DEFAULT);
+
+  std::string default_bootloader = FLAGS_system_image_dir + "/bootloader";
+  SetCommandLineOptionWithMode("bootloader",
+                               default_bootloader.c_str(),
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
 }
 
