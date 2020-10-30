@@ -7,7 +7,7 @@ genfscon sysfs /devices/pci0000:00/0000:00:0c.0/subsystem_vendor u:object_r:sysf
 genfscon sysfs /devices/pci0000:00/0000:00:0c.0/uevent u:object_r:sysfs_gpu:s0
 genfscon sysfs /devices/pci0000:00/0000:00:0c.0/vendor u:object_r:sysfs_gpu:s0
 ## find /sys/devices/platform/* -type d -name 'rtc[0-9]' | sed 's,/rtc[0-9],,'
-## x86 rtc_cmos on crosvm does not currently expose rtcN/hctosys
+genfscon sysfs /devices/platform/rtc_cmos/rtc u:object_r:sysfs_rtc:s0
 
 # crosvm (arm64)
 genfscon sysfs /devices/platform/10000.pci/pci0000:00/0000:00:09.0/virtio8/net u:object_r:sysfs_net:s0 # buried_eth0 & wlan0
