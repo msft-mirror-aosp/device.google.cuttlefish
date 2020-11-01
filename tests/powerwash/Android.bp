@@ -1,5 +1,4 @@
-//
-// Copyright (C) 2018 The Android Open Source Project
+// Copyright (C) 2020 The Android Open Source Project
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,28 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-cc_binary {
-    name: "socket_vsock_proxy",
+java_test_host {
+    name: "PowerwashTest",
     srcs: [
-        "main.cpp",
+        "src/**/*.java",
     ],
-    shared_libs: [
-        "libbase",
-        "libcuttlefish_fs",
-        "libcuttlefish_utils",
-        "libcuttlefish_kernel_log_monitor_utils",
-        "libjsoncpp",
-        "liblog",
+    test_suites: [
+        "device-tests",
     ],
-    static_libs: [
-        "libgflags",
+    libs: [
+        "tradefed",
     ],
-    target: {
-        host: {
-            static_libs: [
-                "libcuttlefish_host_config",
-            ],
-        },
-    },
-    defaults: ["cuttlefish_host_and_guest"]
 }
