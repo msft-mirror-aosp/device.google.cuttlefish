@@ -21,9 +21,7 @@ $(call inherit-product, $(SRC_TARGET_DIR)/product/core_minimal.mk)
 $(call inherit-product, device/google/cuttlefish/shared/device.mk)
 
 PRODUCT_COPY_FILES += \
-    device/google/atv/permissions/tv_core_hardware.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/tv_core_hardware.xml \
     frameworks/native/data/etc/android.hardware.bluetooth.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.bluetooth.xml \
-    frameworks/native/data/etc/android.hardware.hdmi.cec.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.hdmi.cec.xml \
     frameworks/native/data/etc/android.hardware.sensor.accelerometer.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.sensor.accelerometer.xml \
     frameworks/native/data/etc/android.hardware.sensor.compass.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.sensor.compass.xml \
     frameworks/native/data/etc/android.hardware.touchscreen.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.touchscreen.xml \
@@ -37,9 +35,6 @@ PRODUCT_PRODUCT_PROPERTIES += \
 PRODUCT_PACKAGES += \
     cppreopts.sh \
     otapreopt_script
-
-# HDMI CEC HAL
-PRODUCT_PACKAGES += android.hardware.tv.cec@1.0-service.mock
 
 # Enabling managed profiles
 PRODUCT_COPY_FILES += frameworks/native/data/etc/android.software.managed_users.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.managed_users.xml
