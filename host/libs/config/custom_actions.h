@@ -13,17 +13,29 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#pragma once
 
-#include <recovery_ui/ethernet_device.h>
-#include <recovery_ui/ethernet_ui.h>
+#include <json/json.h>
 
-class CuttlefishRecoveryUI : public EthernetRecoveryUI {
-  public:
-    bool IsUsbConnected() override {
-      return true;
-    }
+#include <optional>
+#include <string>
+#include <vector>
+
+namespace cuttlefish {
+
+struct ControlPanelButton {
+  std::string command;
+  std::string title;
+  std::string icon_name;
 };
 
-Device* make_device() {
-    return new EthernetDevice(new CuttlefishRecoveryUI);
-}
+struct CustomActionConfig {
+  CustomActionConfig(const Json::Value&);
+  Json::Value ToJson() const;
+
+  std::vector<ControlPanelButton> buttons;
+  std::optional<std::string> shell_command;
+  std::optional<std::string> server;
+};
+
+}  // namespace cuttlefish
