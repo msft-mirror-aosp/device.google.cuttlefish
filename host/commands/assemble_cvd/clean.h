@@ -13,17 +13,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#pragma once
 
-#include <recovery_ui/ethernet_device.h>
-#include <recovery_ui/ethernet_ui.h>
+#include <set>
+#include <string>
 
-class CuttlefishRecoveryUI : public EthernetRecoveryUI {
-  public:
-    bool IsUsbConnected() override {
-      return true;
-    }
-};
-
-Device* make_device() {
-    return new EthernetDevice(new CuttlefishRecoveryUI);
-}
+bool CleanPriorFiles(
+    const std::set<std::string>& preserving,
+    const std::string& assembly_dir,
+    const std::string& instance_dir);

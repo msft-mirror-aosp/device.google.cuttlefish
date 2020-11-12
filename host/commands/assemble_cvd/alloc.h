@@ -13,17 +13,25 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#pragma once
 
-#include <recovery_ui/ethernet_device.h>
-#include <recovery_ui/ethernet_ui.h>
+#include <stdint.h>
+#include <optional>
+#include <string>
 
-class CuttlefishRecoveryUI : public EthernetRecoveryUI {
-  public:
-    bool IsUsbConnected() override {
-      return true;
-    }
+struct IfaceData {
+  std::string name;
+  uint32_t session_id;
+  uint32_t resource_id;
 };
 
-Device* make_device() {
-    return new EthernetDevice(new CuttlefishRecoveryUI);
-}
+struct IfaceConfig {
+  IfaceData mobile_tap;
+  IfaceData wireless_tap;
+  IfaceData ethernet_tap;
+};
+
+IfaceConfig DefaultNetworkInterfaces(int num);
+
+// Acquires interfaces from the resource allocator daemon.
+std::optional<IfaceConfig> AllocateNetworkInterfaces();
