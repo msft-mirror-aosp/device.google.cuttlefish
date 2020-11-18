@@ -1,0 +1,2 @@
+allow otapreopt_chroot sysfs_devices_block:dir r_dir_perms;
+allow otapreopt_chroot sysfs_devices_block:file rw_file_perms;

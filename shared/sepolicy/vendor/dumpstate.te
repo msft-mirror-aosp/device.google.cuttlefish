@@ -1,0 +1,5 @@
+allow dumpstate debugfs:dir r_dir_perms;
+allow dumpstate sysfs_devices_block:file r_file_perms;
+
+# to ignore 'df' on non-existent /system_ext partition
+dontaudit dumpstate unlabeled:dir getattr;

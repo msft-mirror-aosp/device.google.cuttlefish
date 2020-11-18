@@ -1,0 +1,1 @@
+allow vold sysfs_devices_block:file rw_file_perms;
