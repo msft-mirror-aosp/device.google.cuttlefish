@@ -355,6 +355,9 @@ std::vector<cuttlefish::Command> QemuManager::StartCommands() {
   qemu_cmd.AddParameter("-device");
   qemu_cmd.AddParameter("AC97");
 
+  qemu_cmd.AddParameter("-device");
+  qemu_cmd.AddParameter("qemu-xhci,id=xhci");
+
   if (config_->use_bootloader()) {
     qemu_cmd.AddParameter("-bios");
     qemu_cmd.AddParameter(config_->bootloader());
