@@ -23,13 +23,14 @@ $(call inherit-product, $(SRC_TARGET_DIR)/product/updatable_apex.mk)
 PRODUCT_SOONG_NAMESPACES += device/generic/goldfish-opengl # for vulkan
 
 PRODUCT_SHIPPING_API_LEVEL := 31
-PRODUCT_BUILD_BOOT_IMAGE := true
 PRODUCT_USE_DYNAMIC_PARTITIONS := true
 DISABLE_RILD_OEM_HOOK := true
 
 PRODUCT_SOONG_NAMESPACES += device/generic/goldfish-opengl # for vulkan
 
+TARGET_RO_FILE_SYSTEM_TYPE ?= ext4
 TARGET_USERDATAIMAGE_FILE_SYSTEM_TYPE ?= f2fs
+TARGET_USERDATAIMAGE_PARTITION_SIZE ?= 6442450944
 
 TARGET_VULKAN_SUPPORT ?= true
 
@@ -98,6 +99,22 @@ PRODUCT_PROPERTY_OVERRIDES += ro.crypto.volume.filenames_mode=aes-256-cts
 # Copy preopted files from system_b on first boot
 PRODUCT_PROPERTY_OVERRIDES += ro.cp_system_other_odex=1
 
+AB_OTA_POSTINSTALL_CONFIG += \
+    RUN_POSTINSTALL_system=true \
+    POSTINSTALL_PATH_system=system/bin/otapreopt_script \
+    FILESYSTEM_TYPE_system=ext4 \
+    POSTINSTALL_OPTIONAL_system=true
+
+AB_OTA_POSTINSTALL_CONFIG += \
+    RUN_POSTINSTALL_vendor=true \
+    POSTINSTALL_PATH_vendor=bin/checkpoint_gc \
+    FILESYSTEM_TYPE_vendor=ext4 \
+    POSTINSTALL_OPTIONAL_vendor=true
+
+# Userdata Checkpointing OTA GC
+PRODUCT_PACKAGES += \
+    checkpoint_gc
+
 # DRM service opt-in
 PRODUCT_PROPERTY_OVERRIDES += drm.service.enabled=true
 
@@ -108,16 +125,17 @@ PRODUCT_SOONG_NAMESPACES += hardware/google/camera/devices/EmulatedCamera
 # Packages for various GCE-specific utilities
 #
 PRODUCT_PACKAGES += \
-    socket_vsock_proxy \
     CuttlefishService \
-    wpa_supplicant.vsoc.conf \
-    vsoc_input_service \
+    cuttlefish_rotate \
     rename_netiface \
     setup_wifi \
+    socket_vsock_proxy \
     tombstone_transmit \
     tombstone_producer \
     suspend_blocker \
+    vsoc_input_service \
     vtpm_manager \
+    wpa_supplicant.vsoc.conf \
 
 #
 # Packages for AOSP-available stuff we use from the framework
@@ -236,13 +254,25 @@ PRODUCT_COPY_FILES += \
     frameworks/native/data/etc/android.software.sip.voip.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.sip.voip.xml \
     frameworks/native/data/etc/android.software.verified_boot.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.verified_boot.xml \
     system/bt/vendor_libs/test_vendor_lib/data/controller_properties.json:vendor/etc/bluetooth/controller_properties.json \
-    device/google/cuttlefish/shared/config/task_profiles.json:$(TARGET_COPY_OUT_VENDOR)/etc/task_profiles.json \
-    device/google/cuttlefish/shared/config/fstab.f2fs:$(TARGET_COPY_OUT_RAMDISK)/fstab.f2fs \
+    device/google/cuttlefish/shared/config/task_profiles.json:$(TARGET_COPY_OUT_VENDOR)/etc/task_profiles.json
+
+ifeq ($(TARGET_RO_FILE_SYSTEM_TYPE),ext4)
+PRODUCT_COPY_FILES += \
+    device/google/cuttlefish/shared/config/fstab.f2fs:$(TARGET_COPY_OUT_VENDOR_RAMDISK)/fstab.f2fs \
     device/google/cuttlefish/shared/config/fstab.f2fs:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.f2fs \
     device/google/cuttlefish/shared/config/fstab.f2fs:$(TARGET_COPY_OUT_RECOVERY)/root/first_stage_ramdisk/fstab.f2fs \
-    device/google/cuttlefish/shared/config/fstab.ext4:$(TARGET_COPY_OUT_RAMDISK)/fstab.ext4 \
+    device/google/cuttlefish/shared/config/fstab.ext4:$(TARGET_COPY_OUT_VENDOR_RAMDISK)/fstab.ext4 \
     device/google/cuttlefish/shared/config/fstab.ext4:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.ext4 \
     device/google/cuttlefish/shared/config/fstab.ext4:$(TARGET_COPY_OUT_RECOVERY)/root/first_stage_ramdisk/fstab.ext4
+else
+PRODUCT_COPY_FILES += \
+    device/google/cuttlefish/shared/config/fstab-$(TARGET_RO_FILE_SYSTEM_TYPE).f2fs:$(TARGET_COPY_OUT_VENDOR_RAMDISK)/fstab.f2fs \
+    device/google/cuttlefish/shared/config/fstab-$(TARGET_RO_FILE_SYSTEM_TYPE).f2fs:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.f2fs \
+    device/google/cuttlefish/shared/config/fstab-$(TARGET_RO_FILE_SYSTEM_TYPE).f2fs:$(TARGET_COPY_OUT_RECOVERY)/root/first_stage_ramdisk/fstab.f2fs \
+    device/google/cuttlefish/shared/config/fstab-$(TARGET_RO_FILE_SYSTEM_TYPE).ext4:$(TARGET_COPY_OUT_VENDOR_RAMDISK)/fstab.ext4 \
+    device/google/cuttlefish/shared/config/fstab-$(TARGET_RO_FILE_SYSTEM_TYPE).ext4:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.ext4 \
+    device/google/cuttlefish/shared/config/fstab-$(TARGET_RO_FILE_SYSTEM_TYPE).ext4:$(TARGET_COPY_OUT_RECOVERY)/root/first_stage_ramdisk/fstab.ext4
+endif
 
 ifeq ($(TARGET_VULKAN_SUPPORT),true)
 PRODUCT_COPY_FILES += \
@@ -287,7 +317,7 @@ PRODUCT_PACKAGES += \
 #
 PRODUCT_PACKAGES += \
     android.hardware.bluetooth@1.1-service.sim \
-    android.hardware.bluetooth.audio@2.0-impl
+    android.hardware.bluetooth.audio@2.1-impl
 
 #
 # Audio HAL
@@ -450,9 +480,17 @@ PRODUCT_PACKAGES += \
 PRODUCT_PACKAGES += \
     android.hardware.rebootescrow-service.default
 
+# GKI APEX
+PRODUCT_PACKAGES += com.android.gki.kmi_5_4_android12_0
+
 # WLAN driver configuration files
 PRODUCT_COPY_FILES += \
     $(LOCAL_PATH)/config/wpa_supplicant_overlay.conf:$(TARGET_COPY_OUT_VENDOR)/etc/wifi/wpa_supplicant_overlay.conf
+
+# Fastboot HAL & fastbootd
+PRODUCT_PACKAGES += \
+    android.hardware.fastboot@1.1-impl-mock \
+    fastbootd
 
 # Recovery mode
 ifneq ($(TARGET_NO_RECOVERY),true)
@@ -462,6 +500,13 @@ PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/config/cgroups.json:$(TARGET_COPY_OUT_RECOVERY)/root/vendor/etc/cgroups.json \
     device/google/cuttlefish/shared/config/ueventd.rc:$(TARGET_COPY_OUT_RECOVERY)/root/ueventd.cutf_cvm.rc \
 
+PRODUCT_PACKAGES += \
+    update_engine_sideload
+
+endif
+
+ifdef TARGET_DEDICATED_RECOVERY
+PRODUCT_BUILD_RECOVERY_IMAGE := true
 endif
 
 #
@@ -481,23 +526,3 @@ PRODUCT_SOONG_NAMESPACES += external/mesa3d
 # with HW VSYNC
 PRODUCT_DEFAULT_PROPERTY_OVERRIDES += ro.surface_flinger.running_without_sync_framework=true
 
-# b/143977934: Remove coverage allowlist after switching to Clang coverage.
-NATIVE_COVERAGE_PATHS := \
-    external/aac \
-    external/libaom \
-    external/libavc \
-    external/libgav1 \
-    external/libgsm \
-    external/libhevc \
-    external/libmpeg2 \
-    external/libopus \
-    external/libvpx \
-    external/libxaac \
-    external/rust \
-    external/sonivox \
-    external/tremolo \
-    frameworks/av \
-    frameworks/base/media \
-    frameworks/ml/nn \
-    packages/modules/DnsResolver \
-    system/netd

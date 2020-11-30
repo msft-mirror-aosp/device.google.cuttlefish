@@ -16,10 +16,12 @@
 cc_library_static {
     name: "libcuttlefish_host_config",
     srcs: [
+        "custom_actions.cpp",
         "cuttlefish_config.cpp",
         "cuttlefish_config_instance.cpp",
         "data_image.cpp",
         "fetcher_config.cpp",
+        "host_tools_version.cpp",
         "kernel_args.cpp",
         "known_paths.cpp",
         "logging.cpp",
@@ -31,6 +33,7 @@ cc_library_static {
         "libgflags",
         "libjsoncpp",
         "libxml2",
+        "libz",
     ],
     defaults: ["cuttlefish_host_and_guest"],
 }

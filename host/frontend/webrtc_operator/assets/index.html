@@ -33,21 +33,22 @@
         </div>
         <div id='control_view'>
           <button id="keyboardCaptureBtn">Capture Keyboard</button>
-          <button id="showLogcatBtn">Show Logcat</button>
           <hr>
           <div id='control_panel'>
             <h2>Device Controls</h2>
+            <div id='control_panel_default_buttons'></div>
+            <h2 id='custom_controls_title'>Custom Controls</h2>
+            <div id='control_panel_custom_buttons'></div>
           </div>
           <div id='device_details'>
             <h2>Device Details</h2>
             <h3>Hardware Configuration</h3>
             <span id='device_details_hardware'>unknown</span>
           </div>
-          <textarea id="logcat" rows="55" cols="120" readonly ></textarea>
         </div>
       </section>
 
-       <script src="js/logcat.js"></script>
+       <script src="js/adb.js"></script>
        <script src="js/cf_webrtc.js" type="module"></script>
        <script src="js/app.js"></script>
     </body>

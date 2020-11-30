@@ -38,25 +38,15 @@ class ScreenConnector {
   virtual bool OnFrameAfter(std::uint32_t frame_number,
                             const FrameCallback& frame_callback) = 0;
 
-  static inline constexpr int BytesPerPixel() {
-      return sizeof(int32_t);
-  }
+  // Let the screen connector know when there are clients connected
+  virtual void ReportClientsConnected(bool have_clients);
 
-  static inline int ScreenHeight() {
-      return cuttlefish::CuttlefishConfig::Get()->y_res();
-  }
-
-  static inline int ScreenWidth() {
-      return cuttlefish::CuttlefishConfig::Get()->x_res();
-  }
-
-  static inline int ScreenStride() {
-      return AlignToPowerOf2(ScreenWidth() * BytesPerPixel(), 4);
-  }
-
-  static inline int ScreenSizeInBytes() {
-      return ScreenStride() * ScreenHeight();
-  }
+  static constexpr std::uint32_t BytesPerPixel() { return 4; }
+  static std::uint32_t ScreenCount();
+  static std::uint32_t ScreenHeight(std::uint32_t display_number);
+  static std::uint32_t ScreenWidth(std::uint32_t display_number);
+  static std::uint32_t ScreenStrideBytes(std::uint32_t display_number);
+  static std::uint32_t ScreenSizeInBytes(std::uint32_t display_number);
 
  protected:
   ScreenConnector() = default;

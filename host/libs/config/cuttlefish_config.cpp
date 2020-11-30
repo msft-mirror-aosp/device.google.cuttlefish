@@ -36,7 +36,7 @@
 #include "common/libs/utils/files.h"
 #include "host/libs/vm_manager/qemu_manager.h"
 
-
+namespace cuttlefish {
 namespace {
 
 int InstanceFromEnvironment() {
@@ -49,13 +49,13 @@ int InstanceFromEnvironment() {
     // Try to get it from the user instead
     instance_str = std::getenv("USER");
 
-    if (!instance_str || std::strncmp(instance_str, cuttlefish::kVsocUserPrefix,
-                                      sizeof(cuttlefish::kVsocUserPrefix) - 1)) {
+    if (!instance_str || std::strncmp(instance_str, kVsocUserPrefix,
+                                      sizeof(kVsocUserPrefix) - 1)) {
       // No user or we don't recognize this user
       LOG(DEBUG) << "No user or non-vsoc user, returning default config";
       return kDefaultInstance;
     }
-    instance_str += sizeof(cuttlefish::kVsocUserPrefix) - 1;
+    instance_str += sizeof(kVsocUserPrefix) - 1;
 
     // Set the environment variable so that child processes see it
     setenv(kInstanceEnvironmentVariable, instance_str, 0);
@@ -80,6 +80,7 @@ const char* kDpi = "dpi";
 const char* kXRes = "x_res";
 const char* kYRes = "y_res";
 const char* kRefreshRateHz = "refresh_rate_hz";
+const char* kDisplayConfigs = "display_configs";
 
 const char* kKernelImagePath = "kernel_image_path";
 const char* kUseUnpackedKernel = "use_unpacked_kernel";
@@ -101,7 +102,6 @@ const char* kTpmDevice = "tpm_device";
 
 const char* kQemuBinary = "qemu_binary";
 const char* kCrosvmBinary = "crosvm_binary";
-const char* kTpmBinary = "tpm_binary";
 
 const char* kEnableVncServer = "enable_vnc_server";
 
@@ -116,6 +116,8 @@ const char* kWebRTCEnableADBWebSocket = "webrtc_enable_adb_websocket";
 
 const char* kEnableVehicleHalServer = "enable_vehicle_hal_server";
 const char* kVehicleHalServerBinary = "vehicle_hal_server_binary";
+
+const char* kCustomActions = "custom_actions";
 
 const char* kRestartSubprocesses = "restart_subprocesses";
 const char* kRunAdbConnector = "run_adb_connector";
@@ -133,6 +135,7 @@ const char* kSigServerPath = "webrtc_sig_server_path";
 const char* kSigServerStrict = "webrtc_sig_server_strict";
 const char* kWebrtcUdpPortRange = "webrtc_udp_port_range";
 const char* kWebrtcTcpPortRange = "webrtc_tcp_port_range";
+const char* kSigServerHeadersPath = "webrtc_sig_server_headers_path";
 
 const char* kBootloader = "bootloader";
 const char* kUseBootloader = "use_bootloader";
@@ -147,7 +150,6 @@ const char* kGuestAuditSecurity = "guest_audit_security";
 const char* kGuestForceNormalBoot = "guest_force_normal_boot";
 const char* kBootImageKernelCmdline = "boot_image_kernel_cmdline";
 const char* kExtraKernelCmdline = "extra_kernel_cmdline";
-const char* kVmManagerKernelCmdline = "vm_manager_kernel_cmdline";
 
 // modem simulator related
 const char* kRunModemSimulator = "enable_modem_simulator";
@@ -162,9 +164,13 @@ const char* kEnableMinimalMode = "enable_minimal_mode";
 
 const char* kConsole = "console";
 
-}  // namespace
+const char* kHostToolsVersion = "host_tools_version";
 
-namespace cuttlefish {
+const char* kVhostNet = "vhost_net";
+
+const char* kEthernet = "ethernet";
+
+}  // namespace
 
 const char* const kGpuModeAuto = "auto";
 const char* const kGpuModeGuestSwiftshader = "guest_swiftshader";
@@ -174,7 +180,7 @@ const char* const kGpuModeGfxStream = "gfxstream";
 std::string DefaultEnvironmentPath(const char* environment_key,
                                    const char* default_value,
                                    const char* subpath) {
-  return cuttlefish::StringFromEnv(environment_key, default_value) + "/" + subpath;
+  return StringFromEnv(environment_key, default_value) + "/" + subpath;
 }
 
 std::string CuttlefishConfig::assembly_dir() const {
@@ -211,11 +217,30 @@ void CuttlefishConfig::set_memory_mb(int memory_mb) {
 int CuttlefishConfig::dpi() const { return (*dictionary_)[kDpi].asInt(); }
 void CuttlefishConfig::set_dpi(int dpi) { (*dictionary_)[kDpi] = dpi; }
 
-int CuttlefishConfig::x_res() const { return (*dictionary_)[kXRes].asInt(); }
-void CuttlefishConfig::set_x_res(int x_res) { (*dictionary_)[kXRes] = x_res; }
+std::vector<CuttlefishConfig::DisplayConfig>
+CuttlefishConfig::display_configs() const {
+  std::vector<DisplayConfig> display_configs;
+  for (auto& display_config_json : (*dictionary_)[kDisplayConfigs]) {
+    DisplayConfig display_config = {};
+    display_config.width = display_config_json[kXRes].asInt();
+    display_config.height = display_config_json[kYRes].asInt();
+    display_configs.emplace_back(std::move(display_config));
+  }
+  return display_configs;
+}
+void CuttlefishConfig::set_display_configs(
+    const std::vector<DisplayConfig>& display_configs) {
+  Json::Value display_configs_json(Json::arrayValue);
 
-int CuttlefishConfig::y_res() const { return (*dictionary_)[kYRes].asInt(); }
-void CuttlefishConfig::set_y_res(int y_res) { (*dictionary_)[kYRes] = y_res; }
+  for (const DisplayConfig& display_configs : display_configs) {
+    Json::Value display_config_json(Json::objectValue);
+    display_config_json[kXRes] = display_configs.width;
+    display_config_json[kYRes] = display_configs.height;
+    display_configs_json.append(display_config_json);
+  }
+
+  (*dictionary_)[kDisplayConfigs] = display_configs_json;
+}
 
 int CuttlefishConfig::refresh_rate_hz() const {
   return (*dictionary_)[kRefreshRateHz].asInt();
@@ -231,7 +256,7 @@ std::string CuttlefishConfig::kernel_image_path() const {
 void CuttlefishConfig::SetPath(const std::string& key,
                                const std::string& path) {
   if (!path.empty()) {
-    (*dictionary_)[key] = cuttlefish::AbsolutePath(path);
+    (*dictionary_)[key] = AbsolutePath(path);
   }
 }
 
@@ -370,14 +395,6 @@ void CuttlefishConfig::set_crosvm_binary(const std::string& crosvm_binary) {
   (*dictionary_)[kCrosvmBinary] = crosvm_binary;
 }
 
-std::string CuttlefishConfig::tpm_binary() const {
-  return (*dictionary_)[kTpmBinary].asString();
-}
-
-void CuttlefishConfig::set_tpm_binary(const std::string& tpm_binary) {
-  (*dictionary_)[kTpmBinary] = tpm_binary;
-}
-
 std::string CuttlefishConfig::tpm_device() const {
   return (*dictionary_)[kTpmDevice].asString();
 }
@@ -444,6 +461,22 @@ void CuttlefishConfig::set_vehicle_hal_grpc_server_binary(const std::string& veh
 
 std::string CuttlefishConfig::vehicle_hal_grpc_server_binary() const {
   return (*dictionary_)[kVehicleHalServerBinary].asString();
+}
+
+void CuttlefishConfig::set_custom_actions(const std::vector<CustomActionConfig>& actions) {
+  Json::Value actions_array(Json::arrayValue);
+  for (const auto& action : actions) {
+    actions_array.append(action.ToJson());
+  }
+  (*dictionary_)[kCustomActions] = actions_array;
+}
+
+std::vector<CustomActionConfig> CuttlefishConfig::custom_actions() const {
+  std::vector<CustomActionConfig> result;
+  for (Json::Value custom_action : (*dictionary_)[kCustomActions]) {
+    result.push_back(CustomActionConfig(custom_action));
+  }
+  return result;
 }
 
 void CuttlefishConfig::set_webrtc_assets_dir(const std::string& webrtc_assets_dir) {
@@ -604,6 +637,14 @@ bool CuttlefishConfig::sig_server_strict() const {
   return (*dictionary_)[kSigServerStrict].asBool();
 }
 
+void CuttlefishConfig::set_sig_server_headers_path(const std::string& path) {
+  SetPath(kSigServerHeadersPath, path);
+}
+
+std::string CuttlefishConfig::sig_server_headers_path() const {
+  return (*dictionary_)[kSigServerHeadersPath].asString();
+}
+
 bool CuttlefishConfig::enable_modem_simulator() const {
   return (*dictionary_)[kRunModemSimulator].asBool();
 }
@@ -627,6 +668,27 @@ void CuttlefishConfig::set_modem_simulator_sim_type(int sim_type) {
 
 int CuttlefishConfig::modem_simulator_sim_type() const {
   return (*dictionary_)[kModemSimulatorSimType].asInt();
+}
+
+void CuttlefishConfig::set_host_tools_version(
+    const std::map<std::string, uint32_t>& versions) {
+  Json::Value json(Json::objectValue);
+  for (const auto& [key, value] : versions) {
+    json[key] = value;
+  }
+  (*dictionary_)[kHostToolsVersion] = json;
+}
+
+std::map<std::string, uint32_t> CuttlefishConfig::host_tools_version() const {
+  if (!dictionary_->isMember(kHostToolsVersion)) {
+    return {};
+  }
+  std::map<std::string, uint32_t> versions;
+  const auto& elem = (*dictionary_)[kHostToolsVersion];
+  for (auto it = elem.begin(); it != elem.end(); it++) {
+    versions[it.key().asString()] = it->asUInt();
+  }
+  return versions;
 }
 
 void CuttlefishConfig::set_guest_enforce_security(bool guest_enforce_security) {
@@ -708,21 +770,6 @@ std::vector<std::string> CuttlefishConfig::extra_kernel_cmdline() const {
   return cmdline;
 }
 
-void CuttlefishConfig::set_vm_manager_kernel_cmdline(std::string vm_manager_cmdline) {
-  Json::Value args_json_obj(Json::arrayValue);
-  for (const auto& arg : android::base::Split(vm_manager_cmdline, " ")) {
-    args_json_obj.append(arg);
-  }
-  (*dictionary_)[kVmManagerKernelCmdline] = args_json_obj;
-}
-std::vector<std::string> CuttlefishConfig::vm_manager_kernel_cmdline() const {
-  std::vector<std::string> cmdline;
-  for (const Json::Value& arg : (*dictionary_)[kVmManagerKernelCmdline]) {
-    cmdline.push_back(arg.asString());
-  }
-  return cmdline;
-}
-
 void CuttlefishConfig::set_ril_dns(const std::string& ril_dns) {
   (*dictionary_)[kRilDns] = ril_dns;
 }
@@ -752,12 +799,26 @@ bool CuttlefishConfig::console() const {
   return (*dictionary_)[kConsole].asBool();
 }
 
+void CuttlefishConfig::set_vhost_net(bool vhost_net) {
+  (*dictionary_)[kVhostNet] = vhost_net;
+}
+bool CuttlefishConfig::vhost_net() const {
+  return (*dictionary_)[kVhostNet].asBool();
+}
+
+void CuttlefishConfig::set_ethernet(bool ethernet) {
+  (*dictionary_)[kEthernet] = ethernet;
+}
+bool CuttlefishConfig::ethernet() const {
+  return (*dictionary_)[kEthernet].asBool();
+}
+
 // Creates the (initially empty) config object and populates it with values from
 // the config file if the CUTTLEFISH_CONFIG_FILE env variable is present.
 // Returns nullptr if there was an error loading from file
 /*static*/ CuttlefishConfig* CuttlefishConfig::BuildConfigImpl() {
-  auto config_file_path = cuttlefish::StringFromEnv(kCuttlefishConfigEnvVarName,
-                                             cuttlefish::GetGlobalConfigFileLink());
+  auto config_file_path = StringFromEnv(kCuttlefishConfigEnvVarName,
+                                        GetGlobalConfigFileLink());
   auto ret = new CuttlefishConfig();
   if (ret) {
     auto loaded = ret->LoadFromFile(config_file_path.c_str());
@@ -775,10 +836,10 @@ bool CuttlefishConfig::console() const {
 }
 
 /*static*/ bool CuttlefishConfig::ConfigExists() {
-  auto config_file_path = cuttlefish::StringFromEnv(kCuttlefishConfigEnvVarName,
-                                             cuttlefish::GetGlobalConfigFileLink());
-  auto real_file_path = cuttlefish::AbsolutePath(config_file_path.c_str());
-  return cuttlefish::FileExists(real_file_path);
+  auto config_file_path = StringFromEnv(kCuttlefishConfigEnvVarName,
+                                        GetGlobalConfigFileLink());
+  auto real_file_path = AbsolutePath(config_file_path.c_str());
+  return FileExists(real_file_path);
 }
 
 CuttlefishConfig::CuttlefishConfig() : dictionary_(new Json::Value()) {}
@@ -790,7 +851,7 @@ CuttlefishConfig::CuttlefishConfig(CuttlefishConfig&&) = default;
 CuttlefishConfig& CuttlefishConfig::operator=(CuttlefishConfig&&) = default;
 
 bool CuttlefishConfig::LoadFromFile(const char* file) {
-  auto real_file_path = cuttlefish::AbsolutePath(file);
+  auto real_file_path = AbsolutePath(file);
   if (real_file_path.empty()) {
     LOG(ERROR) << "Could not get real path for file " << file;
     return false;
@@ -816,7 +877,7 @@ bool CuttlefishConfig::SaveToFile(const std::string& file) const {
 
 std::string CuttlefishConfig::AssemblyPath(
     const std::string& file_name) const {
-  return cuttlefish::AbsolutePath(assembly_dir() + "/" + file_name);
+  return AbsolutePath(assembly_dir() + "/" + file_name);
 }
 
 CuttlefishConfig::MutableInstanceSpecific CuttlefishConfig::ForInstance(int num) {
@@ -845,8 +906,14 @@ int GetInstance() {
   return instance_id;
 }
 
+int GetDefaultVsockCid() {
+  // we assume that this function is used to configure CuttlefishConfig once
+  static const int default_vsock_cid = 3 + GetInstance() - 1;
+  return default_vsock_cid;
+}
+
 std::string GetGlobalConfigFileLink() {
-  return cuttlefish::StringFromEnv("HOME", ".") + "/.cuttlefish_config.json";
+  return StringFromEnv("HOME", ".") + "/.cuttlefish_config.json";
 }
 
 std::string ForCurrentInstance(const char* prefix) {
@@ -868,19 +935,16 @@ std::string RandomSerialNumber(const std::string& prefix) {
 
 int GetDefaultPerInstanceVsockCid() {
   constexpr int kFirstGuestCid = 3;
-  return cuttlefish::HostSupportsVsock() ? ForCurrentInstance(kFirstGuestCid) : 0;
+  return HostSupportsVsock() ? ForCurrentInstance(kFirstGuestCid) : 0;
 }
 
 std::string DefaultHostArtifactsPath(const std::string& file_name) {
-  return (cuttlefish::StringFromEnv("ANDROID_HOST_OUT",
-                             cuttlefish::StringFromEnv("HOME", ".")) +
-          "/") +
+  return (StringFromEnv("ANDROID_SOONG_HOST_OUT", StringFromEnv("HOME", ".")) + "/") +
          file_name;
 }
 
 std::string DefaultGuestImagePath(const std::string& file_name) {
-  return (cuttlefish::StringFromEnv("ANDROID_PRODUCT_OUT",
-                             cuttlefish::StringFromEnv("HOME", "."))) +
+  return (StringFromEnv("ANDROID_PRODUCT_OUT", StringFromEnv("HOME", "."))) +
          file_name;
 }
 

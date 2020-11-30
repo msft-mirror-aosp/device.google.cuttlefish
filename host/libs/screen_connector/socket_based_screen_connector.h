@@ -25,6 +25,8 @@
 #include <thread>
 #include <vector>
 
+#include "common/libs/fs/shared_fd.h"
+
 namespace cuttlefish {
 
 class SocketBasedScreenConnector : public ScreenConnector {
@@ -34,21 +36,25 @@ class SocketBasedScreenConnector : public ScreenConnector {
   bool OnFrameAfter(std::uint32_t frame_number,
                     const FrameCallback& frame_callback) override;
 
+  void ReportClientsConnected(bool have_clients) override;
+
  private:
-  static constexpr int NUM_BUFFERS_ = 4;
+  static constexpr std::uint32_t kNumBuffersPerDisplay = 4;
 
   int WaitForNewFrameSince(std::uint32_t* seq_num);
   void* GetBuffer(int buffer_idx);
   void ServerLoop(int frames_fd);
   void BroadcastNewFrame(int buffer_idx);
 
-  std::vector<std::uint8_t> buffer_ =
-      std::vector<std::uint8_t>(NUM_BUFFERS_ * ScreenSizeInBytes());
+  std::size_t buffer_size_ = 0;
+  std::vector<std::uint8_t> buffer_;
   std::uint32_t seq_num_{0};
   int newest_buffer_ = 0;
   std::condition_variable new_frame_cond_var_;
   std::mutex new_frame_mtx_;
   std::thread screen_server_thread_;
+  cuttlefish::SharedFD client_connection_;
+  bool have_clients_ = false;
 };
 
 } // namespace cuttlefish

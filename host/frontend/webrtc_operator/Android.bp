@@ -29,7 +29,6 @@ cc_binary_host {
         "server_config.cpp",
         "server.cpp",
         "signal_handler.cpp",
-        "websocket_handler.cpp",
     ],
     header_libs: [
         "webrtc_signaling_headers",
@@ -47,6 +46,7 @@ cc_binary_host {
         "libgflags",
         "libcuttlefish_utils",
         "libcuttlefish_host_config",
+        "libcuttlefish_host_websocket",
         "libwebsockets",
     ],
     defaults: ["cuttlefish_host_only"],
@@ -70,9 +70,9 @@ prebuilt_usr_share_host {
 }
 
 prebuilt_usr_share_host {
-    name: "webrtc_logcat.js",
-    src: "assets/js/logcat.js",
-    filename: "logcat.js",
+    name: "webrtc_adb.js",
+    src: "assets/js/adb.js",
+    filename: "adb.js",
     sub_dir: "webrtc/assets/js",
 }
 

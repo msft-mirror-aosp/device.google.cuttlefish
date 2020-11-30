@@ -16,6 +16,7 @@
 
 #pragma once
 
+#include <map>
 #include <memory>
 
 #include "common/libs/fs/shared_fd.h"
@@ -24,21 +25,33 @@
 
 namespace cuttlefish {
 
+struct InputSockets {
+  cuttlefish::SharedFD touch_server;
+  cuttlefish::SharedFD touch_client;
+  cuttlefish::SharedFD keyboard_server;
+  cuttlefish::SharedFD keyboard_client;
+};
+
 class CfConnectionObserverFactory
     : public cuttlefish::webrtc_streaming::ConnectionObserverFactory {
  public:
-  CfConnectionObserverFactory(cuttlefish::SharedFD touch_fd,
-                              cuttlefish::SharedFD keyboard_fd);
+  CfConnectionObserverFactory(cuttlefish::InputSockets& input_sockets,
+                              cuttlefish::SharedFD kernel_log_events_fd);
   ~CfConnectionObserverFactory() override = default;
 
   std::shared_ptr<cuttlefish::webrtc_streaming::ConnectionObserver> CreateObserver()
       override;
 
+  void AddCustomActionServer(cuttlefish::SharedFD custom_action_server_fd,
+                             const std::vector<std::string>& commands);
+
   void SetDisplayHandler(std::weak_ptr<DisplayHandler> display_handler);
 
  private:
-  cuttlefish::SharedFD touch_fd_;
-  cuttlefish::SharedFD keyboard_fd_;
+  cuttlefish::InputSockets& input_sockets_;
+  cuttlefish::SharedFD kernel_log_events_fd_;
+  std::map<std::string, cuttlefish::SharedFD>
+      commands_to_custom_action_servers_;
   std::weak_ptr<DisplayHandler> weak_display_handler_;
 };
 
