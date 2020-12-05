@@ -40,12 +40,15 @@ func cvdHostPackageFactory() android.Module {
 	return module
 }
 
-type dependencyTag struct{ blueprint.BaseDependencyTag }
+type dependencyTag struct {
+	blueprint.BaseDependencyTag
+	android.InstallAlwaysNeededDependencyTag // to force installation of the deps
+}
 
 var cvdHostPackageDependencyTag = dependencyTag{}
 
 func (c *cvdHostPackage) DepsMutator(ctx android.BottomUpMutatorContext) {
-	c.AddDeps(ctx)
+	c.AddDeps(ctx, cvdHostPackageDependencyTag)
 
 	// If cvd_custom_action_config is set, include custom action servers in the
 	// host package as specified by cvd_custom_action_servers.
@@ -74,9 +77,9 @@ func (c *cvdHostPackage) GenerateAndroidBuildActions(ctx android.ModuleContext) 
 
 	// Dir where to extract the zip file and construct the final tar.gz from
 	packageDir := android.PathForModuleOut(ctx, ".temp").OutputPath
-	builder := android.NewRuleBuilder()
+	builder := android.NewRuleBuilder(pctx, ctx)
 	builder.Command().
-		BuiltTool(ctx, "zipsync").
+		BuiltTool("zipsync").
 		FlagWithArg("-d ", packageDir.String()).
 		Input(zipFile)
 
@@ -89,7 +92,7 @@ func (c *cvdHostPackage) GenerateAndroidBuildActions(ctx android.ModuleContext) 
 
 	builder.Command().Text("rm").Flag("-rf").Text(packageDir.String())
 
-	builder.Build(pctx, ctx, "cvd_host_package", fmt.Sprintf("Packaging %s", c.BaseModuleName()))
+	builder.Build("cvd_host_package", fmt.Sprintf("Packaging %s", c.BaseModuleName()))
 
 	ctx.InstallFile(android.PathForModuleInstall(ctx), c.BaseModuleName()+".tar.gz", output)
 }
