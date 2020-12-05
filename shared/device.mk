@@ -339,6 +339,12 @@ PRODUCT_PACKAGES += \
     android.hardware.biometrics.face@1.1-service.example
 
 #
+# BiometricsFingerprint HAL (HIDL)
+#
+PRODUCT_PACKAGES += \
+    android.hardware.biometrics.fingerprint@2.2-service.example
+
+#
 # BiometricsFace HAL (AIDL)
 #
 PRODUCT_PACKAGES += \
@@ -476,9 +482,9 @@ PRODUCT_PACKAGES += \
 
 # BootControl HAL
 PRODUCT_PACKAGES += \
-    android.hardware.boot@1.1-impl \
-    android.hardware.boot@1.1-impl.recovery \
-    android.hardware.boot@1.1-service
+    android.hardware.boot@1.2-impl \
+    android.hardware.boot@1.2-impl.recovery \
+    android.hardware.boot@1.2-service
 
 # RebootEscrow HAL
 PRODUCT_PACKAGES += \
