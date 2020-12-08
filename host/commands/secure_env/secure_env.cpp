@@ -18,6 +18,7 @@
 #include <android-base/logging.h>
 #include <gflags/gflags.h>
 #include <keymaster/android_keymaster.h>
+#include <keymaster/soft_keymaster_logger.h>
 #include <keymaster/contexts/pure_soft_keymaster_context.h>
 #include <tss2/tss2_esys.h>
 #include <tss2/tss2_rc.h>
@@ -55,6 +56,7 @@ DEFINE_string(gatekeeper_impl,
 int main(int argc, char** argv) {
   ::android::base::InitLogging(argv);
   gflags::ParseCommandLineFlags(&argc, &argv, true);
+  keymaster::SoftKeymasterLogger km_logger;
 
   std::unique_ptr<InProcessTpm> in_process_tpm;
   std::unique_ptr<TpmResourceManager> resource_manager;
