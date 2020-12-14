@@ -44,12 +44,14 @@ $(call inherit-product, external/crosvm/seccomp/crosvm_seccomp_policy_product_pa
 PRODUCT_ARTIFACT_PATH_REQUIREMENT_ALLOWED_LIST += \
     system/bin/crosvm \
     system/lib64/libfdt.so \
+    system/lib64/libgfxstream_backend.so \
     system/lib64/%.dylib.so \
 
 #
 # Special settings for the target
 #
 $(call inherit-product, device/google/cuttlefish/vsoc_arm64/kernel.mk)
+$(call inherit-product, device/google/cuttlefish/vsoc_arm64/bootloader.mk)
 
 PRODUCT_NAME := aosp_cf_arm64_phone
 PRODUCT_DEVICE := vsoc_arm64

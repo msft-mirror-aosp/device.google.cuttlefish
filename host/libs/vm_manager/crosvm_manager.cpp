@@ -136,17 +136,15 @@ std::vector<std::string> CrosvmManager::ConfigureGpuMode(
 std::vector<std::string> CrosvmManager::ConfigureBootDevices() {
   // TODO There is no way to control this assignment with crosvm (yet)
   if (HostArch() == "x86_64") {
-    // PCI domain 0, bus 0, device 4, function 0
-    return { "androidboot.boot_devices=pci0000:00/0000:00:04.0" };
+    // PCI domain 0, bus 0, device 6, function 0
+    return { "androidboot.boot_devices=pci0000:00/0000:00:06.0" };
   } else {
     return { "androidboot.boot_devices=10000.pci" };
   }
 }
 
 std::vector<Command> CrosvmManager::StartCommands(
-    const CuttlefishConfig& config,
-    bool with_frontend,
-    const std::string& kernel_cmdline) {
+    const CuttlefishConfig& config, const std::string& kernel_cmdline) {
   auto instance = config.ForDefaultInstance();
   Command crosvm_cmd(config.crosvm_binary(), [](Subprocess* proc) {
     auto stopped = Stop();
@@ -158,17 +156,21 @@ std::vector<Command> CrosvmManager::StartCommands(
   });
   crosvm_cmd.AddParameter("run");
 
+  auto display_configs = config.display_configs();
+  CHECK_GE(display_configs.size(), 1);
+  auto display_config = display_configs[0];
+
   auto gpu_mode = config.gpu_mode();
 
   if (gpu_mode == kGpuModeGuestSwiftshader) {
     crosvm_cmd.AddParameter("--gpu=2D,",
-                            "width=", config.x_res(), ",",
-                            "height=", config.y_res());
+                            "width=", display_config.width, ",",
+                            "height=", display_config.height);
   } else if (gpu_mode == kGpuModeDrmVirgl || gpu_mode == kGpuModeGfxStream) {
     crosvm_cmd.AddParameter(gpu_mode == kGpuModeGfxStream ?
                                 "--gpu=gfxstream," : "--gpu=",
-                            "width=", config.x_res(), ",",
-                            "height=", config.y_res(), ",",
+                            "width=", display_config.width, ",",
+                            "height=", display_config.height, ",",
                             "egl=true,surfaceless=true,glx=false,gles=true");
     crosvm_cmd.AddParameter("--wayland-sock=", instance.frames_socket_path());
   }
@@ -184,9 +186,10 @@ std::vector<Command> CrosvmManager::StartCommands(
   }
   crosvm_cmd.AddParameter("--socket=", GetControlSocketPath(config));
 
-  if (with_frontend) {
+  if (config.enable_vnc_server() || config.enable_webrtc()) {
     crosvm_cmd.AddParameter("--single-touch=", instance.touch_socket_path(),
-                            ":", config.x_res(), ":", config.y_res());
+                            ":", display_config.width,
+                            ":", display_config.height);
     crosvm_cmd.AddParameter("--keyboard=", instance.keyboard_socket_path());
   }
 
@@ -280,6 +283,19 @@ std::vector<Command> CrosvmManager::StartCommands(
   // Serial port for logcat, redirected to a pipe
   crosvm_cmd.AddParameter("--serial=hardware=virtio-console,num=3,type=file,path=",
                           instance.logcat_pipe_name());
+
+  crosvm_cmd.AddParameter("--serial=hardware=virtio-console,num=4,type=file,",
+                          "path=", instance.PerInstanceInternalPath("keymaster_fifo_vm.out"),
+                          ",input=", instance.PerInstanceInternalPath("keymaster_fifo_vm.in"));
+  crosvm_cmd.AddParameter("--serial=hardware=virtio-console,num=5,type=file,",
+                          "path=", instance.PerInstanceInternalPath("gatekeeper_fifo_vm.out"),
+                          ",input=", instance.PerInstanceInternalPath("gatekeeper_fifo_vm.in"));
+
+  // TODO(b/172286896): This is temporarily optional, but should be made
+  // unconditional and moved up to the other network devices area
+  if (config.ethernet()) {
+    AddTapFdParameter(&crosvm_cmd, instance.ethernet_tap_name());
+  }
 
   // TODO(b/162071003): virtiofs crashes without sandboxing, this should be fixed
   if (config.enable_sandbox()) {

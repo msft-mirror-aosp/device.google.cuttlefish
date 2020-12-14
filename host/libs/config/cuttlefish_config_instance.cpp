@@ -34,6 +34,7 @@ const char* kVirtualDiskPaths = "virtual_disk_paths";
 const char* kMobileBridgeName = "mobile_bridge_name";
 const char* kMobileTapName = "mobile_tap_name";
 const char* kWifiTapName = "wifi_tap_name";
+const char* kEthernetTapName = "ethernet_tap_name";
 const char* kVsockGuestCid = "vsock_guest_cid";
 
 const char* kSessionId = "session_id";
@@ -58,8 +59,6 @@ const char* kFramesServerPort = "frames_server_port";
 const char* kTouchServerPort = "touch_server_port";
 const char* kKeyboardServerPort = "keyboard_server_port";
 
-const char* kKeymasterVsockPort = "keymaster_vsock_port";
-const char* kGatekeeperVsockPort = "gatekeeper_vsock_port";
 const char* kWifiMacAddress = "wifi_mac_address";
 
 const char* kGnssGrpcProxyServerPort = "gnss_grpc_proxy_server_port";
@@ -222,6 +221,14 @@ void CuttlefishConfig::MutableInstanceSpecific::set_wifi_tap_name(
   (*Dictionary())[kWifiTapName] = wifi_tap_name;
 }
 
+std::string CuttlefishConfig::InstanceSpecific::ethernet_tap_name() const {
+  return (*Dictionary())[kEthernetTapName].asString();
+}
+void CuttlefishConfig::MutableInstanceSpecific::set_ethernet_tap_name(
+    const std::string& ethernet_tap_name) {
+  (*Dictionary())[kEthernetTapName] = ethernet_tap_name;
+}
+
 bool CuttlefishConfig::InstanceSpecific::use_allocd() const {
   return (*Dictionary())[kUseAllocd].asBool();
 }
@@ -320,22 +327,6 @@ int CuttlefishConfig::InstanceSpecific::keyboard_server_port() const {
 
 void CuttlefishConfig::MutableInstanceSpecific::set_keyboard_server_port(int keyboard_server_port) {
   (*Dictionary())[kKeyboardServerPort] = keyboard_server_port;
-}
-
-int CuttlefishConfig::InstanceSpecific::keymaster_vsock_port() const {
-  return (*Dictionary())[kKeymasterVsockPort].asInt();
-}
-
-void CuttlefishConfig::MutableInstanceSpecific::set_keymaster_vsock_port(int keymaster_vsock_port) {
-  (*Dictionary())[kKeymasterVsockPort] = keymaster_vsock_port;
-}
-
-int CuttlefishConfig::InstanceSpecific::gatekeeper_vsock_port() const {
-  return (*Dictionary())[kGatekeeperVsockPort].asInt();
-}
-
-void CuttlefishConfig::MutableInstanceSpecific::set_gatekeeper_vsock_port(int gatekeeper_vsock_port) {
-  (*Dictionary())[kGatekeeperVsockPort] = gatekeeper_vsock_port;
 }
 
 int CuttlefishConfig::InstanceSpecific::tombstone_receiver_port() const {

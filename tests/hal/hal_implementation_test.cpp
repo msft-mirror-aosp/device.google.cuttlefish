@@ -26,15 +26,18 @@ using namespace android;
 static const std::set<std::string> kKnownMissingHidl = {
     "android.frameworks.bufferhub@1.0",
     "android.frameworks.cameraservice.device@2.0",
+    "android.frameworks.schedulerservice@1.0", // deprecated, see b/37226359
     "android.frameworks.vr.composer@1.0",
     "android.frameworks.vr.composer@2.0",
     "android.frameworks.automotive.display@1.0",
     "android.hardware.audio@2.0",
     "android.hardware.audio@4.0",
     "android.hardware.audio@5.0",
+    "android.hardware.audio@7.0",
     "android.hardware.audio.effect@2.0",
     "android.hardware.audio.effect@4.0",
     "android.hardware.audio.effect@5.0",
+    "android.hardware.audio.effect@7.0",
     "android.hardware.automotive.audiocontrol@1.0",
     "android.hardware.automotive.audiocontrol@2.0",
     "android.hardware.automotive.can@1.0",
@@ -104,10 +107,21 @@ static const std::set<std::string> kKnownMissingAidl = {
     // b/170144267
     "android.system.keystore2.",
 
+    // The keymint service implementation is in progress but we cannot register
+    // the service by default til all essential features landed.
+    // b/171429297
+    "android.hardware.keymint.",
+
     // These KeyMaster types are in an AIDL types-only HAL because they're used
     // by the Identity Credential AIDL HAL. Remove this when fully porting
     // KeyMaster to AIDL.
     "android.hardware.keymaster.",
+
+    // These types are only used in Automotive.
+    "android.automotive.computepipe.registry.",
+    "android.automotive.computepipe.runner.",
+    "android.automotive.watchdog.",
+    "android.hardware.automotive.occupant_awareness.",
 };
 
 // AOSP packages which are never considered
@@ -167,8 +181,6 @@ static std::set<FQName> allHidlManifestInterfaces() {
 
 static bool isAospAidlInterface(const std::string& name) {
     return base::StartsWith(name, "android.") &&
-        !base::StartsWith(name, "android.automotive.") &&
-        !base::StartsWith(name, "android.hardware.automotive.") &&
         !base::StartsWith(name, "android.hardware.tests.") &&
         !base::StartsWith(name, "android.aidl.tests");
 }

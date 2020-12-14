@@ -23,8 +23,11 @@
 namespace cuttlefish {
 
 SocketBasedScreenConnector::SocketBasedScreenConnector(int frames_fd) {
-screen_server_thread_ =
+  screen_server_thread_ =
     std::thread([this, frames_fd]() { ServerLoop(frames_fd); });
+
+  buffer_size_ = ScreenSizeInBytes(/*display_number=*/0);
+  buffer_.resize(kNumBuffersPerDisplay * buffer_size_);
 }
 
 bool SocketBasedScreenConnector::OnFrameAfter(
@@ -46,8 +49,8 @@ int SocketBasedScreenConnector::WaitForNewFrameSince(std::uint32_t* seq_num) {
 
 void* SocketBasedScreenConnector::GetBuffer(int buffer_idx) {
   if (buffer_idx < 0) return nullptr;
-  buffer_idx %= NUM_BUFFERS_;
-  return &buffer_[buffer_idx * ScreenSizeInBytes()];
+  buffer_idx %= kNumBuffersPerDisplay;
+  return &buffer_[buffer_idx * buffer_size_];
 }
 
 void SocketBasedScreenConnector::ServerLoop(int frames_fd) {
@@ -66,32 +69,39 @@ void SocketBasedScreenConnector::ServerLoop(int frames_fd) {
 
   while (1) {
     LOG(DEBUG) << "Screen Connector accepting connections...";
-    auto conn = SharedFD::Accept(*server);
-    if (!conn->IsOpen()) {
+    client_connection_ = SharedFD::Accept(*server);
+    if (!client_connection_->IsOpen()) {
       LOG(ERROR) << "Disconnected fd returned from accept";
       continue;
     }
-    while (conn->IsOpen()) {
+    ReportClientsConnected(have_clients_);
+    while (client_connection_->IsOpen()) {
       int32_t size = 0;
-      if (conn->Read(&size, sizeof(size)) < 0) {
-        LOG(ERROR) << "Failed to read from hwcomposer: " << conn->StrError();
+      if (client_connection_->Read(&size, sizeof(size)) < 0) {
+        LOG(ERROR) << "Failed to read from hwcomposer: " << client_connection_->StrError();
         break;
       }
       auto buff = reinterpret_cast<uint8_t*>(GetBuffer(current_buffer));
       while (size > 0) {
-        auto read = conn->Read(buff, size);
+        auto read = client_connection_->Read(buff, size);
         if (read < 0) {
-          LOG(ERROR) << "Failed to read from hwcomposer: " << conn->StrError();
-          conn->Close();
+          LOG(ERROR) << "Failed to read from hwcomposer: " << client_connection_->StrError();
+          client_connection_->Close();
           break;
         }
         size -= read;
         buff += read;
       }
       BroadcastNewFrame(current_buffer);
-      current_buffer = (current_buffer + 1) % NUM_BUFFERS_;
+      current_buffer = (current_buffer + 1) % kNumBuffersPerDisplay;
     }
   }
+}
+
+void SocketBasedScreenConnector::ReportClientsConnected(bool have_clients) {
+  have_clients_ = have_clients;
+  char buffer = have_clients ? 1 : 0;
+  (void)client_connection_->Write(&buffer, sizeof(buffer));
 }
 
 void SocketBasedScreenConnector::BroadcastNewFrame(int buffer_idx) {

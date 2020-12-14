@@ -3,25 +3,22 @@
 #include <cstdint>
 #include <optional>
 
+#include "host/commands/assemble_cvd/boot_image_unpacker.h"
 #include "host/libs/config/cuttlefish_config.h"
 #include "host/libs/config/fetcher_config.h"
 
-const cuttlefish::CuttlefishConfig* InitFilesystemAndCreateConfig(
-    int* argc, char*** argv, cuttlefish::FetcherConfig config);
-std::string GetConfigFilePath(const cuttlefish::CuttlefishConfig& config);
+namespace cuttlefish {
 
-struct IfaceData {
-  std::string name;
-  uint32_t session_id;
-  uint32_t resource_id;
-};
+bool ParseCommandLineFlags(int* argc, char*** argv);
+// Must be called after ParseCommandLineFlags.
+CuttlefishConfig InitializeCuttlefishConfiguration(
+    const std::string& assembly_dir,
+    const std::string& instance_dir,
+    int modem_simulator_count,
+    const BootImageUnpacker& boot_image_unpacker,
+    const FetcherConfig& fetcher_config);
 
-struct IfaceConfig {
-  IfaceData mobile_tap;
-  IfaceData wireless_tap;
-};
+std::string GetConfigFilePath(const CuttlefishConfig& config);
+std::string GetCuttlefishEnvPath();
 
-// Acquires interfaces from the resource allocator daemon if it is enabled, 
-// or fallse back to using the static resources created by the debian package
-std::optional<IfaceConfig> AcquireIfaces(int num);
-std::optional<IfaceConfig> RequestIfaces();
+} // namespace cuttlefish

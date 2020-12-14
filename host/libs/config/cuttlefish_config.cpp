@@ -80,6 +80,7 @@ const char* kDpi = "dpi";
 const char* kXRes = "x_res";
 const char* kYRes = "y_res";
 const char* kRefreshRateHz = "refresh_rate_hz";
+const char* kDisplayConfigs = "display_configs";
 
 const char* kKernelImagePath = "kernel_image_path";
 const char* kUseUnpackedKernel = "use_unpacked_kernel";
@@ -101,7 +102,6 @@ const char* kTpmDevice = "tpm_device";
 
 const char* kQemuBinary = "qemu_binary";
 const char* kCrosvmBinary = "crosvm_binary";
-const char* kTpmBinary = "tpm_binary";
 
 const char* kEnableVncServer = "enable_vnc_server";
 
@@ -116,6 +116,8 @@ const char* kWebRTCEnableADBWebSocket = "webrtc_enable_adb_websocket";
 
 const char* kEnableVehicleHalServer = "enable_vehicle_hal_server";
 const char* kVehicleHalServerBinary = "vehicle_hal_server_binary";
+
+const char* kCustomActions = "custom_actions";
 
 const char* kRestartSubprocesses = "restart_subprocesses";
 const char* kRunAdbConnector = "run_adb_connector";
@@ -165,6 +167,9 @@ const char* kConsole = "console";
 const char* kHostToolsVersion = "host_tools_version";
 
 const char* kVhostNet = "vhost_net";
+const char* kRecordScreen = "record_screen";
+
+const char* kEthernet = "ethernet";
 
 }  // namespace
 
@@ -213,11 +218,30 @@ void CuttlefishConfig::set_memory_mb(int memory_mb) {
 int CuttlefishConfig::dpi() const { return (*dictionary_)[kDpi].asInt(); }
 void CuttlefishConfig::set_dpi(int dpi) { (*dictionary_)[kDpi] = dpi; }
 
-int CuttlefishConfig::x_res() const { return (*dictionary_)[kXRes].asInt(); }
-void CuttlefishConfig::set_x_res(int x_res) { (*dictionary_)[kXRes] = x_res; }
+std::vector<CuttlefishConfig::DisplayConfig>
+CuttlefishConfig::display_configs() const {
+  std::vector<DisplayConfig> display_configs;
+  for (auto& display_config_json : (*dictionary_)[kDisplayConfigs]) {
+    DisplayConfig display_config = {};
+    display_config.width = display_config_json[kXRes].asInt();
+    display_config.height = display_config_json[kYRes].asInt();
+    display_configs.emplace_back(std::move(display_config));
+  }
+  return display_configs;
+}
+void CuttlefishConfig::set_display_configs(
+    const std::vector<DisplayConfig>& display_configs) {
+  Json::Value display_configs_json(Json::arrayValue);
 
-int CuttlefishConfig::y_res() const { return (*dictionary_)[kYRes].asInt(); }
-void CuttlefishConfig::set_y_res(int y_res) { (*dictionary_)[kYRes] = y_res; }
+  for (const DisplayConfig& display_configs : display_configs) {
+    Json::Value display_config_json(Json::objectValue);
+    display_config_json[kXRes] = display_configs.width;
+    display_config_json[kYRes] = display_configs.height;
+    display_configs_json.append(display_config_json);
+  }
+
+  (*dictionary_)[kDisplayConfigs] = display_configs_json;
+}
 
 int CuttlefishConfig::refresh_rate_hz() const {
   return (*dictionary_)[kRefreshRateHz].asInt();
@@ -372,14 +396,6 @@ void CuttlefishConfig::set_crosvm_binary(const std::string& crosvm_binary) {
   (*dictionary_)[kCrosvmBinary] = crosvm_binary;
 }
 
-std::string CuttlefishConfig::tpm_binary() const {
-  return (*dictionary_)[kTpmBinary].asString();
-}
-
-void CuttlefishConfig::set_tpm_binary(const std::string& tpm_binary) {
-  (*dictionary_)[kTpmBinary] = tpm_binary;
-}
-
 std::string CuttlefishConfig::tpm_device() const {
   return (*dictionary_)[kTpmDevice].asString();
 }
@@ -446,6 +462,22 @@ void CuttlefishConfig::set_vehicle_hal_grpc_server_binary(const std::string& veh
 
 std::string CuttlefishConfig::vehicle_hal_grpc_server_binary() const {
   return (*dictionary_)[kVehicleHalServerBinary].asString();
+}
+
+void CuttlefishConfig::set_custom_actions(const std::vector<CustomActionConfig>& actions) {
+  Json::Value actions_array(Json::arrayValue);
+  for (const auto& action : actions) {
+    actions_array.append(action.ToJson());
+  }
+  (*dictionary_)[kCustomActions] = actions_array;
+}
+
+std::vector<CustomActionConfig> CuttlefishConfig::custom_actions() const {
+  std::vector<CustomActionConfig> result;
+  for (Json::Value custom_action : (*dictionary_)[kCustomActions]) {
+    result.push_back(CustomActionConfig(custom_action));
+  }
+  return result;
 }
 
 void CuttlefishConfig::set_webrtc_assets_dir(const std::string& webrtc_assets_dir) {
@@ -775,6 +807,20 @@ bool CuttlefishConfig::vhost_net() const {
   return (*dictionary_)[kVhostNet].asBool();
 }
 
+void CuttlefishConfig::set_ethernet(bool ethernet) {
+  (*dictionary_)[kEthernet] = ethernet;
+}
+bool CuttlefishConfig::ethernet() const {
+  return (*dictionary_)[kEthernet].asBool();
+}
+
+void CuttlefishConfig::set_record_screen(bool record_screen) {
+  (*dictionary_)[kRecordScreen] = record_screen;
+}
+bool CuttlefishConfig::record_screen() const {
+  return (*dictionary_)[kRecordScreen].asBool();
+}
+
 // Creates the (initially empty) config object and populates it with values from
 // the config file if the CUTTLEFISH_CONFIG_FILE env variable is present.
 // Returns nullptr if there was an error loading from file
@@ -901,7 +947,7 @@ int GetDefaultPerInstanceVsockCid() {
 }
 
 std::string DefaultHostArtifactsPath(const std::string& file_name) {
-  return (StringFromEnv("ANDROID_HOST_OUT", StringFromEnv("HOME", ".")) + "/") +
+  return (StringFromEnv("ANDROID_SOONG_HOST_OUT", StringFromEnv("HOME", ".")) + "/") +
          file_name;
 }
 

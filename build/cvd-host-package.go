@@ -16,6 +16,7 @@ package cuttlefish
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/google/blueprint"
 
@@ -26,89 +27,72 @@ func init() {
 	android.RegisterModuleType("cvd_host_package", cvdHostPackageFactory)
 }
 
-type cvdHostPackageProperties struct {
-	// list of modules to include in this package. The transitive dependencies of the deps
-	// are also included.
-	Deps       []string `android:"arch_variant"`
-	CommonDeps []string `android:"arch_variant"`
-}
-
 type cvdHostPackage struct {
 	android.ModuleBase
-	properties cvdHostPackageProperties
-	output     android.OutputPath
+	android.PackagingBase
 }
 
 func cvdHostPackageFactory() android.Module {
 	module := &cvdHostPackage{}
-	module.AddProperties(&module.properties)
+	android.InitPackageModule(module)
 	android.InitAndroidArchModule(module, android.HostSupported, android.MultilibFirst)
+	module.IgnoreMissingDependencies = true
 	return module
 }
 
-type dependencyTag struct{ blueprint.BaseDependencyTag }
+type dependencyTag struct {
+	blueprint.BaseDependencyTag
+	android.InstallAlwaysNeededDependencyTag // to force installation of the deps
+}
 
 var cvdHostPackageDependencyTag = dependencyTag{}
 
 func (c *cvdHostPackage) DepsMutator(ctx android.BottomUpMutatorContext) {
-	ctx.AddVariationDependencies(nil, cvdHostPackageDependencyTag, c.properties.Deps...)
-	variations := []blueprint.Variation{
-		{Mutator: "os", Variation: ctx.Target().Os.String()},
-		{Mutator: "arch", Variation: android.Common.String()},
+	c.AddDeps(ctx, cvdHostPackageDependencyTag)
+
+	// If cvd_custom_action_config is set, include custom action servers in the
+	// host package as specified by cvd_custom_action_servers.
+	customActionConfig := ctx.Config().VendorConfig("cvd").String("custom_action_config")
+	if customActionConfig != "" && ctx.OtherModuleExists(customActionConfig) {
+		variations := []blueprint.Variation{
+			{Mutator: "os", Variation: ctx.Target().Os.String()},
+			{Mutator: "arch", Variation: android.Common.String()},
+		}
+		ctx.AddVariationDependencies(variations, cvdHostPackageDependencyTag,
+			customActionConfig)
+		for _, dep := range strings.Split(
+			ctx.Config().VendorConfig("cvd").String("custom_action_servers"), " ") {
+			if ctx.OtherModuleExists(dep) {
+				ctx.AddVariationDependencies(nil, cvdHostPackageDependencyTag, dep)
+			}
+		}
 	}
-	ctx.AddFarVariationDependencies(variations, cvdHostPackageDependencyTag, c.properties.CommonDeps...)
 }
 
 var pctx = android.NewPackageContext("android/soong/cuttlefish")
 
 func (c *cvdHostPackage) GenerateAndroidBuildActions(ctx android.ModuleContext) {
-	// We need paths relative to the base directory because the current directory is changed via
-	// the -C option and tar needs input file paths relative to the current directory
-	baseDir := android.PathForModuleInstall(ctx)
+	zipFile := android.PathForModuleOut(ctx, "package.zip").OutputPath
+	c.CopyDepsToZip(ctx, zipFile)
 
-	// Host common arch are installed to out/soong/host/linux-x86 (see pathsForInstall in android/paths.go)
-	osName := ctx.Os().String()
-	if ctx.Os() == android.Linux {
-		osName = "linux"
-	}
-	commonBaseDir := android.PathForOutput(ctx, "host", osName+"-x86")
+	// Dir where to extract the zip file and construct the final tar.gz from
+	packageDir := android.PathForModuleOut(ctx, ".temp").OutputPath
+	builder := android.NewRuleBuilder(pctx, ctx)
+	builder.Command().
+		BuiltTool("zipsync").
+		FlagWithArg("-d ", packageDir.String()).
+		Input(zipFile)
 
-	// install paths for arch-specific and common-arch files
-	var inputs []android.Path
-	var commonInputs []android.Path
+	output := android.PathForModuleOut(ctx, "package.tar.gz").OutputPath
+	builder.Command().Text("tar Scfz").
+		Output(output).
+		FlagWithArg("-C ", packageDir.String()).
+		Flag("--mtime='2020-01-01'"). // to have reproducible builds
+		Text(".")
 
-	ctx.WalkDeps(func(child android.Module, parent android.Module) bool {
-		files := child.FilesToInstall()
-		// the different arch is not included. This can happen via rust.proc_macros
-		myArch := ctx.Arch().ArchType
-		childArch := child.Target().Arch.ArchType
-		if childArch != android.Common && childArch != myArch {
-			return false
-		}
+	builder.Command().Text("rm").Flag("-rf").Text(packageDir.String())
 
-		// Depending on where the file is under, put it to either inputs or commonInputs
-		for _, file := range files.Paths() {
-			if _, rel := android.MaybeRel(ctx, baseDir.String(), file.String()); rel {
-				inputs = append(inputs, file)
-			} else if _, rel := android.MaybeRel(ctx, commonBaseDir.String(), file.String()); rel {
-				commonInputs = append(commonInputs, file)
-			}
-		}
-		return true
-	})
-	inputs = android.SortedUniquePaths(inputs)
-	commonInputs = android.SortedUniquePaths(commonInputs)
+	builder.Build("cvd_host_package", fmt.Sprintf("Packaging %s", c.BaseModuleName()))
 
-	c.output = android.PathForModuleOut(ctx, "package.zip").OutputPath
-	builder := android.NewRuleBuilder()
-	builder.Command().BuiltTool(ctx, "soong_zip").
-		FlagWithArg("-symlinks", "=false"). // do follow symlinks because cc_prebuilt_* have symlinks pointing the source path
-		FlagWithOutput("-o ", c.output).
-		FlagWithArg("-C ", baseDir.String()).
-		FlagForEachInput("-f ", inputs).
-		FlagWithArg("-C ", commonBaseDir.String()).
-		FlagForEachInput("-f ", commonInputs)
-	builder.Build(pctx, ctx, "cvd_host_package", fmt.Sprintf("Packaging %s", c.BaseModuleName()))
-
-	ctx.InstallFile(baseDir, c.BaseModuleName()+".zip", c.output)
+	ctx.InstallFile(android.PathForModuleInstall(ctx), c.BaseModuleName()+".tar.gz", output)
 }

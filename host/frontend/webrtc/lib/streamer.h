@@ -19,11 +19,13 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "host/frontend/webrtc/lib/connection_observer.h"
+#include "host/frontend/webrtc/lib/local_recorder.h"
 #include "host/frontend/webrtc/lib/video_sink.h"
 #include "host/frontend/webrtc/lib/ws_connection.h"
 
@@ -80,6 +82,14 @@ class Streamer {
 
   void SetHardwareSpecs(int cpus, int memory_mb);
 
+  // Add a custom button to the control panel.
+  //   If this button should be handled by an action server, use nullopt (the
+  //   default) for shell_command.
+  void AddCustomControlPanelButton(
+      const std::string& command, const std::string& title,
+      const std::string& icon_name,
+      const std::optional<std::string>& shell_command = std::nullopt);
+
   // TODO (b/128328845): Implement audio, return a shared_ptr to a class
   // equivalent to webrtc::AudioSinkInterface.
   void AddAudio(const std::string& label);
@@ -87,6 +97,8 @@ class Streamer {
   // Register with the operator.
   void Register(std::weak_ptr<OperatorObserver> operator_observer);
   void Unregister();
+
+  void RecordDisplays(LocalRecorder& recorder);
  private:
   /*
    * Private Implementation idiom.
