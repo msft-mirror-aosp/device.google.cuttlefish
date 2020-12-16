@@ -23,9 +23,6 @@ $(call inherit-product, $(SRC_TARGET_DIR)/product/updatable_apex.mk)
 # Enable userspace reboot
 $(call inherit-product, $(SRC_TARGET_DIR)/product/userspace_reboot.mk)
 
-# Enforce generic ramdisk allow list
-$(call inherit-product, $(SRC_TARGET_DIR)/product/generic_ramdisk.mk)
-
 PRODUCT_SOONG_NAMESPACES += device/generic/goldfish-opengl # for vulkan
 
 PRODUCT_SHIPPING_API_LEVEL := 31
@@ -515,6 +512,10 @@ PRODUCT_PACKAGES += \
 # RebootEscrow HAL
 PRODUCT_PACKAGES += \
     android.hardware.rebootescrow-service.default
+
+# Memtrack HAL
+PRODUCT_PACKAGES += \
+    android.hardware.memtrack-service.example
 
 # GKI APEX
 PRODUCT_PACKAGES += com.android.gki.kmi_5_4_android12_0
