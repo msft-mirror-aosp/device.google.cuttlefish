@@ -391,6 +391,8 @@ class CuttlefishConfig {
     // Wifi MAC address inside the guest
     std::array<unsigned char, 6> wifi_mac_address() const;
 
+    std::string factory_reset_protected_path() const;
+
     // modem simulator related
     std::string modem_simulator_ports() const;
 

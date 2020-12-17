@@ -1007,6 +1007,10 @@ std::array<unsigned char, 6> CuttlefishConfig::InstanceSpecific::wifi_mac_addres
   return mac_address;
 }
 
+std::string CuttlefishConfig::InstanceSpecific::factory_reset_protected_path() const {
+  return PerInstanceInternalPath("factory_reset_protected.img");
+}
+
 void CuttlefishConfig::set_boot_image_kernel_cmdline(std::string boot_image_kernel_cmdline) {
   Json::Value args_json_obj(Json::arrayValue);
   for (const auto& arg : android::base::Split(boot_image_kernel_cmdline, " ")) {

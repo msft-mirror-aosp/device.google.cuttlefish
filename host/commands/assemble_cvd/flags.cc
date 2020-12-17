@@ -723,6 +723,7 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
     instance.set_virtual_disk_paths({
       const_instance.PerInstancePath("overlay.img"),
       const_instance.sdcard_path(),
+      const_instance.factory_reset_protected_path(),
     });
 
     std::array<unsigned char, 6> mac_address;
@@ -1143,6 +1144,7 @@ const cuttlefish::CuttlefishConfig* InitFilesystemAndCreateConfig(
       preserving.insert("sdcard.img");
       preserving.insert("access-kregistry");
       preserving.insert("modem_nvram.json");
+      preserving.insert("factory_reset_protected.img");
       std::stringstream ss;
       for (int i = 0; i < FLAGS_modem_simulator_count; i++) {
         ss.clear();
@@ -1288,6 +1290,11 @@ const cuttlefish::CuttlefishConfig* InitFilesystemAndCreateConfig(
     if (!cuttlefish::FileExists(instance.sdcard_path())) {
       CreateBlankImage(instance.sdcard_path(),
                        FLAGS_blank_sdcard_image_mb, "sdcard");
+    }
+
+    const auto frp = instance.factory_reset_protected_path();
+    if (!cuttlefish::FileExists(frp)) {
+      CreateBlankImage(frp, 1 /* mb */, "none");
     }
   }
 

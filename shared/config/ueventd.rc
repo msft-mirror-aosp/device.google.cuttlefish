@@ -14,3 +14,6 @@
 
 # seriallogging
 /dev/hvc2 0660 system logd
+
+# Factory Reset Protection
+/dev/block/vdc 0660 system system

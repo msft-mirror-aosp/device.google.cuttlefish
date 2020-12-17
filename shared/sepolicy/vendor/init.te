@@ -18,3 +18,5 @@ allow init ab_block_device:lnk_file relabelto;
 # /mnt/sdcard -> /storage/self/primary symlink is deprecated. Ignore attempts to
 # create it. This denial is fixed in core policy in Android R aosp/943799.
 dontaudit init tmpfs:lnk_file create;
+
+allow init frp_block_device:blk_file setattr;
