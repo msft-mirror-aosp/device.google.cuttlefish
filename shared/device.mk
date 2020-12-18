@@ -23,6 +23,9 @@ $(call inherit-product, $(SRC_TARGET_DIR)/product/updatable_apex.mk)
 # Enable userspace reboot
 $(call inherit-product, $(SRC_TARGET_DIR)/product/userspace_reboot.mk)
 
+# Enforce generic ramdisk allow list
+$(call inherit-product, $(SRC_TARGET_DIR)/product/generic_ramdisk.mk)
+
 PRODUCT_SOONG_NAMESPACES += device/generic/goldfish-opengl # for vulkan
 
 PRODUCT_SHIPPING_API_LEVEL := 31
@@ -283,8 +286,7 @@ ifeq ($(TARGET_VULKAN_SUPPORT),true)
 PRODUCT_COPY_FILES += \
     frameworks/native/data/etc/android.hardware.vulkan.level-0.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.vulkan.level.xml \
     frameworks/native/data/etc/android.hardware.vulkan.version-1_0_3.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.vulkan.version.xml \
-    frameworks/native/data/etc/android.software.vulkan.deqp.level-2021-03-01.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.vulkan.deqp.level.xml \
-    frameworks/native/data/etc/android.software.opengles.deqp.level-2021-03-01.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.opengles.deqp.level.xml
+    frameworks/native/data/etc/android.software.vulkan.deqp.level-2020-03-01.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.vulkan.deqp.level.xml
 endif
 
 # Packages for HAL implementations
