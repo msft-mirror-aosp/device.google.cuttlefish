@@ -50,3 +50,7 @@ PRODUCT_COPY_FILES += \
 # TODO: below should be moved to vendor
 # These flags are important for the GSI, but break auto
 PRODUCT_ENFORCE_RRO_TARGETS := framework-res
+
+# Make default Settings value a RRO package so they're not overridden by GSI
+# when testing GSI mixed configuration.
+PRODUCT_ENFORCE_RRO_TARGETS += SettingsProvider
