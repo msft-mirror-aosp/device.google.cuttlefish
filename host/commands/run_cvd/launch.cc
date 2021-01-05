@@ -420,25 +420,27 @@ void LaunchModemSimulatorIfEnabled(
 void LaunchSocketVsockProxyIfEnabled(cuttlefish::ProcessMonitor* process_monitor,
                                      const cuttlefish::CuttlefishConfig& config) {
   auto instance = config.ForDefaultInstance();
+  auto append = [](const std::string& s, const int i) -> std::string {
+    return s + std::to_string(i);
+  };
+  auto to_vsock_port = [&instance](const int port) -> int {
+    return GetVsockServerPort(port, instance.vsock_guest_cid());
+  };
   if (AdbVsockTunnelEnabled(config)) {
     cuttlefish::Command adb_tunnel(config.socket_vsock_proxy_binary());
     adb_tunnel.AddParameter("--server=tcp");
-    adb_tunnel.AddParameter("--vsock_port=6520");
-    adb_tunnel.AddParameter(std::string{"--tcp_port="} +
-                            std::to_string(instance.host_port()));
-    adb_tunnel.AddParameter(std::string{"--vsock_cid="} +
-                            std::to_string(instance.vsock_guest_cid()));
+    adb_tunnel.AddParameter(append("--vsock_port=", to_vsock_port(6520)));
+    adb_tunnel.AddParameter(append("--tcp_port=", instance.host_port()));
+    adb_tunnel.AddParameter(append("--vsock_cid=", instance.vsock_guest_cid()));
     process_monitor->StartSubprocess(std::move(adb_tunnel),
                                      GetOnSubprocessExitCallback(config));
   }
   if (AdbVsockHalfTunnelEnabled(config)) {
     cuttlefish::Command adb_tunnel(config.socket_vsock_proxy_binary());
     adb_tunnel.AddParameter("--server=tcp");
-    adb_tunnel.AddParameter("--vsock_port=5555");
-    adb_tunnel.AddParameter(std::string{"--tcp_port="} +
-                            std::to_string(instance.host_port()));
-    adb_tunnel.AddParameter(std::string{"--vsock_cid="} +
-                            std::to_string(instance.vsock_guest_cid()));
+    adb_tunnel.AddParameter(append("--vsock_port=", to_vsock_port(5555)));
+    adb_tunnel.AddParameter(append("--tcp_port=", instance.host_port()));
+    adb_tunnel.AddParameter(append("--vsock_cid=", instance.vsock_guest_cid()));
     process_monitor->StartSubprocess(std::move(adb_tunnel),
                                      GetOnSubprocessExitCallback(config));
   }
