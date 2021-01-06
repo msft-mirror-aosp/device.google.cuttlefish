@@ -105,20 +105,6 @@ int main(int argc, char** argv) {
     cuttlefish::SharedFD::Pipe(&assembler_stdin, &launcher_report);
   }
 
-<<<<<<< HEAD   (d90b3c Move suspend_blocker to system_ext)
-=======
-  auto instance_num_str = std::to_string(FLAGS_base_instance_num);
-  setenv("CUTTLEFISH_INSTANCE", instance_num_str.c_str(), /* overwrite */ 1);
-
-#if defined(__BIONIC__)
-  // These environment variables are needed in case when Bionic is used.
-  // b/171754977
-  setenv("ANDROID_DATA", cuttlefish::DefaultHostArtifactsPath("").c_str(), /* overwrite */ 0);
-  setenv("ANDROID_TZDATA_ROOT", cuttlefish::DefaultHostArtifactsPath("").c_str(), /* overwrite */ 0);
-  setenv("ANDROID_ROOT", cuttlefish::DefaultHostArtifactsPath("").c_str(), /* overwrite */ 0);
-#endif
-
->>>>>>> CHANGE (dd0384 base_instance_num option should consistently override the en)
   // SharedFDs are std::move-d in to avoid dangling references.
   // Removing the std::move will probably make run_cvd hang as its stdin never closes.
   auto assemble_proc = StartAssembler(std::move(assembler_stdin),

@@ -54,14 +54,10 @@ int InstanceFromEnvironment() {
       LOG(WARNING) << "No user or non-vsoc user, returning default config";
       return kDefaultInstance;
     }
-<<<<<<< HEAD   (d90b3c Move suspend_blocker to system_ext)
     instance_str += sizeof(cuttlefish::kVsocUserPrefix) - 1;
 
     // Set the environment variable so that child processes see it
     setenv(kInstanceEnvironmentVariable, instance_str, 0);
-=======
-    instance_str += sizeof(kVsocUserPrefix) - 1;
->>>>>>> CHANGE (dd0384 base_instance_num option should consistently override the en)
   }
 
   int instance = std::atoi(instance_str);
