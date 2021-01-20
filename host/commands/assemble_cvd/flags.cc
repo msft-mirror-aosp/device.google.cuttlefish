@@ -400,13 +400,6 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
   std::string discovered_ramdisk = fetcher_config.FindCvdFileWithSuffix(kInitramfsImg);
   std::string foreign_ramdisk = FLAGS_initramfs_path.size () ? FLAGS_initramfs_path : discovered_ramdisk;
 
-  // TODO(rammuthiah) Bootloader boot doesn't work in the following scenarios:
-  // 1. Arm64 - On Crosvm, we have no implementation currently.
-  if (FLAGS_vm_manager == CrosvmManager::name() && cuttlefish::HostArch() == "aarch64") {
-    SetCommandLineOptionWithMode("use_bootloader", "false",
-        google::FlagSettingMode::SET_FLAGS_DEFAULT);
-  }
-
   tmp_config_obj.set_boot_image_kernel_cmdline(boot_image_unpacker.kernel_cmdline());
   tmp_config_obj.set_loop_max_part(FLAGS_loop_max_part);
   tmp_config_obj.set_guest_enforce_security(FLAGS_guest_enforce_security);
