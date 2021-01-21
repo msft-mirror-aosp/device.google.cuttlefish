@@ -230,11 +230,19 @@ DEFINE_bool(console, false, "Enable the serial console");
 
 DEFINE_int32(vsock_guest_cid,
              cuttlefish::GetDefaultVsockCid(),
-             "Override vsock cid with this option if vsock cid the instance should be"
-             "separated from the instance number: e.g. cuttlefish instance inside a container."
-             "If --vsock_guest_cid=C --num_instances=N are given,"
-             "the vsock cid of the i th instance would be C + i where i is in [1, N]"
-             "If --num_instances is not given, the default value of N is used.");
+             "vsock_guest_cid is used to determine the guest vsock cid as well as all the ports"
+             "of all vsock servers such as tombstone or modem simulator(s)."
+             "The vsock ports and guest vsock cid are a function of vsock_guest_cid and instance number."
+             "An instance number of i th instance is determined by --num_instances=N and --base_instance_num=B"
+             "The instance number of i th instance is B + i where i in [0, N-1] and B >= 1."
+             "See --num_instances, and --base_instance_num for more information"
+             "If --vsock_guest_cid=C is given and C >= 3, the guest vsock cid is C + i. Otherwise,"
+             "the guest vsock cid is 2 + instance number, which is 2 + (B + i)."
+             "If --vsock_guest_cid is not given, each vsock server port number for i th instance is"
+             "base + instance number - 1. vsock_guest_cid is by default B + i + 2."
+             "Thus, by default, each port is base + vsock_guest_cid - 3."
+             "The same formula holds when --vsock_guest_cid=C is given, for algorithm's sake."
+             "Each vsock server port number is base + C - 3.");
 
 DEFINE_bool(use_overlay, true,
             "Capture disk writes an overlay. This is a "
@@ -537,13 +545,18 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
     } else {
       instance.set_serial_number(FLAGS_serial_number + std::to_string(num));
     }
+    // call this before all stuff that has vsock server: e.g. touchpad, keyboard, etc
+    const auto vsock_guest_cid = FLAGS_vsock_guest_cid + num - cuttlefish::GetInstance();
+    instance.set_vsock_guest_cid(vsock_guest_cid);
+    auto calc_vsock_port = [vsock_guest_cid](const int base_port) {
+      // a base (vsock) port is like 9200 for modem_simulator, etc
+      return cuttlefish::GetVsockServerPort(base_port, vsock_guest_cid);
+    };
 
     instance.set_mobile_bridge_name(StrForInstance("cvd-mbr-", num));
     instance.set_mobile_tap_name(StrForInstance("cvd-mtap-", num));
 
     instance.set_wifi_tap_name(StrForInstance("cvd-wtap-", num));
-
-    instance.set_vsock_guest_cid(FLAGS_vsock_guest_cid + num - cuttlefish::GetInstance());
 
     instance.set_uuid(FLAGS_uuid);
 
@@ -553,17 +566,17 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
     instance.set_vehicle_hal_server_port(9210 + num - 1);
     instance.set_audiocontrol_server_port(9410);  /* OK to use the same port number across instances */
 
-    instance.set_tombstone_receiver_port(6600 + num - 1);
-    instance.set_config_server_port(6800 + num - 1);
+    instance.set_tombstone_receiver_port(calc_vsock_port(6600));
+    instance.set_config_server_port(calc_vsock_port(6800));
 
     if (FLAGS_gpu_mode != cuttlefish::kGpuModeDrmVirgl &&
         FLAGS_gpu_mode != cuttlefish::kGpuModeGfxStream) {
-      instance.set_frames_server_port(6900 + num - 1);
+      instance.set_frames_server_port(calc_vsock_port(6900));
     }
 
     if (FLAGS_vm_manager == cuttlefish::vm_manager::QemuManager::name()) {
-      instance.set_keyboard_server_port(7000 + num - 1);
-      instance.set_touch_server_port(7100 + num - 1);
+      instance.set_keyboard_server_port(calc_vsock_port(7000));
+      instance.set_touch_server_port(calc_vsock_port(7100));
     }
 
     instance.set_keymaster_vsock_port(7200 + num - 1);
@@ -614,15 +627,19 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
       instance.set_start_webrtc_signaling_server(false);
     }
     is_first_instance = false;
-    std::stringstream ss;
-    auto base_port = 9200 + num - 2;
-    for (auto index = 0; index < FLAGS_modem_simulator_count; ++index) {
-      ss << base_port + 1 << ",";
+
+    // instance.modem_simulator_ports := "" or "[port,]*port"
+    if (FLAGS_modem_simulator_count > 0) {
+      std::stringstream modem_ports;
+      for (auto index {0}; index < FLAGS_modem_simulator_count - 1; index++) {
+        modem_ports << calc_vsock_port(9200) << ",";
+      }
+      modem_ports << calc_vsock_port(9200);
+      instance.set_modem_simulator_ports(modem_ports.str());
+    } else {
+      instance.set_modem_simulator_ports("");
     }
-    std::string modem_simulator_ports = ss.str();
-    modem_simulator_ports.pop_back();
-    instance.set_modem_simulator_ports(modem_simulator_ports);
-  }
+  } // end of num_instances loop
 
   return tmp_config_obj;
 }

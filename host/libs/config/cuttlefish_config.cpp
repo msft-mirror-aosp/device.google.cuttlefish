@@ -766,6 +766,11 @@ int GetDefaultVsockCid() {
   return default_vsock_cid;
 }
 
+int GetVsockServerPort(const int base,
+                       const int vsock_guest_cid /**< per instance guest cid */) {
+    return base + (vsock_guest_cid - 3);
+}
+
 std::string GetGlobalConfigFileLink() {
   return cuttlefish::StringFromEnv("HOME", ".") + "/.cuttlefish_config.json";
 }
