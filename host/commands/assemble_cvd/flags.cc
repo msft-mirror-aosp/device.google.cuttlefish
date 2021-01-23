@@ -397,14 +397,6 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
                " does not work with vm_manager=" << FLAGS_vm_manager;
   }
 
-  // TODO (177926450) These lines are needed because the current uboot config
-  // assuming only one memory size for the arm config. Remove these lines once
-  // the memory size can be variable for arm.
-  // The default for the CF Arm guest RAM size is 3027 MB on rockpi
-  if (HostArch() == "aarch64") {
-    SetCommandLineOptionWithMode("memory_mb", "3027", SET_FLAGS_DEFAULT);
-  }
-
   tmp_config_obj.set_cpus(FLAGS_cpus);
   tmp_config_obj.set_memory_mb(FLAGS_memory_mb);
 
@@ -741,16 +733,6 @@ void SetDefaultFlagsForCrosvm() {
 
   SetCommandLineOptionWithMode("enable_sandbox",
                                (default_enable_sandbox ? "true" : "false"),
-                               SET_FLAGS_DEFAULT);
-
-  // Crosvm requires a specific setting for kernel decompression; it must be
-  // on for aarch64 and off for x86, no other mode is supported.
-  bool decompress_kernel = false;
-  if (HostArch() == "aarch64") {
-    decompress_kernel = true;
-  }
-  SetCommandLineOptionWithMode("decompress_kernel",
-                               (decompress_kernel ? "true" : "false"),
                                SET_FLAGS_DEFAULT);
 
   std::string default_bootloader = FLAGS_system_image_dir + "/bootloader";
