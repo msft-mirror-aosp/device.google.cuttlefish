@@ -19,11 +19,6 @@
 #include <string>
 #include <vector>
 
-#include <android-base/strings.h>
-#include <android-base/logging.h>
-
-#include <libavb/libavb.h>
-
 #include "common/libs/fs/shared_buf.h"
 
 #include "host/commands/run_cvd/launch.h"
@@ -41,69 +36,6 @@ static std::string concat(const S& s, const T& t) {
   std::ostringstream os;
   os << s << t;
   return os.str();
-}
-
-static size_t CalculateVbmetaSize(const cuttlefish::CuttlefishConfig& config) {
-  auto vbmeta_fd = cuttlefish::SharedFD::Open(config.vbmeta_image_path(), O_RDONLY);
-  if (!vbmeta_fd->IsOpen()) {
-    LOG(ERROR) << "Could not open vbmeta file \""
-               << config.vbmeta_image_path() << "\": "
-               << vbmeta_fd->StrError();
-    return 0;
-  }
-
-  auto vbmeta_system_fd =
-      cuttlefish::SharedFD::Open(config.vbmeta_system_image_path(), O_RDONLY);
-   if (!vbmeta_system_fd->IsOpen()) {
-    LOG(ERROR) << "Could not open vbmeta file \""
-               << config.vbmeta_system_image_path() << "\": "
-               << vbmeta_system_fd->StrError();
-    return 0;
-  }
-
-  AvbVBMetaImageHeader vbmeta_header;
-
-  if (cuttlefish::ReadExactBinary(vbmeta_fd, &vbmeta_header) < 0) {
-    LOG(ERROR) << "Could not read vbmeta file \""
-               << config.vbmeta_system_image_path() << '"';
-    return 0;
-  }
-  AvbVBMetaImageHeader vbmeta_header_swapped;
-  avb_vbmeta_image_header_to_host_byte_order(&vbmeta_header,
-                                             &vbmeta_header_swapped);
-
-  if (cuttlefish::ReadExactBinary(vbmeta_system_fd, &vbmeta_header) < 0) {
-    LOG(ERROR) << "Could not read vbmeta file \""
-               << config.vbmeta_system_image_path() << '"';
-    return 0;
-  }
-  AvbVBMetaImageHeader vbmeta_system_header_swapped;
-  avb_vbmeta_image_header_to_host_byte_order(&vbmeta_header,
-                                             &vbmeta_system_header_swapped);
-
-  return sizeof(AvbVBMetaImageHeader) +
-         vbmeta_header_swapped.authentication_data_block_size +
-         vbmeta_header_swapped.auxiliary_data_block_size +
-         sizeof(AvbVBMetaImageHeader) +
-         vbmeta_system_header_swapped.authentication_data_block_size +
-         vbmeta_system_header_swapped.auxiliary_data_block_size;
-}
-
-static std::string CalculateVbmetaDigest(const cuttlefish::CuttlefishConfig& config) {
-  cuttlefish::Command avbtool_cmd(cuttlefish::DefaultHostArtifactsPath("bin/avbtool"));
-  avbtool_cmd.AddParameter("calculate_vbmeta_digest");
-  avbtool_cmd.AddParameter("--image");
-  avbtool_cmd.AddParameter(config.vbmeta_image_path());
-  avbtool_cmd.AddParameter("--hash_algorithm");
-  avbtool_cmd.AddParameter("sha256");
-  std::string avbtool_output;
-  auto avbtool_ret = cuttlefish::RunWithManagedStdio(std::move(avbtool_cmd), nullptr,
-                                              &avbtool_output, nullptr);
-  if (avbtool_ret != 0) {
-    LOG(ERROR) << "`avbtool \"" << config.vbmeta_image_path()
-               << "\"` returned " << avbtool_ret;
-  }
-  return avbtool_ret == 0 ? android::base::Split(avbtool_output, "\n").at(0) : "";
 }
 
 std::vector<std::string> KernelCommandLineFromConfig(const cuttlefish::CuttlefishConfig& config) {
@@ -137,11 +69,6 @@ std::vector<std::string> KernelCommandLineFromConfig(const cuttlefish::Cuttlefis
   } else {
     kernel_cmdline.push_back("audit=0");
   }
-
-  kernel_cmdline.push_back("androidboot.verifiedbootstate=orange");
-  kernel_cmdline.push_back("androidboot.vbmeta.hash_alg=sha256");
-  kernel_cmdline.push_back(concat("androidboot.vbmeta.size=", CalculateVbmetaSize(config)));
-  kernel_cmdline.push_back(concat("androidboot.vbmeta.digest=", CalculateVbmetaDigest(config)));
 
   AppendVector(&kernel_cmdline, config.extra_kernel_cmdline());
 
