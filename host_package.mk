@@ -59,7 +59,6 @@ cvd_host_executables := \
     run_cvd \
     cvd_status \
     webRTC \
-    avbtool \
     tapsetiff \
     webrtc_sig_server \
 
