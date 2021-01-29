@@ -14,10 +14,13 @@
  * limitations under the License.
  */
 
+#define LOG_TAG "ConnectionObserver"
+
 #include "host/frontend/webrtc/connection_observer.h"
 
 #include <linux/input.h>
 
+#include <map>
 #include <thread>
 #include <vector>
 
@@ -28,6 +31,7 @@
 
 #include "common/libs/fs/shared_buf.h"
 #include "host/frontend/webrtc/adb_handler.h"
+#include "host/frontend/webrtc/kernel_log_events_handler.h"
 #include "host/frontend/webrtc/lib/utils.h"
 #include "host/libs/config/cuttlefish_config.h"
 
@@ -40,6 +44,13 @@ struct virtio_input_event {
   uint16_t type;
   uint16_t code;
   int32_t value;
+};
+
+struct multitouch_slot {
+  int32_t id;
+  int32_t slot;
+  int32_t x;
+  int32_t y;
 };
 
 struct InputEventBuffer {
@@ -65,6 +76,7 @@ struct InputEventBufferImpl : public InputEventBuffer {
   std::vector<T> buffer_;
 };
 
+// TODO: we could add an arg here to specify whether we want the multitouch buffer?
 std::unique_ptr<InputEventBuffer> GetEventBuffer() {
   if (FLAGS_write_virtio_input) {
     return std::unique_ptr<InputEventBuffer>(
@@ -79,23 +91,36 @@ class ConnectionObserverImpl
     : public cuttlefish::webrtc_streaming::ConnectionObserver {
  public:
   ConnectionObserverImpl(cuttlefish::InputSockets& input_sockets,
+                         cuttlefish::SharedFD kernel_log_events_fd,
+                         std::map<std::string, cuttlefish::SharedFD>
+                             commands_to_custom_action_servers,
                          std::weak_ptr<DisplayHandler> display_handler)
       : input_sockets_(input_sockets),
+        kernel_log_events_client_(kernel_log_events_fd),
+        commands_to_custom_action_servers_(commands_to_custom_action_servers),
         weak_display_handler_(display_handler) {}
-  virtual ~ConnectionObserverImpl() = default;
+  virtual ~ConnectionObserverImpl() {
+    auto display_handler = weak_display_handler_.lock();
+    if (display_handler) {
+      display_handler->DecClientCount();
+    }
+  }
 
   void OnConnected(std::function<void(const uint8_t *, size_t, bool)>
                    /*ctrl_msg_sender*/) override {
     auto display_handler = weak_display_handler_.lock();
     if (display_handler) {
+      display_handler->IncClientCount();
       // A long time may pass before the next frame comes up from the guest.
       // Send the last one to avoid showing a black screen to the user during
       // that time.
       display_handler->SendLastFrame();
     }
   }
+
   void OnTouchEvent(const std::string & /*display_label*/, int x, int y,
                     bool down) override {
+
     auto buffer = GetEventBuffer();
     if (!buffer) {
       LOG(ERROR) << "Failed to allocate event buffer";
@@ -104,16 +129,62 @@ class ConnectionObserverImpl
     buffer->AddEvent(EV_ABS, ABS_X, x);
     buffer->AddEvent(EV_ABS, ABS_Y, y);
     buffer->AddEvent(EV_KEY, BTN_TOUCH, down);
-    buffer->AddEvent(EV_SYN, 0, 0);
+    buffer->AddEvent(EV_SYN, SYN_REPORT, 0);
     cuttlefish::WriteAll(input_sockets_.touch_client,
                          reinterpret_cast<const char *>(buffer->data()),
                          buffer->size());
   }
-  void OnMultiTouchEvent(const std::string &display_label, int /*id*/,
-                         int /*slot*/, int x, int y,
-                         bool initialDown) override {
-    OnTouchEvent(display_label, x, y, initialDown);
+
+  void OnMultiTouchEvent(const std::string & /*display_label*/, Json::Value id,
+                         Json::Value slot, Json::Value x, Json::Value y,
+                         bool down, int size) override {
+    static bool button_touch = false;
+    static bool finger = false;
+
+    auto buffer = GetEventBuffer();
+    if (!buffer) {
+      LOG(ERROR) << "Failed to allocate event buffer";
+      return;
+    }
+
+    if (!finger) {
+      buffer->AddEvent(EV_KEY, BTN_TOOL_FINGER, 1);
+      finger = true;
+    }
+
+    for (int i=0; i<size; i++) {
+      buffer->AddEvent(EV_ABS, ABS_MT_SLOT, slot[i].asInt());
+
+      auto thisId = id[i].asInt();
+      if (thisId < 0 || down) {
+        buffer->AddEvent(EV_ABS, ABS_MT_TRACKING_ID, thisId);
+      }
+
+      if (thisId >= 0) {
+        // ABS_MT_POSITION_X: Reports the X coordinate of the tool.
+        // ABS_MT_POSITION_Y: Reports the Y coordinate of the tool.
+        buffer->AddEvent(EV_ABS, ABS_MT_POSITION_X, x[i].asInt());
+        buffer->AddEvent(EV_ABS, ABS_MT_POSITION_Y, y[i].asInt());
+        // ABS_{X,Y} must be reported with the location of the touch.
+        buffer->AddEvent(EV_ABS, ABS_X, x[i].asInt());
+        buffer->AddEvent(EV_ABS, ABS_Y, y[i].asInt());
+      }
+
+      if ((!button_touch && down) || (button_touch && !down)) {
+        // BTN_TOUCH must be used to report when a touch is active on the screen.
+        // BTN_TOUCH: Indicates whether the tool is touching the device.
+        buffer->AddEvent(EV_KEY, BTN_TOUCH, down);
+        LOG(VERBOSE) << "BTN_TOUCH " << down;
+        button_touch = !button_touch;
+      }
+    }
+
+    buffer->AddEvent(EV_SYN, SYN_REPORT, 0);
+    cuttlefish::WriteAll(input_sockets_.touch_client,
+    reinterpret_cast<const char *>(buffer->data()),
+    buffer->size());
   }
+
   void OnKeyboardEvent(uint16_t code, bool down) override {
     auto buffer = GetEventBuffer();
     if (!buffer) {
@@ -121,11 +192,12 @@ class ConnectionObserverImpl
       return;
     }
     buffer->AddEvent(EV_KEY, code, down);
-    buffer->AddEvent(EV_SYN, 0, 0);
+    buffer->AddEvent(EV_SYN, SYN_REPORT, 0);
     cuttlefish::WriteAll(input_sockets_.keyboard_client,
                          reinterpret_cast<const char *>(buffer->data()),
                          buffer->size());
   }
+
   void OnAdbChannelOpen(std::function<bool(const uint8_t *, size_t)>
                             adb_message_sender) override {
     LOG(VERBOSE) << "Adb Channel open";
@@ -137,6 +209,13 @@ class ConnectionObserverImpl
   }
   void OnAdbMessage(const uint8_t *msg, size_t size) override {
     adb_handler_->handleMessage(msg, size);
+  }
+  void OnControlChannelOpen(std::function<bool(const Json::Value)>
+                            control_message_sender) override {
+    LOG(VERBOSE) << "Control Channel open";
+    kernel_log_events_handler_.reset(new cuttlefish::webrtc_streaming::KernelLogEventsHandler(
+        kernel_log_events_client_,
+        control_message_sender));
   }
   void OnControlMessage(const uint8_t* msg, size_t size) override {
     Json::Value evt;
@@ -171,6 +250,15 @@ class ConnectionObserverImpl
       OnKeyboardEvent(KEY_VOLUMEDOWN, state == "down");
     } else if (command == "volumeup") {
       OnKeyboardEvent(KEY_VOLUMEUP, state == "down");
+    } else if (commands_to_custom_action_servers_.find(command) !=
+               commands_to_custom_action_servers_.end()) {
+      // Simple protocol for commands forwarded to action servers:
+      //   - Always 128 bytes
+      //   - Format:   command:state
+      //   - Example:  my_button:down
+      std::string action_server_message = command + ":" + state;
+      cuttlefish::WriteAll(commands_to_custom_action_servers_[command],
+                           action_server_message.c_str(), 128);
     } else {
       LOG(WARNING) << "Unsupported control command: " << command << " (" << state << ")";
       // TODO(b/163081337): Handle custom commands.
@@ -179,19 +267,35 @@ class ConnectionObserverImpl
 
  private:
   cuttlefish::InputSockets& input_sockets_;
+  cuttlefish::SharedFD kernel_log_events_client_;
   std::shared_ptr<cuttlefish::webrtc_streaming::AdbHandler> adb_handler_;
+  std::shared_ptr<cuttlefish::webrtc_streaming::KernelLogEventsHandler> kernel_log_events_handler_;
+  std::map<std::string, cuttlefish::SharedFD> commands_to_custom_action_servers_;
   std::weak_ptr<DisplayHandler> weak_display_handler_;
 };
 
 CfConnectionObserverFactory::CfConnectionObserverFactory(
-    cuttlefish::InputSockets& input_sockets)
-    : input_sockets_(input_sockets) {}
+    cuttlefish::InputSockets& input_sockets,
+    cuttlefish::SharedFD kernel_log_events_fd)
+    : input_sockets_(input_sockets),
+      kernel_log_events_fd_(kernel_log_events_fd) {}
 
 std::shared_ptr<cuttlefish::webrtc_streaming::ConnectionObserver>
 CfConnectionObserverFactory::CreateObserver() {
   return std::shared_ptr<cuttlefish::webrtc_streaming::ConnectionObserver>(
       new ConnectionObserverImpl(input_sockets_,
+                                 kernel_log_events_fd_,
+                                 commands_to_custom_action_servers_,
                                  weak_display_handler_));
+}
+
+void CfConnectionObserverFactory::AddCustomActionServer(
+    cuttlefish::SharedFD custom_action_server_fd,
+    const std::vector<std::string>& commands) {
+  for (const std::string& command : commands) {
+    LOG(DEBUG) << "Action server is listening to command: " << command;
+    commands_to_custom_action_servers_[command] = custom_action_server_fd;
+  }
 }
 
 void CfConnectionObserverFactory::SetDisplayHandler(

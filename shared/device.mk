@@ -20,16 +20,23 @@ $(call inherit-product, $(SRC_TARGET_DIR)/product/languages_full.mk)
 # Enable updating of APEXes
 $(call inherit-product, $(SRC_TARGET_DIR)/product/updatable_apex.mk)
 
+# Enable userspace reboot
+$(call inherit-product, $(SRC_TARGET_DIR)/product/userspace_reboot.mk)
+
+# Enforce generic ramdisk allow list
+$(call inherit-product, $(SRC_TARGET_DIR)/product/generic_ramdisk.mk)
+
 PRODUCT_SOONG_NAMESPACES += device/generic/goldfish-opengl # for vulkan
 
 PRODUCT_SHIPPING_API_LEVEL := 31
-PRODUCT_BUILD_BOOT_IMAGE := true
 PRODUCT_USE_DYNAMIC_PARTITIONS := true
 DISABLE_RILD_OEM_HOOK := true
 
 PRODUCT_SOONG_NAMESPACES += device/generic/goldfish-opengl # for vulkan
 
+TARGET_RO_FILE_SYSTEM_TYPE ?= ext4
 TARGET_USERDATAIMAGE_FILE_SYSTEM_TYPE ?= f2fs
+TARGET_USERDATAIMAGE_PARTITION_SIZE ?= 6442450944
 
 TARGET_VULKAN_SUPPORT ?= true
 
@@ -48,7 +55,7 @@ AB_OTA_PARTITIONS += \
     vendor_dlkm \
 
 # Enable Virtual A/B
-$(call inherit-product, $(SRC_TARGET_DIR)/product/virtual_ab_ota.mk)
+$(call inherit-product, $(SRC_TARGET_DIR)/product/virtual_ab_ota/compression.mk)
 
 # Enable Scoped Storage related
 $(call inherit-product, $(SRC_TARGET_DIR)/product/emulated_storage.mk)
@@ -59,6 +66,11 @@ $(call inherit-product, $(SRC_TARGET_DIR)/product/emulated_storage.mk)
 PRODUCT_PRODUCT_PROPERTIES += \
     persist.adb.tcp.port=5555 \
     ro.com.google.locationfeatures=1 \
+    persist.sys.fuse.passthrough.enable=true \
+
+# Storage: for factory reset protection feature
+PRODUCT_PROPERTY_OVERRIDES += \
+    ro.frp.pst=/dev/block/vdc
 
 # Explanation of specific properties:
 #   debug.hwui.swap_with_damage avoids boot failure on M http://b/25152138
@@ -78,6 +90,7 @@ PRODUCT_PROPERTY_OVERRIDES += \
     ro.hardware.keystore_desede=true \
     ro.rebootescrow.device=/dev/block/pmem0 \
     ro.incremental.enable=1 \
+    debug.c2.use_dmabufheaps=1 \
 
 # Below is a list of properties we probably should get rid of.
 PRODUCT_PROPERTY_OVERRIDES += \
@@ -89,6 +102,9 @@ DEVICE_MANIFEST_FILE += \
     device/google/cuttlefish/shared/config/android.hardware.media.omx@1.0.xml
 endif
 
+PRODUCT_PROPERTY_OVERRIDES += \
+    debug.stagefright.c2inputsurface=-1
+
 # Enforce privapp permissions control.
 PRODUCT_PROPERTY_OVERRIDES += ro.control_privapp_permissions=enforce
 
@@ -97,6 +113,22 @@ PRODUCT_PROPERTY_OVERRIDES += ro.crypto.volume.filenames_mode=aes-256-cts
 
 # Copy preopted files from system_b on first boot
 PRODUCT_PROPERTY_OVERRIDES += ro.cp_system_other_odex=1
+
+AB_OTA_POSTINSTALL_CONFIG += \
+    RUN_POSTINSTALL_system=true \
+    POSTINSTALL_PATH_system=system/bin/otapreopt_script \
+    FILESYSTEM_TYPE_system=ext4 \
+    POSTINSTALL_OPTIONAL_system=true
+
+AB_OTA_POSTINSTALL_CONFIG += \
+    RUN_POSTINSTALL_vendor=true \
+    POSTINSTALL_PATH_vendor=bin/checkpoint_gc \
+    FILESYSTEM_TYPE_vendor=ext4 \
+    POSTINSTALL_OPTIONAL_vendor=true
+
+# Userdata Checkpointing OTA GC
+PRODUCT_PACKAGES += \
+    checkpoint_gc
 
 # DRM service opt-in
 PRODUCT_PROPERTY_OVERRIDES += drm.service.enabled=true
@@ -108,16 +140,17 @@ PRODUCT_SOONG_NAMESPACES += hardware/google/camera/devices/EmulatedCamera
 # Packages for various GCE-specific utilities
 #
 PRODUCT_PACKAGES += \
-    socket_vsock_proxy \
     CuttlefishService \
-    wpa_supplicant.vsoc.conf \
-    vsoc_input_service \
+    cuttlefish_rotate \
     rename_netiface \
     setup_wifi \
+    socket_vsock_proxy \
     tombstone_transmit \
     tombstone_producer \
     suspend_blocker \
+    vsoc_input_service \
     vtpm_manager \
+    wpa_supplicant.vsoc.conf \
 
 #
 # Packages for AOSP-available stuff we use from the framework
@@ -133,6 +166,13 @@ PRODUCT_PACKAGES += \
 #
 # Packages for the OpenGL implementation
 #
+
+# ANGLE provides an OpenGL implementation built on top of Vulkan.
+PRODUCT_PACKAGES += \
+    libEGL_angle \
+    libGLESv1_CM_angle \
+    libGLESv2_angle \
+    libfeature_support_angle.so
 
 # SwiftShader provides a software-only implementation that is not thread-safe
 PRODUCT_PACKAGES += \
@@ -236,19 +276,32 @@ PRODUCT_COPY_FILES += \
     frameworks/native/data/etc/android.software.sip.voip.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.sip.voip.xml \
     frameworks/native/data/etc/android.software.verified_boot.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.verified_boot.xml \
     system/bt/vendor_libs/test_vendor_lib/data/controller_properties.json:vendor/etc/bluetooth/controller_properties.json \
-    device/google/cuttlefish/shared/config/task_profiles.json:$(TARGET_COPY_OUT_VENDOR)/etc/task_profiles.json \
-    device/google/cuttlefish/shared/config/fstab.f2fs:$(TARGET_COPY_OUT_RAMDISK)/fstab.f2fs \
+    device/google/cuttlefish/shared/config/task_profiles.json:$(TARGET_COPY_OUT_VENDOR)/etc/task_profiles.json
+
+ifeq ($(TARGET_RO_FILE_SYSTEM_TYPE),ext4)
+PRODUCT_COPY_FILES += \
+    device/google/cuttlefish/shared/config/fstab.f2fs:$(TARGET_COPY_OUT_VENDOR_RAMDISK)/fstab.f2fs \
     device/google/cuttlefish/shared/config/fstab.f2fs:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.f2fs \
     device/google/cuttlefish/shared/config/fstab.f2fs:$(TARGET_COPY_OUT_RECOVERY)/root/first_stage_ramdisk/fstab.f2fs \
-    device/google/cuttlefish/shared/config/fstab.ext4:$(TARGET_COPY_OUT_RAMDISK)/fstab.ext4 \
+    device/google/cuttlefish/shared/config/fstab.ext4:$(TARGET_COPY_OUT_VENDOR_RAMDISK)/fstab.ext4 \
     device/google/cuttlefish/shared/config/fstab.ext4:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.ext4 \
     device/google/cuttlefish/shared/config/fstab.ext4:$(TARGET_COPY_OUT_RECOVERY)/root/first_stage_ramdisk/fstab.ext4
+else
+PRODUCT_COPY_FILES += \
+    device/google/cuttlefish/shared/config/fstab-$(TARGET_RO_FILE_SYSTEM_TYPE).f2fs:$(TARGET_COPY_OUT_VENDOR_RAMDISK)/fstab.f2fs \
+    device/google/cuttlefish/shared/config/fstab-$(TARGET_RO_FILE_SYSTEM_TYPE).f2fs:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.f2fs \
+    device/google/cuttlefish/shared/config/fstab-$(TARGET_RO_FILE_SYSTEM_TYPE).f2fs:$(TARGET_COPY_OUT_RECOVERY)/root/first_stage_ramdisk/fstab.f2fs \
+    device/google/cuttlefish/shared/config/fstab-$(TARGET_RO_FILE_SYSTEM_TYPE).ext4:$(TARGET_COPY_OUT_VENDOR_RAMDISK)/fstab.ext4 \
+    device/google/cuttlefish/shared/config/fstab-$(TARGET_RO_FILE_SYSTEM_TYPE).ext4:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.ext4 \
+    device/google/cuttlefish/shared/config/fstab-$(TARGET_RO_FILE_SYSTEM_TYPE).ext4:$(TARGET_COPY_OUT_RECOVERY)/root/first_stage_ramdisk/fstab.ext4
+endif
 
 ifeq ($(TARGET_VULKAN_SUPPORT),true)
 PRODUCT_COPY_FILES += \
     frameworks/native/data/etc/android.hardware.vulkan.level-0.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.vulkan.level.xml \
     frameworks/native/data/etc/android.hardware.vulkan.version-1_0_3.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.vulkan.version.xml \
-    frameworks/native/data/etc/android.software.vulkan.deqp.level-2020-03-01.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.vulkan.deqp.level.xml
+    frameworks/native/data/etc/android.software.vulkan.deqp.level-2021-03-01.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.vulkan.deqp.level.xml \
+    frameworks/native/data/etc/android.software.opengles.deqp.level-2021-03-01.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.opengles.deqp.level.xml
 endif
 
 # Packages for HAL implementations
@@ -260,11 +313,28 @@ PRODUCT_PACKAGES += \
     android.hardware.atrace@1.0-service
 
 #
+# Weaver aidl HAL
+#
+PRODUCT_PACKAGES += \
+    android.hardware.weaver-service.example
+
+#
+# OemLock aidl HAL
+#
+PRODUCT_PACKAGES += \
+    android.hardware.oemlock-service.example
+
+#
 # Authsecret HAL
 #
 PRODUCT_PACKAGES += \
     android.hardware.authsecret@1.0-service
 
+#
+# Authsecret AIDL HAL
+#
+PRODUCT_PACKAGES += \
+    android.hardware.authsecret-service.example
 #
 # Hardware Composer HAL
 #
@@ -287,7 +357,7 @@ PRODUCT_PACKAGES += \
 #
 PRODUCT_PACKAGES += \
     android.hardware.bluetooth@1.1-service.sim \
-    android.hardware.bluetooth.audio@2.0-impl
+    android.hardware.bluetooth.audio@2.1-impl
 
 #
 # Audio HAL
@@ -315,6 +385,12 @@ DEVICE_PACKAGE_OVERLAYS += $(LOCAL_AUDIO_DEVICE_PACKAGE_OVERLAYS)
 #
 PRODUCT_PACKAGES += \
     android.hardware.biometrics.face@1.0-service.example
+
+#
+# BiometricsFingerprint HAL
+#
+PRODUCT_PACKAGES += \
+    android.hardware.biometrics.fingerprint@2.1-service
 
 #
 # Contexthub HAL
@@ -370,7 +446,7 @@ PRODUCT_PACKAGES += $(LOCAL_HEALTH_PRODUCT_PACKAGE)
 
 # Health Storage
 PRODUCT_PACKAGES += \
-    android.hardware.health.storage@1.0-service.cuttlefish
+    android.hardware.health.storage-service.cuttlefish
 
 # Identity Credential
 PRODUCT_PACKAGES += \
@@ -410,6 +486,15 @@ PRODUCT_PACKAGES += \
     $(LOCAL_KEYMASTER_PRODUCT_PACKAGE)
 
 #
+# KeyMint HAL
+#
+ifeq ($(LOCAL_KEYMINT_PRODUCT_PACKAGE),)
+       LOCAL_KEYMINT_PRODUCT_PACKAGE := android.hardware.security.keymint-service
+endif
+PRODUCT_PACKAGES += \
+    $(LOCAL_KEYMINT_PRODUCT_PACKAGE)
+
+#
 # Power HAL
 #
 PRODUCT_PACKAGES += \
@@ -442,17 +527,34 @@ PRODUCT_PACKAGES += \
 
 # BootControl HAL
 PRODUCT_PACKAGES += \
-    android.hardware.boot@1.1-impl \
-    android.hardware.boot@1.1-impl.recovery \
-    android.hardware.boot@1.1-service
+    android.hardware.boot@1.2-impl \
+    android.hardware.boot@1.2-impl.recovery \
+    android.hardware.boot@1.2-service
 
 # RebootEscrow HAL
 PRODUCT_PACKAGES += \
     android.hardware.rebootescrow-service.default
 
+# Memtrack HAL
+PRODUCT_PACKAGES += \
+    android.hardware.memtrack-service.example
+
+# GKI APEX
+PRODUCT_PACKAGES += com.android.gki.kmi_5_10_android12_0
+
+# Prevent GKI and boot image downgrades
+PRODUCT_PRODUCT_PROPERTIES += \
+    ro.build.ab_update.gki.prevent_downgrade_version=true \
+    ro.build.ab_update.gki.prevent_downgrade_spl=true \
+
 # WLAN driver configuration files
 PRODUCT_COPY_FILES += \
     $(LOCAL_PATH)/config/wpa_supplicant_overlay.conf:$(TARGET_COPY_OUT_VENDOR)/etc/wifi/wpa_supplicant_overlay.conf
+
+# Fastboot HAL & fastbootd
+PRODUCT_PACKAGES += \
+    android.hardware.fastboot@1.1-impl-mock \
+    fastbootd
 
 # Recovery mode
 ifneq ($(TARGET_NO_RECOVERY),true)
@@ -462,6 +564,16 @@ PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/config/cgroups.json:$(TARGET_COPY_OUT_RECOVERY)/root/vendor/etc/cgroups.json \
     device/google/cuttlefish/shared/config/ueventd.rc:$(TARGET_COPY_OUT_RECOVERY)/root/ueventd.cutf_cvm.rc \
 
+PRODUCT_PACKAGES += \
+    update_engine_sideload
+
+endif
+
+ifdef TARGET_DEDICATED_RECOVERY
+PRODUCT_BUILD_RECOVERY_IMAGE := true
+PRODUCT_PACKAGES += linker.vendor_ramdisk shell_and_utilities_vendor_ramdisk
+else
+PRODUCT_PACKAGES += linker.recovery shell_and_utilities_recovery
 endif
 
 #
@@ -481,23 +593,3 @@ PRODUCT_SOONG_NAMESPACES += external/mesa3d
 # with HW VSYNC
 PRODUCT_DEFAULT_PROPERTY_OVERRIDES += ro.surface_flinger.running_without_sync_framework=true
 
-# b/143977934: Remove coverage allowlist after switching to Clang coverage.
-NATIVE_COVERAGE_PATHS := \
-    external/aac \
-    external/libaom \
-    external/libavc \
-    external/libgav1 \
-    external/libgsm \
-    external/libhevc \
-    external/libmpeg2 \
-    external/libopus \
-    external/libvpx \
-    external/libxaac \
-    external/rust \
-    external/sonivox \
-    external/tremolo \
-    frameworks/av \
-    frameworks/base/media \
-    frameworks/ml/nn \
-    packages/modules/DnsResolver \
-    system/netd

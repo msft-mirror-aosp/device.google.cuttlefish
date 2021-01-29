@@ -15,10 +15,12 @@
 #
 
 PRODUCT_MAKEFILES := \
+	aosp_cf_arm_only_phone:$(LOCAL_DIR)/vsoc_arm_only/phone/aosp_cf.mk \
 	aosp_cf_arm64_auto:$(LOCAL_DIR)/vsoc_arm64/auto/aosp_cf.mk \
 	aosp_cf_arm64_phone:$(LOCAL_DIR)/vsoc_arm64/phone/aosp_cf.mk \
 	aosp_cf_arm64_only_phone:$(LOCAL_DIR)/vsoc_arm64_only/phone/aosp_cf.mk \
 	aosp_cf_x86_64_auto:$(LOCAL_DIR)/vsoc_x86_64/auto/device.mk \
+	aosp_cf_x86_64_pc:$(LOCAL_DIR)/vsoc_x86_64/pc/aosp_cf.mk \
 	aosp_cf_x86_64_phone:$(LOCAL_DIR)/vsoc_x86_64/phone/aosp_cf.mk \
 	aosp_cf_x86_64_only_phone:$(LOCAL_DIR)/vsoc_x86_64_only/phone/aosp_cf.mk \
 	aosp_cf_x86_auto:$(LOCAL_DIR)/vsoc_x86/auto/device.mk \
@@ -30,9 +32,11 @@ PRODUCT_MAKEFILES := \
 	aosp_cf_x86_go_512_phone:$(LOCAL_DIR)/vsoc_x86/go_512_phone/device.mk \
 	aosp_cf_x86_tv:$(LOCAL_DIR)/vsoc_x86/tv/device.mk
 
+
 COMMON_LUNCH_CHOICES := \
 	aosp_cf_arm64_auto-userdebug \
 	aosp_cf_arm64_phone-userdebug \
+	aosp_cf_x86_64_pc-userdebug \
 	aosp_cf_x86_64_phone-userdebug \
 	aosp_cf_x86_auto-userdebug \
 	aosp_cf_x86_phone-userdebug \

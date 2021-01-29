@@ -19,11 +19,13 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "host/frontend/webrtc/lib/connection_observer.h"
+#include "host/frontend/webrtc/lib/local_recorder.h"
 #include "host/frontend/webrtc/lib/video_sink.h"
 #include "host/frontend/webrtc/lib/ws_connection.h"
 
@@ -69,27 +71,43 @@ class Streamer {
   // The observer_factory will be used to create an observer for every new
   // client connection. Unregister() needs to be called to stop accepting
   // connections.
-  static std::shared_ptr<Streamer> Create(
+  static std::unique_ptr<Streamer> Create(
       const StreamerConfig& cfg,
       std::shared_ptr<ConnectionObserverFactory> factory);
-  virtual ~Streamer() = default;
+  ~Streamer() = default;
 
-  virtual std::shared_ptr<VideoSink> AddDisplay(const std::string& label,
-                                                int width, int height, int dpi,
-                                                bool touch_enabled) = 0;
+  std::shared_ptr<VideoSink> AddDisplay(const std::string& label, int width,
+                                        int height, int dpi,
+                                        bool touch_enabled);
 
-  virtual void SetHardwareSpecs(int cpus, int memory_mb) = 0;
+  void SetHardwareSpecs(int cpus, int memory_mb);
+
+  // Add a custom button to the control panel.
+  //   If this button should be handled by an action server, use nullopt (the
+  //   default) for shell_command.
+  void AddCustomControlPanelButton(
+      const std::string& command, const std::string& title,
+      const std::string& icon_name,
+      const std::optional<std::string>& shell_command = std::nullopt);
 
   // TODO (b/128328845): Implement audio, return a shared_ptr to a class
   // equivalent to webrtc::AudioSinkInterface.
-  virtual void AddAudio(const std::string& label) = 0;
+  void AddAudio(const std::string& label);
 
   // Register with the operator.
-  virtual void Register(std::weak_ptr<OperatorObserver> operator_observer) = 0;
-  virtual void Unregister() = 0;
+  void Register(std::weak_ptr<OperatorObserver> operator_observer);
+  void Unregister();
 
- protected:
-  Streamer() = default;
+  void RecordDisplays(LocalRecorder& recorder);
+ private:
+  /*
+   * Private Implementation idiom.
+   * https://en.cppreference.com/w/cpp/language/pimpl
+   */
+  class Impl;
+
+  Streamer(std::unique_ptr<Impl> impl);
+  std::shared_ptr<Impl> impl_;
 };
 
 }  // namespace webrtc_streaming

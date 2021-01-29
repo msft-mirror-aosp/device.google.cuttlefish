@@ -38,7 +38,6 @@
 #include <cutils/properties.h>
 #include <cutils/sockets.h>
 #include <termios.h>
-#include <qemu_pipe.h>
 #include <sys/wait.h>
 #include <stdbool.h>
 #include <net/if.h>
@@ -325,6 +324,8 @@ static const struct RIL_Env *s_rilenv;
 #endif
 
 static RIL_RadioState sState = RADIO_STATE_UNAVAILABLE;
+static bool isNrDualConnectivityEnabled = true;
+static unsigned int allowedNetworkTypeBitmap = UINT_MAX;
 
 static pthread_mutex_t s_state_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t s_state_cond = PTHREAD_COND_INITIALIZER;
@@ -920,10 +921,10 @@ static void requestOrSendDataCallList(int cid, RIL_Token *t)
             /* We are in the emulator - the dns servers are listed
                 * by the following system properties, setup in
                 * /system/etc/init.goldfish.sh:
-                *  - net.eth0.dns1
-                *  - net.eth0.dns2
-                *  - net.eth0.dns3
-                *  - net.eth0.dns4
+                *  - vendor.net.eth0.dns1
+                *  - vendor.net.eth0.dns2
+                *  - vendor.net.eth0.dns3
+                *  - vendor.net.eth0.dns4
                 */
             const int   dnslist_sz = 128;
             char*       dnslist = alloca(dnslist_sz);
@@ -932,11 +933,11 @@ static void requestOrSendDataCallList(int cid, RIL_Token *t)
 
             dnslist[0] = 0;
             for (nn = 1; nn <= 4; nn++) {
-                /* Probe net.eth0.dns<n> */
+                /* Probe vendor.net.eth0.dns<n> */
                 char  propName[PROP_NAME_MAX];
                 char  propValue[PROP_VALUE_MAX];
 
-                snprintf(propName, sizeof propName, "net.eth0.dns%d", nn);
+                snprintf(propName, sizeof propName, "vendor.net.eth0.dns%d", nn);
 
                 /* Ignore if undefined */
                 if (property_get(propName, propValue, "") <= 0) {
@@ -955,7 +956,7 @@ static void requestOrSendDataCallList(int cid, RIL_Token *t)
              * where the gateway is different. */
             if (hasWifi) {
                 responses[i].gateways = "192.168.200.1";
-            } else if (property_get("net.eth0.gw", propValue, "") > 0) {
+            } else if (property_get("vendor.net.eth0.gw", propValue, "") > 0) {
                 responses[i].gateways = propValue;
             } else {
                 responses[i].gateways = "";
@@ -4795,6 +4796,31 @@ onRequest (int request, void *data, size_t datalen, RIL_Token t)
         case RIL_REQUEST_SET_PREFERRED_NETWORK_TYPE_BITMAP:
             requestSetPreferredNetworkType(request, data, datalen, t);
             break;
+        case RIL_REQUEST_SET_ALLOWED_NETWORK_TYPE_BITMAP:
+            if (data == NULL || datalen != sizeof(int)) {
+              RIL_onRequestComplete(t, RIL_E_INTERNAL_ERR, NULL, 0);
+              break;
+            }
+            allowedNetworkTypeBitmap = *(int *)data;
+            RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
+            break;
+        case RIL_REQUEST_GET_ALLOWED_NETWORK_TYPE_BITMAP:
+            RIL_onRequestComplete(t, RIL_E_SUCCESS, &allowedNetworkTypeBitmap,
+                    sizeof(allowedNetworkTypeBitmap));
+            break;
+        case RIL_REQUEST_ENABLE_NR_DUAL_CONNECTIVITY:
+            if (data == NULL || datalen != sizeof(int)) {
+                RIL_onRequestComplete(t, RIL_E_INTERNAL_ERR, NULL, 0);
+                break;
+            }
+            int nrDualConnectivityState = *(int *)(data);
+            isNrDualConnectivityEnabled = (nrDualConnectivityState == 1) ? true : false;
+            RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
+            break;
+        case RIL_REQUEST_IS_NR_DUAL_CONNECTIVITY_ENABLED:
+            RIL_onRequestComplete(t, RIL_E_SUCCESS, &isNrDualConnectivityEnabled,
+                    sizeof(isNrDualConnectivityEnabled));
+            break;
         case RIL_REQUEST_GET_PREFERRED_NETWORK_TYPE_BITMAP:
             requestGetPreferredNetworkType(request, data, datalen, t);
             break;
@@ -4861,6 +4887,9 @@ onRequest (int request, void *data, size_t datalen, RIL_Token t)
             RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
             break;
         case RIL_REQUEST_GET_BARRING_INFO:
+            RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
+            break;
+        case RIL_REQUEST_SET_DATA_THROTTLING:
             RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
             break;
         default:

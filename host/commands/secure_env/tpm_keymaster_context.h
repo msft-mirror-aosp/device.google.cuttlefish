@@ -21,6 +21,8 @@
 #include <keymaster/attestation_record.h>
 #include <keymaster/keymaster_context.h>
 
+#include "tpm_attestation_record.h"
+
 class TpmAttestationRecordContext;
 class TpmResourceManager;
 class TpmKeyBlobMaker;
@@ -46,6 +48,10 @@ private:
 public:
   TpmKeymasterContext(TpmResourceManager&, keymaster::KeymasterEnforcement&);
   ~TpmKeymasterContext() = default;
+
+  keymaster::KmVersion GetKmVersion() const override {
+    return attestation_context_->GetKmVersion();
+  }
 
   keymaster_error_t SetSystemVersion(
       uint32_t os_version, uint32_t os_patchlevel) override;
@@ -75,10 +81,16 @@ public:
 
   keymaster::KeymasterEnforcement* enforcement_policy() override;
 
-  keymaster_error_t GenerateAttestation(
+  keymaster::CertificateChain GenerateAttestation(
       const keymaster::Key& key,
       const keymaster::AuthorizationSet& attest_params,
-      keymaster::CertChainPtr* cert_chain) const override;
+      keymaster_error_t* error) const override;
+
+  keymaster::CertificateChain GenerateSelfSignedCertificate(
+      const keymaster::Key& key,
+      const keymaster::AuthorizationSet& cert_params,
+      bool fake_signature,
+      keymaster_error_t* error) const override;
 
   keymaster_error_t UnwrapKey(
       const keymaster::KeymasterKeyBlob& wrapped_key_blob,

@@ -88,7 +88,7 @@ void DeviceHandler::HandleForward(const Json::Value& message) {
     Close();
     return;
   }
-  if (client_id > clients_.size()) {
+  if (client_id <= 0 || client_id > clients_.size()) {
     LogAndReplyError("Forward failed: Unknown client " +
                      std::to_string(client_id));
     return;
@@ -96,8 +96,7 @@ void DeviceHandler::HandleForward(const Json::Value& message) {
   auto client_index = client_id - 1;
   auto client_handler = clients_[client_index].lock();
   if (!client_handler) {
-    LogAndReplyError("Forward failed: Client " + std::to_string(client_id) +
-                     " disconnected");
+    SendClientDisconnectMessage(client_id);
     return;
   }
   client_handler->SendDeviceMessage(message[webrtc_signaling::kPayloadField]);
@@ -113,4 +112,20 @@ void DeviceHandler::SendClientMessage(size_t client_id,
   Reply(msg);
 }
 
+void DeviceHandler::SendClientDisconnectMessage(size_t client_id) {
+  Json::Value msg;
+  msg[webrtc_signaling::kTypeField] = webrtc_signaling::kClientDisconnectType;
+  msg[webrtc_signaling::kClientIdField] = static_cast<Json::UInt>(client_id);
+  Reply(msg);
+}
+
+DeviceHandlerFactory::DeviceHandlerFactory(DeviceRegistry* registry,
+                                           const ServerConfig& server_config)
+  : registry_(registry),
+    server_config_(server_config) {}
+
+std::shared_ptr<WebSocketHandler> DeviceHandlerFactory::Build(struct lws* wsi) {
+  return std::shared_ptr<WebSocketHandler>(
+      new DeviceHandler(wsi, registry_, server_config_));
+}
 }  // namespace cuttlefish

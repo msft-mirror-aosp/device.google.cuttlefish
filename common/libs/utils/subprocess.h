@@ -23,6 +23,8 @@
 #include <string>
 #include <vector>
 
+#include <android-base/logging.h>
+
 #include <common/libs/fs/shared_fd.h>
 
 namespace cuttlefish {
@@ -43,10 +45,9 @@ class Subprocess {
     kStdErr = 2,
   };
 
-  Subprocess(pid_t pid, SharedFD control, SubprocessStopper stopper = KillSubprocess)
+  Subprocess(pid_t pid, SubprocessStopper stopper = KillSubprocess)
       : pid_(pid),
         started_(pid > 0),
-        control_socket_(control),
         stopper_(stopper) {}
   // The default implementation won't do because we need to reset the pid of the
   // moved object.
@@ -62,7 +63,6 @@ class Subprocess {
   // fork() succeeded or not, it says nothing about exec or successful
   // completion of the command, that's what Wait is for.
   bool Started() const { return started_; }
-  SharedFD control_socket() { return control_socket_; }
   pid_t pid() const { return pid_; }
   bool Stop() { return stopper_(this); }
 
@@ -74,24 +74,16 @@ class Subprocess {
   Subprocess& operator=(const Subprocess&) = delete;
   pid_t pid_ = -1;
   bool started_ = false;
-  SharedFD control_socket_;
   SubprocessStopper stopper_;
 };
 
 class SubprocessOptions {
-  bool with_control_socket_;
   bool verbose_;
   bool exit_with_parent_;
   bool in_group_;
 public:
-  SubprocessOptions() : with_control_socket_(false), verbose_(true),
-                        exit_with_parent_(true) {}
+  SubprocessOptions() : verbose_(true), exit_with_parent_(true) {}
 
-  // If with_control_socket is true the Subprocess instance will have a SharedFD
-  // that enables communication with the child process.
-  void WithControlSocket(bool with_control_socket) {
-    with_control_socket_ = with_control_socket;
-  }
   void Verbose(bool verbose) {
     verbose_ = verbose;
   }
@@ -103,7 +95,6 @@ public:
     in_group_ = in_group;
   }
 
-  bool WithControlSocket() const { return with_control_socket_; }
   bool Verbose() const { return verbose_; }
   bool ExitWithParent() const { return exit_with_parent_; }
   bool InGroup() const { return in_group_; }
@@ -179,6 +170,21 @@ class Command {
     std::stringstream ss;
     if (BuildParameter(&ss, args...)) {
       command_.push_back(ss.str());
+      return true;
+    }
+    return false;
+  }
+  // Similar to AddParameter, except the args are appended to the last (most
+  // recently-added) parameter in the command.
+  template <typename... Args>
+  bool AppendToLastParameter(Args... args) {
+    if (command_.empty()) {
+      LOG(ERROR) << "There is no parameter to append to.";
+      return false;
+    }
+    std::stringstream ss;
+    if (BuildParameter(&ss, args...)) {
+      command_[command_.size()-1] += ss.str();
       return true;
     }
     return false;

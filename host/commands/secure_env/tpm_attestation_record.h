@@ -13,22 +13,32 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <keymaster/attestation_record.h>
+#pragma once
 
-class TpmAttestationRecordContext : public keymaster::AttestationRecordContext {
+#include <memory>
+
+#include <keymaster/attestation_context.h>
+
+class TpmAttestationRecordContext : public keymaster::AttestationContext {
 public:
-  TpmAttestationRecordContext() = default;
+  TpmAttestationRecordContext() : keymaster::AttestationContext(
+      ::keymaster::KmVersion::KEYMASTER_4_1) {}
   ~TpmAttestationRecordContext() = default;
 
   keymaster_security_level_t GetSecurityLevel() const override;
   keymaster_error_t VerifyAndCopyDeviceIds(
       const keymaster::AuthorizationSet&,
       keymaster::AuthorizationSet*) const override;
-  keymaster_error_t GenerateUniqueId(
-      uint64_t, const keymaster_blob_t&, bool, keymaster::Buffer*) const override;
-  keymaster_error_t GetVerifiedBootParams(
-      keymaster_blob_t*,
-      keymaster_blob_t*,
-      keymaster_verified_boot_t*,
-      bool*) const override;
+  keymaster::Buffer GenerateUniqueId(
+      uint64_t, const keymaster_blob_t&, bool, keymaster_error_t*) const override;
+  const VerifiedBootParams* GetVerifiedBootParams(
+      keymaster_error_t* error) const override;
+  keymaster::KeymasterKeyBlob GetAttestationKey(
+      keymaster_algorithm_t algorithm, keymaster_error_t* error) const override;
+  keymaster::CertificateChain GetAttestationChain(
+      keymaster_algorithm_t algorithm,
+      keymaster_error_t* error) const override;
+
+private:
+    mutable std::unique_ptr<VerifiedBootParams> vb_params_;
 };

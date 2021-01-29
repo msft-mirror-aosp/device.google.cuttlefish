@@ -28,7 +28,12 @@ ClientHandler::ClientHandler(struct lws* wsi, DeviceRegistry* registry,
       device_handler_(),
       client_id_(0) {}
 
-void ClientHandler::OnClosed() {}  // do nothing
+void ClientHandler::OnClosed() {
+  auto device_handler = device_handler_.lock();
+  if (device_handler) {
+    device_handler->SendClientDisconnectMessage(client_id_);
+  }
+}
 
 void ClientHandler::SendDeviceMessage(const Json::Value& device_message) {
   Json::Value message;
@@ -105,6 +110,16 @@ void ClientHandler::handleForward(const Json::Value& message) {
   }
   device_handler->SendClientMessage(client_id_,
                                     message[webrtc_signaling::kPayloadField]);
+}
+
+ClientHandlerFactory::ClientHandlerFactory(DeviceRegistry* registry,
+                                           const ServerConfig& server_config)
+  : registry_(registry),
+    server_config_(server_config) {}
+
+std::shared_ptr<WebSocketHandler> ClientHandlerFactory::Build(struct lws* wsi) {
+  return std::shared_ptr<WebSocketHandler>(
+      new ClientHandler(wsi, registry_, server_config_));
 }
 
 }  // namespace cuttlefish

@@ -20,9 +20,12 @@
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <set>
 #include <vector>
+
+#include "host/libs/config/custom_actions.h"
 
 namespace Json {
 class Value;
@@ -45,6 +48,9 @@ constexpr char kMobileNetworkConnectedMessage[] =
     "VIRTUAL_DEVICE_NETWORK_MOBILE_CONNECTED";
 constexpr char kWifiConnectedMessage[] =
     "VIRTUAL_DEVICE_NETWORK_WIFI_CONNECTED";
+constexpr char kEthernetConnectedMessage[] =
+    "VIRTUAL_DEVICE_NETWORK_ETHERNET_CONNECTED";
+constexpr char kScreenChangedMessage[] = "VIRTUAL_DEVICE_SCREEN_CHANGED";
 constexpr char kInternalDirName[] = "internal";
 constexpr char kSharedDirName[] = "shared";
 constexpr char kCrosvmVarEmptyDir[] = "/var/empty";
@@ -91,14 +97,16 @@ class CuttlefishConfig {
   int dpi() const;
   void set_dpi(int dpi);
 
-  int x_res() const;
-  void set_x_res(int x_res);
-
-  int y_res() const;
-  void set_y_res(int y_res);
-
   int refresh_rate_hz() const;
   void set_refresh_rate_hz(int refresh_rate_hz);
+
+  struct DisplayConfig {
+    int width;
+    int height;
+  };
+
+  std::vector<DisplayConfig> display_configs() const;
+  void set_display_configs(const std::vector<DisplayConfig>& display_configs);
 
   // Returns kernel image extracted from the boot image or the user-provided one
   // if given by command line to the launcher. This function should not be used
@@ -158,9 +166,6 @@ class CuttlefishConfig {
   void set_crosvm_binary(const std::string& crosvm_binary);
   std::string crosvm_binary() const;
 
-  void set_tpm_binary(const std::string& tpm_binary);
-  std::string tpm_binary() const;
-
   void set_tpm_device(const std::string& tpm_device);
   std::string tpm_device() const;
 
@@ -187,6 +192,9 @@ class CuttlefishConfig {
 
   void set_vehicle_hal_grpc_server_binary(const std::string& vhal_server_binary);
   std::string vehicle_hal_grpc_server_binary() const;
+
+  void set_custom_actions(const std::vector<CustomActionConfig>& actions);
+  std::vector<CustomActionConfig> custom_actions() const;
 
   void set_restart_subprocesses(bool restart_subprocesses);
   bool restart_subprocesses() const;
@@ -244,9 +252,6 @@ class CuttlefishConfig {
 
   void set_extra_kernel_cmdline(std::string extra_cmdline);
   std::vector<std::string> extra_kernel_cmdline() const;
-
-  void set_vm_manager_kernel_cmdline(std::string vm_manager_cmdline);
-  std::vector<std::string> vm_manager_kernel_cmdline() const;
 
   // A directory containing the SSL certificates for the signaling server
   void set_webrtc_certs_dir(const std::string& certs_dir);
@@ -312,6 +317,15 @@ class CuttlefishConfig {
   void set_host_tools_version(const std::map<std::string, uint32_t>&);
   std::map<std::string, uint32_t> host_tools_version() const;
 
+  void set_vhost_net(bool vhost_net);
+  bool vhost_net() const;
+
+  void set_ethernet(bool ethernet);
+  bool ethernet() const;
+
+  void set_record_screen(bool record_screen);
+  bool record_screen() const;
+
   class InstanceSpecific;
   class MutableInstanceSpecific;
 
@@ -362,16 +376,14 @@ class CuttlefishConfig {
     int host_port() const;
     // Port number to connect to the gnss grpc proxy server on the host
     int gnss_grpc_proxy_server_port() const;
-    // Port number to connect to the gatekeeper server on the host
-    int gatekeeper_vsock_port() const;
-    // Port number to connect to the keymaster server on the host
-    int keymaster_vsock_port() const;
     std::string adb_ip_and_port() const;
     std::string adb_device_name() const;
     std::string device_title() const;
+    std::string gnss_file_path() const;
     std::string mobile_bridge_name() const;
     std::string mobile_tap_name() const;
     std::string wifi_tap_name() const;
+    std::string ethernet_tap_name() const;
     uint32_t session_id() const;
     bool use_allocd() const;
     int vsock_guest_cid() const;
@@ -434,6 +446,8 @@ class CuttlefishConfig {
 
     // Wifi MAC address inside the guest
     std::array<unsigned char, 6> wifi_mac_address() const;
+
+    std::string factory_reset_protected_path() const;
   };
 
   // A view into an existing CuttlefishConfig object for a particular instance.
@@ -464,6 +478,7 @@ class CuttlefishConfig {
     void set_mobile_bridge_name(const std::string& mobile_bridge_name);
     void set_mobile_tap_name(const std::string& mobile_tap_name);
     void set_wifi_tap_name(const std::string& wifi_tap_name);
+    void set_ethernet_tap_name(const std::string& ethernet_tap_name);
     void set_session_id(uint32_t session_id);
     void set_use_allocd(bool use_allocd);
     void set_vsock_guest_cid(int vsock_guest_cid);
@@ -478,6 +493,8 @@ class CuttlefishConfig {
     void set_wifi_mac_address(const std::array<unsigned char, 6>&);
     // Gnss grpc proxy server port inside the host
     void set_gnss_grpc_proxy_server_port(int gnss_grpc_proxy_server_port);
+    // Gnss grpc proxy local file path
+    void set_gnss_file_path(const std::string &gnss_file_path);
   };
 
  private:
@@ -494,6 +511,16 @@ class CuttlefishConfig {
 // Returns the instance number as obtained from the CUTTLEFISH_INSTANCE
 // environment variable or the username.
 int GetInstance();
+
+// Returns default Vsock CID, which is
+// GetInstance() + 2
+int GetDefaultVsockCid();
+
+// Calculates vsock server port number
+// return base + (vsock_guest_cid - 3)
+int GetVsockServerPort(const int base,
+                       const int vsock_guest_cid);
+
 // Returns a path where the launhcer puts a link to the config file which makes
 // it easily discoverable regardless of what vm manager is in use
 std::string GetGlobalConfigFileLink();

@@ -22,13 +22,16 @@
 #include <vector>
 
 #include <android-base/logging.h>
+#include <android-base/strings.h>
 #include <gflags/gflags.h>
 #include <libyuv.h>
 
 #include "common/libs/fs/shared_buf.h"
 #include "common/libs/fs/shared_fd.h"
+#include "common/libs/utils/files.h"
 #include "host/frontend/webrtc/connection_observer.h"
 #include "host/frontend/webrtc/display_handler.h"
+#include "host/frontend/webrtc/lib/local_recorder.h"
 #include "host/frontend/webrtc/lib/streamer.h"
 #include "host/libs/config/cuttlefish_config.h"
 #include "host/libs/config/logging.h"
@@ -37,11 +40,17 @@
 DEFINE_int32(touch_fd, -1, "An fd to listen on for touch connections.");
 DEFINE_int32(keyboard_fd, -1, "An fd to listen on for keyboard connections.");
 DEFINE_int32(frame_server_fd, -1, "An fd to listen on for frame updates");
+DEFINE_int32(kernel_log_events_fd, -1, "An fd to listen on for kernel log events.");
+DEFINE_int32(command_fd, -1, "An fd to listen to for control messages");
+DEFINE_string(action_servers, "",
+              "A comma-separated list of server_name:fd pairs, "
+              "where each entry corresponds to one custom action server.");
 DEFINE_bool(write_virtio_input, false,
             "Whether to send input events in virtio format.");
 
 using cuttlefish::CfConnectionObserverFactory;
 using cuttlefish::DisplayHandler;
+using cuttlefish::webrtc_streaming::LocalRecorder;
 using cuttlefish::webrtc_streaming::Streamer;
 using cuttlefish::webrtc_streaming::StreamerConfig;
 
@@ -107,8 +116,10 @@ int main(int argc, char **argv) {
 
   input_sockets.touch_server = cuttlefish::SharedFD::Dup(FLAGS_touch_fd);
   input_sockets.keyboard_server = cuttlefish::SharedFD::Dup(FLAGS_keyboard_fd);
+  auto control_socket = cuttlefish::SharedFD::Dup(FLAGS_command_fd);
   close(FLAGS_touch_fd);
   close(FLAGS_keyboard_fd);
+  close(FLAGS_command_fd);
   // Accepting on these sockets here means the device won't register with the
   // operator as soon as it could, but rather wait until crosvm's input display
   // devices have been initialized. That's OK though, because without those
@@ -132,13 +143,16 @@ int main(int argc, char **argv) {
     }
   });
 
+  auto kernel_log_events_client = cuttlefish::SharedFD::Dup(FLAGS_kernel_log_events_fd);
+  close(FLAGS_kernel_log_events_fd);
+
   auto cvd_config = cuttlefish::CuttlefishConfig::Get();
-  auto screen_connector = cuttlefish::ScreenConnector::Get(FLAGS_frame_server_fd);
+  auto instance = cvd_config->ForDefaultInstance();
+  auto screen_connector = cuttlefish::DisplayHandler::ScreenConnector::Get(FLAGS_frame_server_fd);
 
   StreamerConfig streamer_config;
 
-  streamer_config.device_id =
-      cvd_config->ForDefaultInstance().webrtc_device_id();
+  streamer_config.device_id = instance.webrtc_device_id();
   streamer_config.tcp_port_range = cvd_config->webrtc_tcp_port_range();
   streamer_config.udp_port_range = cvd_config->webrtc_udp_port_range();
   streamer_config.operator_server.addr = cvd_config->sig_server_address();
@@ -154,23 +168,115 @@ int main(int argc, char **argv) {
         ParseHttpHeaders(cvd_config->sig_server_headers_path());
   }
 
-  auto observer_factory = std::make_shared<CfConnectionObserverFactory>(input_sockets);
+  auto observer_factory = std::make_shared<CfConnectionObserverFactory>(
+      input_sockets, kernel_log_events_client);
 
   auto streamer = Streamer::Create(streamer_config, observer_factory);
+  CHECK(streamer) << "Could not create streamer";
 
   auto display_0 = streamer->AddDisplay(
-      "display_0", screen_connector->ScreenWidth(),
-      screen_connector->ScreenHeight(), cvd_config->dpi(), true);
+      "display_0", screen_connector->ScreenWidth(0),
+      screen_connector->ScreenHeight(0), cvd_config->dpi(), true);
   auto display_handler =
-      std::make_shared<DisplayHandler>(display_0, screen_connector);
+    std::make_shared<DisplayHandler>(display_0, std::move(screen_connector));
+
+  std::unique_ptr<cuttlefish::webrtc_streaming::LocalRecorder> local_recorder;
+  if (cvd_config->record_screen()) {
+    int recording_num = 0;
+    std::string recording_path;
+    do {
+      recording_path = instance.PerInstancePath("recording/recording_");
+      recording_path += std::to_string(recording_num);
+      recording_path += ".webm";
+      recording_num++;
+    } while (cuttlefish::FileExists(recording_path));
+    local_recorder = LocalRecorder::Create(recording_path);
+    CHECK(local_recorder) << "Could not create local recorder";
+
+    streamer->RecordDisplays(*local_recorder);
+    display_handler->IncClientCount();
+  }
 
   observer_factory->SetDisplayHandler(display_handler);
 
   streamer->SetHardwareSpecs(cvd_config->cpus(), cvd_config->memory_mb());
 
+  // Parse the -action_servers flag, storing a map of action server name -> fd
+  std::map<std::string, int> action_server_fds;
+  for (const std::string& action_server : android::base::Split(FLAGS_action_servers, ",")) {
+    if (action_server.empty()) {
+      continue;
+    }
+    const std::vector<std::string> server_and_fd = android::base::Split(action_server, ":");
+    CHECK(server_and_fd.size() == 2) << "Wrong format for action server flag: " << action_server;
+    std::string server = server_and_fd[0];
+    int fd = std::stoi(server_and_fd[1]);
+    action_server_fds[server] = fd;
+  }
+
+  for (const auto& custom_action : cvd_config->custom_actions()) {
+    if (custom_action.shell_command) {
+      if (custom_action.buttons.size() != 1) {
+        LOG(FATAL) << "Expected exactly one button for custom action command: "
+                   << *(custom_action.shell_command);
+      }
+      const auto button = custom_action.buttons[0];
+      streamer->AddCustomControlPanelButton(button.command, button.title,
+                                            button.icon_name,
+                                            custom_action.shell_command);
+    }
+    if (custom_action.server) {
+      if (action_server_fds.find(*(custom_action.server)) !=
+          action_server_fds.end()) {
+        LOG(INFO) << "Connecting to custom action server "
+                  << *(custom_action.server);
+
+        int fd = action_server_fds[*(custom_action.server)];
+        cuttlefish::SharedFD custom_action_server = cuttlefish::SharedFD::Dup(fd);
+        close(fd);
+
+        if (custom_action_server->IsOpen()) {
+          std::vector<std::string> commands_for_this_server;
+          for (const auto& button : custom_action.buttons) {
+            streamer->AddCustomControlPanelButton(button.command, button.title,
+                                                  button.icon_name);
+            commands_for_this_server.push_back(button.command);
+          }
+          observer_factory->AddCustomActionServer(custom_action_server,
+                                                  commands_for_this_server);
+        } else {
+          LOG(ERROR) << "Error connecting to custom action server: "
+                     << *(custom_action.server);
+        }
+      } else {
+        LOG(ERROR) << "Custom action server not provided as command line flag: "
+                   << *(custom_action.server);
+      }
+    }
+  }
+
   std::shared_ptr<cuttlefish::webrtc_streaming::OperatorObserver> operator_observer(
       new CfOperatorObserver());
   streamer->Register(operator_observer);
+
+  std::thread control_thread([control_socket, &local_recorder]() {
+    if (!local_recorder) {
+      return;
+    }
+    std::string message = "_";
+    int read_ret;
+    while ((read_ret = cuttlefish::ReadExact(control_socket, &message)) > 0) {
+      LOG(VERBOSE) << "received control message: " << message;
+      if (message[0] == 'C') {
+        LOG(DEBUG) << "Finalizing screen recording...";
+        local_recorder->Stop();
+        LOG(INFO) << "Finalized screen recording.";
+        message = "Y";
+        cuttlefish::WriteAll(control_socket, message);
+      }
+    }
+    LOG(DEBUG) << "control socket closed";
+  });
 
   display_handler->Loop();
 

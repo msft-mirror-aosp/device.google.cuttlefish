@@ -41,6 +41,7 @@ $(call inherit-product, device/google/cuttlefish/shared/phone/device_vendor.mk)
 # Special settings for the target
 #
 $(call inherit-product, device/google/cuttlefish/vsoc_x86_64/kernel.mk)
+$(call inherit-product, device/google/cuttlefish/vsoc_x86_64/bootloader.mk)
 
 # Exclude features that are not available on AOSP devices.
 PRODUCT_COPY_FILES += \
@@ -48,4 +49,5 @@ PRODUCT_COPY_FILES += \
 
 PRODUCT_NAME := aosp_cf_x86_phone
 PRODUCT_DEVICE := vsoc_x86
+PRODUCT_MANUFACTURER := Google
 PRODUCT_MODEL := Cuttlefish x86 phone

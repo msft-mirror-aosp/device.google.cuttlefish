@@ -97,7 +97,7 @@ class DeviceConnection {
       if (this._onControlMessage) {
         this._onControlMessage(msg);
       } else {
-        console.error('Received unexpected ADB message');
+        console.error('Received unexpected Control message');
       }
     });
     this._streams = {};
@@ -154,15 +154,15 @@ class DeviceConnection {
 
   // TODO (b/124121375): This should probably be an array of pointer events and
   // have different properties.
-  sendMultiTouch({id, x, y, initialDown, slot, display_label}) {
+  sendMultiTouch({idArr, xArr, yArr, down, slotArr, display_label}) {
     this._sendJsonInput({
       type: 'multi-touch',
-      id,
-      x,
-      y,
-      initialDown: initialDown ? 1 : 0,
-      slot,
-      display_label,
+      id: idArr,
+      x: xArr,
+      y: yArr,
+      down: down ? 1 : 0,
+      slot: slotArr,
+      display_label: display_label,
     });
   }
 
@@ -192,6 +192,13 @@ class DeviceConnection {
   // Provide a callback to receive control-related comms from the device
   onControlMessage(cb) {
     this._onControlMessage = cb;
+  }
+
+  // Provide a callback to receive connectionstatechange states.
+  onConnectionStateChange(cb) {
+    this._pc.addEventListener(
+      'connectionstatechange',
+      evt => cb(this._pc.connectionState));
   }
 }
 
@@ -236,6 +243,7 @@ class WebRTCControl {
     const type = message.message_type;
     if (message.error) {
       console.error(message.error);
+      this._on_connection_failed(message.error);
       return;
     }
     switch (type) {
@@ -255,6 +263,7 @@ class WebRTCControl {
         break;
       default:
         console.error('Unrecognized message type from server: ', type);
+        this._on_connection_failed('Unrecognized message type from server: ' + type);
         console.error(message);
     }
   }
@@ -307,6 +316,7 @@ class WebRTCControl {
         deviceInfo,
         infraConfig: this._infra_config,
       });
+      this._on_connection_failed = (error) => reject(error);
       this._wsSendJson({
         message_type: 'connect',
         device_id,

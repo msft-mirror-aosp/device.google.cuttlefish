@@ -31,7 +31,6 @@ PRODUCT_COPY_FILES += \
     packages/services/Car/car_product/init/init.bootstat.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/hw//init.bootstat.rc \
     packages/services/Car/car_product/init/init.car.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/hw//init.car.rc
 
-
 ifneq ($(LOCAL_SENSOR_FILE_OVERRIDES),true)
     PRODUCT_COPY_FILES += \
         frameworks/native/data/etc/android.hardware.sensor.accelerometer.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.sensor.accelerometer.xml \
@@ -50,7 +49,6 @@ PRODUCT_PROPERTY_OVERRIDES += \
     ro.cdma.home.operator.alpha=Android \
     ro.cdma.home.operator.numeric=302780 \
     ro.com.android.dataroaming=true \
-    vendor.rild.libpath=libcuttlefish-ril.so \
 
 # vehicle HAL
 ifeq ($(LOCAL_VHAL_PRODUCT_PACKAGE),)
@@ -75,7 +73,7 @@ PRODUCT_PACKAGES_DEBUG += canhalctrl \
     canhalsend
 
 PRODUCT_PACKAGES += \
-    libcuttlefish-ril \
+    libcuttlefish-ril-2 \
     libcuttlefish-rild
 
 # system_other support

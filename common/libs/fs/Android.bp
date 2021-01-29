@@ -18,6 +18,7 @@ cc_library {
     srcs: [
         "shared_buf.cc",
         "shared_fd.cpp",
+        "shared_fd_stream.cpp",
     ],
     shared: {
         shared_libs: [
@@ -38,7 +39,7 @@ cc_library {
             exclude_static_libs: ["liblog"],
         },
     },
-    defaults: ["cuttlefish_host_and_guest"],
+    defaults: ["cuttlefish_host"],
 }
 
 cc_library_static {
@@ -46,6 +47,7 @@ cc_library_static {
     srcs: [
         "shared_buf.cc",
         "shared_fd.cpp",
+        "shared_fd_stream.cpp",
     ],
     shared_libs: [
         "libbase",
@@ -68,6 +70,6 @@ cc_test {
         "libgmock",
         "libgtest",
     ],
-    defaults: ["cuttlefish_host_and_guest"],
+    defaults: ["cuttlefish_host"],
     test_suites: ["general-tests"],
 }

@@ -1058,12 +1058,12 @@ callStateToString(RIL_CallState s) {
 const char *
 requestToString(int request) {
 /*
- cat guest/hals/ril/libril/ril_commands.h \
+ cat guest/hals/ril/reference-libril/ril_commands.h \
  | egrep "^ *{RIL_" \
  | sed -re 's/\{RIL_([^,]+),[^,]+,([^}]+).+/case RIL_\1: return "\1";/'
 
 
- cat guest/hals/ril/libril/ril_unsol_commands.h \
+ cat guest/hals/ril/reference-libril/ril_unsol_commands.h \
  | egrep "^ *{RIL_" \
  | sed -re 's/\{RIL_([^,]+),([^}]+).+/case RIL_\1: return "\1";/'
 
@@ -1115,6 +1115,7 @@ requestToString(int request) {
         case RIL_REQUEST_CHANGE_BARRING_PASSWORD: return "CHANGE_BARRING_PASSWORD";
         case RIL_REQUEST_QUERY_NETWORK_SELECTION_MODE: return "QUERY_NETWORK_SELECTION_MODE";
         case RIL_REQUEST_SET_SYSTEM_SELECTION_CHANNELS: return "RIL_REQUEST_SET_SYSTEM_SELECTION_CHANNELS";
+        case RIL_REQUEST_GET_SYSTEM_SELECTION_CHANNELS: return "RIL_REQUEST_GET_SYSTEM_SELECTION_CHANNELS";
         case RIL_REQUEST_START_NETWORK_SCAN: return "RIL_REQUEST_START_NETWORK_SCAN";
         case RIL_REQUEST_SET_NETWORK_SELECTION_AUTOMATIC: return "SET_NETWORK_SELECTION_AUTOMATIC";
         case RIL_REQUEST_SET_NETWORK_SELECTION_MANUAL: return "SET_NETWORK_SELECTION_MANUAL";
@@ -1218,6 +1219,8 @@ requestToString(int request) {
         case RIL_REQUEST_GET_BARRING_INFO: return "GET_BARRING_INFO";
         case RIL_REQUEST_SET_PREFERRED_NETWORK_TYPE_BITMAP: return "SET_PREFERRED_NETWORK_TYPE_BITMAP";
         case RIL_REQUEST_GET_PREFERRED_NETWORK_TYPE_BITMAP: return "GET_PREFERRED_NETWORK_TYPE_BITMAP";
+        case RIL_REQUEST_SET_ALLOWED_NETWORK_TYPE_BITMAP: return "SET_ALLOWED_NETWORK_TYPE_BITMAP";
+        case RIL_REQUEST_GET_ALLOWED_NETWORK_TYPE_BITMAP: return "GET_ALLOWED_NETWORK_TYPE_BITMAP";
         case RIL_RESPONSE_ACKNOWLEDGEMENT: return "RESPONSE_ACKNOWLEDGEMENT";
         case RIL_UNSOL_RESPONSE_RADIO_STATE_CHANGED: return "UNSOL_RESPONSE_RADIO_STATE_CHANGED";
         case RIL_UNSOL_RESPONSE_CALL_STATE_CHANGED: return "UNSOL_RESPONSE_CALL_STATE_CHANGED";

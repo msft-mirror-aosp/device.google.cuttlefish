@@ -14,11 +14,14 @@
  * limitations under the License.
  */
 
+#define LOG_TAG "ClientHandler"
+
 #include "host/frontend/webrtc/lib/client_handler.h"
 
 #include <vector>
 
 #include <json/json.h>
+#include <json/writer.h>
 #include <netdb.h>
 #include <openssl/rand.h>
 
@@ -138,6 +141,7 @@ class ControlChannelHandler : public webrtc::DataChannelObserver {
   void OnStateChange() override;
   void OnMessage(const webrtc::DataBuffer &msg) override;
 
+  void Send(const Json::Value& message);
   void Send(const uint8_t *msg, size_t size, bool binary);
 
  private:
@@ -203,24 +207,26 @@ void InputChannelHandler::OnMessage(const webrtc::DataBuffer &msg) {
   } else if (event_type == "multi-touch") {
     auto result =
         ValidationResult::ValidateJsonObject(evt, "multi-touch",
-                           {{"id", Json::ValueType::intValue},
-                            {"initialDown", Json::ValueType::intValue},
-                            {"x", Json::ValueType::intValue},
-                            {"y", Json::ValueType::intValue},
-                            {"slot", Json::ValueType::intValue},
+                           {{"id", Json::ValueType::arrayValue},
+                            {"down", Json::ValueType::intValue},
+                            {"x", Json::ValueType::arrayValue},
+                            {"y", Json::ValueType::arrayValue},
+                            {"slot", Json::ValueType::arrayValue},
                             {"display_label", Json::ValueType::stringValue}});
     if (!result.ok()) {
       LOG(ERROR) << result.error();
       return;
     }
-    auto label = evt["display_label"].asString();
-    int32_t id = evt["id"].asInt();
-    int32_t initialDown = evt["initialDown"].asInt();
-    int32_t x = evt["x"].asInt();
-    int32_t y = evt["y"].asInt();
-    int32_t slot = evt["slot"].asInt();
 
-    observer_->OnMultiTouchEvent(label, id, slot, x, y, initialDown);
+    auto label = evt["display_label"].asString();
+    auto idArr = evt["id"];
+    int32_t down = evt["down"].asInt();
+    auto xArr = evt["x"];
+    auto yArr = evt["y"];
+    auto slotArr = evt["slot"];
+    int size = evt["id"].size();
+
+    observer_->OnMultiTouchEvent(label, idArr, slotArr, xArr, yArr, down, size);
   } else if (event_type == "keyboard") {
     auto result =
         ValidationResult::ValidateJsonObject(evt, "keyboard",
@@ -279,6 +285,10 @@ ControlChannelHandler::ControlChannelHandler(
     std::shared_ptr<ConnectionObserver> observer)
     : control_channel_(control_channel), observer_(observer) {
   control_channel->RegisterObserver(this);
+  observer_->OnControlChannelOpen([this](const Json::Value& message) {
+    this->Send(message);
+    return true;
+  });
 }
 
 ControlChannelHandler::~ControlChannelHandler() {
@@ -293,6 +303,13 @@ void ControlChannelHandler::OnStateChange() {
 
 void ControlChannelHandler::OnMessage(const webrtc::DataBuffer &msg) {
   observer_->OnControlMessage(msg.data.cdata(), msg.size());
+}
+
+void ControlChannelHandler::Send(const Json::Value& message) {
+  Json::FastWriter writer;
+  std::string message_string = writer.write(message);
+  Send(reinterpret_cast<const uint8_t*>(message_string.c_str()),
+       message_string.size(), /*binary=*/false);
 }
 
 void ControlChannelHandler::Send(const uint8_t *msg, size_t size, bool binary) {

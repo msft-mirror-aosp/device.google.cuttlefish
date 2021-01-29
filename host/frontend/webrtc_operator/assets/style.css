@@ -45,19 +45,20 @@ body {
     border-color: #aaaaaa;
 }
 
+#device_view {
+    transition: width 1s;
+}
 #control_view {
     text-align: left;
     padding: 10px;
     min-width: 450px;
 }
-
 /* Screens >1000px place the device view on the left and the control
  * view on the right. Other screens have deview view on top and control
  * view on bottom. */
 @media screen and (min-width: 1000px) {
     #device_view {
         float: left;
-        height: 100vh;
     }
     #control_view {
         float: left;
@@ -65,9 +66,10 @@ body {
 }
 
 #deviceScreen {
-    max-width: 100%;
-    max-height: 100%;
     touch-action: none;
+    transform-origin: top right;
+    transition: transform 1s;
+    object-fit: cover;
 }
 
 #control_panel {
@@ -76,6 +78,25 @@ body {
 
 #control_panel h2 {
     color: white;
+}
+
+#device_view h3 {
+    padding: 30px;
+    font-family: 'Open Sans', sans-serif;
+    color: white;
+}
+
+#device_status_message {
+    white-space: pre-line;
+    width: 400px;
+}
+
+#webrtc_status_message {
+    text-align: center;
+    /* White text on dark red background. */
+    background-color: #900000;
+    /* Hidden by default. */
+    display: none;
 }
 
 #control_panel button {
@@ -93,6 +114,24 @@ body {
     background-color: #c9c9c9;
 }
 
+#adb_status_message {
+    padding: 10px;
+    font-family: 'Open Sans', sans-serif;
+    color: white;
+}
+#adb_status_message.connecting {
+    /* dark yellow */
+    background-color: #927836;
+}
+#adb_status_message.error {
+    /* dark red */
+    background-color: #900000;
+}
+#adb_status_message.connected {
+    /* dark green */
+    background-color: #007000;
+}
+
 #device_details {
     font-family: 'Open Sans', sans-serif;
     color: white;
@@ -103,13 +142,4 @@ body {
 }
 #device_details span {
     white-space: pre;
-}
-
-#logcat {
-    display: none;
-    font-family: monospace;
-    padding: 10px;
-    color: #aaaaaa;
-    background-color: black;
-    margin-top: 40px;
 }

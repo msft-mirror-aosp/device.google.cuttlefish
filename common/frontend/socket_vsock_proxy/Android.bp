@@ -22,6 +22,8 @@ cc_binary {
         "libbase",
         "libcuttlefish_fs",
         "libcuttlefish_utils",
+        "libcuttlefish_kernel_log_monitor_utils",
+        "libjsoncpp",
         "liblog",
     ],
     static_libs: [
@@ -29,13 +31,14 @@ cc_binary {
     ],
     target: {
         host: {
-            shared_libs: [
-                "libjsoncpp",
-            ],
             static_libs: [
                 "libcuttlefish_host_config",
             ],
         },
     },
-    defaults: ["cuttlefish_host_and_guest"]
+    // Don't inherit from cuttlefish_host because it is with `vendor_available: true` which isn't
+    // compatible with `vendor: true`.
+    defaults: ["cuttlefish_base"],
+    host_supported: true,
+    vendor: true,
 }

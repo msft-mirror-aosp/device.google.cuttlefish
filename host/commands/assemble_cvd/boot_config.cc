@@ -26,16 +26,23 @@
 #include <android-base/strings.h>
 #include <gflags/gflags.h>
 
+#include "common/libs/utils/environment.h"
 #include "common/libs/utils/files.h"
 #include "common/libs/utils/subprocess.h"
 #include "host/libs/config/cuttlefish_config.h"
 #include "host/libs/config/kernel_args.h"
+#include "host/libs/vm_manager/crosvm_manager.h"
+#include "host/libs/vm_manager/vm_manager.h"
+
+using cuttlefish::vm_manager::CrosvmManager;
 
 DECLARE_bool(pause_in_bootloader);
+DECLARE_string(vm_manager);
 
+namespace cuttlefish {
 namespace {
 
-size_t WriteEnvironment(const cuttlefish::CuttlefishConfig& config,
+size_t WriteEnvironment(const CuttlefishConfig& config,
                         const std::vector<std::string>& kernel_args,
                         const std::string& env_path) {
   std::ostringstream env;
@@ -54,6 +61,12 @@ size_t WriteEnvironment(const cuttlefish::CuttlefishConfig& config,
   }
 
   env << "bootcmd=boot_android virtio -" << '\0';
+  if (FLAGS_vm_manager == CrosvmManager::name() &&
+          HostArch() == "aarch64") {
+    env << "fdtaddr=0x80000000" << '\0';
+  } else {
+    env << "fdtaddr=0x40000000" << '\0';
+  }
   env << '\0';
   std::string env_str = env.str();
   std::ofstream file_out(env_path.c_str(), std::ios::binary);
@@ -69,8 +82,8 @@ size_t WriteEnvironment(const cuttlefish::CuttlefishConfig& config,
 }  // namespace
 
 
-bool InitBootloaderEnvPartition(const cuttlefish::CuttlefishConfig& config,
-                                const cuttlefish::CuttlefishConfig::InstanceSpecific& instance) {
+bool InitBootloaderEnvPartition(const CuttlefishConfig& config,
+                                const CuttlefishConfig::InstanceSpecific& instance) {
   auto boot_env_image_path = instance.uboot_env_image_path();
   auto tmp_boot_env_image_path = boot_env_image_path + ".tmp";
   auto uboot_env_path = instance.PerInstancePath("mkenvimg_input");
@@ -80,8 +93,8 @@ bool InitBootloaderEnvPartition(const cuttlefish::CuttlefishConfig& config,
     return false;
   }
 
-  auto mkimage_path = cuttlefish::DefaultHostArtifactsPath("bin/mkenvimage");
-  cuttlefish::Command cmd(mkimage_path);
+  auto mkimage_path = DefaultHostArtifactsPath("bin/mkenvimage");
+  Command cmd(mkimage_path);
   cmd.AddParameter("-s");
   cmd.AddParameter("4096");
   cmd.AddParameter("-o");
@@ -93,15 +106,17 @@ bool InitBootloaderEnvPartition(const cuttlefish::CuttlefishConfig& config,
     return false;
   }
 
-  if(!cuttlefish::FileExists(boot_env_image_path) || cuttlefish::ReadFile(boot_env_image_path) != cuttlefish::ReadFile(tmp_boot_env_image_path)) {
-    if(!cuttlefish::RenameFile(tmp_boot_env_image_path, boot_env_image_path)) {
+  if(!FileExists(boot_env_image_path) || ReadFile(boot_env_image_path) != ReadFile(tmp_boot_env_image_path)) {
+    if(!RenameFile(tmp_boot_env_image_path, boot_env_image_path)) {
       LOG(ERROR) << "Unable to delete the old env image.";
       return false;
     }
     LOG(DEBUG) << "Updated bootloader environment image.";
   } else {
-    cuttlefish::RemoveFile(tmp_boot_env_image_path);
+    RemoveFile(tmp_boot_env_image_path);
   }
 
   return true;
 }
+
+} // namespace cuttlefish

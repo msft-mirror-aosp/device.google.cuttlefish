@@ -1,4 +1,4 @@
-/* //guest/hals/ril/libril/ril_commands.h
+/* //guest/hals/ril/reference-libril/ril_commands.h
 **
 ** Copyright 2006, The Android Open Source Project
 **
@@ -172,4 +172,15 @@
     {RIL_REQUEST_ARE_UICC_APPLICATIONS_ENABLED, radio_1_6::areUiccApplicationsEnabledResponse},
     {RIL_REQUEST_ENTER_SIM_DEPERSONALIZATION, radio_1_6::supplySimDepersonalizationResponse},
     {RIL_REQUEST_CDMA_SEND_SMS_EXPECT_MORE, radio_1_6::sendCdmaSmsExpectMoreResponse},
-    {RIL_REQUEST_GET_BARRING_INFO, radio_1_6::getBarringInfoResponse}
+    {RIL_REQUEST_GET_BARRING_INFO, radio_1_6::getBarringInfoResponse},
+    {RIL_REQUEST_ENABLE_NR_DUAL_CONNECTIVITY, radio_1_6::setNrDualConnectivityStateResponse},
+    {RIL_REQUEST_IS_NR_DUAL_CONNECTIVITY_ENABLED, radio_1_6::isNrDualConnectivityEnabledResponse},
+    {RIL_REQUEST_ALLOCATE_PDU_SESSION_ID, radio_1_6::allocatePduSessionIdResponse},
+    {RIL_REQUEST_RELEASE_PDU_SESSION_ID, radio_1_6::releasePduSessionIdResponse},
+    {RIL_REQUEST_START_HANDOVER, radio_1_6::startHandoverResponse},
+    {RIL_REQUEST_CANCEL_HANDOVER, radio_1_6::cancelHandoverResponse},
+    {RIL_REQUEST_SET_ALLOWED_NETWORK_TYPE_BITMAP, radio_1_6::setAllowedNetworkTypeBitmapResponse},
+    {RIL_REQUEST_SET_DATA_THROTTLING, radio_1_6::setDataThrottlingResponse},
+    {RIL_REQUEST_GET_SYSTEM_SELECTION_CHANNELS, radio_1_6::getSystemSelectionChannelsResponse},
+    {RIL_REQUEST_GET_ALLOWED_NETWORK_TYPE_BITMAP, radio_1_6::getAllowedNetworkTypeBitmapResponse}
+
