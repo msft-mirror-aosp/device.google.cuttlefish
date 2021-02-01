@@ -61,7 +61,7 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hardware.graphics.composer@2.4",
     "android.hardware.graphics.mapper@2.1",
     "android.hardware.graphics.mapper@3.0",
-    "android.hardware.health@1.0",
+    "android.hardware.health.storage@1.0", // converted to AIDL, see b/177470478
     "android.hardware.ir@1.0",
     "android.hardware.keymaster@3.0",
     "android.hardware.light@2.0",
@@ -71,14 +71,13 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hardware.nfc@1.2",
     "android.hardware.oemlock@1.0",
     "android.hardware.power@1.3",
-    "android.hardware.radio.config@1.2",
     "android.hardware.radio.deprecated@1.0",
     "android.hardware.renderscript@1.0",
     "android.hardware.soundtrigger@2.3",
     "android.hardware.secure_element@1.2",
     "android.hardware.sensors@1.0",
     "android.hardware.tetheroffload.config@1.0",
-    "android.hardware.tetheroffload.control@1.0",
+    "android.hardware.tetheroffload.control@1.1", // see b/170699770
     "android.hardware.thermal@1.1",
     "android.hardware.tv.cec@1.0",
     "android.hardware.tv.cec@2.0",
@@ -107,10 +106,15 @@ static const std::set<std::string> kKnownMissingAidl = {
     // b/170144267
     "android.system.keystore2.",
 
-    // The keymint service implementation is in progress but we cannot register
-    // the service by default til all essential features landed.
-    // b/171429297
-    "android.hardware.keymint.",
+    // The default implementation is under construction. But we need this
+    // interface to implement keystore2.
+    // b/175136979
+    "android.hardware.security.secureclock.",
+
+    // The default implementation is under construction. But we need this
+    // interface to implement keystore2.
+    // b/175141176
+    "android.hardware.security.sharedsecret.",
 
     // These KeyMaster types are in an AIDL types-only HAL because they're used
     // by the Identity Credential AIDL HAL. Remove this when fully porting

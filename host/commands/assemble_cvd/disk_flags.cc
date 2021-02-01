@@ -60,6 +60,7 @@ DEFINE_string(vbmeta_image, "",
 DEFINE_string(vbmeta_system_image, "",
               "Location of cuttlefish vbmeta_system image. If empty it is assumed to "
               "be vbmeta_system.img in the directory specified by -system_image_dir.");
+DEFINE_string(esp, "", "Path to ESP partition image (FAT formatted)");
 
 DEFINE_int32(blank_metadata_image_mb, 16,
              "The size of the blank metadata image to generate, MB.");
@@ -160,6 +161,13 @@ std::vector<ImagePartition> disk_config(
     partitions.push_back(ImagePartition {
       .label = "bootloader",
       .image_file_path = FLAGS_bootloader,
+    });
+  }
+  if (!FLAGS_esp.empty()) {
+    partitions.push_back(ImagePartition {
+      .label = "esp",
+      .image_file_path = FLAGS_esp,
+      .type = kEfiSystemPartition,
     });
   }
   partitions.push_back(ImagePartition {
@@ -418,19 +426,33 @@ void CreateDynamicDiskFiles(const FetcherConfig& fetcher_config,
       SetCommandLineOptionWithMode("vendor_boot_image", new_vendor_boot_image_path.c_str(),
                                    google::FlagSettingMode::SET_FLAGS_DEFAULT);
     }
-  } else if (!FLAGS_use_bootloader && (!foreign_kernel.size() || foreign_ramdisk.size())) {
+  } else if (!FLAGS_use_bootloader) {
     // This code path is taken when the virtual device kernel is launched
     // directly by the hypervisor instead of the bootloader.
     // This code path takes care of all the ramdisk processing that the
     // bootloader normally does.
-    const std::string& vendor_ramdisk_path =
-      config->initramfs_path().size() ? config->initramfs_path()
+    bool success;
+    if (!foreign_ramdisk.size()) {
+      const std::string& vendor_ramdisk_path =
+        config->initramfs_path().size() ? config->initramfs_path()
                                       : config->vendor_ramdisk_image_path();
-    bool success = ConcatRamdisks(
-        config->final_ramdisk_path(),
-        config->ramdisk_image_path(),
-        vendor_ramdisk_path);
-    CHECK(success) << "Failed to concatenate ramdisk and vendor ramdisk";
+      success = ConcatRamdisks(
+          config->final_ramdisk_path(),
+          config->ramdisk_image_path(),
+          vendor_ramdisk_path);
+    } else {
+      std::string vendor_ramdisk_repacked_path = config->AssemblyPath("vendor_ramdisk_repacked");
+      RepackVendorRamdisk(
+          config->initramfs_path(),
+          config->vendor_ramdisk_image_path(),
+          vendor_ramdisk_repacked_path,
+          config->assembly_dir());
+      success = ConcatRamdisks(
+          config->final_ramdisk_path(),
+          config->ramdisk_image_path(),
+          vendor_ramdisk_repacked_path);
+    }
+    CHECK(success) << "Failed to concatenate boot ramdisk and vendor ramdisk";
   }
 
   if (config->decompress_kernel()) {
@@ -469,6 +491,11 @@ void CreateDynamicDiskFiles(const FetcherConfig& fetcher_config,
       CreateBlankImage(instance.sdcard_path(),
                        FLAGS_blank_sdcard_image_mb, "sdcard");
     }
+
+    const auto frp = instance.factory_reset_protected_path();
+    if (!FileExists(frp)) {
+      CreateBlankImage(frp, 1 /* mb */, "none");
+    }
   }
 
   // libavb expects to be able to read the maximum vbmeta size, so we must
@@ -485,6 +512,11 @@ void CreateDynamicDiskFiles(const FetcherConfig& fetcher_config,
   if (FLAGS_use_bootloader) {
     CHECK(FileHasContent(FLAGS_bootloader))
         << "File not found: " << FLAGS_bootloader;
+  }
+
+  if (!FLAGS_esp.empty()) {
+    CHECK(FileHasContent(FLAGS_esp))
+        << "File not found: " << FLAGS_esp;
   }
 
   if (SuperImageNeedsRebuilding(fetcher_config, *config)) {

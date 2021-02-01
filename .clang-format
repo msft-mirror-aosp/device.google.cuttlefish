@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2019 The Android Open-Source Project
+# Copyright (C) 2020 The Android Open Source Project
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,10 +14,8 @@
 # limitations under the License.
 #
 
-service vendor.health-storage-hal-1-0 /vendor/bin/hw/android.hardware.health.storage@1.0-service.cuttlefish
-    interface android.hardware.health.storage@1.0::IStorage default
-    oneshot
-    disabled
-    class hal
-    user system
-    group system
+# See https://clang.llvm.org/docs/ClangFormatStyleOptions.html for the
+# various options that can be configured and for the definitions of each
+# of the below options.
+
+BasedOnStyle: Google
