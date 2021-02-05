@@ -22,27 +22,74 @@ function ConnectToDevice(device_id) {
   keyboardCaptureButton.addEventListener('click', onKeyboardCaptureClick);
 
   const deviceScreen = document.getElementById('deviceScreen');
-  deviceScreen.addEventListener('click', onInitialClick);
   const deviceView = document.getElementById('device_view');
+  const webrtcStatusMessage = document.getElementById('webrtc_status_message');
+  const adbStatusMessage = document.getElementById('adb_status_message');
 
-  function onInitialClick(e) {
-    // This stupid thing makes sure that we disable controls after the first
-    // click... Why not just disable controls altogether you ask? Because then
-    // audio won't play because these days user-interaction is required to enable
-    // audio playback...
-    console.log('onInitialClick');
+  const deviceStatusMessage = document.getElementById('device_status_message');
+  let connectionAttemptDuration = 0;
+  const intervalMs = 500;
+  let deviceStatusEllipsisCount = 0;
+  let animateDeviceStatusMessage = setInterval(function() {
+    deviceStatusEllipsisCount = (deviceStatusEllipsisCount + 1) % 4;
+    deviceStatusMessage.textContent = 'Connecting to device'
+        + '.'.repeat(deviceStatusEllipsisCount);
 
-    deviceScreen.controls = false;
-    deviceScreen.removeEventListener('click', onInitialClick);
-  }
+    connectionAttemptDuration += intervalMs;
+    if (connectionAttemptDuration > 30000) {
+      deviceStatusMessage.textContent += '\r\n\r\nConnection should have occurred by now.'
+          + '\r\nPlease attempt to restart the guest device.'
+    } else if (connectionAttemptDuration > 15000) {
+      deviceStatusMessage.textContent += '\r\n\r\nConnection is taking longer than expected...'
+    }
+  }, intervalMs);
+
+  deviceScreen.addEventListener('loadeddata', (evt) => {
+    clearInterval(animateDeviceStatusMessage);
+    deviceStatusMessage.style.display = 'none';
+    resizeDeviceView();
+    deviceScreen.style.visibility = 'visible';
+    // Enable the buttons after the screen is visible.
+    for (const [_, button] of Object.entries(buttons)) {
+      if (!button.adb) {
+        button.button.disabled = false;
+      }
+    }
+    // Start the adb connection if it is not already started.
+    initializeAdb();
+  });
 
   let videoStream;
   let display_label;
-  let buttonsWaitingOnAdbConnection = [];
+  let buttons = {};
   let mouseIsDown = false;
   let deviceConnection;
   let touchIdSlotMap = new Map();
   let touchSlots = new Array();
+
+  function initializeAdb() {
+    init_adb(deviceConnection, function() {
+      adbStatusMessage.className = 'connected';
+      adbStatusMessage.textContent = 'adb connection established successfully.';
+      setTimeout(function() {
+        adbStatusMessage.style.visibility = 'hidden';
+      }, 5000);
+      for (const [_, button] of Object.entries(buttons)) {
+        if (button.adb) {
+          button.button.disabled = false;
+        }
+      }
+    }, function() {
+      adbStatusMessage.className = 'error';
+      adbStatusMessage.textContent = 'adb connection failed.';
+      adbStatusMessage.style.visibility = 'visible';
+      for (const [_, button] of Object.entries(buttons)) {
+        if (button.adb) {
+          button.button.disabled = true;
+        }
+      }
+    });
+  }
 
   let rotation = 0;
   let screenHasBeenResized = false;
@@ -54,10 +101,7 @@ function ConnectToDevice(device_id) {
       // Start the adb connection after receiving the BOOT_STARTED message.
       // (This is after the adbd start message. Attempting to connect
       // immediately after adbd starts causes issues.)
-      init_adb(deviceConnection);
-      for (const button of buttonsWaitingOnAdbConnection) {
-          button.disabled = false;
-      }
+      initializeAdb();
     }
     if (message_data.event == 'VIRTUAL_DEVICE_SCREEN_CHANGED') {
       if (metadata.rotation == rotation) {
@@ -124,6 +168,7 @@ function ConnectToDevice(device_id) {
     document.getElementById(parent_id).appendChild(button);
     button.title = title;
     button.dataset.command = command;
+    button.disabled = true;
     // Capture mousedown/up/out commands instead of click to enable
     // hold detection. mouseout is used to catch if the user moves the
     // mouse outside the button while holding down.
@@ -135,13 +180,14 @@ function ConnectToDevice(device_id) {
     // and https://material.io/resources/icons
     button.classList.add('material-icons');
     button.innerHTML = icon_name;
-    return button;
+    buttons[command] = { 'button': button }
+    return buttons[command];
   }
   createControlPanelButton('power', 'Power', 'power_settings_new');
   createControlPanelButton('home', 'Home', 'home');
   createControlPanelButton('menu', 'Menu', 'menu');
-  buttonsWaitingOnAdbConnection.push(
-      createControlPanelButton('rotate', 'Rotate', 'screen_rotation', onRotateButton));
+  createControlPanelButton('rotate', 'Rotate', 'screen_rotation', onRotateButton);
+  buttons['rotate'].adb = true;
   createControlPanelButton('volumemute', 'Volume Mute', 'volume_mute');
   createControlPanelButton('volumedown', 'Volume Down', 'volume_down');
   createControlPanelButton('volumeup', 'Volume Up', 'volume_up');
@@ -150,6 +196,15 @@ function ConnectToDevice(device_id) {
     wsUrl: ((location.protocol == 'http:') ? 'ws://' : 'wss://') +
       location.host + '/connect_client',
   };
+
+  function showWebrtcError() {
+    webrtcStatusMessage.style.display = 'block';
+    deviceStatusMessage.style.display = 'none';
+    deviceScreen.style.display = 'none';
+    for (const [_, button] of Object.entries(buttons)) {
+      button.button.disabled = true;
+    }
+  }
 
   import('./cf_webrtc.js')
     .then(webrtcModule => webrtcModule.Connect(device_id, options))
@@ -173,10 +228,10 @@ function ConnectToDevice(device_id) {
         for (const button of deviceConnection.description.custom_control_panel_buttons) {
           if (button.shell_command) {
             // This button's command is handled by sending an ADB shell command.
-            buttonsWaitingOnAdbConnection.push(
-                createControlPanelButton(button.command, button.title, button.icon_name,
-                    e => onCustomShellButton(button.shell_command, e),
-                    'control_panel_custom_buttons'));
+            createControlPanelButton(button.command, button.title, button.icon_name,
+                e => onCustomShellButton(button.shell_command, e),
+                'control_panel_custom_buttons');
+            buttons[button.command].adb = true;
           } else {
             // This button's command is handled by custom action server.
             createControlPanelButton(button.command, button.title, button.icon_name,
@@ -185,17 +240,28 @@ function ConnectToDevice(device_id) {
           }
         }
       }
-      // Buttons that require adb connection are disabled until VIRTUAL_DEVICE_BOOT_STARTED.
-      for (const button of buttonsWaitingOnAdbConnection) {
-        button.disabled = true;
-      }
       deviceConnection.onControlMessage(msg => onControlMessage(msg));
       // Start the screen as hidden. Only show when data is ready.
       deviceScreen.style.visibility = 'hidden';
-      deviceScreen.addEventListener('loadeddata', (evt) => {
-        resizeDeviceView();
-        deviceScreen.style.visibility = 'visible';
+      // Send an initial home button press when WebRTC connects. This is needed
+      // so that the device screen receives an initial frame even if WebRTC is
+      // connected long after the device boots up.
+      deviceConnection.sendControlMessage(JSON.stringify({
+        command: 'home',
+        state: 'down',
+      }));
+      deviceConnection.sendControlMessage(JSON.stringify({
+        command: 'home',
+        state: 'up',
+      }));
+      // Show the error message and disable buttons when the WebRTC connection fails.
+      deviceConnection.onConnectionStateChange(state => {
+        if (state == 'disconnected' || state == 'failed') {
+          showWebrtcError();
+        }
       });
+  }, rejection => {
+      showWebrtcError();
   });
 
   let hardwareDetails = '';
@@ -245,7 +311,7 @@ function ConnectToDevice(device_id) {
   function onRotateButton(e) {
     // Attempt to init adb again, in case the initial connection failed.
     // This succeeds immediately if already connected.
-    init_adb(deviceConnection);
+    initializeAdb();
     if (e.type == 'mousedown') {
       adbShell('/vendor/bin/cuttlefish_rotate ' + (rotation == 0 ? 'landscape' : 'portrait'))
     }
@@ -253,7 +319,7 @@ function ConnectToDevice(device_id) {
   function onCustomShellButton(shell_command, e) {
     // Attempt to init adb again, in case the initial connection failed.
     // This succeeds immediately if already connected.
-    init_adb(deviceConnection);
+    initializeAdb();
     if (e.type == 'mousedown') {
       adbShell(shell_command);
     }

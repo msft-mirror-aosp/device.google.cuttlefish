@@ -23,6 +23,9 @@ $(call inherit-product, $(SRC_TARGET_DIR)/product/updatable_apex.mk)
 # Enable userspace reboot
 $(call inherit-product, $(SRC_TARGET_DIR)/product/userspace_reboot.mk)
 
+# Enforce generic ramdisk allow list
+$(call inherit-product, $(SRC_TARGET_DIR)/product/generic_ramdisk.mk)
+
 PRODUCT_SOONG_NAMESPACES += device/generic/goldfish-opengl # for vulkan
 
 PRODUCT_SHIPPING_API_LEVEL := 31
@@ -52,7 +55,7 @@ AB_OTA_PARTITIONS += \
     vendor_dlkm \
 
 # Enable Virtual A/B
-$(call inherit-product, $(SRC_TARGET_DIR)/product/virtual_ab_ota/launch_with_vendor_ramdisk.mk)
+$(call inherit-product, $(SRC_TARGET_DIR)/product/virtual_ab_ota/compression.mk)
 
 # Enable Scoped Storage related
 $(call inherit-product, $(SRC_TARGET_DIR)/product/emulated_storage.mk)
@@ -64,6 +67,10 @@ PRODUCT_PRODUCT_PROPERTIES += \
     persist.adb.tcp.port=5555 \
     ro.com.google.locationfeatures=1 \
     persist.sys.fuse.passthrough.enable=true \
+
+# Storage: for factory reset protection feature
+PRODUCT_PROPERTY_OVERRIDES += \
+    ro.frp.pst=/dev/block/vdc
 
 # Explanation of specific properties:
 #   debug.hwui.swap_with_damage avoids boot failure on M http://b/25152138
@@ -83,6 +90,7 @@ PRODUCT_PROPERTY_OVERRIDES += \
     ro.hardware.keystore_desede=true \
     ro.rebootescrow.device=/dev/block/pmem0 \
     ro.incremental.enable=1 \
+    debug.c2.use_dmabufheaps=1 \
 
 # Below is a list of properties we probably should get rid of.
 PRODUCT_PROPERTY_OVERRIDES += \
@@ -93,6 +101,9 @@ ifneq ($(LOCAL_DISABLE_OMX),true)
 DEVICE_MANIFEST_FILE += \
     device/google/cuttlefish/shared/config/android.hardware.media.omx@1.0.xml
 endif
+
+PRODUCT_PROPERTY_OVERRIDES += \
+    debug.stagefright.c2inputsurface=-1
 
 # Enforce privapp permissions control.
 PRODUCT_PROPERTY_OVERRIDES += ro.control_privapp_permissions=enforce
@@ -155,6 +166,13 @@ PRODUCT_PACKAGES += \
 #
 # Packages for the OpenGL implementation
 #
+
+# ANGLE provides an OpenGL implementation built on top of Vulkan.
+PRODUCT_PACKAGES += \
+    libEGL_angle \
+    libGLESv1_CM_angle \
+    libGLESv2_angle \
+    libfeature_support_angle.so
 
 # SwiftShader provides a software-only implementation that is not thread-safe
 PRODUCT_PACKAGES += \
@@ -227,7 +245,6 @@ PRODUCT_COPY_FILES += \
     hardware/google/camera/devices/EmulatedCamera/hwl/configs/emu_camera_depth.json:$(TARGET_COPY_OUT_VENDOR)/etc/config/emu_camera_depth.json \
     device/google/cuttlefish/shared/config/init.vendor.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/hw/init.cutf_cvm.rc \
     device/google/cuttlefish/shared/config/init.product.rc:$(TARGET_COPY_OUT_PRODUCT)/etc/init/init.rc \
-    device/google/cuttlefish/shared/config/init.system_ext.rc:$(TARGET_COPY_OUT_SYSTEM_EXT)/etc/init/init.rc \
     device/google/cuttlefish/shared/config/ueventd.rc:$(TARGET_COPY_OUT_VENDOR)/ueventd.rc \
     device/google/cuttlefish/shared/config/media_codecs.xml:$(TARGET_COPY_OUT_VENDOR)/etc/media_codecs.xml \
     device/google/cuttlefish/shared/config/media_codecs_google_video.xml:$(TARGET_COPY_OUT_VENDOR)/etc/media_codecs_google_video.xml \
@@ -296,11 +313,28 @@ PRODUCT_PACKAGES += \
     android.hardware.atrace@1.0-service
 
 #
+# Weaver aidl HAL
+#
+PRODUCT_PACKAGES += \
+    android.hardware.weaver-service.example
+
+#
+# OemLock aidl HAL
+#
+PRODUCT_PACKAGES += \
+    android.hardware.oemlock-service.example
+
+#
 # Authsecret HAL
 #
 PRODUCT_PACKAGES += \
     android.hardware.authsecret@1.0-service
 
+#
+# Authsecret AIDL HAL
+#
+PRODUCT_PACKAGES += \
+    android.hardware.authsecret-service.example
 #
 # Hardware Composer HAL
 #
@@ -412,7 +446,7 @@ PRODUCT_PACKAGES += $(LOCAL_HEALTH_PRODUCT_PACKAGE)
 
 # Health Storage
 PRODUCT_PACKAGES += \
-    android.hardware.health.storage@1.0-service.cuttlefish
+    android.hardware.health.storage-service.cuttlefish
 
 # Identity Credential
 PRODUCT_PACKAGES += \
@@ -506,7 +540,12 @@ PRODUCT_PACKAGES += \
     android.hardware.memtrack-service.example
 
 # GKI APEX
-PRODUCT_PACKAGES += com.android.gki.kmi_5_4_android12_0
+PRODUCT_PACKAGES += com.android.gki.kmi_5_10_android12_0
+
+# Prevent GKI and boot image downgrades
+PRODUCT_PRODUCT_PROPERTIES += \
+    ro.build.ab_update.gki.prevent_downgrade_version=true \
+    ro.build.ab_update.gki.prevent_downgrade_spl=true \
 
 # WLAN driver configuration files
 PRODUCT_COPY_FILES += \
@@ -532,6 +571,9 @@ endif
 
 ifdef TARGET_DEDICATED_RECOVERY
 PRODUCT_BUILD_RECOVERY_IMAGE := true
+PRODUCT_PACKAGES += linker.vendor_ramdisk shell_and_utilities_vendor_ramdisk
+else
+PRODUCT_PACKAGES += linker.recovery shell_and_utilities_recovery
 endif
 
 #

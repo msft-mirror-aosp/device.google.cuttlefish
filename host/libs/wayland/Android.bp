@@ -23,7 +23,6 @@ cc_library_static {
         "wayland_server.cpp",
         "wayland_subcompositor.cpp",
         "wayland_surface.cpp",
-        "wayland_surfaces.cpp",
     ],
     shared_libs: [
         "libbase",
@@ -36,6 +35,6 @@ cc_library_static {
         "libwayland_server",
         "libwayland_extension_server_protocols",
     ],
-    defaults: ["cuttlefish_host_and_guest"],
+    defaults: ["cuttlefish_host"],
 }
 

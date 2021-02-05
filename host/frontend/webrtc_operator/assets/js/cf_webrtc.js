@@ -193,6 +193,13 @@ class DeviceConnection {
   onControlMessage(cb) {
     this._onControlMessage = cb;
   }
+
+  // Provide a callback to receive connectionstatechange states.
+  onConnectionStateChange(cb) {
+    this._pc.addEventListener(
+      'connectionstatechange',
+      evt => cb(this._pc.connectionState));
+  }
 }
 
 
@@ -236,6 +243,7 @@ class WebRTCControl {
     const type = message.message_type;
     if (message.error) {
       console.error(message.error);
+      this._on_connection_failed(message.error);
       return;
     }
     switch (type) {
@@ -255,6 +263,7 @@ class WebRTCControl {
         break;
       default:
         console.error('Unrecognized message type from server: ', type);
+        this._on_connection_failed('Unrecognized message type from server: ' + type);
         console.error(message);
     }
   }
@@ -307,6 +316,7 @@ class WebRTCControl {
         deviceInfo,
         infraConfig: this._infra_config,
       });
+      this._on_connection_failed = (error) => reject(error);
       this._wsSendJson({
         message_type: 'connect',
         device_id,

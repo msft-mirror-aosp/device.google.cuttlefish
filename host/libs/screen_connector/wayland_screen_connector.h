@@ -16,7 +16,7 @@
 
 #pragma once
 
-#include "host/libs/screen_connector/screen_connector.h"
+#include "host/libs/screen_connector/screen_connector_common.h"
 
 #include <memory>
 
@@ -24,13 +24,14 @@
 
 namespace cuttlefish {
 
-class WaylandScreenConnector : public ScreenConnector {
+class WaylandScreenConnector : public ScreenConnectorSource {
  public:
   WaylandScreenConnector(int frames_fd);
 
-  bool OnNextFrame(const FrameCallback& frame_callback) override;
+  bool OnFrameAfter(std::uint32_t frame_number,
+                    const GenerateProcessedFrameCallbackImpl& frame_callback) override;
 
- private:
+private:
   std::unique_ptr<wayland::WaylandServer> server_;
 };
 

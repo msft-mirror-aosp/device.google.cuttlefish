@@ -56,9 +56,6 @@ int InstanceFromEnvironment() {
       return kDefaultInstance;
     }
     instance_str += sizeof(kVsocUserPrefix) - 1;
-
-    // Set the environment variable so that child processes see it
-    setenv(kInstanceEnvironmentVariable, instance_str, 0);
   }
 
   int instance = std::atoi(instance_str);
@@ -918,6 +915,11 @@ int GetDefaultVsockCid() {
   // we assume that this function is used to configure CuttlefishConfig once
   static const int default_vsock_cid = 3 + GetInstance() - 1;
   return default_vsock_cid;
+}
+
+int GetVsockServerPort(const int base,
+                       const int vsock_guest_cid /**< per instance guest cid */) {
+    return base + (vsock_guest_cid - 3);
 }
 
 std::string GetGlobalConfigFileLink() {
