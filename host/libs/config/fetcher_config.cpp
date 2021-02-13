@@ -21,6 +21,7 @@
 #include <string>
 #include <vector>
 
+#include <android-base/strings.h>
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 #include <json/json.h>
@@ -203,9 +204,8 @@ std::string FetcherConfig::FindCvdFileWithSuffix(const std::string& suffix) cons
   }
   const auto& json_files = (*dictionary_)[kCvdFiles];
   for (auto it = json_files.begin(); it != json_files.end(); it++) {
-    auto file = it.key().asString();
-    auto expected_pos = file.size() - suffix.size();
-    if (file.rfind(suffix) == expected_pos) {
+    const auto& file = it.key().asString();
+    if (android::base::EndsWith(file, suffix)) {
       return file;
     }
   }
