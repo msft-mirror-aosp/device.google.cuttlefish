@@ -93,6 +93,7 @@ const char* kDeprecatedBootCompleted = "deprecated_boot_completed";
 
 const char* kCuttlefishEnvPath = "cuttlefish_env_path";
 
+const char* kSecureHals = "secure_hals";
 const char* kAdbMode = "adb_mode";
 const char* kSetupWizardMode = "setupwizard_mode";
 const char* kTpmDevice = "tpm_device";
@@ -138,6 +139,7 @@ const char* kBootloader = "bootloader";
 const char* kUseBootloader = "use_bootloader";
 
 const char* kBootSlot = "boot_slot";
+const char* kUseSlotSuffix = "use_slot_suffix";
 
 const char* kEnableMetrics = "enable_metrics";
 const char* kMetricsBinary = "metrics_binary";
@@ -147,6 +149,7 @@ const char* kGuestAuditSecurity = "guest_audit_security";
 const char* kGuestForceNormalBoot = "guest_force_normal_boot";
 const char* kBootImageKernelCmdline = "boot_image_kernel_cmdline";
 const char* kExtraKernelCmdline = "extra_kernel_cmdline";
+const char* kEnableRootcanal = "enable_rootcanal";
 
 // modem simulator related
 const char* kRunModemSimulator = "enable_modem_simulator";
@@ -369,6 +372,33 @@ void CuttlefishConfig::set_adb_mode(const std::set<std::string>& mode) {
   (*dictionary_)[kAdbMode] = mode_json_obj;
 }
 
+static SecureHal StringToSecureHal(std::string mode) {
+  std::transform(mode.begin(), mode.end(), mode.begin(), ::tolower);
+  if (mode == "keymint") {
+    return SecureHal::Keymint;
+  } else if (mode == "gatekeeper") {
+    return SecureHal::Gatekeeper;
+  } else {
+    return SecureHal::Unknown;
+  }
+}
+
+std::set<SecureHal> CuttlefishConfig::secure_hals() const {
+  std::set<SecureHal> args_set;
+  for (auto& hal : (*dictionary_)[kSecureHals]) {
+    args_set.insert(StringToSecureHal(hal.asString()));
+  }
+  return args_set;
+}
+
+void CuttlefishConfig::set_secure_hals(const std::set<std::string>& hals) {
+  Json::Value hals_json_obj(Json::arrayValue);
+  for (const auto& hal : hals) {
+    hals_json_obj.append(hal);
+  }
+  (*dictionary_)[kSecureHals] = hals_json_obj;
+}
+
 std::string CuttlefishConfig::setupwizard_mode() const {
   return (*dictionary_)[kSetupWizardMode].asString();
 }
@@ -564,6 +594,14 @@ std::string CuttlefishConfig::boot_slot() const {
   return (*dictionary_)[kBootSlot].asString();
 }
 
+void CuttlefishConfig::set_use_slot_suffix(const bool use_slot_suffix) {
+  (*dictionary_)[kUseSlotSuffix] = use_slot_suffix;
+}
+
+bool CuttlefishConfig::use_slot_suffix() const {
+  return (*dictionary_)[kUseSlotSuffix].asBool();
+}
+
 void CuttlefishConfig::set_webrtc_certs_dir(const std::string& certs_dir) {
   (*dictionary_)[kWebRTCCertsDir] = certs_dir;
 }
@@ -708,6 +746,13 @@ void CuttlefishConfig::set_guest_force_normal_boot(bool guest_force_normal_boot)
 }
 bool CuttlefishConfig::guest_force_normal_boot() const {
   return (*dictionary_)[kGuestForceNormalBoot].asBool();
+}
+
+void CuttlefishConfig::set_enable_rootcanal(bool enable_rootcanal) {
+  (*dictionary_)[kEnableRootcanal] = enable_rootcanal;
+}
+bool CuttlefishConfig::enable_rootcanal() const {
+  return (*dictionary_)[kEnableRootcanal].asBool();
 }
 
 void CuttlefishConfig::set_enable_metrics(std::string enable_metrics) {
@@ -951,6 +996,14 @@ int GetDefaultPerInstanceVsockCid() {
 std::string DefaultHostArtifactsPath(const std::string& file_name) {
   return (StringFromEnv("ANDROID_SOONG_HOST_OUT", StringFromEnv("HOME", ".")) + "/") +
          file_name;
+}
+
+std::string HostBinaryPath(const std::string& binary_name) {
+#ifdef __ANDROID__
+  return binary_name;
+#else
+  return DefaultHostArtifactsPath("bin/" + binary_name);
+#endif
 }
 
 std::string DefaultGuestImagePath(const std::string& file_name) {

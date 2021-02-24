@@ -64,6 +64,10 @@ const char* kWifiMacAddress = "wifi_mac_address";
 const char* kGnssGrpcProxyServerPort = "gnss_grpc_proxy_server_port";
 const char* kGnssFilePath = "gnss_file_path";
 
+const char* kRootcanalHciPort = "rootcanal_hci_port";
+const char* kRootcanalLinkPort = "rootcanal_link_port";
+const char* kRootcanalTestPort = "rootcanal_test_port";
+
 }  // namespace
 
 Json::Value* CuttlefishConfig::MutableInstanceSpecific::Dictionary() {
@@ -371,6 +375,33 @@ void CuttlefishConfig::MutableInstanceSpecific::set_config_server_port(int confi
   (*Dictionary())[kConfigServerPort] = config_server_port;
 }
 
+int CuttlefishConfig::InstanceSpecific::rootcanal_hci_port() const {
+  return (*Dictionary())[kRootcanalHciPort].asInt();
+}
+
+void CuttlefishConfig::MutableInstanceSpecific::set_rootcanal_hci_port(
+    int rootcanal_hci_port) {
+  (*Dictionary())[kRootcanalHciPort] = rootcanal_hci_port;
+}
+
+int CuttlefishConfig::InstanceSpecific::rootcanal_link_port() const {
+  return (*Dictionary())[kRootcanalLinkPort].asInt();
+}
+
+void CuttlefishConfig::MutableInstanceSpecific::set_rootcanal_link_port(
+    int rootcanal_link_port) {
+  (*Dictionary())[kRootcanalLinkPort] = rootcanal_link_port;
+}
+
+int CuttlefishConfig::InstanceSpecific::rootcanal_test_port() const {
+  return (*Dictionary())[kRootcanalTestPort].asInt();
+}
+
+void CuttlefishConfig::MutableInstanceSpecific::set_rootcanal_test_port(
+    int rootcanal_test_port) {
+  (*Dictionary())[kRootcanalTestPort] = rootcanal_test_port;
+}
+
 void CuttlefishConfig::MutableInstanceSpecific::set_webrtc_device_id(
     const std::string& id) {
   (*Dictionary())[kWebrtcDeviceId] = id;
@@ -442,7 +473,7 @@ std::string CuttlefishConfig::InstanceSpecific::PerInstanceInternalPath(
 }
 
 std::string CuttlefishConfig::InstanceSpecific::instance_name() const {
-  return ForCurrentInstance("cvd-");
+  return "cvd-" + id_;
 }
 
 }  // namespace cuttlefish

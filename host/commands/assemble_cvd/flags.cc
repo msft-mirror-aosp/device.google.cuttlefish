@@ -32,6 +32,7 @@
 #include "host/libs/vm_manager/vm_manager.h"
 
 using cuttlefish::DefaultHostArtifactsPath;
+using cuttlefish::HostBinaryPath;
 using cuttlefish::StringFromEnv;
 using cuttlefish::vm_manager::CrosvmManager;
 using google::FlagSettingMode::SET_FLAGS_DEFAULT;
@@ -39,7 +40,7 @@ using google::FlagSettingMode::SET_FLAGS_DEFAULT;
 DEFINE_string(config, "phone",
               "Config preset name. Will automatically set flag fields "
               "using the values from this file of presets. Possible values: "
-              "phone,tablet,auto,tv");
+              "phone,tablet,foldable,auto,tv");
 
 DEFINE_int32(cpus, 2, "Virtual CPU count.");
 DEFINE_string(data_policy, "use_existing", "How to handle userdata partition."
@@ -97,6 +98,7 @@ DEFINE_bool(enable_minimal_mode, false,
 DEFINE_bool(pause_in_bootloader, false,
             "Stop the bootflow in u-boot. You can continue the boot by connecting "
             "to the device console and typing in \"boot\".");
+DEFINE_bool(enable_rootcanal, false, "Enables the root-canal service");
 
 /**
  *
@@ -213,7 +215,7 @@ DEFINE_string(setupwizard_mode, "DISABLED",
 DEFINE_string(qemu_binary,
               "/usr/bin/qemu-system-x86_64",
               "The qemu binary to use");
-DEFINE_string(crosvm_binary, DefaultHostArtifactsPath("bin/crosvm"),
+DEFINE_string(crosvm_binary, HostBinaryPath("crosvm"),
               "The Crosvm binary to use");
 DEFINE_string(tpm_device, "", "A host TPM device to pass through commands to.");
 DEFINE_bool(restart_subprocesses, true, "Restart any crashed host process");
@@ -223,18 +225,21 @@ DEFINE_string(custom_action_config, "",
               "Path to a custom action config JSON. Defaults to the file provided by "
               "build variable CVD_CUSTOM_ACTION_CONFIG. If this build variable "
               "is empty then the custom action config will be empty as well.");
-DEFINE_string(
-    custom_actions, "",
-    "Serialized JSON of an array of custom action objects (in the same format as custom "
-    "action config JSON files). For use within --config preset config files; prefer "
-    "--custom_action_config to specify a custom config file on the command line. "
-    "--custom_action_config takes precedence over this flag if provided.");
+DEFINE_string(custom_actions, "",
+              "Serialized JSON of an array of custom action objects (in the "
+              "same format as custom action config JSON files). For use "
+              "within --config preset config files; prefer "
+              "--custom_action_config to specify a custom config file on the "
+              "command line. Actions in this flag are combined with actions "
+              "in --custom_action_config.");
 DEFINE_bool(use_bootloader, true, "Boots the device using a bootloader");
 DEFINE_string(bootloader, "", "Bootloader binary path");
 DEFINE_string(boot_slot, "", "Force booting into the given slot. If empty, "
              "the slot will be chosen based on the misc partition if using a "
              "bootloader. It will default to 'a' if empty and not using a "
              "bootloader.");
+DEFINE_bool(use_slot_suffix, true, "Whether to pass the slot_suffix kernel "
+            "parameter if not using a bootloader.");
 DEFINE_int32(num_instances, 1, "Number of Android guests to launch");
 DEFINE_string(report_anonymous_usage_stats, "", "Report anonymous usage "
             "statistics for metrics collection and analysis.");
@@ -280,6 +285,10 @@ DEFINE_int32(vsock_guest_cid,
              "The same formula holds when --vsock_guest_cid=C is given, for algorithm's sake."
              "Each vsock server port number is base + C - 3.");
 
+DEFINE_string(secure_hals, "keymint,gatekeeper",
+              "Which HALs to use enable host security features for. Supports "
+              "keymint and gatekeeper at the moment.");
+
 DECLARE_string(system_image_dir);
 
 namespace cuttlefish {
@@ -320,42 +329,6 @@ std::string StrForInstance(const std::string& prefix, int num) {
   return stream.str();
 }
 
-bool ShouldEnableAcceleratedRendering(const GraphicsAvailability& availability) {
-  return availability.has_egl &&
-         availability.has_egl_surfaceless_with_gles &&
-         availability.has_discrete_gpu;
-}
-
-// Runs GetGraphicsAvailability() inside of a subprocess to ensure that
-// GetGraphicsAvailability() can complete successfully without crashing
-// assemble_cvd. Configurations such as GCE instances without a GPU but with GPU
-// drivers for example have seen crashes.
-GraphicsAvailability GetGraphicsAvailabilityWithSubprocessCheck() {
-  const std::string detect_graphics_bin =
-      DefaultHostArtifactsPath("bin/detect_graphics");
-
-  Command detect_graphics_cmd(detect_graphics_bin);
-
-  SubprocessOptions detect_graphics_options;
-  detect_graphics_options.Verbose(false);
-
-  std::string detect_graphics_output;
-  std::string detect_graphics_error;
-  int ret = RunWithManagedStdio(std::move(detect_graphics_cmd),
-                                nullptr,
-                                &detect_graphics_output,
-                                &detect_graphics_error,
-                                detect_graphics_options);
-  if (ret == 0) {
-    return GetGraphicsAvailability();
-  }
-  LOG(VERBOSE) << "Subprocess for detect_graphics failed with "
-               << ret
-               << " : "
-               << detect_graphics_output;
-  return GraphicsAvailability{};
-}
-
 } // namespace
 
 CuttlefishConfig InitializeCuttlefishConfiguration(
@@ -378,7 +351,7 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
   const GraphicsAvailability graphics_availability =
     GetGraphicsAvailabilityWithSubprocessCheck();
 
-  LOG(VERBOSE) << GetGraphicsAvailabilityString(graphics_availability);
+  LOG(VERBOSE) << graphics_availability;
 
   tmp_config_obj.set_gpu_mode(FLAGS_gpu_mode);
 
@@ -439,6 +412,10 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
   tmp_config_obj.set_display_configs(display_configs);
   tmp_config_obj.set_dpi(FLAGS_dpi);
   tmp_config_obj.set_refresh_rate_hz(FLAGS_refresh_rate_hz);
+
+  auto secure_hals = android::base::Split(FLAGS_secure_hals, ",");
+  tmp_config_obj.set_secure_hals(
+      std::set<std::string>(secure_hals.begin(), secure_hals.end()));
 
   tmp_config_obj.set_gdb_flag(FLAGS_qemu_gdb);
   std::vector<std::string> adb = android::base::Split(FLAGS_adb_mode, ",");
@@ -546,7 +523,7 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
 
   tmp_config_obj.set_enable_vehicle_hal_grpc_server(FLAGS_enable_vehicle_hal_grpc_server);
   tmp_config_obj.set_vehicle_hal_grpc_server_binary(
-      DefaultHostArtifactsPath("bin/android.hardware.automotive.vehicle@2.0-virtualization-grpc-server"));
+      HostBinaryPath("android.hardware.automotive.vehicle@2.0-virtualization-grpc-server"));
 
   std::string custom_action_config;
   if (!FLAGS_custom_action_config.empty()) {
@@ -569,6 +546,7 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
       }
     }
   }
+  std::vector<CustomActionConfig> custom_actions;
   Json::Reader reader;
   Json::Value custom_action_array(Json::arrayValue);
   if (custom_action_config != "") {
@@ -579,16 +557,19 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
                  << custom_action_config << ": "
                  << reader.getFormattedErrorMessages();
     }
-  } else if (FLAGS_custom_actions != "") {
+    for (const auto& custom_action : custom_action_array) {
+      custom_actions.push_back(CustomActionConfig(custom_action));
+    }
+  }
+  if (FLAGS_custom_actions != "") {
     // Load the custom action from the --config preset file.
     if (!reader.parse(FLAGS_custom_actions, custom_action_array)) {
       LOG(FATAL) << "Could not read custom actions config flag: "
                  << reader.getFormattedErrorMessages();
     }
-  }
-  std::vector<CustomActionConfig> custom_actions;
-  for (Json::Value custom_action : custom_action_array) {
-    custom_actions.push_back(CustomActionConfig(custom_action));
+    for (const auto& custom_action : custom_action_array) {
+      custom_actions.push_back(CustomActionConfig(custom_action));
+    }
   }
   tmp_config_obj.set_custom_actions(custom_actions);
 
@@ -600,6 +581,7 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
   if (!FLAGS_boot_slot.empty()) {
       tmp_config_obj.set_boot_slot(FLAGS_boot_slot);
   }
+  tmp_config_obj.set_use_slot_suffix(FLAGS_use_slot_suffix);
 
   tmp_config_obj.set_cuttlefish_env_path(GetCuttlefishEnvPath());
 
@@ -611,6 +593,8 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
   tmp_config_obj.set_record_screen(FLAGS_record_screen);
 
   tmp_config_obj.set_ethernet(FLAGS_ethernet);
+
+  tmp_config_obj.set_enable_rootcanal(FLAGS_enable_rootcanal);
 
   std::vector<int> num_instances;
   for (int i = 0; i < FLAGS_num_instances; i++) {
@@ -683,6 +667,10 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
       instance.set_gnss_file_path(gnss_file_paths[num-1]);
     }
 
+    instance.set_rootcanal_hci_port(7300 + num - 1);
+    instance.set_rootcanal_link_port(7400 + num - 1);
+    instance.set_rootcanal_test_port(7500 + num - 1);
+
     instance.set_device_title(FLAGS_device_title);
 
     instance.set_virtual_disk_paths({
@@ -745,10 +733,7 @@ void SetDefaultFlagsFromConfigPreset() {
   std::string config_preset = FLAGS_config;  // The name of the preset config.
   std::string config_file_path;  // The path to the preset config JSON.
   const std::set<std::string> allowed_config_presets = {
-      "phone",
-      "tablet",
-      "tv",
-      "auto",
+      "phone", "tablet", "foldable", "tv", "auto",
   };
 
   // If the user specifies a --config name, then use that config
