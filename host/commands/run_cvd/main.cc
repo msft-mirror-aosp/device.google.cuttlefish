@@ -575,9 +575,6 @@ int main(int argc, char** argv) {
   auto tombstone_server = LaunchTombstoneReceiverIfEnabled(*config, &process_monitor);
   auto tombstone_kernel_args = KernelCommandLineFromTombstone(tombstone_server);
 
-  auto secure_env = LaunchSecureEnvironment(&process_monitor, *config);
-  auto secure_env_args = KernelCommandLineFromSecureEnv(secure_env);
-
   LaunchVerhicleHalServerIfEnabled(*config, &process_monitor);
   LaunchConsoleForwarderIfEnabled(*config, &process_monitor);
 
@@ -600,8 +597,6 @@ int main(int argc, char** argv) {
   kernel_args.insert(kernel_args.end(), tombstone_kernel_args.begin(),
                      tombstone_kernel_args.end());
   kernel_args.insert(kernel_args.end(), config_server_args.begin(), config_server_args.end());
-  kernel_args.insert(kernel_args.end(), secure_env_args.begin(),
-                     secure_env_args.end());
 
   // Start the guest VM
   vm_manager->WithFrontend(streamer_config.launched);

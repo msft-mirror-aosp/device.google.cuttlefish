@@ -60,12 +60,3 @@ void LaunchVerhicleHalServerIfEnabled(const cuttlefish::CuttlefishConfig& config
 
 void LaunchConsoleForwarderIfEnabled(const cuttlefish::CuttlefishConfig& config,
                                      cuttlefish::ProcessMonitor* process_monitor);
-
-struct SecureEnvironmentPorts {
-  unsigned int server_keymaster_port;
-  unsigned int server_gatekeeper_port;
-};
-
-SecureEnvironmentPorts LaunchSecureEnvironment(
-    cuttlefish::ProcessMonitor* process_monitor,
-    const cuttlefish::CuttlefishConfig& config);

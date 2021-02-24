@@ -65,7 +65,6 @@ cvd_host_executables := \
     tapsetiff \
     newfs_msdos \
     modem_simulator \
-    secure_env \
 
 ifneq ($(wildcard device/google/trout),)
     cvd_host_executables += android.hardware.automotive.vehicle@2.0-virtualization-grpc-server
@@ -114,18 +113,6 @@ cvd_host_shared_libraries := \
     libgrpc++.so \
     android.hardware.automotive.vehicle@2.0.so \
     libxml2.so \
-    libkeymaster_messages.so \
-    libkeymaster_portable.so \
-    libsoft_attestation_cert.so \
-    libcuttlefish_security.so \
-    tpm2-tss2-esys.so \
-    tpm2-tss2-mu.so \
-    tpm2-tss2-rc.so \
-    tpm2-tss2-sys.so \
-    tpm2-tss2-tcti.so \
-    tpm2-tss2-util.so \
-    libgatekeeper.so \
-    ms-tpm-20-ref-lib.so \
 
 webrtc_assets := \
     index.html \
