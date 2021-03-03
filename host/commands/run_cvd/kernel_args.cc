@@ -149,10 +149,3 @@ std::vector<std::string> KernelCommandLineFromConfigServer(const ConfigServerPor
     concat("androidboot.cuttlefish_config_server_port=", *config_server.server_vsock_port),
   };
 }
-
-std::vector<std::string> KernelCommandLineFromSecureEnv(const SecureEnvironmentPorts& config_server) {
-  return {
-    concat("androidboot.vsock_keymaster_port=", config_server.server_keymaster_port),
-    concat("androidboot.vsock_gatekeeper_port=", config_server.server_gatekeeper_port),
-  };
-}
