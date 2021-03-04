@@ -90,8 +90,6 @@ cvd_host_shared_libraries := \
     liblog.so \
     libnl.so \
     libc++.so \
-    libcutils.so \
-    libpuresoftkeymasterdevice_host.so \
     liblp.so \
     libsparse-host.so \
     libcrypto-host.so \
