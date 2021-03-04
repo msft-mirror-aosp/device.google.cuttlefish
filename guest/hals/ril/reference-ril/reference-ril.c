@@ -1331,6 +1331,11 @@ error:
  */
 static int networkModePossible(ModemInfo *mdm, int nm)
 {
+    const int asize = sizeof(net2modem) / sizeof(net2modem[0]);
+    if (nm >= asize || nm < 0) {
+        RLOGW("%s %d: invalid net2modem index: %d", __func__, __LINE__, nm);
+        return 0;
+    }
     if ((net2modem[nm] & mdm->supportedTechs) == net2modem[nm]) {
        return 1;
     }
@@ -1344,8 +1349,18 @@ int getPreferredFromBitmap(int value, int *index) {
             return s_networkMask[i].type;
         }
     }
+    // set default value here, since there is no match found
+    // ref.
+    //{LTE | GSM | WCDMA,               MDM_LTE | MDM_GSM | MDM_WCDMA},             // 9 - LTE, GSM/WCDMA
+    //
+    const int DEFAULT_PREFERRED_INDEX = 9;
+    const int DEFAULT_PREFERRED_BITMAP = MDM_LTE | MDM_GSM | MDM_WCDMA;
+    assert(s_networkMask[DEFAULT_PREFERRED_INDEX] == DEFAULT_PREFERRED_BITMAP);
+    if (index) {
+        *index = DEFAULT_PREFERRED_INDEX;
+    }
     RLOGD("getPreferredFromBitmap %d not match", value);
-    return  MDM_LTE | MDM_GSM | MDM_WCDMA;
+    return  DEFAULT_PREFERRED_BITMAP;
 }
 
 unsigned getBitmapFromPreferred(int value) {
@@ -4825,6 +4840,9 @@ onRequest (int request, void *data, size_t datalen, RIL_Token t)
             requestGetPreferredNetworkType(request, data, datalen, t);
             break;
         case RIL_REQUEST_SET_SYSTEM_SELECTION_CHANNELS:
+            RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
+            break;
+        case RIL_REQUEST_GET_SLICING_CONFIG:
             RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
             break;
 

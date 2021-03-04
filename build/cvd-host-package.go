@@ -50,14 +50,21 @@ var cvdHostPackageDependencyTag = dependencyTag{}
 func (c *cvdHostPackage) DepsMutator(ctx android.BottomUpMutatorContext) {
 	c.AddDeps(ctx, cvdHostPackageDependencyTag)
 
+	variations := []blueprint.Variation{
+		{Mutator: "os", Variation: ctx.Target().Os.String()},
+		{Mutator: "arch", Variation: android.Common.String()},
+	}
+	for _, dep := range strings.Split(
+		ctx.Config().VendorConfig("cvd").String("launch_configs"), " ") {
+		if ctx.OtherModuleExists(dep) {
+			ctx.AddVariationDependencies(variations, cvdHostPackageDependencyTag, dep)
+		}
+	}
+
 	// If cvd_custom_action_config is set, include custom action servers in the
 	// host package as specified by cvd_custom_action_servers.
 	customActionConfig := ctx.Config().VendorConfig("cvd").String("custom_action_config")
 	if customActionConfig != "" && ctx.OtherModuleExists(customActionConfig) {
-		variations := []blueprint.Variation{
-			{Mutator: "os", Variation: ctx.Target().Os.String()},
-			{Mutator: "arch", Variation: android.Common.String()},
-		}
 		ctx.AddVariationDependencies(variations, cvdHostPackageDependencyTag,
 			customActionConfig)
 		for _, dep := range strings.Split(
@@ -72,18 +79,18 @@ func (c *cvdHostPackage) DepsMutator(ctx android.BottomUpMutatorContext) {
 var pctx = android.NewPackageContext("android/soong/cuttlefish")
 
 func (c *cvdHostPackage) GenerateAndroidBuildActions(ctx android.ModuleContext) {
-	zipFile := android.PathForModuleOut(ctx, "package.zip").OutputPath
+	zipFile := android.PathForModuleOut(ctx, "package.zip")
 	c.CopyDepsToZip(ctx, zipFile)
 
 	// Dir where to extract the zip file and construct the final tar.gz from
-	packageDir := android.PathForModuleOut(ctx, ".temp").OutputPath
+	packageDir := android.PathForModuleOut(ctx, ".temp")
 	builder := android.NewRuleBuilder(pctx, ctx)
 	builder.Command().
 		BuiltTool("zipsync").
 		FlagWithArg("-d ", packageDir.String()).
 		Input(zipFile)
 
-	output := android.PathForModuleOut(ctx, "package.tar.gz").OutputPath
+	output := android.PathForModuleOut(ctx, "package.tar.gz")
 	builder.Command().Text("tar Scfz").
 		Output(output).
 		FlagWithArg("-C ", packageDir.String()).

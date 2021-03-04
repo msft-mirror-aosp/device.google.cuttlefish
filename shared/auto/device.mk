@@ -44,7 +44,7 @@ PRODUCT_COPY_FILES += \
     frameworks/native/data/etc/android.software.activities_on_secondary_displays.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.activities_on_secondary_displays.xml \
     frameworks/native/data/etc/car_core_hardware.xml:system/etc/permissions/car_core_hardware.xml \
 
-PRODUCT_PROPERTY_OVERRIDES += \
+PRODUCT_VENDOR_PROPERTIES += \
     keyguard.no_require_sim=true \
     ro.cdma.home.operator.alpha=Android \
     ro.cdma.home.operator.numeric=302780 \
@@ -90,6 +90,8 @@ $(call inherit-product, packages/services/Car/car_product/build/car.mk)
 PRODUCT_BRAND := generic
 
 DEVICE_PACKAGE_OVERLAYS += device/google/cuttlefish/shared/auto/overlay
+
+TARGET_BOARD_INFO_FILE ?= device/google/cuttlefish/shared/auto/android-info.txt
 
 PRODUCT_ENFORCE_RRO_TARGETS := framework-res
 

@@ -51,11 +51,14 @@ DEFINE_int32(base_instance_num,
              " is used, N instance numbers are claimed starting at this number.");
 DEFINE_string(verbosity, "INFO", "Console logging verbosity. Options are VERBOSE,"
                                  "DEBUG,INFO,WARNING,ERROR");
+DEFINE_string(file_verbosity, "DEBUG",
+              "Log file logging verbosity. Options are VERBOSE,DEBUG,INFO,"
+              "WARNING,ERROR");
 
 namespace {
 
-std::string kAssemblerBin = cuttlefish::DefaultHostArtifactsPath("bin/assemble_cvd");
-std::string kRunnerBin = cuttlefish::DefaultHostArtifactsPath("bin/run_cvd");
+std::string kAssemblerBin = cuttlefish::HostBinaryPath("assemble_cvd");
+std::string kRunnerBin = cuttlefish::HostBinaryPath("run_cvd");
 
 cuttlefish::Subprocess StartAssembler(cuttlefish::SharedFD assembler_stdin,
                                cuttlefish::SharedFD assembler_stdout,
@@ -168,6 +171,7 @@ int main(int argc, char** argv) {
   gflags::HandleCommandLineHelpFlags();
 
   setenv("CF_CONSOLE_SEVERITY", FLAGS_verbosity.c_str(), /* replace */ false);
+  setenv("CF_FILE_SEVERITY", FLAGS_file_verbosity.c_str(), /* replace */ false);
 
   auto use_metrics = FLAGS_report_anonymous_usage_stats;
   FLAGS_report_anonymous_usage_stats = ValidateMetricsConfirmation(use_metrics);

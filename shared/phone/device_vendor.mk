@@ -26,7 +26,7 @@ PRODUCT_COPY_FILES += \
 $(call inherit-product, frameworks/native/build/phone-xhdpi-2048-dalvik-heap.mk)
 $(call inherit-product, device/google/cuttlefish/shared/device.mk)
 
-PRODUCT_PROPERTY_OVERRIDES += \
+PRODUCT_VENDOR_PROPERTIES += \
     keyguard.no_require_sim=true \
     ro.cdma.home.operator.alpha=Android \
     ro.cdma.home.operator.numeric=302780 \
@@ -48,3 +48,5 @@ PRODUCT_COPY_FILES += \
     frameworks/native/data/etc/android.hardware.telephony.ims.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.telephony.ims.xml
 
 DEVICE_PACKAGE_OVERLAYS += device/google/cuttlefish/shared/phone/overlay
+
+TARGET_BOARD_INFO_FILE ?= device/google/cuttlefish/shared/phone/android-info.txt

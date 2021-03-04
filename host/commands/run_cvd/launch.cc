@@ -113,6 +113,17 @@ void CreateStreamerServers(Command* cmd, const CuttlefishConfig& config) {
     return;
   }
   cmd->AddParameter("-frame_server_fd=", frames_server);
+
+  if (config.enable_audio()) {
+    auto path = config.ForDefaultInstance().audio_server_path();
+    auto audio_server =
+      SharedFD::SocketLocalServer(path.c_str(), false, SOCK_SEQPACKET, 0666);
+    if (!audio_server->IsOpen()) {
+      LOG(ERROR) << "Could not create audio server: " << audio_server->StrError();
+      return;
+    }
+    cmd->AddParameter("--audio_server_fd=", audio_server);
+  }
 }
 
 }  // namespace
@@ -159,6 +170,26 @@ std::vector<SharedFD> LaunchKernelLogMonitor(
   process_monitor->AddCommand(std::move(command));
 
   return ret;
+}
+
+void LaunchRootCanal(const CuttlefishConfig& config,
+                     ProcessMonitor* process_monitor) {
+  if (!config.enable_rootcanal()) {
+    return;
+  }
+
+  auto instance = config.ForDefaultInstance();
+  Command command(RootCanalBinary());
+
+  // Test port
+  command.AddParameter(instance.rootcanal_test_port());
+  // HCI server port
+  command.AddParameter(instance.rootcanal_hci_port());
+  // Link server port
+  command.AddParameter(instance.rootcanal_link_port());
+
+  process_monitor->AddCommand(std::move(command));
+  return;
 }
 
 void LaunchLogcatReceiver(const CuttlefishConfig& config,
@@ -552,11 +583,19 @@ void LaunchSecureEnvironment(ProcessMonitor* process_monitor,
     fifos.push_back(fd);
   }
 
-  Command command(DefaultHostArtifactsPath("bin/secure_env"));
+  Command command(HostBinaryPath("secure_env"));
   command.AddParameter("-keymaster_fd_out=", fifos[0]);
   command.AddParameter("-keymaster_fd_in=", fifos[1]);
   command.AddParameter("-gatekeeper_fd_out=", fifos[2]);
   command.AddParameter("-gatekeeper_fd_in=", fifos[3]);
+
+  const auto& secure_hals = config.secure_hals();
+  bool secure_keymint = secure_hals.count(SecureHal::Keymint) > 0;
+  command.AddParameter("-keymint_impl=", secure_keymint ? "tpm" : "software");
+  bool secure_gatekeeper = secure_hals.count(SecureHal::Gatekeeper) > 0;
+  auto gatekeeper_impl = secure_gatekeeper ? "tpm" : "software";
+  command.AddParameter("-gatekeeper_impl=", gatekeeper_impl);
+
   process_monitor->AddCommand(std::move(command));
 }
 

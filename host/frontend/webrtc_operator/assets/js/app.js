@@ -22,7 +22,7 @@ function ConnectToDevice(device_id) {
   keyboardCaptureButton.addEventListener('click', onKeyboardCaptureClick);
 
   const deviceScreen = document.getElementById('deviceScreen');
-  deviceScreen.addEventListener('click', onInitialClick);
+  const deviceAudio = document.getElementById('deviceAudio');
   const deviceView = document.getElementById('device_view');
   const webrtcStatusMessage = document.getElementById('webrtc_status_message');
   const adbStatusMessage = document.getElementById('adb_status_message');
@@ -60,17 +60,6 @@ function ConnectToDevice(device_id) {
     initializeAdb();
   });
 
-  function onInitialClick(e) {
-    // This stupid thing makes sure that we disable controls after the first
-    // click... Why not just disable controls altogether you ask? Because then
-    // audio won't play because these days user-interaction is required to enable
-    // audio playback...
-    console.log('onInitialClick');
-
-    deviceScreen.controls = false;
-    deviceScreen.removeEventListener('click', onInitialClick);
-  }
-
   let videoStream;
   let display_label;
   let buttons = {};
@@ -79,10 +68,16 @@ function ConnectToDevice(device_id) {
   let touchIdSlotMap = new Map();
   let touchSlots = new Array();
 
-  function initializeAdb() {
-    init_adb(deviceConnection, function() {
+  let bootCompleted = false;
+  let adbConnected = false;
+  function showBootCompletion() {
+    // Screen changed messages are not reported until after boot has completed.
+    // Certain default adb buttons change screen state, so wait for boot
+    // completion before enabling these buttons.
+    if (adbConnected && bootCompleted) {
       adbStatusMessage.className = 'connected';
-      adbStatusMessage.textContent = 'adb connection established successfully.';
+      adbStatusMessage.textContent =
+          'bootup and adb connection established successfully.';
       setTimeout(function() {
         adbStatusMessage.style.visibility = 'hidden';
       }, 5000);
@@ -91,20 +86,30 @@ function ConnectToDevice(device_id) {
           button.button.disabled = false;
         }
       }
-    }, function() {
-      adbStatusMessage.className = 'error';
-      adbStatusMessage.textContent = 'adb connection failed.';
-      adbStatusMessage.style.visibility = 'visible';
-      for (const [_, button] of Object.entries(buttons)) {
-        if (button.adb) {
-          button.button.disabled = true;
-        }
-      }
-    });
+    }
   }
 
-  let rotation = 0;
-  let screenHasBeenResized = false;
+  function initializeAdb() {
+    init_adb(
+        deviceConnection,
+        function() {
+          adbConnected = true;
+          showBootCompletion();
+        },
+        function() {
+          adbStatusMessage.className = 'error';
+          adbStatusMessage.textContent = 'adb connection failed.';
+          adbStatusMessage.style.visibility = 'visible';
+          for (const [_, button] of Object.entries(buttons)) {
+            if (button.adb) {
+              button.button.disabled = true;
+            }
+          }
+        });
+  }
+
+  let currentRotation = 0;
+  let currentDisplayDetails;
   function onControlMessage(message) {
     let message_data = JSON.parse(message.data);
     console.log(message_data)
@@ -115,61 +120,57 @@ function ConnectToDevice(device_id) {
       // immediately after adbd starts causes issues.)
       initializeAdb();
     }
+    if (message_data.event == 'VIRTUAL_DEVICE_BOOT_COMPLETED') {
+      bootCompleted = true;
+      showBootCompletion();
+    }
     if (message_data.event == 'VIRTUAL_DEVICE_SCREEN_CHANGED') {
-      if (metadata.rotation == rotation) {
-        // Screen resized.
-        // Set height and width directly to provided pixel values.
-        screenHasBeenResized = true;
-        deviceScreen.style.width = rotation == 0 ? metadata.width : metadata.height;
-        deviceScreen.style.height = rotation == 0 ? metadata.height : metadata.width;
+      if (metadata.rotation != currentRotation) {
+        // Animate the screen rotation.
+        deviceScreen.style.transition = 'transform 1s';
       } else {
-        // Screen rotated.
-        rotation = metadata.rotation;
+        // Don't animate screen resizes, since these appear as odd sliding
+        // animations if the screen is rotated due to the translateY.
+        deviceScreen.style.transition = '';
       }
 
-      resizeDeviceView();
-
+      currentRotation = metadata.rotation;
       updateDeviceDisplayDetails({
         dpi: metadata.dpi,
         x_res: metadata.width,
         y_res: metadata.height
       });
+
+      resizeDeviceView();
     }
   }
 
   function resizeDeviceView() {
-    if (screenHasBeenResized) {
-      // If the screen has been manually resized before, then we lose
-      // auto-scaling of screen size based on window size.
-      if (rotation == 0) {
-        deviceScreen.style.transform = null;
-      } else if (rotation == 1) {
-        deviceScreen.style.transform = `rotateZ(-90deg) translateY(-${deviceScreen.style.width})`;
-      }
-    } else {
-      // Auto-scale the screen based on window size.
-      // Max window width of 70%, allowing space for the control panel.
-      let ww = window.innerWidth * 0.7;
-      let wh = window.innerHeight;
-      let vw = rotation == 0 ? deviceScreen.videoWidth : deviceScreen.videoHeight;
-      let vh = rotation == 0 ? deviceScreen.videoHeight : deviceScreen.videoWidth;
-      let scaling = vw * wh > vh * ww ? ww / vw : wh / vh;
-      if (rotation == 0) {
-        deviceScreen.style.transform = null;
-        deviceScreen.style.width = vw * scaling;
-        deviceScreen.style.height = vh * scaling;
-      } else if (rotation == 1) {
-        deviceScreen.style.transform =
-            `rotateZ(-90deg) translateY(-${vh * scaling}px)`;
-        // When rotated, w and h are swapped.
-        deviceScreen.style.width = vh * scaling;
-        deviceScreen.style.height = vw * scaling;
-      }
+    // Auto-scale the screen based on window size.
+    // Max window width of 70%, allowing space for the control panel.
+    let ww = window.innerWidth * 0.7;
+    let wh = window.innerHeight;
+    let vw = currentDisplayDetails.x_res;
+    let vh = currentDisplayDetails.y_res;
+    let scaling = vw * wh > vh * ww ? ww / vw : wh / vh;
+    if (currentRotation == 0) {
+      deviceScreen.style.transform = null;
+      deviceScreen.style.width = vw * scaling;
+      deviceScreen.style.height = vh * scaling;
+    } else if (currentRotation == 1) {
+      deviceScreen.style.transform =
+          `rotateZ(-90deg) translateY(-${vh * scaling}px)`;
+      // When rotated, w and h are swapped.
+      deviceScreen.style.width = vh * scaling;
+      deviceScreen.style.height = vw * scaling;
     }
+
     // Set the deviceView size so that the control panel positions itself next
     // to the screen correctly.
-    deviceView.style.width = rotation == 0 ? deviceScreen.style.width : deviceScreen.style.height;
-    deviceView.style.height= rotation == 0 ? deviceScreen.style.height : deviceScreen.style.width;
+    deviceView.style.width = currentRotation == 0 ? deviceScreen.style.width :
+                                                    deviceScreen.style.height;
+    deviceView.style.height = currentRotation == 0 ? deviceScreen.style.height :
+                                                     deviceScreen.style.width;
   }
   window.onresize = resizeDeviceView;
 
@@ -231,6 +232,12 @@ function ConnectToDevice(device_id) {
         display_label = stream_id;
         deviceScreen.srcObject = videoStream;
       }).catch(e => console.error('Unable to get display stream: ', e));
+      for (const audio_desc of devConn.description.audio_streams) {
+        let stream_id = audio_desc.stream_id;
+        devConn.getStream(stream_id).then(stream => {
+          deviceAudio.srcObject = stream;
+        }).catch(e => console.error('Unable to get audio stream: ', e));
+      }
       startMouseTracking();  // TODO stopMouseTracking() when disconnected
       updateDeviceHardwareDetails(deviceConnection.description.hardware);
       updateDeviceDisplayDetails(deviceConnection.description.displays[0]);
@@ -276,25 +283,30 @@ function ConnectToDevice(device_id) {
       showWebrtcError();
   });
 
-  let hardwareDetails = '';
-  let displayDetails = '';
+  let hardwareDetailsText = '';
+  let displayDetailsText = '';
   function updateDeviceDetailsText() {
     document.getElementById('device_details_hardware').textContent = [
-        hardwareDetails,
-        displayDetails,
+      hardwareDetailsText,
+      displayDetailsText,
     ].join('\n');
   }
   function updateDeviceHardwareDetails(hardware) {
-    let cpus = hardware.cpus;
-    let memory_mb = hardware.memory_mb;
-    hardwareDetails = `CPUs - ${cpus}\nDevice RAM - ${memory_mb}mb`;
+    let hardwareDetailsTextLines = [];
+    Object.keys(hardware).forEach(function(key) {
+      let value = hardware[key];
+      hardwareDetailsTextLines.push(`${key} - ${value}`);
+    });
+
+    hardwareDetailsText = hardwareDetailsTextLines.join('\n');
     updateDeviceDetailsText();
   }
   function updateDeviceDisplayDetails(display) {
+    currentDisplayDetails = display;
     let dpi = display.dpi;
     let x_res = display.x_res;
     let y_res = display.y_res;
-    displayDetails = `Display - ${x_res}x${y_res} (${dpi}DPI)`;
+    displayDetailsText = `Display - ${x_res}x${y_res} (${dpi}DPI)`;
     updateDeviceDetailsText();
   }
 
@@ -325,7 +337,9 @@ function ConnectToDevice(device_id) {
     // This succeeds immediately if already connected.
     initializeAdb();
     if (e.type == 'mousedown') {
-      adbShell('/vendor/bin/cuttlefish_rotate ' + (rotation == 0 ? 'landscape' : 'portrait'))
+      adbShell(
+          '/vendor/bin/cuttlefish_rotate ' +
+          (currentRotation == 0 ? 'landscape' : 'portrait'))
     }
   }
   function onCustomShellButton(shell_command, e) {

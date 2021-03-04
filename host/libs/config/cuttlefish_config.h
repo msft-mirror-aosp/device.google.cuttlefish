@@ -62,6 +62,12 @@ enum class AdbMode {
   Unknown,
 };
 
+enum class SecureHal {
+  Unknown,
+  Keymint,
+  Gatekeeper,
+};
+
 // Holds the configuration of the cuttlefish instances.
 class CuttlefishConfig {
  public:
@@ -157,6 +163,9 @@ class CuttlefishConfig {
   void set_adb_mode(const std::set<std::string>& modes);
   std::set<AdbMode> adb_mode() const;
 
+  void set_secure_hals(const std::set<std::string>& hals);
+  std::set<SecureHal> secure_hals() const;
+
   void set_setupwizard_mode(const std::string& title);
   std::string setupwizard_mode() const;
 
@@ -226,6 +235,9 @@ class CuttlefishConfig {
   void set_boot_slot(const std::string& boot_slot);
   std::string boot_slot() const;
 
+  void set_use_slot_suffix(const bool use_slot_suffix);
+  bool use_slot_suffix() const;
+
   void set_guest_enforce_security(bool guest_enforce_security);
   bool guest_enforce_security() const;
 
@@ -234,6 +246,9 @@ class CuttlefishConfig {
 
   void set_guest_force_normal_boot(bool guest_force_normal_boot);
   bool guest_force_normal_boot() const;
+
+  void set_enable_rootcanal(bool enable_rootcanal);
+  bool enable_rootcanal() const;
 
   enum Answer {
     kUnknown = 0,
@@ -246,9 +261,6 @@ class CuttlefishConfig {
 
   void set_metrics_binary(const std::string& metrics_binary);
   std::string metrics_binary() const;
-
-  void set_boot_image_kernel_cmdline(std::string boot_image_kernel_cmdline);
-  std::vector<std::string> boot_image_kernel_cmdline() const;
 
   void set_extra_kernel_cmdline(std::string extra_cmdline);
   std::vector<std::string> extra_kernel_cmdline() const;
@@ -326,6 +338,11 @@ class CuttlefishConfig {
   void set_record_screen(bool record_screen);
   bool record_screen() const;
 
+  void set_smt(bool smt);
+  bool smt() const;
+
+  bool enable_audio() const;
+
   class InstanceSpecific;
   class MutableInstanceSpecific;
 
@@ -377,6 +394,10 @@ class CuttlefishConfig {
     // Port number to connect to the gnss grpc proxy server on the host
     int gnss_grpc_proxy_server_port() const;
     std::string adb_ip_and_port() const;
+    // Port number to connect to the root-canal on the host
+    int rootcanal_hci_port() const;
+    int rootcanal_link_port() const;
+    int rootcanal_test_port() const;
     std::string adb_device_name() const;
     std::string device_title() const;
     std::string gnss_file_path() const;
@@ -434,6 +455,10 @@ class CuttlefishConfig {
 
     std::string uboot_env_image_path() const;
 
+    std::string vendor_boot_image_path() const;
+
+    std::string audio_server_path() const;
+
     // modem simulator related
     std::string modem_simulator_ports() const;
 
@@ -474,6 +499,9 @@ class CuttlefishConfig {
     void set_audiocontrol_server_port(int audiocontrol_server_port);
     void set_host_port(int host_port);
     void set_adb_ip_and_port(const std::string& ip_port);
+    void set_rootcanal_hci_port(int rootcanal_hci_port);
+    void set_rootcanal_link_port(int rootcanal_link_port);
+    void set_rootcanal_test_port(int rootcanal_test_port);
     void set_device_title(const std::string& title);
     void set_mobile_bridge_name(const std::string& mobile_bridge_name);
     void set_mobile_tap_name(const std::string& mobile_tap_name);
@@ -538,6 +566,7 @@ std::string GetDefaultMempath();
 int GetDefaultPerInstanceVsockCid();
 
 std::string DefaultHostArtifactsPath(const std::string& file);
+std::string HostBinaryPath(const std::string& file);
 std::string DefaultGuestImagePath(const std::string& file);
 std::string DefaultEnvironmentPath(const char* environment_key,
                                    const char* default_value,

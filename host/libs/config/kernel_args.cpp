@@ -146,7 +146,6 @@ std::vector<std::string> KernelCommandLineFromConfig(
   std::vector<std::string> kernel_cmdline;
 
   AppendVector(&kernel_cmdline, VmManagerKernelCmdline(config));
-  AppendVector(&kernel_cmdline, config.boot_image_kernel_cmdline());
   auto vmm = vm_manager::GetVmManager(config.vm_manager());
   AppendVector(&kernel_cmdline, vmm->ConfigureGpuMode(config.gpu_mode()));
   AppendVector(&kernel_cmdline, vmm->ConfigureBootDevices());
@@ -161,7 +160,7 @@ std::vector<std::string> KernelCommandLineFromConfig(
   kernel_cmdline.push_back(concat("androidboot.lcd_density=", config.dpi()));
   kernel_cmdline.push_back(concat(
       "androidboot.setupwizard_mode=", config.setupwizard_mode()));
-  if (!config.use_bootloader()) {
+  if (!config.use_bootloader() && config.use_slot_suffix()) {
     std::string slot_suffix;
     if (config.boot_slot().empty()) {
       slot_suffix = "_a";

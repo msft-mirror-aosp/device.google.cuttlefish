@@ -93,7 +93,11 @@ bool Stop() {
 /* static */ std::string CrosvmManager::name() { return "crosvm"; }
 
 bool CrosvmManager::IsSupported() {
+#ifdef __ANDROID__
+  return true;
+#else
   return HostSupportsQemuCli();
+#endif
 }
 
 std::vector<std::string> CrosvmManager::ConfigureGpuMode(
@@ -155,6 +159,14 @@ std::vector<Command> CrosvmManager::StartCommands(
     return KillSubprocess(proc);
   });
   crosvm_cmd.AddParameter("run");
+
+  if (!config.smt()) {
+    crosvm_cmd.AddParameter("--no-smt");
+  }
+
+  if (config.vhost_net()) {
+    crosvm_cmd.AddParameter("--vhost-net");
+  }
 
   auto display_configs = config.display_configs();
   CHECK_GE(display_configs.size(), 1);
@@ -276,7 +288,7 @@ std::vector<Command> CrosvmManager::StartCommands(
   crosvm_cmd.RedirectStdIO(Subprocess::StdIOChannel::kStdOut, log_out_wr);
   crosvm_cmd.RedirectStdIO(Subprocess::StdIOChannel::kStdErr, log_out_wr);
 
-  Command log_tee_cmd(DefaultHostArtifactsPath("bin/log_tee"));
+  Command log_tee_cmd(HostBinaryPath("log_tee"));
   log_tee_cmd.AddParameter("--process_name=crosvm");
   log_tee_cmd.AddParameter("--log_fd_in=", log_out_rd);
 
@@ -290,6 +302,11 @@ std::vector<Command> CrosvmManager::StartCommands(
   crosvm_cmd.AddParameter("--serial=hardware=virtio-console,num=5,type=file,",
                           "path=", instance.PerInstanceInternalPath("gatekeeper_fifo_vm.out"),
                           ",input=", instance.PerInstanceInternalPath("gatekeeper_fifo_vm.in"));
+
+  if (config.enable_audio()) {
+    crosvm_cmd.AddParameter("--ac97=backend=vios,capture=false,server=" +
+                            config.ForDefaultInstance().audio_server_path());
+  }
 
   // TODO(b/172286896): This is temporarily optional, but should be made
   // unconditional and moved up to the other network devices area
@@ -309,10 +326,6 @@ std::vector<Command> CrosvmManager::StartCommands(
     crosvm_cmd.AddParameter("--bios=", config.bootloader());
   } else {
     crosvm_cmd.AddParameter(config.GetKernelImageToUse());
-  }
-
-  if (config.vhost_net()) {
-    crosvm_cmd.AddParameter("--vhost-net");
   }
 
   // Only run the leases workaround if we are not using the new network
