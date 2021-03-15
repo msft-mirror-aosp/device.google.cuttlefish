@@ -39,6 +39,8 @@ TARGET_USERDATAIMAGE_FILE_SYSTEM_TYPE ?= f2fs
 TARGET_USERDATAIMAGE_PARTITION_SIZE ?= 6442450944
 
 TARGET_VULKAN_SUPPORT ?= true
+TARGET_ENABLE_HOST_BLUETOOTH_EMULATION ?= true
+TARGET_USE_BTLINUX_HAL_IMPL ?= true
 
 AB_OTA_UPDATER := true
 AB_OTA_PARTITIONS += \
@@ -70,7 +72,7 @@ PRODUCT_PRODUCT_PROPERTIES += \
 
 # Storage: for factory reset protection feature
 PRODUCT_VENDOR_PROPERTIES += \
-    ro.frp.pst=/dev/block/vdc
+    ro.frp.pst=/dev/block/vdb
 
 # Explanation of specific properties:
 #   debug.hwui.swap_with_damage avoids boot failure on M http://b/25152138
@@ -144,6 +146,7 @@ PRODUCT_PACKAGES += \
     cuttlefish_rotate \
     rename_netiface \
     setup_wifi \
+    bt_vhci_forwarder \
     socket_vsock_proxy \
     tombstone_transmit \
     tombstone_producer \
@@ -151,6 +154,15 @@ PRODUCT_PACKAGES += \
     vsoc_input_service \
     vtpm_manager \
     wpa_supplicant.vsoc.conf \
+
+SOONG_CONFIG_NAMESPACES += cvd
+SOONG_CONFIG_cvd += launch_configs
+SOONG_CONFIG_cvd_launch_configs += \
+    cvd_config_auto.json \
+    cvd_config_foldable.json \
+    cvd_config_phone.json \
+    cvd_config_tablet.json \
+    cvd_config_tv.json \
 
 #
 # Packages for AOSP-available stuff we use from the framework
@@ -260,6 +272,7 @@ PRODUCT_COPY_FILES += \
     frameworks/av/services/audiopolicy/config/default_volume_tables.xml:$(TARGET_COPY_OUT_VENDOR)/etc/default_volume_tables.xml \
     frameworks/av/services/audiopolicy/config/surround_sound_configuration_5_0.xml:$(TARGET_COPY_OUT_VENDOR)/etc/surround_sound_configuration_5_0.xml \
     frameworks/native/data/etc/android.hardware.audio.low_latency.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.audio.low_latency.xml \
+    frameworks/native/data/etc/android.hardware.bluetooth.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.bluetooth.xml \
     frameworks/native/data/etc/android.hardware.bluetooth_le.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.bluetooth_le.xml \
     frameworks/native/data/etc/android.hardware.camera.concurrent.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.camera.concurrent.xml \
     frameworks/native/data/etc/android.hardware.camera.flash-autofocus.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.camera.flash-autofocus.xml \
@@ -355,9 +368,17 @@ PRODUCT_PACKAGES += \
 #
 # Bluetooth HAL and Compatibility Bluetooth library (for older revs).
 #
-PRODUCT_PACKAGES += \
-    android.hardware.bluetooth@1.1-service.sim \
-    android.hardware.bluetooth.audio@2.1-impl
+
+ifeq ($(TARGET_ENABLE_HOST_BLUETOOTH_EMULATION),true)
+ifeq ($(TARGET_USE_BTLINUX_HAL_IMPL),true)
+    PRODUCT_PACKAGES += android.hardware.bluetooth@1.1-service.btlinux
+else
+    PRODUCT_PACKAGES += android.hardware.bluetooth@1.1-service.remote
+endif
+else
+    PRODUCT_PACKAGES += android.hardware.bluetooth@1.1-service.sim
+endif
+PRODUCT_PACKAGES += android.hardware.bluetooth.audio@2.1-impl
 
 #
 # Audio HAL

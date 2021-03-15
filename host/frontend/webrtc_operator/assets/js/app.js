@@ -22,6 +22,7 @@ function ConnectToDevice(device_id) {
   keyboardCaptureButton.addEventListener('click', onKeyboardCaptureClick);
 
   const deviceScreen = document.getElementById('deviceScreen');
+  const deviceAudio = document.getElementById('deviceAudio');
   const deviceView = document.getElementById('device_view');
   const webrtcStatusMessage = document.getElementById('webrtc_status_message');
   const adbStatusMessage = document.getElementById('adb_status_message');
@@ -231,6 +232,12 @@ function ConnectToDevice(device_id) {
         display_label = stream_id;
         deviceScreen.srcObject = videoStream;
       }).catch(e => console.error('Unable to get display stream: ', e));
+      for (const audio_desc of devConn.description.audio_streams) {
+        let stream_id = audio_desc.stream_id;
+        devConn.getStream(stream_id).then(stream => {
+          deviceAudio.srcObject = stream;
+        }).catch(e => console.error('Unable to get audio stream: ', e));
+      }
       startMouseTracking();  // TODO stopMouseTracking() when disconnected
       updateDeviceHardwareDetails(deviceConnection.description.hardware);
       updateDeviceDisplayDetails(deviceConnection.description.displays[0]);
@@ -285,9 +292,13 @@ function ConnectToDevice(device_id) {
     ].join('\n');
   }
   function updateDeviceHardwareDetails(hardware) {
-    let cpus = hardware.cpus;
-    let memory_mb = hardware.memory_mb;
-    hardwareDetailsText = `CPUs - ${cpus}\nDevice RAM - ${memory_mb}mb`;
+    let hardwareDetailsTextLines = [];
+    Object.keys(hardware).forEach(function(key) {
+      let value = hardware[key];
+      hardwareDetailsTextLines.push(`${key} - ${value}`);
+    });
+
+    hardwareDetailsText = hardwareDetailsTextLines.join('\n');
     updateDeviceDetailsText();
   }
   function updateDeviceDisplayDetails(display) {
@@ -465,7 +476,6 @@ function ConnectToDevice(device_id) {
     var idArr = [];
     var slotArr = [];
 
-    console.log('e.type: ' + e.type);
     if (eventType == "mouse" || eventType == "point") {
       xArr.push(e.offsetX);
       yArr.push(e.offsetY);
@@ -486,7 +496,6 @@ function ConnectToDevice(device_id) {
       for (var i=0; i < changes.length; i++) {
         xArr.push(changes[i].pageX - rect.left);
         yArr.push(changes[i].pageY - rect.top);
-        idArr.push(changes[i].identifier);
         if (touchIdSlotMap.has(changes[i].identifier)) {
           let slot = touchIdSlotMap.get(changes[i].identifier);
 

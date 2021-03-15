@@ -100,19 +100,23 @@ void CreateStreamerServers(Command* cmd, const CuttlefishConfig& config) {
   }
   cmd->AddParameter("-keyboard_fd=", keyboard_server);
 
-  SharedFD frames_server;
-  if (config.gpu_mode() == kGpuModeDrmVirgl ||
-      config.gpu_mode() == kGpuModeGfxStream) {
-    frames_server = CreateUnixInputServer(instance.frames_socket_path());
-  } else {
-    frames_server = SharedFD::VsockServer(instance.frames_server_port(),
-                                          SOCK_STREAM);
-  }
+  SharedFD frames_server = CreateUnixInputServer(instance.frames_socket_path());
   if (!frames_server->IsOpen()) {
     LOG(ERROR) << "Could not open frames server: " << frames_server->StrError();
     return;
   }
   cmd->AddParameter("-frame_server_fd=", frames_server);
+
+  if (config.enable_audio()) {
+    auto path = config.ForDefaultInstance().audio_server_path();
+    auto audio_server =
+      SharedFD::SocketLocalServer(path.c_str(), false, SOCK_SEQPACKET, 0666);
+    if (!audio_server->IsOpen()) {
+      LOG(ERROR) << "Could not create audio server: " << audio_server->StrError();
+      return;
+    }
+    cmd->AddParameter("--audio_server_fd=", audio_server);
+  }
 }
 
 }  // namespace
@@ -163,7 +167,7 @@ std::vector<SharedFD> LaunchKernelLogMonitor(
 
 void LaunchRootCanal(const CuttlefishConfig& config,
                      ProcessMonitor* process_monitor) {
-  if (!config.enable_rootcanal()) {
+  if (!config.enable_host_bluetooth()) {
     return;
   }
 
@@ -546,6 +550,37 @@ void LaunchGnssGrpcProxyServerIfEnabled(const CuttlefishConfig& config,
       gnss_grpc_proxy_cmd.AddParameter("--gnss_file_path=", instance.gnss_file_path());
     }
     process_monitor->AddCommand(std::move(gnss_grpc_proxy_cmd));
+}
+
+void LaunchBluetoothConnector(ProcessMonitor* process_monitor,
+                              const CuttlefishConfig& config) {
+  auto instance = config.ForDefaultInstance();
+  std::vector<std::string> fifo_paths = {
+      instance.PerInstanceInternalPath("bt_fifo_vm.in"),
+      instance.PerInstanceInternalPath("bt_fifo_vm.out"),
+  };
+  std::vector<SharedFD> fifos;
+  for (const auto& path : fifo_paths) {
+    unlink(path.c_str());
+    if (mkfifo(path.c_str(), 0660) < 0) {
+      PLOG(ERROR) << "Could not create " << path;
+      return;
+    }
+    auto fd = SharedFD::Open(path, O_RDWR);
+    if (!fd->IsOpen()) {
+      LOG(ERROR) << "Could not open " << path << ": " << fd->StrError();
+      return;
+    }
+    fifos.push_back(fd);
+  }
+
+  Command command(DefaultHostArtifactsPath("bin/bt_connector"));
+  command.AddParameter("-bt_out=", fifos[0]);
+  command.AddParameter("-bt_in=", fifos[1]);
+  command.AddParameter("-hci_port=", instance.rootcanal_hci_port());
+  command.AddParameter("-link_port=", instance.rootcanal_link_port());
+  command.AddParameter("-test_port=", instance.rootcanal_test_port());
+  process_monitor->AddCommand(std::move(command));
 }
 
 void LaunchSecureEnvironment(ProcessMonitor* process_monitor,
