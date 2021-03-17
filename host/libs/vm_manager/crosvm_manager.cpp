@@ -152,7 +152,8 @@ std::vector<std::string> CrosvmManager::ConfigureBootDevices(int num_disks) {
   }
 }
 
-std::vector<Command> CrosvmManager::StartCommands(const CuttlefishConfig& config) {
+std::vector<Command> CrosvmManager::StartCommands(
+    const CuttlefishConfig& config) {
   auto instance = config.ForDefaultInstance();
   Command crosvm_cmd(config.crosvm_binary(), [](Subprocess* proc) {
     auto stopped = Stop();
@@ -217,6 +218,11 @@ std::vector<Command> CrosvmManager::StartCommands(const CuttlefishConfig& config
 
   if (config.protected_vm()) {
     crosvm_cmd.AddParameter("--protected-vm");
+  }
+
+  if (config.gdb_port() > 0) {
+    CHECK(config.cpus() == 1) << "CPUs must be 1 for crosvm gdb mode";
+    crosvm_cmd.AddParameter("--gdb=", config.gdb_port());
   }
 
   auto display_configs = config.display_configs();

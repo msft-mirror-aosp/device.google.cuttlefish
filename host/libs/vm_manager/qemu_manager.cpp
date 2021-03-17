@@ -128,7 +128,8 @@ std::vector<std::string> QemuManager::ConfigureBootDevices(int num_disks) {
   return {"androidboot.boot_devices=pci0000:00/0000:00:" + stream.str() + ".0"};
 }
 
-std::vector<Command> QemuManager::StartCommands(const CuttlefishConfig& config) {
+std::vector<Command> QemuManager::StartCommands(
+    const CuttlefishConfig& config) {
   auto instance = config.ForDefaultInstance();
 
   auto stop = [](Subprocess* proc) {
@@ -456,9 +457,10 @@ std::vector<Command> QemuManager::StartCommands(const CuttlefishConfig& config) 
   qemu_cmd.AddParameter("-bios");
   qemu_cmd.AddParameter(config.bootloader());
 
-  if (config.gdb_flag().size() > 0) {
+  if (config.gdb_port() > 0) {
+    qemu_cmd.AddParameter("-S");
     qemu_cmd.AddParameter("-gdb");
-    qemu_cmd.AddParameter(config.gdb_flag());
+    qemu_cmd.AddParameter("tcp::", config.gdb_port());
   }
 
   LogAndSetEnv("QEMU_AUDIO_DRV", "none");
