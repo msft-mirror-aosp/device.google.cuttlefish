@@ -120,23 +120,18 @@ const CuttlefishConfig* InitFilesystemAndCreateConfig(
                << log->StrError();
   } else {
     android::base::SetLogger(TeeLogger({
-      {ConsoleSeverity(), SharedFD::Dup(2)},
-      {LogFileSeverity(), log},
+        {ConsoleSeverity(), SharedFD::Dup(2), MetadataLevel::ONLY_MESSAGE},
+        {LogFileSeverity(), log, MetadataLevel::FULL},
     }));
   }
 
-  auto boot_img_unpacker = CreateBootImageUnpacker();
   {
     // The config object is created here, but only exists in memory until the
     // SaveConfig line below. Don't launch cuttlefish subprocesses between these
     // two operations, as those will assume they can read the config object from
     // disk.
     auto config = InitializeCuttlefishConfiguration(
-        FLAGS_assembly_dir,
-        FLAGS_instance_dir,
-        FLAGS_modem_simulator_count,
-        *boot_img_unpacker,
-        fetcher_config);
+        FLAGS_assembly_dir, FLAGS_instance_dir, FLAGS_modem_simulator_count);
     std::set<std::string> preserving;
     if (FLAGS_resume && ShouldCreateAllCompositeDisks(config)) {
       LOG(INFO) << "Requested resuming a previous session (the default behavior) "
@@ -203,7 +198,7 @@ const CuttlefishConfig* InitFilesystemAndCreateConfig(
 
   ValidateAdbModeFlag(*config);
 
-  CreateDynamicDiskFiles(fetcher_config, config, boot_img_unpacker.get());
+  CreateDynamicDiskFiles(fetcher_config, config);
 
   return config;
 }

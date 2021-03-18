@@ -325,7 +325,7 @@ static const struct RIL_Env *s_rilenv;
 
 static RIL_RadioState sState = RADIO_STATE_UNAVAILABLE;
 static bool isNrDualConnectivityEnabled = true;
-static unsigned int allowedNetworkTypeBitmap = UINT_MAX;
+static unsigned int allowedNetworkTypesBitmap = UINT_MAX;
 
 static pthread_mutex_t s_state_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t s_state_cond = PTHREAD_COND_INITIALIZER;
@@ -1331,6 +1331,11 @@ error:
  */
 static int networkModePossible(ModemInfo *mdm, int nm)
 {
+    const int asize = sizeof(net2modem) / sizeof(net2modem[0]);
+    if (nm >= asize || nm < 0) {
+        RLOGW("%s %d: invalid net2modem index: %d", __func__, __LINE__, nm);
+        return 0;
+    }
     if ((net2modem[nm] & mdm->supportedTechs) == net2modem[nm]) {
        return 1;
     }
@@ -1344,8 +1349,18 @@ int getPreferredFromBitmap(int value, int *index) {
             return s_networkMask[i].type;
         }
     }
+    // set default value here, since there is no match found
+    // ref.
+    //{LTE | GSM | WCDMA,               MDM_LTE | MDM_GSM | MDM_WCDMA},             // 9 - LTE, GSM/WCDMA
+    //
+    const int DEFAULT_PREFERRED_INDEX = 9;
+    const int DEFAULT_PREFERRED_BITMAP = MDM_LTE | MDM_GSM | MDM_WCDMA;
+    assert(s_networkMask[DEFAULT_PREFERRED_INDEX] == DEFAULT_PREFERRED_BITMAP);
+    if (index) {
+        *index = DEFAULT_PREFERRED_INDEX;
+    }
     RLOGD("getPreferredFromBitmap %d not match", value);
-    return  MDM_LTE | MDM_GSM | MDM_WCDMA;
+    return  DEFAULT_PREFERRED_BITMAP;
 }
 
 unsigned getBitmapFromPreferred(int value) {
@@ -2418,15 +2433,21 @@ error:
     at_response_free(p_response);
 }
 
-static void requestSimAuthentication( char *authData, RIL_Token t) {
+static void requestSimAuthentication(int authContext, char* authData, RIL_Token t) {
     int err = -1, ret = 0;
     int status = 0;
     int binSimResponseLen = 0;
-    int randLen = 0, kcLen = 0, sresLen = 0;
     char *cmd = NULL;
     char *line = NULL;
-    char *rand = NULL;
+    // Input data
+    int randLen = 0, autnLen = 0;
+    char *rand = NULL, *autn = NULL;
+    // EAP-SIM response data
+    int kcLen = 0, sresLen = 0;
     char *kc = NULL, *sres = NULL;
+    // EAP-AKA response data
+    int ckLen = 0, ikLen = 0, resAutsLen = 0;
+    char *ck = NULL, *ik = NULL, *resAuts = NULL;
     unsigned char *binSimResponse = NULL;
     unsigned char *binAuthData = NULL;
     unsigned char *hexAuthData = NULL;
@@ -2462,7 +2483,22 @@ static void requestSimAuthentication( char *authData, RIL_Token t) {
     memcpy(rand, hexAuthData + 2, randLen * 2);
     memcpy(rand + randLen * 2, "\0", 1);
 
-    ret = asprintf(&cmd, "AT^MBAU=\"%s\"", rand);
+    if (authContext == AUTH_CONTEXT_EAP_AKA) {
+        // There's the autn value to parse as well.
+        autnLen = binAuthData[1 + randLen];
+        autn = (char*)malloc(sizeof(char) * (autnLen * 2 + sizeof(char)));
+        if (autn == NULL) {
+            goto error;
+        }
+        memcpy(autn, hexAuthData + 2 + randLen * 2 + 2, autnLen * 2);
+        memcpy(autn + autnLen * 2, "\0", 1);
+    }
+
+    if (authContext == AUTH_CONTEXT_EAP_SIM) {
+        ret = asprintf(&cmd, "AT^MBAU=\"%s\"", rand);
+    } else {
+        ret = asprintf(&cmd, "AT^MBAU=\"%s,%s\"", rand, autn);
+    }
     if (ret < 0) {
         RLOGE("Failed to asprintf");
         goto error;
@@ -2472,67 +2508,99 @@ static void requestSimAuthentication( char *authData, RIL_Token t) {
 
     if (err < 0 || p_response->success == 0) {
         goto error;
-    } else {
-        line = p_response->p_intermediates->line;
-        err = at_tok_start(&line);
-        if (err < 0) goto error;
-
-        err = at_tok_nextint(&line, &status);
-        if (err < 0) goto error;
-
-        if (status == SIM_AUTH_RESPONSE_SUCCESS) {
-            err = at_tok_nextstr(&line, &kc);
-            if (err < 0) goto error;
-            kcLen = strlen(kc);
-
-            err = at_tok_nextstr(&line, &sres);
-            if (err < 0) goto error;
-            sresLen = strlen(sres);
-
-            // sresLen + sres + kcLen + kc + '\0'
-            binSimResponseLen = (kcLen + sresLen) / 2 + 3 * sizeof(char);
-            binSimResponse =
-                (unsigned char *)malloc(binSimResponseLen + sizeof(char));
-            if (binSimResponse == NULL) {
-                goto error;
-            }
-            memset(binSimResponse, 0, binSimResponseLen + sizeof(char));
-            // set sresLen and sres
-            binSimResponse[0] = (sresLen / 2) & 0xFF;
-            uint8_t *tmpBinSimResponse = convertHexStringToBytes(sres, sresLen);
-            //convertHexToBin(sres, sresLen, (char *)(binSimResponse + 1));
-            snprintf((char *)(binSimResponse + 1), sresLen / 2, "%s",
-                    tmpBinSimResponse);
-            free(tmpBinSimResponse);
-            tmpBinSimResponse = NULL;
-            // set kcLen and kc
-            binSimResponse[1 + sresLen / 2] = (kcLen / 2) & 0xFF;
-            tmpBinSimResponse = convertHexStringToBytes(kc, kcLen);
-            snprintf((char *)(binSimResponse + 1 + sresLen / 2 + 1),
-                     kcLen, "%s", tmpBinSimResponse);
-            free(tmpBinSimResponse);
-            tmpBinSimResponse = NULL;
-            response.simResponse =
-                    (char *)malloc(2 * binSimResponseLen + sizeof(char));
-            if (response.simResponse == NULL) {
-                goto error;
-            }
-            if(NULL == base64_encode(binSimResponse, response.simResponse,
-                    binSimResponse[0] + binSimResponse[1 + sresLen / 2] + 2)) {
-                RLOGE("Failed to call base64_encode %s %d", __func__, __LINE__);
-                goto error;
-            }
-            RIL_onRequestComplete(t, RIL_E_SUCCESS, &response,
-                    sizeof(response));
-        } else {
-            goto error;
-        }
     }
+    line = p_response->p_intermediates->line;
+    err = at_tok_start(&line);
+    if (err < 0) goto error;
+
+    err = at_tok_nextint(&line, &status);
+    if (err < 0) goto error;
+    if (status != SIM_AUTH_RESPONSE_SUCCESS) {
+        goto error;
+    }
+
+    if (authContext == AUTH_CONTEXT_EAP_SIM) {
+        err = at_tok_nextstr(&line, &kc);
+        if (err < 0) goto error;
+        kcLen = strlen(kc);
+
+        err = at_tok_nextstr(&line, &sres);
+        if (err < 0) goto error;
+        sresLen = strlen(sres);
+
+        // sresLen + sres + kcLen + kc + '\0'
+        binSimResponseLen = (kcLen + sresLen) / 2 + 3 * sizeof(char);
+        binSimResponse = (unsigned char*)malloc(binSimResponseLen + sizeof(char));
+        if (binSimResponse == NULL) goto error;
+        memset(binSimResponse, 0, binSimResponseLen);
+        // set sresLen and sres
+        binSimResponse[0] = (sresLen / 2) & 0xFF;
+        uint8_t* tmpBinSimResponse = convertHexStringToBytes(sres, sresLen);
+        snprintf((char*)(binSimResponse + 1), sresLen / 2, "%s", tmpBinSimResponse);
+        free(tmpBinSimResponse);
+        tmpBinSimResponse = NULL;
+        // set kcLen and kc
+        binSimResponse[1 + sresLen / 2] = (kcLen / 2) & 0xFF;
+        tmpBinSimResponse = convertHexStringToBytes(kc, kcLen);
+        snprintf((char*)(binSimResponse + 1 + sresLen / 2 + 1), kcLen / 2, "%s", tmpBinSimResponse);
+        free(tmpBinSimResponse);
+        tmpBinSimResponse = NULL;
+    } else {  // AUTH_CONTEXT_EAP_AKA
+        err = at_tok_nextstr(&line, &ck);
+        if (err < 0) goto error;
+        ckLen = strlen(ck);
+
+        err = at_tok_nextstr(&line, &ik);
+        if (err < 0) goto error;
+        ikLen = strlen(ik);
+
+        err = at_tok_nextstr(&line, &resAuts);
+        if (err < 0) goto error;
+        resAutsLen = strlen(resAuts);
+
+        // 0xDB + ckLen + ck + ikLen + ik + resAutsLen + resAuts + '\0'
+        binSimResponseLen = (ckLen + ikLen + resAutsLen) / 2 + 5 * sizeof(char);
+        binSimResponse = (unsigned char*)malloc(binSimResponseLen + sizeof(char));
+        if (binSimResponse == NULL) goto error;
+        memset(binSimResponse, 0, binSimResponseLen);
+        // The DB prefix indicates successful auth. Not produced by the SIM.
+        binSimResponse[0] = 0xDB;
+        // Set ckLen and ck
+        binSimResponse[1] = (ckLen / 2) & 0xFF;
+        uint8_t* tmpBinSimResponse = convertHexStringToBytes(ck, ckLen);
+        snprintf((char*)(binSimResponse + 2), ckLen / 2 + 1, "%s", tmpBinSimResponse);
+        free(tmpBinSimResponse);
+        tmpBinSimResponse = NULL;
+        // Set ikLen and ik
+        binSimResponse[2 + ckLen / 2] = (ikLen / 2) & 0xFF;
+        tmpBinSimResponse = convertHexStringToBytes(ik, ikLen);
+        snprintf((char*)(binSimResponse + 2 + ckLen / 2 + 1), ikLen / 2 + 1, "%s",
+                 tmpBinSimResponse);
+        free(tmpBinSimResponse);
+        tmpBinSimResponse = NULL;
+        // Set resAutsLen and resAuts
+        binSimResponse[2 + ckLen / 2 + 1 + ikLen / 2] = (resAutsLen / 2) & 0xFF;
+        tmpBinSimResponse = convertHexStringToBytes(resAuts, resAutsLen);
+        snprintf((char*)(binSimResponse + 2 + ckLen / 2 + 1 + ikLen / 2 + 1), resAutsLen / 2 + 1,
+                 "%s", tmpBinSimResponse);
+        free(tmpBinSimResponse);
+        tmpBinSimResponse = NULL;
+    }
+
+    response.simResponse = (char*)malloc(2 * binSimResponseLen + sizeof(char));
+    if (response.simResponse == NULL) goto error;
+    if (NULL == base64_encode(binSimResponse, response.simResponse, binSimResponseLen - 1)) {
+        RLOGE("Failed to call base64_encode %s %d", __func__, __LINE__);
+        goto error;
+    }
+
+    RIL_onRequestComplete(t, RIL_E_SUCCESS, &response, sizeof(response));
     at_response_free(p_response);
 
     free(binAuthData);
     free(hexAuthData);
     free(rand);
+    free(autn);
     free(response.simResponse);
     free(binSimResponse);
     return;
@@ -2541,6 +2609,7 @@ error:
     free(binAuthData);
     free(hexAuthData);
     free(rand);
+    free(autn);
     free(response.simResponse);
     free(binSimResponse);
 
@@ -4376,11 +4445,10 @@ onRequest (int request, void *data, size_t datalen, RIL_Token t)
             break;
         case RIL_REQUEST_SIM_AUTHENTICATION: {
             RIL_SimAuthentication *sim_auth = (RIL_SimAuthentication *)data;
-            if (sim_auth->authContext == AUTH_CONTEXT_EAP_AKA &&
+            if ((sim_auth->authContext == AUTH_CONTEXT_EAP_SIM ||
+                 sim_auth->authContext == AUTH_CONTEXT_EAP_AKA) &&
                 sim_auth->authData != NULL) {
-            } else if (sim_auth->authContext == AUTH_CONTEXT_EAP_SIM &&
-                       sim_auth->authData != NULL) {
-                requestSimAuthentication(sim_auth->authData, t);
+                requestSimAuthentication(sim_auth->authContext, sim_auth->authData, t);
             } else {
                 RIL_onRequestComplete(t, RIL_E_INVALID_ARGUMENTS, NULL, 0);
             }
@@ -4796,17 +4864,17 @@ onRequest (int request, void *data, size_t datalen, RIL_Token t)
         case RIL_REQUEST_SET_PREFERRED_NETWORK_TYPE_BITMAP:
             requestSetPreferredNetworkType(request, data, datalen, t);
             break;
-        case RIL_REQUEST_SET_ALLOWED_NETWORK_TYPE_BITMAP:
+        case RIL_REQUEST_SET_ALLOWED_NETWORK_TYPES_BITMAP:
             if (data == NULL || datalen != sizeof(int)) {
               RIL_onRequestComplete(t, RIL_E_INTERNAL_ERR, NULL, 0);
               break;
             }
-            allowedNetworkTypeBitmap = *(int *)data;
+            allowedNetworkTypesBitmap = *(int *)data;
             RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
             break;
-        case RIL_REQUEST_GET_ALLOWED_NETWORK_TYPE_BITMAP:
-            RIL_onRequestComplete(t, RIL_E_SUCCESS, &allowedNetworkTypeBitmap,
-                    sizeof(allowedNetworkTypeBitmap));
+        case RIL_REQUEST_GET_ALLOWED_NETWORK_TYPES_BITMAP:
+            RIL_onRequestComplete(t, RIL_E_SUCCESS, &allowedNetworkTypesBitmap,
+                    sizeof(allowedNetworkTypesBitmap));
             break;
         case RIL_REQUEST_ENABLE_NR_DUAL_CONNECTIVITY:
             if (data == NULL || datalen != sizeof(int)) {
@@ -4825,6 +4893,9 @@ onRequest (int request, void *data, size_t datalen, RIL_Token t)
             requestGetPreferredNetworkType(request, data, datalen, t);
             break;
         case RIL_REQUEST_SET_SYSTEM_SELECTION_CHANNELS:
+            RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
+            break;
+        case RIL_REQUEST_GET_SLICING_CONFIG:
             RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
             break;
 

@@ -39,6 +39,8 @@ TARGET_USERDATAIMAGE_FILE_SYSTEM_TYPE ?= f2fs
 TARGET_USERDATAIMAGE_PARTITION_SIZE ?= 6442450944
 
 TARGET_VULKAN_SUPPORT ?= true
+TARGET_ENABLE_HOST_BLUETOOTH_EMULATION ?= true
+TARGET_USE_BTLINUX_HAL_IMPL ?= true
 
 AB_OTA_UPDATER := true
 AB_OTA_PARTITIONS += \
@@ -69,14 +71,14 @@ PRODUCT_PRODUCT_PROPERTIES += \
     persist.sys.fuse.passthrough.enable=true \
 
 # Storage: for factory reset protection feature
-PRODUCT_PROPERTY_OVERRIDES += \
-    ro.frp.pst=/dev/block/vdc
+PRODUCT_VENDOR_PROPERTIES += \
+    ro.frp.pst=/dev/block/vdb
 
 # Explanation of specific properties:
 #   debug.hwui.swap_with_damage avoids boot failure on M http://b/25152138
 #   ro.opengles.version OpenGLES 3.0
 #   ro.hardware.keystore_desede=true needed for CtsKeystoreTestCases
-PRODUCT_PROPERTY_OVERRIDES += \
+PRODUCT_VENDOR_PROPERTIES += \
     tombstoned.max_tombstone_count=500 \
     vendor.bt.rootcanal_test_console=off \
     debug.hwui.swap_with_damage=0 \
@@ -93,7 +95,7 @@ PRODUCT_PROPERTY_OVERRIDES += \
     debug.c2.use_dmabufheaps=1 \
 
 # Below is a list of properties we probably should get rid of.
-PRODUCT_PROPERTY_OVERRIDES += \
+PRODUCT_VENDOR_PROPERTIES += \
     wlan.driver.status=ok
 
 ifneq ($(LOCAL_DISABLE_OMX),true)
@@ -102,17 +104,17 @@ DEVICE_MANIFEST_FILE += \
     device/google/cuttlefish/shared/config/android.hardware.media.omx@1.0.xml
 endif
 
-PRODUCT_PROPERTY_OVERRIDES += \
+PRODUCT_VENDOR_PROPERTIES += \
     debug.stagefright.c2inputsurface=-1
 
 # Enforce privapp permissions control.
-PRODUCT_PROPERTY_OVERRIDES += ro.control_privapp_permissions=enforce
+PRODUCT_VENDOR_PROPERTIES += ro.control_privapp_permissions=enforce
 
 # aes-256-heh default is not supported in standard kernels.
-PRODUCT_PROPERTY_OVERRIDES += ro.crypto.volume.filenames_mode=aes-256-cts
+PRODUCT_VENDOR_PROPERTIES += ro.crypto.volume.filenames_mode=aes-256-cts
 
 # Copy preopted files from system_b on first boot
-PRODUCT_PROPERTY_OVERRIDES += ro.cp_system_other_odex=1
+PRODUCT_VENDOR_PROPERTIES += ro.cp_system_other_odex=1
 
 AB_OTA_POSTINSTALL_CONFIG += \
     RUN_POSTINSTALL_system=true \
@@ -131,7 +133,7 @@ PRODUCT_PACKAGES += \
     checkpoint_gc
 
 # DRM service opt-in
-PRODUCT_PROPERTY_OVERRIDES += drm.service.enabled=true
+PRODUCT_VENDOR_PROPERTIES += drm.service.enabled=true
 
 PRODUCT_SOONG_NAMESPACES += hardware/google/camera
 PRODUCT_SOONG_NAMESPACES += hardware/google/camera/devices/EmulatedCamera
@@ -144,13 +146,22 @@ PRODUCT_PACKAGES += \
     cuttlefish_rotate \
     rename_netiface \
     setup_wifi \
+    bt_vhci_forwarder \
     socket_vsock_proxy \
     tombstone_transmit \
     tombstone_producer \
     suspend_blocker \
     vsoc_input_service \
     vtpm_manager \
-    wpa_supplicant.vsoc.conf \
+
+SOONG_CONFIG_NAMESPACES += cvd
+SOONG_CONFIG_cvd += launch_configs
+SOONG_CONFIG_cvd_launch_configs += \
+    cvd_config_auto.json \
+    cvd_config_foldable.json \
+    cvd_config_phone.json \
+    cvd_config_tablet.json \
+    cvd_config_tv.json \
 
 #
 # Packages for AOSP-available stuff we use from the framework
@@ -260,6 +271,7 @@ PRODUCT_COPY_FILES += \
     frameworks/av/services/audiopolicy/config/default_volume_tables.xml:$(TARGET_COPY_OUT_VENDOR)/etc/default_volume_tables.xml \
     frameworks/av/services/audiopolicy/config/surround_sound_configuration_5_0.xml:$(TARGET_COPY_OUT_VENDOR)/etc/surround_sound_configuration_5_0.xml \
     frameworks/native/data/etc/android.hardware.audio.low_latency.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.audio.low_latency.xml \
+    frameworks/native/data/etc/android.hardware.bluetooth.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.bluetooth.xml \
     frameworks/native/data/etc/android.hardware.bluetooth_le.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.bluetooth_le.xml \
     frameworks/native/data/etc/android.hardware.camera.concurrent.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.camera.concurrent.xml \
     frameworks/native/data/etc/android.hardware.camera.flash-autofocus.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.camera.flash-autofocus.xml \
@@ -355,9 +367,17 @@ PRODUCT_PACKAGES += \
 #
 # Bluetooth HAL and Compatibility Bluetooth library (for older revs).
 #
-PRODUCT_PACKAGES += \
-    android.hardware.bluetooth@1.1-service.sim \
-    android.hardware.bluetooth.audio@2.1-impl
+
+ifeq ($(TARGET_ENABLE_HOST_BLUETOOTH_EMULATION),true)
+ifeq ($(TARGET_USE_BTLINUX_HAL_IMPL),true)
+    PRODUCT_PACKAGES += android.hardware.bluetooth@1.1-service.btlinux
+else
+    PRODUCT_PACKAGES += android.hardware.bluetooth@1.1-service.remote
+endif
+else
+    PRODUCT_PACKAGES += android.hardware.bluetooth@1.1-service.sim
+endif
+PRODUCT_PACKAGES += android.hardware.bluetooth.audio@2.1-impl
 
 #
 # Audio HAL
@@ -491,7 +511,7 @@ PRODUCT_PACKAGES += \
 ifeq ($(LOCAL_KEYMINT_PRODUCT_PACKAGE),)
        LOCAL_KEYMINT_PRODUCT_PACKAGE := android.hardware.security.keymint-service
 endif
-PRODUCT_PACKAGES += \
+# PRODUCT_PACKAGES += \
     $(LOCAL_KEYMINT_PRODUCT_PACKAGE)
 
 #
@@ -504,7 +524,7 @@ PRODUCT_PACKAGES += \
 # PowerStats HAL
 #
 PRODUCT_PACKAGES += \
-    android.hardware.power.stats@1.0-service.mock
+    android.hardware.power.stats-service.example
 
 #
 # NeuralNetworks HAL
@@ -514,7 +534,12 @@ PRODUCT_PACKAGES += \
     android.hardware.neuralnetworks@1.3-service-sample-float-fast \
     android.hardware.neuralnetworks@1.3-service-sample-float-slow \
     android.hardware.neuralnetworks@1.3-service-sample-minimal \
-    android.hardware.neuralnetworks@1.3-service-sample-quant
+    android.hardware.neuralnetworks@1.3-service-sample-quant \
+    android.hardware.neuralnetworks-service-sample-all \
+    android.hardware.neuralnetworks-service-sample-float-fast \
+    android.hardware.neuralnetworks-service-sample-float-slow \
+    android.hardware.neuralnetworks-service-sample-minimal \
+    android.hardware.neuralnetworks-service-sample-quant
 
 #
 # USB
@@ -549,6 +574,7 @@ PRODUCT_PRODUCT_PROPERTIES += \
 
 # WLAN driver configuration files
 PRODUCT_COPY_FILES += \
+    external/wpa_supplicant_8/wpa_supplicant/wpa_supplicant_template.conf:$(TARGET_COPY_OUT_VENDOR)/etc/wifi/wpa_supplicant.conf \
     $(LOCAL_PATH)/config/wpa_supplicant_overlay.conf:$(TARGET_COPY_OUT_VENDOR)/etc/wifi/wpa_supplicant_overlay.conf
 
 # Fastboot HAL & fastbootd
@@ -591,5 +617,5 @@ PRODUCT_SOONG_NAMESPACES += external/mesa3d
 
 # Need this so that the application's loop on reading input can be synchronized
 # with HW VSYNC
-PRODUCT_DEFAULT_PROPERTY_OVERRIDES += ro.surface_flinger.running_without_sync_framework=true
-
+PRODUCT_VENDOR_PROPERTIES += \
+    ro.surface_flinger.running_without_sync_framework=true

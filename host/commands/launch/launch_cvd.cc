@@ -51,11 +51,14 @@ DEFINE_int32(base_instance_num,
              " is used, N instance numbers are claimed starting at this number.");
 DEFINE_string(verbosity, "INFO", "Console logging verbosity. Options are VERBOSE,"
                                  "DEBUG,INFO,WARNING,ERROR");
+DEFINE_string(file_verbosity, "DEBUG",
+              "Log file logging verbosity. Options are VERBOSE,DEBUG,INFO,"
+              "WARNING,ERROR");
 
 namespace {
 
-std::string kAssemblerBin = cuttlefish::DefaultHostArtifactsPath("bin/assemble_cvd");
-std::string kRunnerBin = cuttlefish::DefaultHostArtifactsPath("bin/run_cvd");
+std::string kAssemblerBin = cuttlefish::HostBinaryPath("assemble_cvd");
+std::string kRunnerBin = cuttlefish::HostBinaryPath("run_cvd");
 
 cuttlefish::Subprocess StartAssembler(cuttlefish::SharedFD assembler_stdin,
                                cuttlefish::SharedFD assembler_stdout,
@@ -135,8 +138,12 @@ std::string ValidateMetricsConfirmation(std::string use_metrics) {
         FALLTHROUGH_INTENDED;
       case -1:
         std::cin.get(ch);
+        // if there's no tty the EOF flag is set, in which case default to 'n'
+        if (std::cin.eof()) {
+          ch = 'n';
+          std::cout << "n\n";  // for consistency with user input
+        }
         ch = tolower(ch);
-        std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
     }
   }
   return "";
@@ -168,6 +175,7 @@ int main(int argc, char** argv) {
   gflags::HandleCommandLineHelpFlags();
 
   setenv("CF_CONSOLE_SEVERITY", FLAGS_verbosity.c_str(), /* replace */ false);
+  setenv("CF_FILE_SEVERITY", FLAGS_file_verbosity.c_str(), /* replace */ false);
 
   auto use_metrics = FLAGS_report_anonymous_usage_stats;
   FLAGS_report_anonymous_usage_stats = ValidateMetricsConfirmation(use_metrics);

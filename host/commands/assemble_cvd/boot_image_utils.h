@@ -16,8 +16,11 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 namespace cuttlefish {
+std::string ExtractKernelFromBootImage(const std::string& boot_image_path,
+                                       const std::string& unpack_dir);
 bool RepackBootImage(const std::string& new_kernel_path,
                      const std::string& boot_image_path,
                      const std::string& new_boot_image_path,
@@ -25,13 +28,13 @@ bool RepackBootImage(const std::string& new_kernel_path,
 bool RepackVendorBootImage(const std::string& new_ramdisk_path,
                            const std::string& vendor_boot_image_path,
                            const std::string& new_vendor_boot_image_path,
-                           const std::string& tmp_artifact_dir);
+                           const std::string& unpack_dir,
+                           const std::string& repack_dir,
+                           const std::vector<std::string>& bootconfig_args,
+                           bool bootconfig_supported);
 bool RepackVendorBootImageWithEmptyRamdisk(
     const std::string& vendor_boot_image_path,
     const std::string& new_vendor_boot_image_path,
-    const std::string& tmp_artifact_dir);
-void RepackVendorRamdisk(const std::string& kernel_modules_ramdisk_path,
-                         const std::string& original_ramdisk_path,
-                         const std::string& new_ramdisk_path,
-                         const std::string& tmp_artifact_dir);
+    const std::string& unpack_dir, const std::string& repack_dir,
+    const std::vector<std::string>& bootconfig_args, bool bootconfig_supported);
 }

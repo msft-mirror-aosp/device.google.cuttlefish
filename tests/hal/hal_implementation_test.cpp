@@ -71,6 +71,7 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hardware.nfc@1.2",
     "android.hardware.oemlock@1.0",
     "android.hardware.power@1.3",
+    "android.hardware.power.stats@1.0",
     "android.hardware.radio.deprecated@1.0",
     "android.hardware.renderscript@1.0",
     "android.hardware.soundtrigger@2.3",
@@ -80,7 +81,6 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hardware.tetheroffload.control@1.1", // see b/170699770
     "android.hardware.thermal@1.1",
     "android.hardware.tv.cec@1.0",
-    "android.hardware.tv.cec@2.0",
     "android.hardware.tv.input@1.0",
     "android.hardware.tv.tuner@1.0",
     "android.hardware.usb@1.2",
@@ -106,20 +106,19 @@ static const std::set<std::string> kKnownMissingAidl = {
     // b/170144267
     "android.system.keystore2.",
 
-    // The default implementation is under construction. But we need this
-    // interface to implement keystore2.
-    // b/175136979
-    "android.hardware.security.secureclock.",
-
-    // The default implementation is under construction. But we need this
-    // interface to implement keystore2.
-    // b/175141176
-    "android.hardware.security.sharedsecret.",
-
     // These KeyMaster types are in an AIDL types-only HAL because they're used
     // by the Identity Credential AIDL HAL. Remove this when fully porting
     // KeyMaster to AIDL.
     "android.hardware.keymaster.",
+
+    // Temporarily disable keymint, secureclock, and shared secret in favor of
+    // keymaster 4.1. This is required for the transition to Keystore 2.0.
+    // Software keymint does not work with Gatekeeper. This can be removed when
+    // the remote keymaster implementation was ported to keymint.
+    // b/182928606
+    "android.hardware.security.keymint.",
+    "android.hardware.security.secureclock.",
+    "android.hardware.security.sharedsecret.",
 
     // These types are only used in Automotive.
     "android.automotive.computepipe.registry.",
