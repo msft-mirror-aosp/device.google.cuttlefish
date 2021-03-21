@@ -88,8 +88,6 @@ bool Stop() {
 
 }  // namespace
 
-/* static */ std::string QemuManager::name() { return "qemu_cli"; }
-
 bool QemuManager::IsSupported() {
   return HostSupportsQemuCli();
 }
@@ -122,16 +120,27 @@ std::vector<std::string> QemuManager::ConfigureGpuMode(
   return {};
 }
 
-std::vector<std::string> QemuManager::ConfigureBootDevices(int num_disks) {
-  // QEMU has additional PCI devices for an ISA bridge and PIIX4
-  std::stringstream stream;
-  stream << std::setfill('0') << std::setw(2) << std::hex
-         << 2 + VmManager::kDefaultNumHvcs + VmManager::kMaxDisks - num_disks;
-  return {"androidboot.boot_devices=pci0000:00/0000:00:" + stream.str() + ".0"};
+std::string QemuManager::ConfigureBootDevices(int num_disks) {
+  switch (arch_) {
+    case Arch::X86:
+    case Arch::X86_64: {
+      // QEMU has additional PCI devices for an ISA bridge and PIIX4
+      std::stringstream stream;
+      stream << std::setfill('0') << std::setw(2) << std::hex
+             << 2 + VmManager::kDefaultNumHvcs + VmManager::kMaxDisks -
+                    num_disks;
+      return "androidboot.boot_devices=pci0000:00/0000:00:" + stream.str() +
+             ".0";
+    }
+    case Arch::Arm:
+      return "androidboot.boot_devices=3f000000.pcie";
+    case Arch::Arm64:
+      return "androidboot.boot_devices=4010000000.pcie";
+  }
 }
 
 std::vector<Command> QemuManager::StartCommands(
-    const CuttlefishConfig& config, const std::string& kernel_cmdline) {
+    const CuttlefishConfig& config) {
   auto instance = config.ForDefaultInstance();
 
   auto stop = [](Subprocess* proc) {
@@ -143,7 +152,22 @@ std::vector<Command> QemuManager::StartCommands(
                   << "attempting to KILL";
     return KillSubprocess(proc);
   };
-  Command qemu_cmd(config.qemu_binary(), stop);
+  std::string qemu_binary = config.qemu_binary_dir();
+  switch (arch_) {
+    case Arch::Arm:
+      qemu_binary += "/qemu-system-arm";
+      break;
+    case Arch::Arm64:
+      qemu_binary += "/qemu-system-aarch64";
+      break;
+    case Arch::X86:
+      qemu_binary += "/qemu-system-i386";
+      break;
+    case Arch::X86_64:
+      qemu_binary += "/qemu-system-x86_64";
+      break;
+  }
+  Command qemu_cmd(qemu_binary, stop);
 
   int hvc_num = 0;
   int serial_num = 0;
@@ -209,12 +233,12 @@ std::vector<Command> QemuManager::StartCommands(
     hvc_num++;
   };
 
-  bool is_arm = android::base::EndsWith(config.qemu_binary(), "system-aarch64");
+  bool is_arm = arch_ == Arch::Arm || arch_ == Arch::Arm64;
 
   auto access_kregistry_size_bytes = 0;
   if (FileExists(instance.access_kregistry_path())) {
     access_kregistry_size_bytes = FileSize(instance.access_kregistry_path());
-    CHECK(access_kregistry_size_bytes & (1024 * 1024 - 1))
+    CHECK((access_kregistry_size_bytes & (1024 * 1024 - 1)) == 0)
         << instance.access_kregistry_path() <<  " file size ("
         << access_kregistry_size_bytes << ") not a multiple of 1MB";
   }
@@ -222,7 +246,7 @@ std::vector<Command> QemuManager::StartCommands(
   auto pstore_size_bytes = 0;
   if (FileExists(instance.pstore_path())) {
     pstore_size_bytes = FileSize(instance.pstore_path());
-    CHECK(pstore_size_bytes & (1024 * 1024 - 1))
+    CHECK((pstore_size_bytes & (1024 * 1024 - 1)) == 0)
         << instance.pstore_path() <<  " file size ("
         << pstore_size_bytes << ") not a multiple of 1MB";
   }
@@ -231,7 +255,8 @@ std::vector<Command> QemuManager::StartCommands(
   qemu_cmd.AddParameter("guest=", instance.instance_name(), ",debug-threads=on");
 
   qemu_cmd.AddParameter("-machine");
-  auto machine = is_arm ? "virt,gic-version=2" : "pc-i440fx-2.8,accel=kvm,nvdimm=on";
+  auto machine = is_arm ? "virt,gic-version=2,mte=on"
+                        : "pc-i440fx-2.8,accel=kvm,nvdimm=on";
   qemu_cmd.AddParameter(machine, ",usb=off,dump-guest-core=off");
 
   qemu_cmd.AddParameter("-m");
@@ -270,17 +295,6 @@ std::vector<Command> QemuManager::StartCommands(
 
   qemu_cmd.AddParameter("-boot");
   qemu_cmd.AddParameter("strict=on");
-
-  if (!config.use_bootloader()) {
-    qemu_cmd.AddParameter("-kernel");
-    qemu_cmd.AddParameter(config.GetKernelImageToUse());
-
-    qemu_cmd.AddParameter("-initrd");
-    qemu_cmd.AddParameter(config.final_ramdisk_path());
-
-    qemu_cmd.AddParameter("-append");
-    qemu_cmd.AddParameter(kernel_cmdline);
-  }
 
   qemu_cmd.AddParameter("-chardev");
   qemu_cmd.AddParameter("socket,id=charmonitor,path=", GetMonitorPath(config),
@@ -441,7 +455,7 @@ std::vector<Command> QemuManager::StartCommands(
   qemu_cmd.AddParameter("virtio-gpu-pci,id=gpu0");
 
   qemu_cmd.AddParameter("-cpu");
-  qemu_cmd.AddParameter(is_arm ? "cortex-a53" : "host");
+  qemu_cmd.AddParameter(IsHostCompatible(arch_) ? "host" : "max");
 
   qemu_cmd.AddParameter("-msg");
   qemu_cmd.AddParameter("timestamp=on");
@@ -467,14 +481,13 @@ std::vector<Command> QemuManager::StartCommands(
   qemu_cmd.AddParameter("-device");
   qemu_cmd.AddParameter("qemu-xhci,id=xhci");
 
-  if (config.use_bootloader()) {
-    qemu_cmd.AddParameter("-bios");
-    qemu_cmd.AddParameter(config.bootloader());
-  }
+  qemu_cmd.AddParameter("-bios");
+  qemu_cmd.AddParameter(config.bootloader());
 
-  if (config.gdb_flag().size() > 0) {
+  if (config.gdb_port() > 0) {
+    qemu_cmd.AddParameter("-S");
     qemu_cmd.AddParameter("-gdb");
-    qemu_cmd.AddParameter(config.gdb_flag());
+    qemu_cmd.AddParameter("tcp::", config.gdb_port());
   }
 
   LogAndSetEnv("QEMU_AUDIO_DRV", "none");

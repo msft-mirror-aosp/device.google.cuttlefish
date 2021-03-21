@@ -91,8 +91,6 @@ bool Stop() {
 
 }  // namespace
 
-/* static */ std::string CrosvmManager::name() { return "crosvm"; }
-
 bool CrosvmManager::IsSupported() {
 #ifdef __ANDROID__
   return true;
@@ -111,7 +109,7 @@ std::vector<std::string> CrosvmManager::ConfigureGpuMode(
     return {
         "androidboot.cpuvulkan.version=" + std::to_string(VK_API_VERSION_1_1),
         "androidboot.hardware.gralloc=minigbm",
-        "androidboot.hardware.hwcomposer=cutf",
+        "androidboot.hardware.hwcomposer=ranchu",
         "androidboot.hardware.egl=swiftshader",
         "androidboot.hardware.vulkan=pastel",
     };
@@ -138,24 +136,23 @@ std::vector<std::string> CrosvmManager::ConfigureGpuMode(
   return {};
 }
 
-std::vector<std::string> CrosvmManager::ConfigureBootDevices(int num_disks) {
+std::string CrosvmManager::ConfigureBootDevices(int num_disks) {
   // TODO There is no way to control this assignment with crosvm (yet)
-  if (HostArch() == "x86_64") {
+  if (HostArch() == Arch::X86_64) {
     // crosvm has an additional PCI device for an ISA bridge
     std::stringstream stream;
     stream << std::setfill('0') << std::setw(2) << std::hex
            << 1 + VmManager::kDefaultNumHvcs + VmManager::kMaxDisks - num_disks;
-    return {"androidboot.boot_devices=pci0000:00/0000:00:" + stream.str() +
-            ".0"};
+    return "androidboot.boot_devices=pci0000:00/0000:00:" + stream.str() + ".0";
   } else {
     // On ARM64 crosvm, block devices are on their own bridge, so we don't
     // need to calculate it, and the path is always the same
-    return { "androidboot.boot_devices=10000.pci" };
+    return "androidboot.boot_devices=10000.pci";
   }
 }
 
 std::vector<Command> CrosvmManager::StartCommands(
-    const CuttlefishConfig& config, const std::string& kernel_cmdline) {
+    const CuttlefishConfig& config) {
   auto instance = config.ForDefaultInstance();
   Command crosvm_cmd(config.crosvm_binary(), [](Subprocess* proc) {
     auto stopped = Stop();
@@ -222,6 +219,11 @@ std::vector<Command> CrosvmManager::StartCommands(
     crosvm_cmd.AddParameter("--protected-vm");
   }
 
+  if (config.gdb_port() > 0) {
+    CHECK(config.cpus() == 1) << "CPUs must be 1 for crosvm gdb mode";
+    crosvm_cmd.AddParameter("--gdb=", config.gdb_port());
+  }
+
   auto display_configs = config.display_configs();
   CHECK_GE(display_configs.size(), 1);
   auto display_config = display_configs[0];
@@ -238,15 +240,12 @@ std::vector<Command> CrosvmManager::StartCommands(
                             "width=", display_config.width, ",",
                             "height=", display_config.height, ",",
                             "egl=true,surfaceless=true,glx=false,gles=true");
-    crosvm_cmd.AddParameter("--wayland-sock=", instance.frames_socket_path());
   }
-  if (!config.use_bootloader() && !config.final_ramdisk_path().empty()) {
-    crosvm_cmd.AddParameter("--initrd=", config.final_ramdisk_path());
-  }
+  crosvm_cmd.AddParameter("--wayland-sock=", instance.frames_socket_path());
+
   // crosvm_cmd.AddParameter("--null-audio");
   crosvm_cmd.AddParameter("--mem=", config.memory_mb());
   crosvm_cmd.AddParameter("--cpus=", config.cpus());
-  crosvm_cmd.AddParameter("--params=", kernel_cmdline);
 
   auto disk_num = instance.virtual_disk_paths().size();
   CHECK_GE(VmManager::kMaxDisks, disk_num)
@@ -259,10 +258,13 @@ std::vector<Command> CrosvmManager::StartCommands(
   crosvm_cmd.AddParameter("--socket=", GetControlSocketPath(config));
 
   if (config.enable_vnc_server() || config.enable_webrtc()) {
-    crosvm_cmd.AddParameter("--single-touch=", instance.touch_socket_path(),
-                            ":", display_config.width,
-                            ":", display_config.height);
+    auto touch_type_parameter =
+        config.enable_webrtc() ? "--multi-touch=" : "--single-touch=";
+    crosvm_cmd.AddParameter(touch_type_parameter, instance.touch_socket_path(),
+                            ":", display_config.width, ":",
+                            display_config.height);
     crosvm_cmd.AddParameter("--keyboard=", instance.keyboard_socket_path());
+    crosvm_cmd.AddParameter("--switches=", instance.switches_socket_path());
   }
 
   auto wifi_tap = AddTapFdParameter(&crosvm_cmd, instance.wifi_tap_name());
@@ -394,11 +396,7 @@ std::vector<Command> CrosvmManager::StartCommands(
   }
 
   // This needs to be the last parameter
-  if (config.use_bootloader()) {
-    crosvm_cmd.AddParameter("--bios=", config.bootloader());
-  } else {
-    crosvm_cmd.AddParameter(config.GetKernelImageToUse());
-  }
+  crosvm_cmd.AddParameter("--bios=", config.bootloader());
 
   // Only run the leases workaround if we are not using the new network
   // bridge architecture - in that case, we have a wider DHCP address

@@ -25,6 +25,7 @@
 #include <set>
 #include <vector>
 
+#include "common/libs/utils/environment.h"
 #include "host/libs/config/custom_actions.h"
 
 namespace Json {
@@ -114,45 +115,8 @@ class CuttlefishConfig {
   std::vector<DisplayConfig> display_configs() const;
   void set_display_configs(const std::vector<DisplayConfig>& display_configs);
 
-  // Returns kernel image extracted from the boot image or the user-provided one
-  // if given by command line to the launcher. This function should not be used
-  // to get the kernel image the vmm should boot, GetKernelImageToUse() should
-  // be used instead.
-  std::string kernel_image_path() const;
-  void set_kernel_image_path(const std::string& kernel_image_path);
-
-  bool decompress_kernel() const;
-  void set_decompress_kernel(bool decompress_kernel);
-
-  // Returns the path to the kernel image that should be given to the vm manager
-  // to boot, takes into account whether the original image was decompressed or
-  // not.
-  std::string GetKernelImageToUse() const {
-    return decompress_kernel() ? decompressed_kernel_image_path()
-                               : kernel_image_path();
-  }
-
-  std::string decompressed_kernel_image_path() const;
-  void set_decompressed_kernel_image_path(const std::string& path);
-
-  bool use_unpacked_kernel() const;
-  void set_use_unpacked_kernel(bool use_unpacked_kernel);
-
-  std::string gdb_flag() const;
-  void set_gdb_flag(const std::string& gdb);
-
-  std::string ramdisk_image_path() const;
-  void set_ramdisk_image_path(const std::string& ramdisk_image_path);
-
-  std::string initramfs_path() const;
-  void set_initramfs_path(const std::string& initramfs_path);
-
-  std::string final_ramdisk_path() const;
-  void set_final_ramdisk_path(const std::string& final_ramdisk_path);
-
-  std::string vendor_ramdisk_image_path() const;
-  void set_vendor_ramdisk_image_path(const std::string&
-    vendor_ramdisk_image_path);
+  int gdb_port() const;
+  void set_gdb_port(int gdb_port);
 
   bool deprecated_boot_completed() const;
   void set_deprecated_boot_completed(bool deprecated_boot_completed);
@@ -169,8 +133,8 @@ class CuttlefishConfig {
   void set_setupwizard_mode(const std::string& title);
   std::string setupwizard_mode() const;
 
-  void set_qemu_binary(const std::string& qemu_binary);
-  std::string qemu_binary() const;
+  void set_qemu_binary_dir(const std::string& qemu_binary_dir);
+  std::string qemu_binary_dir() const;
 
   void set_crosvm_binary(const std::string& crosvm_binary);
   std::string crosvm_binary() const;
@@ -226,26 +190,23 @@ class CuttlefishConfig {
   void set_blank_data_image_fmt(const std::string& blank_data_image_fmt);
   std::string blank_data_image_fmt() const;
 
-  void set_use_bootloader(bool use_bootloader);
-  bool use_bootloader() const;
-
   void set_bootloader(const std::string& bootloader_path);
   std::string bootloader() const;
 
+  // TODO (b/163575714) add virtio console support to the bootloader so the
+  // virtio console path for the console device can be taken again. When that
+  // happens, this function can be deleted along with all the code paths it
+  // forces.
+  bool use_bootloader() const { return true; };
+
   void set_boot_slot(const std::string& boot_slot);
   std::string boot_slot() const;
-
-  void set_use_slot_suffix(const bool use_slot_suffix);
-  bool use_slot_suffix() const;
 
   void set_guest_enforce_security(bool guest_enforce_security);
   bool guest_enforce_security() const;
 
   void set_guest_audit_security(bool guest_audit_security);
   bool guest_audit_security() const;
-
-  void set_guest_force_normal_boot(bool guest_force_normal_boot);
-  bool guest_force_normal_boot() const;
 
   void set_enable_host_bluetooth(bool enable_host_bluetooth);
   bool enable_host_bluetooth() const;
@@ -312,6 +273,7 @@ class CuttlefishConfig {
   // Serial console
   void set_console(bool console);
   bool console() const;
+  std::string console_dev() const;
 
   // Configuration flags for a minimal device
   bool enable_minimal_mode() const;
@@ -341,10 +303,17 @@ class CuttlefishConfig {
   void set_smt(bool smt);
   bool smt() const;
 
+  void set_enable_audio(bool enable);
   bool enable_audio() const;
 
   void set_protected_vm(bool protected_vm);
   bool protected_vm() const;
+
+  void set_target_arch(Arch target_arch);
+  Arch target_arch() const;
+
+  void set_bootconfig_supported(bool bootconfig_supported);
+  bool bootconfig_supported() const;
 
   class InstanceSpecific;
   class MutableInstanceSpecific;
@@ -426,6 +395,7 @@ class CuttlefishConfig {
 
     std::string touch_socket_path() const;
     std::string keyboard_socket_path() const;
+    std::string switches_socket_path() const;
     std::string frames_socket_path() const;
 
     std::string access_kregistry_path() const;
@@ -454,7 +424,7 @@ class CuttlefishConfig {
 
     std::string sdcard_path() const;
 
-    std::string composite_disk_path() const;
+    std::string os_composite_disk_path() const;
 
     std::string uboot_env_image_path() const;
 

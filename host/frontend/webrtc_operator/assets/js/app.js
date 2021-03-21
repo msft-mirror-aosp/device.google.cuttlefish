@@ -306,7 +306,8 @@ function ConnectToDevice(device_id) {
     let dpi = display.dpi;
     let x_res = display.x_res;
     let y_res = display.y_res;
-    displayDetailsText = `Display - ${x_res}x${y_res} (${dpi}DPI)`;
+    let rotated = currentRotation == 1 ? ' (Rotated)' : '';
+    displayDetailsText = `Display - ${x_res}x${y_res} (${dpi}DPI)${rotated}`;
     updateDeviceDetailsText();
   }
 
@@ -476,7 +477,6 @@ function ConnectToDevice(device_id) {
     var idArr = [];
     var slotArr = [];
 
-    console.log('e.type: ' + e.type);
     if (eventType == "mouse" || eventType == "point") {
       xArr.push(e.offsetX);
       yArr.push(e.offsetY);
@@ -497,7 +497,6 @@ function ConnectToDevice(device_id) {
       for (var i=0; i < changes.length; i++) {
         xArr.push(changes[i].pageX - rect.left);
         yArr.push(changes[i].pageY - rect.top);
-        idArr.push(changes[i].identifier);
         if (touchIdSlotMap.has(changes[i].identifier)) {
           let slot = touchIdSlotMap.get(changes[i].identifier);
 

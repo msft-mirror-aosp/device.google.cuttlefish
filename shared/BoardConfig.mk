@@ -158,6 +158,8 @@ WIFI_DRIVER_FW_PATH_AP      := "/dev/null"
 
 # vendor sepolicy
 BOARD_VENDOR_SEPOLICY_DIRS += device/google/cuttlefish/shared/sepolicy/vendor
+
+BOARD_SEPOLICY_DIRS += system/bt/vendor_libs/linux/sepolicy
 BOARD_VENDOR_SEPOLICY_DIRS += device/google/cuttlefish/shared/sepolicy/vendor/google
 # product sepolicy, allow other layers to append
 PRODUCT_PRIVATE_SEPOLICY_DIRS += device/google/cuttlefish/shared/sepolicy/product/private
@@ -185,7 +187,8 @@ BOARD_SUPER_PARTITION_GROUPS := google_system_dynamic_partitions google_vendor_d
 BOARD_GOOGLE_SYSTEM_DYNAMIC_PARTITIONS_PARTITION_LIST := product system system_ext
 BOARD_GOOGLE_SYSTEM_DYNAMIC_PARTITIONS_SIZE := 5368709120  # 5GiB
 BOARD_GOOGLE_VENDOR_DYNAMIC_PARTITIONS_PARTITION_LIST := odm vendor vendor_dlkm odm_dlkm
-BOARD_GOOGLE_VENDOR_DYNAMIC_PARTITIONS_SIZE := 1073741824
+# 1020MiB, reserve 4MiB for dynamic partition metadata
+BOARD_GOOGLE_VENDOR_DYNAMIC_PARTITIONS_SIZE := 1069547520
 BOARD_BUILD_SUPER_IMAGE_BY_DEFAULT := true
 BOARD_SUPER_IMAGE_IN_UPDATE_PACKAGE := true
 TARGET_RELEASETOOLS_EXTENSIONS := device/google/cuttlefish/shared
@@ -202,23 +205,21 @@ BOARD_KERNEL_CMDLINE += printk.devkmsg=on
 BOARD_KERNEL_CMDLINE += firmware_class.path=/vendor/etc/
 
 BOARD_KERNEL_CMDLINE += init=/init
-BOARD_BOOTCONFIG += androidboot.hardware=cutf_cvm
-
-# TODO(b/176860479): Remove once goldfish and cuttlefish share a wifi implementation
-BOARD_KERNEL_CMDLINE += mac80211_hwsim.radios=0
-
-# TODO(b/175151042): Remove once we are using virtio-snd on cuttlefish
-BOARD_KERNEL_CMDLINE += snd-hda-intel.enable=0
+BOARD_BOOTCONFIG += hardware=cutf_cvm
 
 # TODO(b/179489292): Remove once kfence is enabled everywhere
 BOARD_KERNEL_CMDLINE += kfence.sample_interval=500
 
 BOARD_KERNEL_CMDLINE += loop.max_part=7
-BOARD_KERNEL_CMDLINE += bootconfig
 
+# TODO(b/182417593): Move all of these module options to modules.options
+# TODO(b/176860479): Remove once goldfish and cuttlefish share a wifi implementation
+BOARD_BOOTCONFIG += kernel.mac80211_hwsim.radios=0
+# TODO(b/175151042): Remove once we are using virtio-snd on cuttlefish
+BOARD_BOOTCONFIG += kernel.snd-hda-intel.enable=0
 # Reduce slab size usage from virtio vsock to reduce slab fragmentation
-BOARD_KERNEL_CMDLINE += \
-    vmw_vsock_virtio_transport_common.virtio_transport_max_vsock_pkt_buf_size=16384
+BOARD_BOOTCONFIG += \
+    kernel.vmw_vsock_virtio_transport_common.virtio_transport_max_vsock_pkt_buf_size=16384
 
 ifeq ($(TARGET_USERDATAIMAGE_FILE_SYSTEM_TYPE),f2fs)
 BOARD_BOOTCONFIG += androidboot.fstab_suffix=f2fs

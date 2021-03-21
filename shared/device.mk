@@ -39,11 +39,8 @@ TARGET_USERDATAIMAGE_FILE_SYSTEM_TYPE ?= f2fs
 TARGET_USERDATAIMAGE_PARTITION_SIZE ?= 6442450944
 
 TARGET_VULKAN_SUPPORT ?= true
-# TODO(b/181203470) enable it for every target when rootcanal supports arm64 as well.
-# Depends on TARGET_PRODUCT because TARGET_ARCH is not available here.
-ifneq ($(findstring x86,$(TARGET_PRODUCT)),)
 TARGET_ENABLE_HOST_BLUETOOTH_EMULATION ?= true
-endif
+TARGET_USE_BTLINUX_HAL_IMPL ?= true
 
 AB_OTA_UPDATER := true
 AB_OTA_PARTITIONS += \
@@ -149,13 +146,13 @@ PRODUCT_PACKAGES += \
     cuttlefish_rotate \
     rename_netiface \
     setup_wifi \
+    bt_vhci_forwarder \
     socket_vsock_proxy \
     tombstone_transmit \
     tombstone_producer \
     suspend_blocker \
     vsoc_input_service \
     vtpm_manager \
-    wpa_supplicant.vsoc.conf \
 
 SOONG_CONFIG_NAMESPACES += cvd
 SOONG_CONFIG_cvd += launch_configs
@@ -372,9 +369,13 @@ PRODUCT_PACKAGES += \
 #
 
 ifeq ($(TARGET_ENABLE_HOST_BLUETOOTH_EMULATION),true)
-PRODUCT_PACKAGES += android.hardware.bluetooth@1.1-service.remote
+ifeq ($(TARGET_USE_BTLINUX_HAL_IMPL),true)
+    PRODUCT_PACKAGES += android.hardware.bluetooth@1.1-service.btlinux
 else
-PRODUCT_PACKAGES += android.hardware.bluetooth@1.1-service.sim
+    PRODUCT_PACKAGES += android.hardware.bluetooth@1.1-service.remote
+endif
+else
+    PRODUCT_PACKAGES += android.hardware.bluetooth@1.1-service.sim
 endif
 PRODUCT_PACKAGES += android.hardware.bluetooth.audio@2.1-impl
 
@@ -510,7 +511,7 @@ PRODUCT_PACKAGES += \
 ifeq ($(LOCAL_KEYMINT_PRODUCT_PACKAGE),)
        LOCAL_KEYMINT_PRODUCT_PACKAGE := android.hardware.security.keymint-service
 endif
-PRODUCT_PACKAGES += \
+# PRODUCT_PACKAGES += \
     $(LOCAL_KEYMINT_PRODUCT_PACKAGE)
 
 #
@@ -573,6 +574,7 @@ PRODUCT_PRODUCT_PROPERTIES += \
 
 # WLAN driver configuration files
 PRODUCT_COPY_FILES += \
+    external/wpa_supplicant_8/wpa_supplicant/wpa_supplicant_template.conf:$(TARGET_COPY_OUT_VENDOR)/etc/wifi/wpa_supplicant.conf \
     $(LOCAL_PATH)/config/wpa_supplicant_overlay.conf:$(TARGET_COPY_OUT_VENDOR)/etc/wifi/wpa_supplicant_overlay.conf
 
 # Fastboot HAL & fastbootd

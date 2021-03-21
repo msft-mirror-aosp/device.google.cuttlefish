@@ -224,8 +224,8 @@ bool PowerwashFiles() {
 
   auto overlay_path = instance.PerInstancePath("overlay.img");
   unlink(overlay_path.c_str());
-  if (!CreateQcowOverlay(
-      config->crosvm_binary(), instance.composite_disk_path(), overlay_path)) {
+  if (!CreateQcowOverlay(config->crosvm_binary(),
+                         instance.os_composite_disk_path(), overlay_path)) {
     LOG(ERROR) << "CreateQcowOverlay failed";
     return false;
   }
@@ -437,7 +437,7 @@ int RunCvdMain(int argc, char** argv) {
     LOG(ERROR) << "Ethernet TAP device already in use";
   }
 
-  auto vm_manager = GetVmManager(config->vm_manager());
+  auto vm_manager = GetVmManager(config->vm_manager(), config->target_arch());
 
 #ifndef __ANDROID__
   // Check host configuration
@@ -559,12 +559,8 @@ int RunCvdMain(int argc, char** argv) {
     LaunchWebRTC(&process_monitor, *config, webrtc_events_pipe);
   }
 
-  auto kernel_args =
-      KernelCommandLineFromConfig(*config, config->ForDefaultInstance());
-
   // Start the guest VM
-  auto vmm_commands = vm_manager->StartCommands(
-      *config, android::base::Join(kernel_args, " "));
+  auto vmm_commands = vm_manager->StartCommands(*config);
   for (auto& vmm_cmd: vmm_commands) {
     process_monitor.AddCommand(std::move(vmm_cmd));
   }
