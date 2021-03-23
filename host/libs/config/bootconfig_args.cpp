@@ -86,7 +86,7 @@ std::vector<std::string> BootconfigArgsFromConfig(
   auto vmm = vm_manager::GetVmManager(config.vm_manager());
   AppendVector(&bootconfig_args,
                vmm->ConfigureBootDevices(instance.virtual_disk_paths().size()));
-  AppendVector(&bootconfig_args, vmm->ConfigureGpuMode(config.gpu_mode()));
+  // TODO(b/173815685): Resolve issue with androidboot.hardware and add GpuMode
 
   bootconfig_args.push_back(
       concat("androidboot.serialno=", instance.serial_number()));

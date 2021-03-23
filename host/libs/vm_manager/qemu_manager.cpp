@@ -128,8 +128,7 @@ std::vector<std::string> QemuManager::ConfigureBootDevices(int num_disks) {
   return {"androidboot.boot_devices=pci0000:00/0000:00:" + stream.str() + ".0"};
 }
 
-std::vector<Command> QemuManager::StartCommands(
-    const CuttlefishConfig& config) {
+std::vector<Command> QemuManager::StartCommands(const CuttlefishConfig& config) {
   auto instance = config.ForDefaultInstance();
 
   auto stop = [](Subprocess* proc) {
@@ -212,7 +211,7 @@ std::vector<Command> QemuManager::StartCommands(
   auto access_kregistry_size_bytes = 0;
   if (FileExists(instance.access_kregistry_path())) {
     access_kregistry_size_bytes = FileSize(instance.access_kregistry_path());
-    CHECK((access_kregistry_size_bytes & (1024 * 1024 - 1)) == 0)
+    CHECK(access_kregistry_size_bytes & (1024 * 1024 - 1))
         << instance.access_kregistry_path() <<  " file size ("
         << access_kregistry_size_bytes << ") not a multiple of 1MB";
   }
@@ -220,7 +219,7 @@ std::vector<Command> QemuManager::StartCommands(
   auto pstore_size_bytes = 0;
   if (FileExists(instance.pstore_path())) {
     pstore_size_bytes = FileSize(instance.pstore_path());
-    CHECK((pstore_size_bytes & (1024 * 1024 - 1)) == 0)
+    CHECK(pstore_size_bytes & (1024 * 1024 - 1))
         << instance.pstore_path() <<  " file size ("
         << pstore_size_bytes << ") not a multiple of 1MB";
   }
@@ -457,10 +456,9 @@ std::vector<Command> QemuManager::StartCommands(
   qemu_cmd.AddParameter("-bios");
   qemu_cmd.AddParameter(config.bootloader());
 
-  if (config.gdb_port() > 0) {
-    qemu_cmd.AddParameter("-S");
+  if (config.gdb_flag().size() > 0) {
     qemu_cmd.AddParameter("-gdb");
-    qemu_cmd.AddParameter("tcp::", config.gdb_port());
+    qemu_cmd.AddParameter(config.gdb_flag());
   }
 
   LogAndSetEnv("QEMU_AUDIO_DRV", "none");

@@ -48,7 +48,7 @@ DEFINE_int32(command_fd, -1, "An fd to listen to for control messages");
 DEFINE_string(action_servers, "",
               "A comma-separated list of server_name:fd pairs, "
               "where each entry corresponds to one custom action server.");
-DEFINE_bool(write_virtio_input, true,
+DEFINE_bool(write_virtio_input, false,
             "Whether to send input events in virtio format.");
 DEFINE_int32(audio_server_fd, -1, "An fd to listen on for audio frames");
 
@@ -229,13 +229,10 @@ int main(int argc, char** argv) {
   }
   streamer->SetHardwareSpec("GPU Mode", user_friendly_gpu_mode);
 
-  std::shared_ptr<AudioHandler> audio_handler;
-  if (cvd_config->enable_audio()) {
-    auto audio_stream = streamer->AddAudioStream("audio");
-    auto audio_server = CreateAudioServer();
-    audio_handler =
-        std::make_shared<AudioHandler>(audio_stream, std::move(audio_server));
-  }
+  auto audio_stream = streamer->AddAudioStream("audio");
+  auto audio_server = CreateAudioServer();
+  auto audio_handler =
+      std::make_shared<AudioHandler>(audio_stream, std::move(audio_server));
 
   // Parse the -action_servers flag, storing a map of action server name -> fd
   std::map<std::string, int> action_server_fds;
@@ -317,9 +314,7 @@ int main(int argc, char** argv) {
     LOG(DEBUG) << "control socket closed";
   });
 
-  if (audio_handler) {
-    audio_handler->Start();
-  }
+  audio_handler->Start();
   display_handler->Loop();
 
   return 0;

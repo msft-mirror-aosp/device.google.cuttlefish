@@ -73,6 +73,9 @@ int InstanceFromEnvironment() {
 
 const char* kInstances = "instances";
 
+const char* kSmt = "smt";
+
+const char* kProtectedVm = "protected_vm";
 
 }  // namespace
 
@@ -170,12 +173,29 @@ void CuttlefishConfig::SetPath(const std::string& key,
   }
 }
 
-static constexpr char kGdbPort[] = "gdb_port";
-int CuttlefishConfig::gdb_port() const {
-  return (*dictionary_)[kGdbPort].asInt();
+static constexpr char kKernelImagePath[] = "kernel_image_path";
+std::string CuttlefishConfig::kernel_image_path() const {
+  return (*dictionary_)[kKernelImagePath].asString();
 }
-void CuttlefishConfig::set_gdb_port(int port) {
-  (*dictionary_)[kGdbPort] = port;
+void CuttlefishConfig::set_kernel_image_path(
+    const std::string& kernel_image_path) {
+  SetPath(kKernelImagePath, kernel_image_path);
+}
+
+static constexpr char kGdbFlag[] = "gdb_flag";
+std::string CuttlefishConfig::gdb_flag() const {
+  return (*dictionary_)[kGdbFlag].asString();
+}
+void CuttlefishConfig::set_gdb_flag(const std::string& device) {
+  (*dictionary_)[kGdbFlag] = device;
+}
+
+static constexpr char kInitramfsPath[] = "initramfs_path";
+std::string CuttlefishConfig::initramfs_path() const {
+  return (*dictionary_)[kInitramfsPath].asString();
+}
+void CuttlefishConfig::set_initramfs_path(const std::string& initramfs_path) {
+  SetPath(kInitramfsPath, initramfs_path);
 }
 
 static constexpr char kDeprecatedBootCompleted[] = "deprecated_boot_completed";
@@ -588,7 +608,12 @@ void CuttlefishConfig::set_enable_host_bluetooth(bool enable_host_bluetooth) {
   (*dictionary_)[kenableHostBluetooth] = enable_host_bluetooth;
 }
 bool CuttlefishConfig::enable_host_bluetooth() const {
+// TODO(b/181203470): Support root-canal for arm64 Host
+#if defined(__BIONIC__)
+  return false;
+#else
   return (*dictionary_)[kenableHostBluetooth].asBool();
+#endif
 }
 
 static constexpr char kEnableMetrics[] = "enable_metrics";
@@ -710,7 +735,6 @@ bool CuttlefishConfig::record_screen() const {
   return (*dictionary_)[kRecordScreen].asBool();
 }
 
-static constexpr char kSmt[] = "smt";
 void CuttlefishConfig::set_smt(bool smt) {
   (*dictionary_)[kSmt] = smt;
 }
@@ -718,15 +742,8 @@ bool CuttlefishConfig::smt() const {
   return (*dictionary_)[kSmt].asBool();
 }
 
-static constexpr char kEnableAudio[] = "enable_audio";
-void CuttlefishConfig::set_enable_audio(bool enable) {
-  (*dictionary_)[kEnableAudio] = enable;
-}
-bool CuttlefishConfig::enable_audio() const {
-  return (*dictionary_)[kEnableAudio].asBool();
-}
+bool CuttlefishConfig::enable_audio() const { return enable_webrtc(); }
 
-static constexpr char kProtectedVm[] = "protected_vm";
 void CuttlefishConfig::set_protected_vm(bool protected_vm) {
   (*dictionary_)[kProtectedVm] = protected_vm;
 }

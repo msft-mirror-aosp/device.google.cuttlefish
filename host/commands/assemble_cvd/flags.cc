@@ -23,6 +23,7 @@
 #include "host/commands/assemble_cvd/boot_config.h"
 #include "host/commands/assemble_cvd/clean.h"
 #include "host/commands/assemble_cvd/disk_flags.h"
+#include "host/libs/config/fetcher_config.h"
 #include "host/libs/config/host_tools_version.h"
 #include "host/libs/graphics_detector/graphics_detector.h"
 #include "host/libs/vm_manager/crosvm_manager.h"
@@ -49,10 +50,8 @@ DEFINE_int32(blank_data_image_mb, 0,
              "The size of the blank data image to generate, MB.");
 DEFINE_string(blank_data_image_fmt, "f2fs",
               "The fs format for the blank data image. Used with mkfs.");
-DEFINE_int32(gdb_port, 0,
-             "Port number to spawn kernel gdb on e.g. -gdb_port=1234. The"
-             "kernel must have been built with CONFIG_RANDOMIZE_BASE "
-             "disabled.");
+DEFINE_string(qemu_gdb, "",
+              "Debug flag to pass to qemu. e.g. -qemu_gdb=tcp::1234");
 
 DEFINE_int32(x_res, 0, "Width of the screen in pixels");
 DEFINE_int32(y_res, 0, "Height of the screen in pixels");
@@ -292,9 +291,6 @@ DEFINE_bool(protected_vm, false, "Boot in Protected VM mode");
 
 DECLARE_string(system_image_dir);
 
-DEFINE_bool(enable_audio, cuttlefish::HostArch() != "aarch64",
-            "Whether to play or capture audio");
-
 namespace cuttlefish {
 using vm_manager::QemuManager;
 using vm_manager::GetVmManager;
@@ -335,8 +331,10 @@ std::string StrForInstance(const std::string& prefix, int num) {
 } // namespace
 
 CuttlefishConfig InitializeCuttlefishConfiguration(
-    const std::string& assembly_dir, const std::string& instance_dir,
-    int modem_simulator_count) {
+    const std::string& assembly_dir,
+    const std::string& instance_dir,
+    int modem_simulator_count,
+    const FetcherConfig& fetcher_config) {
   // At most one streamer can be started.
   CHECK(NumStreamers() <= 1);
 
@@ -421,10 +419,20 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
   tmp_config_obj.set_secure_hals(
       std::set<std::string>(secure_hals.begin(), secure_hals.end()));
 
-  tmp_config_obj.set_gdb_port(FLAGS_gdb_port);
-
+  tmp_config_obj.set_gdb_flag(FLAGS_qemu_gdb);
   std::vector<std::string> adb = android::base::Split(FLAGS_adb_mode, ",");
   tmp_config_obj.set_adb_mode(std::set<std::string>(adb.begin(), adb.end()));
+  std::string discovered_kernel = fetcher_config.FindCvdFileWithSuffix(kKernelDefaultPath);
+  std::string foreign_kernel = FLAGS_kernel_path.size() ? FLAGS_kernel_path : discovered_kernel;
+  if (foreign_kernel.size()) {
+    tmp_config_obj.set_kernel_image_path(foreign_kernel);
+  } else {
+    tmp_config_obj.set_kernel_image_path(
+        tmp_config_obj.AssemblyPath(kKernelDefaultPath.c_str()));
+  }
+
+  std::string discovered_ramdisk = fetcher_config.FindCvdFileWithSuffix(kInitramfsImg);
+  std::string foreign_ramdisk = FLAGS_initramfs_path.size () ? FLAGS_initramfs_path : discovered_ramdisk;
 
   tmp_config_obj.set_guest_enforce_security(FLAGS_guest_enforce_security);
   tmp_config_obj.set_guest_audit_security(FLAGS_guest_audit_security);
@@ -436,6 +444,10 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
 
   tmp_config_obj.set_console(FLAGS_console);
   tmp_config_obj.set_kgdb(FLAGS_console && FLAGS_kgdb);
+
+  if(foreign_ramdisk.size()) {
+    tmp_config_obj.set_initramfs_path(foreign_ramdisk);
+  }
 
   tmp_config_obj.set_host_tools_version(HostToolsCrc());
 
@@ -701,12 +713,6 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
 
   tmp_config_obj.set_enable_sandbox(FLAGS_enable_sandbox);
 
-  // Audio is not available for VNC server
-  SetCommandLineOptionWithMode("enable_audio",
-                               FLAGS_start_vnc_server ? "false" : "true",
-                               SET_FLAGS_DEFAULT);
-  tmp_config_obj.set_enable_audio(FLAGS_enable_audio);
-
   return tmp_config_obj;
 }
 
@@ -725,7 +731,7 @@ void SetDefaultFlagsFromConfigPreset() {
 
   // If the user specifies a --config name, then use that config
   // preset option.
-  std::string android_info_path = FLAGS_system_image_dir + "/android-info.txt";
+  std::string android_info_path = DefaultGuestImagePath("/android-info.txt");
   if (IsFlagSet("config")) {
     if (!allowed_config_presets.count(config_preset)) {
       LOG(FATAL) << "Invalid --config option '" << config_preset

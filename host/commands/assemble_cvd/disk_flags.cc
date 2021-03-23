@@ -118,6 +118,31 @@ bool ResolveInstanceFiles() {
   return true;
 }
 
+static bool DecompressKernel(const std::string& src, const std::string& dst) {
+  Command decomp_cmd(HostBinaryPath("extract-vmlinux"));
+  decomp_cmd.AddParameter(src);
+  std::string current_path = StringFromEnv("PATH", "");
+  std::string bin_folder = DefaultHostArtifactsPath("bin");
+  decomp_cmd.SetEnvironment({"PATH=" + current_path + ":" + bin_folder});
+  auto output_file = SharedFD::Creat(dst.c_str(), 0666);
+  if (!output_file->IsOpen()) {
+    LOG(ERROR) << "Unable to create decompressed image file: "
+               << output_file->StrError();
+    return false;
+  }
+  decomp_cmd.RedirectStdIO(Subprocess::StdIOChannel::kStdOut, output_file);
+  auto decomp_proc = decomp_cmd.Start();
+  return decomp_proc.Started() && decomp_proc.Wait() == 0;
+}
+
+// Repacking is not supported on Android. We can't run the unpacking python
+// script on Android.
+#if !defined(__ANDROID__)
+constexpr bool repack_supported = true;
+#else
+constexpr bool repack_supported = false;
+#endif
+
 std::vector<ImagePartition> disk_config(
     const CuttlefishConfig::InstanceSpecific& instance) {
   std::vector<ImagePartition> partitions;
@@ -148,9 +173,7 @@ std::vector<ImagePartition> disk_config(
     .label = "boot_b",
     .image_file_path = FLAGS_boot_image,
   });
-  // Boot image repacking is not supported on protected VMs. Repacking requires
-  // resigning the image and keys on android hosts aren't trusted.
-  if (!FLAGS_protected_vm) {
+  if (repack_supported) {
     partitions.push_back(ImagePartition{
         .label = "vendor_boot_a",
         .image_file_path = instance.vendor_boot_image_path(),
@@ -330,19 +353,16 @@ bool CreateCompositeDisk(const CuttlefishConfig& config,
   return true;
 }
 
-static bool IsBootconfigSupported(const std::string& tmp_dir) {
-  const std::string kernel_image_path =
-      FLAGS_kernel_path.size()
-          ? FLAGS_kernel_path
-          : ExtractKernelFromBootImage(FLAGS_boot_image, tmp_dir);
-  const std::string ikconfig_path = tmp_dir + "/ikconfig";
+static bool IsBootconfigSupported(const std::string& kernel_image_path,
+                                  const std::string& build_dir) {
+  const std::string vmlinux_path = build_dir + "/vmlinux";
+  const std::string ikconfig_path = build_dir + "/ikconfig";
+
+  CHECK(DecompressKernel(kernel_image_path, vmlinux_path))
+      << "Failed to decompress kernel";
 
   Command ikconfig_cmd(HostBinaryPath("extract-ikconfig"));
-  ikconfig_cmd.AddParameter(kernel_image_path);
-
-  std::string current_path = StringFromEnv("PATH", "");
-  std::string bin_folder = DefaultHostArtifactsPath("bin");
-  ikconfig_cmd.SetEnvironment({"PATH=" + current_path + ":" + bin_folder});
+  ikconfig_cmd.AddParameter(vmlinux_path);
 
   auto ikconfig_fd = SharedFD::Creat(ikconfig_path, 0666);
   CHECK(ikconfig_fd->IsOpen())
@@ -351,87 +371,100 @@ static bool IsBootconfigSupported(const std::string& tmp_dir) {
 
   auto ikconfig_proc = ikconfig_cmd.Start();
   CHECK(ikconfig_proc.Started() && ikconfig_proc.Wait() == 0)
-      << "Failed to extract ikconfig from " << kernel_image_path;
+      << "Failed to extract ikconfig from " << vmlinux_path;
 
   return ReadFile(ikconfig_path).find("BOOT_CONFIG=y") != std::string::npos;
 }
 
 const std::string kKernelDefaultPath = "kernel";
 const std::string kInitramfsImg = "initramfs.img";
-static void ExtractKernelParamsFromFetcherConfig(
-    const FetcherConfig& fetcher_config) {
-  std::string discovered_kernel =
-      fetcher_config.FindCvdFileWithSuffix(kKernelDefaultPath);
-  std::string discovered_ramdisk =
-      fetcher_config.FindCvdFileWithSuffix(kInitramfsImg);
+const std::string kRamdiskConcatExt = ".concat";
 
-  SetCommandLineOptionWithMode("kernel_path", discovered_kernel.c_str(),
-                               google::FlagSettingMode::SET_FLAGS_DEFAULT);
-
-  SetCommandLineOptionWithMode("initramfs_path", discovered_ramdisk.c_str(),
-                               google::FlagSettingMode::SET_FLAGS_DEFAULT);
-}
-
-static void RepackAllBootImages(const FetcherConfig& fetcher_config,
-                                const CuttlefishConfig* config) {
-  ExtractKernelParamsFromFetcherConfig(fetcher_config);
+void CreateDynamicDiskFiles(const FetcherConfig& fetcher_config,
+                            const CuttlefishConfig* config) {
   CHECK(FileHasContent(FLAGS_boot_image))
       << "File not found: " << FLAGS_boot_image;
 
   CHECK(FileHasContent(FLAGS_vendor_boot_image))
       << "File not found: " << FLAGS_vendor_boot_image;
 
-  if (FLAGS_kernel_path.size()) {
-    const std::string new_boot_image_path =
-        config->AssemblyPath("boot_repacked.img");
-    bool success = RepackBootImage(FLAGS_kernel_path, FLAGS_boot_image,
-                                   new_boot_image_path, config->assembly_dir());
-    CHECK(success) << "Failed to regenerate the boot image with the new kernel";
-    SetCommandLineOptionWithMode("boot_image", new_boot_image_path.c_str(),
-                                 google::FlagSettingMode::SET_FLAGS_DEFAULT);
+  std::string discovered_kernel = fetcher_config.FindCvdFileWithSuffix(kKernelDefaultPath);
+  std::string foreign_kernel = FLAGS_kernel_path.size() ? FLAGS_kernel_path : discovered_kernel;
+  std::string discovered_ramdisk = fetcher_config.FindCvdFileWithSuffix(kInitramfsImg);
+  std::string foreign_ramdisk = FLAGS_initramfs_path.size () ? FLAGS_initramfs_path : discovered_ramdisk;
+
+  // If the kernel and/or ramdisk are passed in, repack is needed. Unpack now in
+  // preparation for the repack.
+  if (repack_supported) {
+    CHECK(UnpackBootImage(FLAGS_boot_image, config->assembly_dir()))
+        << "Failed to unpack boot image";
+    CHECK(
+        UnpackVendorBootImage(FLAGS_vendor_boot_image, config->assembly_dir()))
+        << "Failed to unpack vendor boot image";
   }
 
+  // Check for bootconfig support in whichever kernel we are using. Checking
+  // that requires decompressing the kernel and looking into it.
+  const auto& kernel_path =
+      foreign_kernel.size() ? foreign_kernel : config->kernel_image_path();
   const bool bootconfig_supported =
-      IsBootconfigSupported(config->assembly_dir());
+      repack_supported &&
+      IsBootconfigSupported(kernel_path, config->assembly_dir());
+
+  const std::string new_boot_image_path =
+      config->AssemblyPath("boot_repacked.img");
+
   for (auto instance : config->Instances()) {
     const std::string new_vendor_boot_image_path =
         instance.vendor_boot_image_path();
-    const std::vector<std::string> boot_config_vector =
-        BootconfigArgsFromConfig(*config, instance);
-    if (FLAGS_kernel_path.size() || FLAGS_initramfs_path.size()) {
-      // Repack the vendor boot images if kernels and/or ramdisks are passed in.
-      if (FLAGS_initramfs_path.size()) {
+    if (foreign_kernel.size() || foreign_ramdisk.size()) {
+      // Repack the boot images if kernels and/or ramdisks are passed in.
+      if (foreign_kernel.size()) {
+        CHECK(repack_supported) << "Repacking not supported on Android";
+        bool success =
+            RepackBootImage(foreign_kernel, FLAGS_boot_image,
+                            new_boot_image_path, config->assembly_dir());
+        CHECK(success)
+            << "Failed to regenerate the boot image with the new kernel";
+        SetCommandLineOptionWithMode(
+            "boot_image", new_boot_image_path.c_str(),
+            google::FlagSettingMode::SET_FLAGS_DEFAULT);
+      }
+      if (foreign_ramdisk.size()) {
+        CHECK(repack_supported) << "Repacking not supported on Android";
         bool success = RepackVendorBootImage(
-            FLAGS_initramfs_path, FLAGS_vendor_boot_image,
+            foreign_ramdisk, FLAGS_vendor_boot_image,
             new_vendor_boot_image_path, config->assembly_dir(),
-            instance.instance_dir(), boot_config_vector, bootconfig_supported);
+            instance.PerInstanceInternalPath(""),
+            BootconfigArgsFromConfig(*config, instance), bootconfig_supported);
         CHECK(success) << "Failed to regenerate the vendor boot image with the "
                           "new ramdisk";
-      } else {
-        // This control flow implies a kernel with all configs built in.
-        // If it's just the kernel, repack the vendor boot image without a
-        // ramdisk.
+      }
+      if (foreign_kernel.size() && !foreign_ramdisk.size()) {
+        CHECK(repack_supported) << "Repacking not supported on Android";
         bool success = RepackVendorBootImageWithEmptyRamdisk(
             FLAGS_vendor_boot_image, new_vendor_boot_image_path,
-            config->assembly_dir(), instance.instance_dir(), boot_config_vector,
-            bootconfig_supported);
+            config->assembly_dir(), instance.PerInstanceInternalPath(""),
+            BootconfigArgsFromConfig(*config, instance), bootconfig_supported);
         CHECK(success)
             << "Failed to regenerate the vendor boot image without a ramdisk";
       }
     } else {
-      // Repack the vendor boot image to add the instance specific bootconfig
-      // parameters
-      bool success = RepackVendorBootImage(
-          std::string(), FLAGS_vendor_boot_image, new_vendor_boot_image_path,
-          config->assembly_dir(), instance.instance_dir(), boot_config_vector,
-          bootconfig_supported);
-      CHECK(success) << "Failed to regenerate the vendor boot image";
+      // Convert the format of the vendor boot image to V4 by repacking it even
+      // when the kernel and/or ramdisk is not given. Right now, we do this only
+      // for the non-Android scenarios because we can't do the repack on Android
+      // due to the lack of tools that do the repacking.
+      if (repack_supported) {
+        // Repack the vendor boot image to add the bootconfig parameters
+        bool success = RepackVendorBootImage(
+            std::string(), FLAGS_vendor_boot_image, new_vendor_boot_image_path,
+            config->assembly_dir(), instance.PerInstanceInternalPath(""),
+            BootconfigArgsFromConfig(*config, instance), bootconfig_supported);
+        CHECK(success) << "Failed to regenerate the vendor boot image";
+      }
     }
   }
-}
 
-void CreateDynamicDiskFiles(const FetcherConfig& fetcher_config,
-                            const CuttlefishConfig* config) {
   // Create misc if necessary
   CHECK(InitializeMiscImage(FLAGS_misc_image)) << "Failed to create misc image";
 
@@ -439,25 +472,24 @@ void CreateDynamicDiskFiles(const FetcherConfig& fetcher_config,
   DataImageResult dataImageResult = ApplyDataImagePolicy(*config, FLAGS_data_image);
   CHECK(dataImageResult != DataImageResult::Error) << "Failed to set up userdata";
 
+// Create boot_config if necessary
+// TODO(b/181812679) remove this block when we no longer need to create the
+// env partition.
+#if !defined(__ANDROID__)
+  for (auto instance : config->Instances()) {
+    CHECK(InitBootloaderEnvPartition(*config, instance))
+        << "Failed to create bootloader environment partition";
+  }
+#endif
+
   if (!FileExists(FLAGS_metadata_image)) {
     CreateBlankImage(FLAGS_metadata_image, FLAGS_blank_metadata_image_mb, "none");
   }
 
   // If we are booting a protected VM, for now, assume we want a super minimal
-  // environment with no userdata encryption, limited debug, no FRP emulation, a
-  // static env for the bootloader, no SD-Card and no resume-on-reboot HAL
-  // support. We can also assume that image repacking isn't trusted. Repacking
-  // requires resigning the image and keys from an android host aren't trusted.
+  // environment with no userdata encryption, limited debug, no FRP emulation,
+  // no SD-Card and no resume-on-reboot HAL support
   if (!FLAGS_protected_vm) {
-    RepackAllBootImages(fetcher_config, config);
-
-    // TODO(b/181812679) remove this block when we no longer need to create the
-    // env partition.
-    for (auto instance : config->Instances()) {
-      CHECK(InitBootloaderEnvPartition(*config, instance))
-          << "Failed to create bootloader environment partition";
-    }
-
     for (const auto& instance : config->Instances()) {
       if (!FileExists(instance.access_kregistry_path())) {
         CreateBlankImage(instance.access_kregistry_path(), 2 /* mb */, "none");
@@ -490,8 +522,7 @@ void CreateDynamicDiskFiles(const FetcherConfig& fetcher_config,
     }
   }
 
-  CHECK(FileHasContent(FLAGS_bootloader))
-      << "File not found: " << FLAGS_bootloader;
+  CHECK(FileHasContent(FLAGS_bootloader)) << "File not found: " << FLAGS_bootloader;
 
   if (!FLAGS_esp.empty()) {
     CHECK(FileHasContent(FLAGS_esp))

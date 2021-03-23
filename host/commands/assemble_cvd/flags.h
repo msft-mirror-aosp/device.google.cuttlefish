@@ -11,8 +11,10 @@ namespace cuttlefish {
 bool ParseCommandLineFlags(int* argc, char*** argv);
 // Must be called after ParseCommandLineFlags.
 CuttlefishConfig InitializeCuttlefishConfiguration(
-    const std::string& assembly_dir, const std::string& instance_dir,
-    int modem_simulator_count);
+    const std::string& assembly_dir,
+    const std::string& instance_dir,
+    int modem_simulator_count,
+    const FetcherConfig& fetcher_config);
 
 std::string GetConfigFilePath(const CuttlefishConfig& config);
 std::string GetCuttlefishEnvPath();
