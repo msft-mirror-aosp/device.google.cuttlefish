@@ -370,16 +370,21 @@ PRODUCT_PACKAGES += \
 #
 # Bluetooth HAL and Compatibility Bluetooth library (for older revs).
 #
-
+ifeq ($(LOCAL_BLUETOOTH_PRODUCT_PACKAGE),)
 ifeq ($(TARGET_ENABLE_HOST_BLUETOOTH_EMULATION),true)
 ifeq ($(TARGET_USE_BTLINUX_HAL_IMPL),true)
-    PRODUCT_PACKAGES += android.hardware.bluetooth@1.1-service.btlinux
+    LOCAL_BLUETOOTH_PRODUCT_PACKAGE := android.hardware.bluetooth@1.1-service.btlinux
 else
-    PRODUCT_PACKAGES += android.hardware.bluetooth@1.1-service.remote
+    LOCAL_BLUETOOTH_PRODUCT_PACKAGE := android.hardware.bluetooth@1.1-service.remote
 endif
 else
-    PRODUCT_PACKAGES += android.hardware.bluetooth@1.1-service.sim
+    LOCAL_BLUETOOTH_PRODUCT_PACKAGE := android.hardware.bluetooth@1.1-service.sim
 endif
+    DEVICE_MANIFEST_FILE += device/google/cuttlefish/shared/config/manifest_android.hardware.bluetooth@1.1-service.xml
+endif
+
+PRODUCT_PACKAGES += $(LOCAL_BLUETOOTH_PRODUCT_PACKAGE)
+
 PRODUCT_PACKAGES += android.hardware.bluetooth.audio@2.1-impl
 
 #
@@ -460,7 +465,7 @@ PRODUCT_PACKAGES += \
 # Gatekeeper
 #
 ifeq ($(LOCAL_GATEKEEPER_PRODUCT_PACKAGE),)
-       LOCAL_GATEKEEPER_PRODUCT_PACKAGE := android.hardware.gatekeeper@1.0-service.remote
+       LOCAL_GATEKEEPER_PRODUCT_PACKAGE := android.hardware.gatekeeper@1.0-service.software
 endif
 PRODUCT_PACKAGES += \
     $(LOCAL_GATEKEEPER_PRODUCT_PACKAGE)
@@ -515,7 +520,7 @@ PRODUCT_PACKAGES += \
 # Keymaster HAL
 #
 ifeq ($(LOCAL_KEYMASTER_PRODUCT_PACKAGE),)
-       LOCAL_KEYMASTER_PRODUCT_PACKAGE := android.hardware.keymaster@4.1-service.remote
+       LOCAL_KEYMASTER_PRODUCT_PACKAGE := android.hardware.keymaster@4.1-service
 endif
 PRODUCT_PACKAGES += \
     $(LOCAL_KEYMASTER_PRODUCT_PACKAGE)
@@ -527,7 +532,7 @@ ifeq ($(LOCAL_KEYMINT_PRODUCT_PACKAGE),)
        LOCAL_KEYMINT_PRODUCT_PACKAGE := android.hardware.security.keymint-service
 endif
 # PRODUCT_PACKAGES += \
-    $(LOCAL_KEYMINT_PRODUCT_PACKAGE)
+#    $(LOCAL_KEYMINT_PRODUCT_PACKAGE)
 
 #
 # Power HAL
@@ -554,7 +559,8 @@ PRODUCT_PACKAGES += \
     android.hardware.neuralnetworks-service-sample-float-fast \
     android.hardware.neuralnetworks-service-sample-float-slow \
     android.hardware.neuralnetworks-service-sample-minimal \
-    android.hardware.neuralnetworks-service-sample-quant
+    android.hardware.neuralnetworks-service-sample-quant \
+    android.hardware.neuralnetworks-shim-service-sample
 
 #
 # USB

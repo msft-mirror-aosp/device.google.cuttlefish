@@ -110,7 +110,7 @@ std::vector<std::string> CrosvmManager::ConfigureGpuMode(
         "androidboot.cpuvulkan.version=" + std::to_string(VK_API_VERSION_1_1),
         "androidboot.hardware.gralloc=minigbm",
         "androidboot.hardware.hwcomposer=ranchu",
-        "androidboot.hardware.egl=swiftshader",
+        "androidboot.hardware.egl=angle",
         "androidboot.hardware.vulkan=pastel",
     };
   }
@@ -264,6 +264,8 @@ std::vector<Command> CrosvmManager::StartCommands(
                             ":", display_config.width, ":",
                             display_config.height);
     crosvm_cmd.AddParameter("--keyboard=", instance.keyboard_socket_path());
+  }
+  if (config.enable_webrtc()) {
     crosvm_cmd.AddParameter("--switches=", instance.switches_socket_path());
   }
 
