@@ -118,6 +118,7 @@ void SimulatedHWComposer::MakeStripes() {
     previous_frame_number = frame_number;
   };
 
+  screen_connector_->OnFrameAfter(previous_frame_number, frame_callback);
   while (!closed()) {
     bb_->WaitForAtLeastOneClientConnection();
 
