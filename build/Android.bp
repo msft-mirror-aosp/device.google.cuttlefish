@@ -51,6 +51,7 @@ cvd_host_tools = [
     "kernel_log_monitor",
     "launch_cvd",
     "libgrpc++",
+    "libgrpc++_unsecure",
     "log_tee",
     "logcat_receiver",
     "lpmake",
@@ -78,6 +79,11 @@ cvd_host_tools = [
     "webrtc_operator",
 ]
 
+cvd_bluetooth_config_files = [
+    "controller_properties.json",
+    "default_commands",
+]
+
 cvd_host_tests = [
     "cuttlefish_net_tests",
     "modem_simulator_test",
@@ -86,12 +92,14 @@ cvd_host_tests = [
 cvd_host_webrtc_assets = [
     "webrtc_adb.js",
     "webrtc_app.js",
+    "webrtc_controls.js",
     "webrtc_cf.js",
     "webrtc_index.html",
     "webrtc_server.crt",
     "webrtc_server.key",
     "webrtc_server.p12",
     "webrtc_style.css",
+    "webrtc_controls.css",
     "webrtc_trusted.pem",
 ]
 
@@ -152,7 +160,8 @@ cvd_host_package_customization {
     multilib: {
         common: {
             deps: cvd_host_webrtc_assets +
-                cvd_host_model_simulator_files,
+                cvd_host_model_simulator_files +
+                cvd_bluetooth_config_files,
         },
     },
 

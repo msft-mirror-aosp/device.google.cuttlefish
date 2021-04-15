@@ -370,6 +370,9 @@ class CuttlefishConfig {
     int rootcanal_hci_port() const;
     int rootcanal_link_port() const;
     int rootcanal_test_port() const;
+    std::string rootcanal_config_file() const;
+    std::string rootcanal_default_commands_file() const;
+
     std::string adb_device_name() const;
     std::string device_title() const;
     std::string gnss_file_path() const;
@@ -395,7 +398,11 @@ class CuttlefishConfig {
 
     std::string touch_socket_path() const;
     std::string keyboard_socket_path() const;
+    std::string switches_socket_path() const;
     std::string frames_socket_path() const;
+
+    // mock hal guest socket that will be vsock/virtio later on
+    std::string confui_hal_guest_socket_path() const;
 
     std::string access_kregistry_path() const;
 
@@ -424,6 +431,8 @@ class CuttlefishConfig {
     std::string sdcard_path() const;
 
     std::string os_composite_disk_path() const;
+
+    std::string persistent_composite_disk_path() const;
 
     std::string uboot_env_image_path() const;
 
@@ -474,6 +483,9 @@ class CuttlefishConfig {
     void set_rootcanal_hci_port(int rootcanal_hci_port);
     void set_rootcanal_link_port(int rootcanal_link_port);
     void set_rootcanal_test_port(int rootcanal_test_port);
+    void set_rootcanal_config_file(const std::string& rootcanal_config_file);
+    void set_rootcanal_default_commands_file(
+        const std::string& rootcanal_default_commands_file);
     void set_device_title(const std::string& title);
     void set_mobile_bridge_name(const std::string& mobile_bridge_name);
     void set_mobile_tap_name(const std::string& mobile_tap_name);

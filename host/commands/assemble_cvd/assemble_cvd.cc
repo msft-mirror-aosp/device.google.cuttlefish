@@ -144,7 +144,6 @@ const CuttlefishConfig* InitFilesystemAndCreateConfig(
       preserving.insert("os_composite_gpt_footer.img");
       preserving.insert("os_composite.img");
       preserving.insert("sdcard.img");
-      preserving.insert("uboot_env.img");
       preserving.insert("boot_repacked.img");
       preserving.insert("vendor_boot_repacked.img");
       preserving.insert("access-kregistry");
@@ -153,6 +152,11 @@ const CuttlefishConfig* InitFilesystemAndCreateConfig(
       preserving.insert("gatekeeper_insecure");
       preserving.insert("modem_nvram.json");
       preserving.insert("recording");
+      preserving.insert("persistent_composite_disk_config.txt");
+      preserving.insert("persistent_composite_gpt_header.img");
+      preserving.insert("persistent_composite_gpt_footer.img");
+      preserving.insert("persistent_composite.img");
+      preserving.insert("uboot_env.img");
       preserving.insert("factory_reset_protected.img");
       std::stringstream ss;
       for (int i = 0; i < FLAGS_modem_simulator_count; i++) {
@@ -200,6 +204,21 @@ const CuttlefishConfig* InitFilesystemAndCreateConfig(
   return config;
 }
 
+const std::string kKernelDefaultPath = "kernel";
+const std::string kInitramfsImg = "initramfs.img";
+static void ExtractKernelParamsFromFetcherConfig(
+    const FetcherConfig& fetcher_config) {
+  std::string discovered_kernel =
+      fetcher_config.FindCvdFileWithSuffix(kKernelDefaultPath);
+  std::string discovered_ramdisk =
+      fetcher_config.FindCvdFileWithSuffix(kInitramfsImg);
+
+  SetCommandLineOptionWithMode("kernel_path", discovered_kernel.c_str(),
+                               google::FlagSettingMode::SET_FLAGS_DEFAULT);
+
+  SetCommandLineOptionWithMode("initramfs_path", discovered_ramdisk.c_str(),
+                               google::FlagSettingMode::SET_FLAGS_DEFAULT);
+}
 } // namespace
 
 int AssembleCvdMain(int argc, char** argv) {
@@ -224,10 +243,15 @@ int AssembleCvdMain(int argc, char** argv) {
   }
   std::vector<std::string> input_files = android::base::Split(input_files_str, "\n");
 
+  FetcherConfig fetcher_config = FindFetcherConfig(input_files);
+  // set gflags defaults to point to kernel/RD from fetcher config
+  ExtractKernelParamsFromFetcherConfig(fetcher_config);
+
   KernelConfig kernel_config;
   CHECK(ParseCommandLineFlags(&argc, &argv, &kernel_config)) << "Failed to parse arguments";
 
-  auto config = InitFilesystemAndCreateConfig(FindFetcherConfig(input_files), kernel_config);
+  auto config =
+      InitFilesystemAndCreateConfig(std::move(fetcher_config), kernel_config);
 
   std::cout << GetConfigFilePath(*config) << "\n";
   std::cout << std::flush;

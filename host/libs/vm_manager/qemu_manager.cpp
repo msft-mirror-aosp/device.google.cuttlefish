@@ -25,7 +25,6 @@
 #include <unistd.h>
 
 #include <cstdlib>
-#include <iomanip>
 #include <sstream>
 #include <string>
 #include <thread>
@@ -100,11 +99,11 @@ std::vector<std::string> QemuManager::ConfigureGpuMode(
     // with properities lead to non-deterministic behavior while loading the
     // HALs.
     return {
-      "androidboot.cpuvulkan.version=" + std::to_string(VK_API_VERSION_1_1),
-      "androidboot.hardware.gralloc=minigbm",
-      "androidboot.hardware.hwcomposer=cutf",
-      "androidboot.hardware.egl=swiftshader",
-      "androidboot.hardware.vulkan=pastel",
+        "androidboot.cpuvulkan.version=" + std::to_string(VK_API_VERSION_1_1),
+        "androidboot.hardware.gralloc=minigbm",
+        "androidboot.hardware.hwcomposer=ranchu",
+        "androidboot.hardware.egl=swiftshader",
+        "androidboot.hardware.vulkan=pastel",
     };
   }
 
@@ -125,12 +124,7 @@ std::string QemuManager::ConfigureBootDevices(int num_disks) {
     case Arch::X86:
     case Arch::X86_64: {
       // QEMU has additional PCI devices for an ISA bridge and PIIX4
-      std::stringstream stream;
-      stream << std::setfill('0') << std::setw(2) << std::hex
-             << 2 + VmManager::kDefaultNumHvcs + VmManager::kMaxDisks -
-                    num_disks;
-      return "androidboot.boot_devices=pci0000:00/0000:00:" + stream.str() +
-             ".0";
+      return ConfigureMultipleBootDevices("pci0000:00/0000:00:", 2, num_disks);
     }
     case Arch::Arm:
       return "androidboot.boot_devices=3f000000.pcie";

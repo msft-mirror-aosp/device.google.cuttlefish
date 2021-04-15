@@ -28,11 +28,11 @@
 #include "common/libs/utils/subprocess.h"
 #include "host/commands/assemble_cvd/boot_config.h"
 #include "host/commands/assemble_cvd/boot_image_utils.h"
-#include "host/commands/assemble_cvd/image_aggregator.h"
 #include "host/commands/assemble_cvd/super_image_mixer.h"
 #include "host/libs/config/bootconfig_args.h"
 #include "host/libs/config/cuttlefish_config.h"
 #include "host/libs/config/data_image.h"
+#include "host/libs/image_aggregator/image_aggregator.h"
 #include "host/libs/vm_manager/crosvm_manager.h"
 
 // Taken from external/avb/libavb/avb_slot_verify.c; this define is not in the headers
@@ -121,14 +121,6 @@ bool ResolveInstanceFiles() {
 std::vector<ImagePartition> os_composite_disk_config(
     const CuttlefishConfig::InstanceSpecific& instance) {
   std::vector<ImagePartition> partitions;
-
-  // Note that if the positions of env or misc change, the environment for
-  // u-boot must be updated as well (see boot_config.cc and
-  // configs/cf-x86_defconfig in external/u-boot).
-  partitions.push_back(ImagePartition {
-    .label = "uboot_env",
-    .image_file_path = instance.uboot_env_image_path(),
-  });
   partitions.push_back(ImagePartition {
     .label = "misc",
     .image_file_path = FLAGS_misc_image,
@@ -200,10 +192,34 @@ std::vector<ImagePartition> os_composite_disk_config(
   return partitions;
 }
 
+std::vector<ImagePartition> persistent_composite_disk_config(
+    const CuttlefishConfig::InstanceSpecific& instance) {
+  std::vector<ImagePartition> partitions;
+
+  // Note that if the position of uboot_env changes, the environment for
+  // u-boot must be updated as well (see boot_config.cc and
+  // cuttlefish.fragment in external/u-boot).
+  partitions.push_back(ImagePartition{
+      .label = "uboot_env",
+      .image_file_path = instance.uboot_env_image_path(),
+  });
+  if (!FLAGS_protected_vm) {
+    partitions.push_back(ImagePartition{
+        .label = "frp",
+        .image_file_path = instance.factory_reset_protected_path(),
+    });
+  }
+  return partitions;
+}
+
 static std::chrono::system_clock::time_point LastUpdatedInputDisk(
     const std::vector<ImagePartition>& partitions) {
   std::chrono::system_clock::time_point ret;
   for (auto& partition : partitions) {
+    if (partition.label == "frp") {
+      continue;
+    }
+
     auto partition_mod_time = FileModificationTime(partition.image_file_path);
     if (partition_mod_time > ret) {
       ret = partition_mod_time;
@@ -216,10 +232,6 @@ bool ShouldCreateAllCompositeDisks(const CuttlefishConfig& config) {
   std::chrono::system_clock::time_point youngest_disk_img;
   for (auto& partition :
        os_composite_disk_config(config.ForDefaultInstance())) {
-    if (partition.label == "uboot_env") {
-      continue;
-    }
-
     auto partition_mod_time = FileModificationTime(partition.image_file_path);
     if (partition_mod_time > youngest_disk_img) {
       youngest_disk_img = partition_mod_time;
@@ -338,25 +350,31 @@ bool CreateCompositeDisk(const CuttlefishConfig& config,
   return true;
 }
 
-const std::string kKernelDefaultPath = "kernel";
-const std::string kInitramfsImg = "initramfs.img";
-static void ExtractKernelParamsFromFetcherConfig(
-    const FetcherConfig& fetcher_config) {
-  std::string discovered_kernel =
-      fetcher_config.FindCvdFileWithSuffix(kKernelDefaultPath);
-  std::string discovered_ramdisk =
-      fetcher_config.FindCvdFileWithSuffix(kInitramfsImg);
-
-  SetCommandLineOptionWithMode("kernel_path", discovered_kernel.c_str(),
-                               google::FlagSettingMode::SET_FLAGS_DEFAULT);
-
-  SetCommandLineOptionWithMode("initramfs_path", discovered_ramdisk.c_str(),
-                               google::FlagSettingMode::SET_FLAGS_DEFAULT);
+bool CreatePersistentCompositeDisk(
+    const CuttlefishConfig& config,
+    const CuttlefishConfig::InstanceSpecific& instance) {
+  if (!SharedFD::Open(instance.persistent_composite_disk_path().c_str(),
+                      O_WRONLY | O_CREAT, 0644)
+           ->IsOpen()) {
+    LOG(ERROR) << "Could not ensure "
+               << instance.persistent_composite_disk_path() << " exists";
+    return false;
+  }
+  if (config.vm_manager() == CrosvmManager::name()) {
+    std::string header_path =
+        instance.PerInstancePath("persistent_composite_gpt_header.img");
+    std::string footer_path =
+        instance.PerInstancePath("persistent_composite_gpt_footer.img");
+    CreateCompositeDisk(persistent_composite_disk_config(instance), header_path,
+                        footer_path, instance.persistent_composite_disk_path());
+  } else {
+    AggregateImage(persistent_composite_disk_config(instance),
+                   instance.persistent_composite_disk_path());
+  }
+  return true;
 }
 
-static void RepackAllBootImages(const FetcherConfig& fetcher_config,
-                                const CuttlefishConfig* config) {
-  ExtractKernelParamsFromFetcherConfig(fetcher_config);
+static void RepackAllBootImages(const CuttlefishConfig* config) {
   CHECK(FileHasContent(FLAGS_boot_image))
       << "File not found: " << FLAGS_boot_image;
 
@@ -430,14 +448,7 @@ void CreateDynamicDiskFiles(const FetcherConfig& fetcher_config,
   // support. We can also assume that image repacking isn't trusted. Repacking
   // requires resigning the image and keys from an android host aren't trusted.
   if (!FLAGS_protected_vm) {
-    RepackAllBootImages(fetcher_config, config);
-
-    // TODO(b/181812679) remove this block when we no longer need to create the
-    // env partition.
-    for (auto instance : config->Instances()) {
-      CHECK(InitBootloaderEnvPartition(*config, instance))
-          << "Failed to create bootloader environment partition";
-    }
+    RepackAllBootImages(config);
 
     for (const auto& instance : config->Instances()) {
       if (!FileExists(instance.access_kregistry_path())) {
@@ -453,10 +464,27 @@ void CreateDynamicDiskFiles(const FetcherConfig& fetcher_config,
                          FLAGS_blank_sdcard_image_mb, "sdcard");
       }
 
+      CHECK(InitBootloaderEnvPartition(*config, instance))
+          << "Failed to create bootloader environment partition";
+
       const auto frp = instance.factory_reset_protected_path();
       if (!FileExists(frp)) {
         CreateBlankImage(frp, 1 /* mb */, "none");
       }
+    }
+  }
+
+  for (const auto& instance : config->Instances()) {
+    bool compositeMatchesDiskConfig = DoesCompositeMatchCurrentDiskConfig(
+        instance.PerInstancePath("persistent_composite_disk_config.txt"),
+        persistent_composite_disk_config(instance));
+    bool oldCompositeDisk =
+        ShouldCreateCompositeDisk(instance.persistent_composite_disk_path(),
+                                  persistent_composite_disk_config(instance));
+
+    if (!compositeMatchesDiskConfig || oldCompositeDisk) {
+      CHECK(CreatePersistentCompositeDisk(*config, instance))
+          << "Failed to create persistent composite disk";
     }
   }
 
@@ -516,7 +544,7 @@ void CreateDynamicDiskFiles(const FetcherConfig& fetcher_config,
       bool missingOverlay = !FileExists(overlay_path);
       bool newOverlay = FileModificationTime(overlay_path) <
                         FileModificationTime(instance.os_composite_disk_path());
-      if (!missingOverlay || !FLAGS_resume || newOverlay) {
+      if (missingOverlay || !FLAGS_resume || newOverlay) {
         CreateQcowOverlay(config->crosvm_binary(),
                           instance.os_composite_disk_path(), overlay_path);
       }

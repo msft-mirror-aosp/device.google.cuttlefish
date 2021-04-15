@@ -20,7 +20,6 @@
 #include <sys/types.h>
 
 #include <cassert>
-#include <iomanip>
 #include <string>
 #include <vector>
 
@@ -110,7 +109,7 @@ std::vector<std::string> CrosvmManager::ConfigureGpuMode(
         "androidboot.cpuvulkan.version=" + std::to_string(VK_API_VERSION_1_1),
         "androidboot.hardware.gralloc=minigbm",
         "androidboot.hardware.hwcomposer=ranchu",
-        "androidboot.hardware.egl=swiftshader",
+        "androidboot.hardware.egl=angle",
         "androidboot.hardware.vulkan=pastel",
     };
   }
@@ -140,10 +139,7 @@ std::string CrosvmManager::ConfigureBootDevices(int num_disks) {
   // TODO There is no way to control this assignment with crosvm (yet)
   if (HostArch() == Arch::X86_64) {
     // crosvm has an additional PCI device for an ISA bridge
-    std::stringstream stream;
-    stream << std::setfill('0') << std::setw(2) << std::hex
-           << 1 + VmManager::kDefaultNumHvcs + VmManager::kMaxDisks - num_disks;
-    return "androidboot.boot_devices=pci0000:00/0000:00:" + stream.str() + ".0";
+    return ConfigureMultipleBootDevices("pci0000:00/0000:00:", 1, num_disks);
   } else {
     // On ARM64 crosvm, block devices are on their own bridge, so we don't
     // need to calculate it, and the path is always the same
@@ -264,6 +260,9 @@ std::vector<Command> CrosvmManager::StartCommands(
                             ":", display_config.width, ":",
                             display_config.height);
     crosvm_cmd.AddParameter("--keyboard=", instance.keyboard_socket_path());
+  }
+  if (config.enable_webrtc()) {
+    crosvm_cmd.AddParameter("--switches=", instance.switches_socket_path());
   }
 
   auto wifi_tap = AddTapFdParameter(&crosvm_cmd, instance.wifi_tap_name());
