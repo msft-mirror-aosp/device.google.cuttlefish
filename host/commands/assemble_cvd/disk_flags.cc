@@ -60,7 +60,16 @@ DEFINE_string(vbmeta_image, "",
 DEFINE_string(vbmeta_system_image, "",
               "Location of cuttlefish vbmeta_system image. If empty it is assumed to "
               "be vbmeta_system.img in the directory specified by -system_image_dir.");
-DEFINE_string(esp, "", "Path to ESP partition image (FAT formatted)");
+DEFINE_string(otheros_esp_image, "",
+              "Location of cuttlefish esp image. If the image does not exist, "
+              "and --otheros_root_image is specified, an esp partition image "
+              "is created with default bootloaders.");
+DEFINE_string(otheros_kernel_path, "",
+              "Location of cuttlefish otheros kernel.");
+DEFINE_string(otheros_initramfs_path, "",
+              "Location of cuttlefish otheros initramfs.img.");
+DEFINE_string(otheros_root_image, "",
+              "Location of cuttlefish otheros root filesystem image.");
 
 DEFINE_int32(blank_metadata_image_mb, 16,
              "The size of the blank metadata image to generate, MB.");
@@ -101,6 +110,9 @@ bool ResolveInstanceFiles() {
   std::string default_misc_image = FLAGS_system_image_dir + "/misc.img";
   SetCommandLineOptionWithMode("misc_image", default_misc_image.c_str(),
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
+  std::string default_esp_image = FLAGS_system_image_dir + "/esp.img";
+  SetCommandLineOptionWithMode("otheros_esp_image", default_esp_image.c_str(),
+                               google::FlagSettingMode::SET_FLAGS_DEFAULT);
   std::string default_vendor_boot_image = FLAGS_system_image_dir
                                         + "/vendor_boot.img";
   SetCommandLineOptionWithMode("vendor_boot_image",
@@ -121,25 +133,10 @@ bool ResolveInstanceFiles() {
 std::vector<ImagePartition> os_composite_disk_config(
     const CuttlefishConfig::InstanceSpecific& instance) {
   std::vector<ImagePartition> partitions;
-
-  // Note that if the positions of env or misc change, the environment for
-  // u-boot must be updated as well (see boot_config.cc and
-  // configs/cf-x86_defconfig in external/u-boot).
-  partitions.push_back(ImagePartition {
-    .label = "uboot_env",
-    .image_file_path = instance.uboot_env_image_path(),
-  });
   partitions.push_back(ImagePartition {
     .label = "misc",
     .image_file_path = FLAGS_misc_image,
   });
-  if (!FLAGS_esp.empty()) {
-    partitions.push_back(ImagePartition {
-      .label = "esp",
-      .image_file_path = FLAGS_esp,
-      .type = kEfiSystemPartition,
-    });
-  }
   partitions.push_back(ImagePartition {
     .label = "boot_a",
     .image_file_path = FLAGS_boot_image,
@@ -197,6 +194,37 @@ std::vector<ImagePartition> os_composite_disk_config(
     .label = "metadata",
     .image_file_path = FLAGS_metadata_image,
   });
+  if (!FLAGS_otheros_root_image.empty()) {
+    partitions.push_back(ImagePartition{
+        .label = "otheros_esp",
+        .image_file_path = FLAGS_otheros_esp_image,
+        .type = kEfiSystemPartition,
+    });
+    partitions.push_back(ImagePartition{
+        .label = "otheros_root",
+        .image_file_path = FLAGS_otheros_root_image,
+    });
+  }
+  return partitions;
+}
+
+std::vector<ImagePartition> persistent_composite_disk_config(
+    const CuttlefishConfig::InstanceSpecific& instance) {
+  std::vector<ImagePartition> partitions;
+
+  // Note that if the position of uboot_env changes, the environment for
+  // u-boot must be updated as well (see boot_config.cc and
+  // cuttlefish.fragment in external/u-boot).
+  partitions.push_back(ImagePartition{
+      .label = "uboot_env",
+      .image_file_path = instance.uboot_env_image_path(),
+  });
+  if (!FLAGS_protected_vm) {
+    partitions.push_back(ImagePartition{
+        .label = "frp",
+        .image_file_path = instance.factory_reset_protected_path(),
+    });
+  }
   return partitions;
 }
 
@@ -204,6 +232,10 @@ static std::chrono::system_clock::time_point LastUpdatedInputDisk(
     const std::vector<ImagePartition>& partitions) {
   std::chrono::system_clock::time_point ret;
   for (auto& partition : partitions) {
+    if (partition.label == "frp") {
+      continue;
+    }
+
     auto partition_mod_time = FileModificationTime(partition.image_file_path);
     if (partition_mod_time > ret) {
       ret = partition_mod_time;
@@ -216,10 +248,6 @@ bool ShouldCreateAllCompositeDisks(const CuttlefishConfig& config) {
   std::chrono::system_clock::time_point youngest_disk_img;
   for (auto& partition :
        os_composite_disk_config(config.ForDefaultInstance())) {
-    if (partition.label == "uboot_env") {
-      continue;
-    }
-
     auto partition_mod_time = FileModificationTime(partition.image_file_path);
     if (partition_mod_time > youngest_disk_img) {
       youngest_disk_img = partition_mod_time;
@@ -338,6 +366,30 @@ bool CreateCompositeDisk(const CuttlefishConfig& config,
   return true;
 }
 
+bool CreatePersistentCompositeDisk(
+    const CuttlefishConfig& config,
+    const CuttlefishConfig::InstanceSpecific& instance) {
+  if (!SharedFD::Open(instance.persistent_composite_disk_path().c_str(),
+                      O_WRONLY | O_CREAT, 0644)
+           ->IsOpen()) {
+    LOG(ERROR) << "Could not ensure "
+               << instance.persistent_composite_disk_path() << " exists";
+    return false;
+  }
+  if (config.vm_manager() == CrosvmManager::name()) {
+    std::string header_path =
+        instance.PerInstancePath("persistent_composite_gpt_header.img");
+    std::string footer_path =
+        instance.PerInstancePath("persistent_composite_gpt_footer.img");
+    CreateCompositeDisk(persistent_composite_disk_config(instance), header_path,
+                        footer_path, instance.persistent_composite_disk_path());
+  } else {
+    AggregateImage(persistent_composite_disk_config(instance),
+                   instance.persistent_composite_disk_path());
+  }
+  return true;
+}
+
 static void RepackAllBootImages(const CuttlefishConfig* config) {
   CHECK(FileHasContent(FLAGS_boot_image))
       << "File not found: " << FLAGS_boot_image;
@@ -398,6 +450,13 @@ void CreateDynamicDiskFiles(const FetcherConfig& fetcher_config,
   // Create misc if necessary
   CHECK(InitializeMiscImage(FLAGS_misc_image)) << "Failed to create misc image";
 
+  // Create esp if necessary
+  if (!FLAGS_otheros_root_image.empty()) {
+    CHECK(InitializeEspImage(FLAGS_otheros_esp_image, FLAGS_otheros_kernel_path,
+                             FLAGS_otheros_initramfs_path))
+        << "Failed to create esp image";
+  }
+
   // Create data if necessary
   DataImageResult dataImageResult = ApplyDataImagePolicy(*config, FLAGS_data_image);
   CHECK(dataImageResult != DataImageResult::Error) << "Failed to set up userdata";
@@ -414,13 +473,6 @@ void CreateDynamicDiskFiles(const FetcherConfig& fetcher_config,
   if (!FLAGS_protected_vm) {
     RepackAllBootImages(config);
 
-    // TODO(b/181812679) remove this block when we no longer need to create the
-    // env partition.
-    for (auto instance : config->Instances()) {
-      CHECK(InitBootloaderEnvPartition(*config, instance))
-          << "Failed to create bootloader environment partition";
-    }
-
     for (const auto& instance : config->Instances()) {
       if (!FileExists(instance.access_kregistry_path())) {
         CreateBlankImage(instance.access_kregistry_path(), 2 /* mb */, "none");
@@ -435,10 +487,27 @@ void CreateDynamicDiskFiles(const FetcherConfig& fetcher_config,
                          FLAGS_blank_sdcard_image_mb, "sdcard");
       }
 
+      CHECK(InitBootloaderEnvPartition(*config, instance))
+          << "Failed to create bootloader environment partition";
+
       const auto frp = instance.factory_reset_protected_path();
       if (!FileExists(frp)) {
         CreateBlankImage(frp, 1 /* mb */, "none");
       }
+    }
+  }
+
+  for (const auto& instance : config->Instances()) {
+    bool compositeMatchesDiskConfig = DoesCompositeMatchCurrentDiskConfig(
+        instance.PerInstancePath("persistent_composite_disk_config.txt"),
+        persistent_composite_disk_config(instance));
+    bool oldCompositeDisk =
+        ShouldCreateCompositeDisk(instance.persistent_composite_disk_path(),
+                                  persistent_composite_disk_config(instance));
+
+    if (!compositeMatchesDiskConfig || oldCompositeDisk) {
+      CHECK(CreatePersistentCompositeDisk(*config, instance))
+          << "Failed to create persistent composite disk";
     }
   }
 
@@ -455,11 +524,6 @@ void CreateDynamicDiskFiles(const FetcherConfig& fetcher_config,
 
   CHECK(FileHasContent(FLAGS_bootloader))
       << "File not found: " << FLAGS_bootloader;
-
-  if (!FLAGS_esp.empty()) {
-    CHECK(FileHasContent(FLAGS_esp))
-        << "File not found: " << FLAGS_esp;
-  }
 
   if (SuperImageNeedsRebuilding(fetcher_config, *config)) {
     bool success = RebuildSuperImage(fetcher_config, *config, FLAGS_super_image);

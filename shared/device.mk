@@ -32,6 +32,8 @@ PRODUCT_SHIPPING_API_LEVEL := 31
 PRODUCT_USE_DYNAMIC_PARTITIONS := true
 DISABLE_RILD_OEM_HOOK := true
 
+PRODUCT_SET_DEBUGFS_RESTRICTIONS := true
+
 PRODUCT_SOONG_NAMESPACES += device/generic/goldfish-opengl # for vulkan
 
 PRODUCT_FS_COMPRESSION := 1
@@ -73,7 +75,7 @@ PRODUCT_PRODUCT_PROPERTIES += \
 
 # Storage: for factory reset protection feature
 PRODUCT_VENDOR_PROPERTIES += \
-    ro.frp.pst=/dev/block/vdb
+    ro.frp.pst=/dev/block/by-name/frp
 
 # Explanation of specific properties:
 #   debug.hwui.swap_with_damage avoids boot failure on M http://b/25152138
@@ -94,6 +96,7 @@ PRODUCT_VENDOR_PROPERTIES += \
     ro.rebootescrow.device=/dev/block/pmem0 \
     ro.incremental.enable=1 \
     debug.c2.use_dmabufheaps=1 \
+    ro.camerax.extensions.enabled=true \
 
 # Below is a list of properties we probably should get rid of.
 PRODUCT_VENDOR_PROPERTIES += \
@@ -165,6 +168,10 @@ SOONG_CONFIG_cvd_launch_configs += \
     cvd_config_phone.json \
     cvd_config_tablet.json \
     cvd_config_tv.json \
+
+SOONG_CONFIG_cvd += grub_config
+SOONG_CONFIG_cvd_grub_config += \
+    grub.cfg \
 
 #
 # Packages for AOSP-available stuff we use from the framework
@@ -361,8 +368,8 @@ PRODUCT_PACKAGES += \
     hwcomposer.drm_minigbm \
     hwcomposer.cutf \
     hwcomposer-stats \
-    android.hardware.graphics.composer@2.2-impl \
-    android.hardware.graphics.composer@2.2-service
+    android.hardware.graphics.composer@2.3-impl \
+    android.hardware.graphics.composer@2.3-service
 
 #
 # Gralloc HAL
@@ -535,8 +542,8 @@ PRODUCT_PACKAGES += \
 ifeq ($(LOCAL_KEYMINT_PRODUCT_PACKAGE),)
        LOCAL_KEYMINT_PRODUCT_PACKAGE := android.hardware.security.keymint-service
 endif
-# PRODUCT_PACKAGES += \
-#    $(LOCAL_KEYMINT_PRODUCT_PACKAGE)
+ PRODUCT_PACKAGES += \
+    $(LOCAL_KEYMINT_PRODUCT_PACKAGE)
 
 #
 # Power HAL
