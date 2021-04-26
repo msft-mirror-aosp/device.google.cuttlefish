@@ -112,7 +112,7 @@ PRODUCT_VENDOR_PROPERTIES += \
     debug.stagefright.c2inputsurface=-1
 
 # Enforce privapp permissions control.
-PRODUCT_VENDOR_PROPERTIES += ro.control_privapp_permissions=enforce
+PRODUCT_VENDOR_PROPERTIES += ro.control_privapp_permissions?=enforce
 
 # aes-256-heh default is not supported in standard kernels.
 PRODUCT_VENDOR_PROPERTIES += ro.crypto.volume.filenames_mode=aes-256-cts
@@ -168,10 +168,6 @@ SOONG_CONFIG_cvd_launch_configs += \
     cvd_config_phone.json \
     cvd_config_tablet.json \
     cvd_config_tv.json \
-
-SOONG_CONFIG_cvd += grub_config
-SOONG_CONFIG_cvd_grub_config += \
-    grub.cfg \
 
 #
 # Packages for AOSP-available stuff we use from the framework
