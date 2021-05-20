@@ -20,12 +20,15 @@
 #include <android/binder_manager.h>
 #include <android/binder_process.h>
 
+#include <keymaster/android_keymaster_messages.h>
+#include <keymaster/km_version.h>
 #include <keymaster/soft_keymaster_logger.h>
 #include "guest/hals/keymint/remote/remote_keymint_device.h"
 
 #include <guest/hals/keymint/remote/remote_keymaster.h>
 #include <guest/hals/keymint/remote/remote_keymint_device.h>
 #include <guest/hals/keymint/remote/remote_secure_clock.h>
+#include <guest/hals/keymint/remote/remote_shared_secret.h>
 #include "common/libs/fs/shared_fd.h"
 #include "common/libs/security/keymaster_channel.h"
 
@@ -34,12 +37,13 @@ static const char device[] = "/dev/hvc3";
 using aidl::android::hardware::security::keymint::RemoteKeyMintDevice;
 using aidl::android::hardware::security::keymint::SecurityLevel;
 using aidl::android::hardware::security::secureclock::RemoteSecureClock;
+using aidl::android::hardware::security::sharedsecret::RemoteSharedSecret;
 
 template <typename T, class... Args>
 static std::shared_ptr<T> addService(Args&&... args) {
   std::shared_ptr<T> ser =
       ndk::SharedRefBase::make<T>(std::forward<Args>(args)...);
-  auto instanceName = std::string(T::descriptor) + "/remote";
+  auto instanceName = std::string(T::descriptor) + "/default";
   LOG(INFO) << "adding keymint service instance: " << instanceName;
   binder_status_t status =
       AServiceManager_addService(ser->asBinder().get(), instanceName.c_str());
@@ -47,7 +51,8 @@ static std::shared_ptr<T> addService(Args&&... args) {
   return ser;
 }
 
-int main() {
+int main(int, char** argv) {
+  android::base::InitLogging(argv, android::base::KernelLogger);
   // Zero threads seems like a useless pool, but below we'll join this thread to
   // it, increasing the pool size to 1.
   ABinderProcess_setThreadPoolMaxThreadCount(0);
@@ -64,11 +69,14 @@ int main() {
 
   cuttlefish::KeymasterChannel keymasterChannel(fd, fd);
 
-  keymaster::RemoteKeymaster remote_keymaster(&keymasterChannel);
+  keymaster::RemoteKeymaster remote_keymaster(
+      &keymasterChannel, keymaster::MessageVersion(
+                             keymaster::KmVersion::KEYMINT_1, 0 /* km_date */));
 
   addService<RemoteKeyMintDevice>(remote_keymaster,
                                   SecurityLevel::TRUSTED_ENVIRONMENT);
   addService<RemoteSecureClock>(remote_keymaster);
+  addService<RemoteSharedSecret>(remote_keymaster);
 
   ABinderProcess_joinThreadPool();
   return EXIT_FAILURE;  // should not reach

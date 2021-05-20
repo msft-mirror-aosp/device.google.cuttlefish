@@ -64,6 +64,7 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hardware.health.storage@1.0", // converted to AIDL, see b/177470478
     "android.hardware.ir@1.0",
     "android.hardware.keymaster@3.0",
+    "android.hardware.keymaster@4.1", // Replaced by KeyMint
     "android.hardware.light@2.0",
     "android.hardware.media.bufferpool@1.0",
     "android.hardware.media.bufferpool@2.0",
@@ -105,15 +106,6 @@ static const std::set<std::string> kKnownMissingAidl = {
     // by the Identity Credential AIDL HAL. Remove this when fully porting
     // KeyMaster to AIDL.
     "android.hardware.keymaster.",
-
-    // Temporarily disable keymint, secureclock, and shared secret in favor of
-    // keymaster 4.1. This is required for the transition to Keystore 2.0.
-    // Software keymint does not work with Gatekeeper. This can be removed when
-    // the remote keymaster implementation was ported to keymint.
-    // b/182928606
-    "android.hardware.security.keymint.",
-    "android.hardware.security.secureclock.",
-    "android.hardware.security.sharedsecret.",
 
     // These types are only used in Automotive.
     "android.automotive.computepipe.registry.",
@@ -199,7 +191,9 @@ static std::set<std::string> allAidlManifestInterfaces() {
 
 TEST(Hal, AllHidlInterfacesAreInAosp) {
     for (const FQName& name : allHidlManifestInterfaces()) {
-        EXPECT_TRUE(isAospHidlInterface(name)) << name.string();
+      EXPECT_TRUE(isAospHidlInterface(name))
+          << "This device should only have AOSP interfaces, not: "
+          << name.string();
     }
 }
 
@@ -257,7 +251,8 @@ TEST(Hal, HidlInterfacesImplemented) {
 
 TEST(Hal, AllAidlInterfacesAreInAosp) {
     for (const std::string& name : allAidlManifestInterfaces()) {
-        EXPECT_TRUE(isAospAidlInterface(name)) << name;
+      EXPECT_TRUE(isAospAidlInterface(name))
+          << "This device should only have AOSP interfaces, not: " << name;
     }
 }
 

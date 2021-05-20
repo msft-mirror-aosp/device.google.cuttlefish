@@ -147,6 +147,7 @@ USE_OPENGL_RENDERER := true
 BOARD_WLAN_DEVICE           := wlan0
 BOARD_HOSTAPD_DRIVER        := NL80211
 BOARD_WPA_SUPPLICANT_DRIVER := NL80211
+BOARD_WPA_SUPPLICANT_PRIVATE_LIB := lib_driver_cmd_simulated_cf
 WPA_SUPPLICANT_VERSION      := VER_0_8_X
 WIFI_DRIVER_FW_PATH_PARAM   := "/dev/null"
 WIFI_DRIVER_FW_PATH_STA     := "/dev/null"
@@ -159,7 +160,7 @@ BOARD_VENDOR_SEPOLICY_DIRS += device/google/cuttlefish/shared/sepolicy/vendor/go
 BOARD_SEPOLICY_DIRS += system/bt/vendor_libs/linux/sepolicy
 
 # Avoid multiple includes of sepolicy already included by Pixel experience.
-ifneq ($(filter aosp_% %_auto %_tv,$(PRODUCT_NAME)),)
+ifneq ($(filter aosp_% %_auto %_go_phone trout_% %_tv,$(PRODUCT_NAME)),)
 
 SYSTEM_EXT_PRIVATE_SEPOLICY_DIRS += hardware/google/pixel-sepolicy/flipendo
 
@@ -253,7 +254,16 @@ else
   BOARD_MOVE_RECOVERY_RESOURCES_TO_VENDOR_BOOT := true
 endif
 BOARD_MOVE_GSI_AVB_KEYS_TO_VENDOR_BOOT := true
-BOARD_KERNEL_MODULE_INTERFACE_VERSIONS := 5.10-android12-0
+
+# TARGET_KERNEL_USE is defined in kernel.mk, if not defined in the environment variable.
+# Keep in sync with GKI APEX in device.mk
+ifneq (,$(TARGET_KERNEL_USE))
+  ifneq (,$(filter 5.4, $(TARGET_KERNEL_USE)))
+    BOARD_KERNEL_MODULE_INTERFACE_VERSIONS := 5.4-android12-0
+  else
+    BOARD_KERNEL_MODULE_INTERFACE_VERSIONS := $(TARGET_KERNEL_USE)-android12-unstable
+  endif
+endif
 
 BOARD_GENERIC_RAMDISK_KERNEL_MODULES_LOAD := dm-user.ko
 

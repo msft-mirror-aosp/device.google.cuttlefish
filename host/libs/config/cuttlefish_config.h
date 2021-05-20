@@ -436,8 +436,6 @@ class CuttlefishConfig {
 
     std::string uboot_env_image_path() const;
 
-    std::string vendor_boot_image_path() const;
-
     std::string audio_server_path() const;
 
     // modem simulator related
@@ -454,6 +452,8 @@ class CuttlefishConfig {
     std::array<unsigned char, 6> wifi_mac_address() const;
 
     std::string factory_reset_protected_path() const;
+
+    std::string persistent_bootconfig_path() const;
   };
 
   // A view into an existing CuttlefishConfig object for a particular instance.
@@ -546,9 +546,6 @@ int ForCurrentInstance(int base);
 // Returns a random serial number appeneded to a given prefix.
 std::string RandomSerialNumber(const std::string& prefix);
 
-std::string GetDefaultMempath();
-int GetDefaultPerInstanceVsockCid();
-
 std::string DefaultHostArtifactsPath(const std::string& file);
 std::string HostBinaryPath(const std::string& file);
 std::string DefaultGuestImagePath(const std::string& file);
@@ -558,7 +555,6 @@ std::string DefaultEnvironmentPath(const char* environment_key,
 
 // Whether the host supports qemu
 bool HostSupportsQemuCli();
-bool HostSupportsVsock();
 
 // GPU modes
 extern const char* const kGpuModeAuto;

@@ -178,10 +178,6 @@ std::string CuttlefishConfig::InstanceSpecific::uboot_env_image_path() const {
   return AbsolutePath(PerInstancePath("uboot_env.img"));
 }
 
-std::string CuttlefishConfig::InstanceSpecific::vendor_boot_image_path() const {
-  return AbsolutePath(PerInstancePath("vendor_boot_repacked.img"));
-}
-
 static constexpr char kMobileBridgeName[] = "mobile_bridge_name";
 
 std::string CuttlefishConfig::InstanceSpecific::audio_server_path() const {
@@ -469,6 +465,11 @@ std::array<unsigned char, 6> CuttlefishConfig::InstanceSpecific::wifi_mac_addres
 
 std::string CuttlefishConfig::InstanceSpecific::factory_reset_protected_path() const {
   return PerInstanceInternalPath("factory_reset_protected.img");
+}
+
+std::string CuttlefishConfig::InstanceSpecific::persistent_bootconfig_path()
+    const {
+  return PerInstanceInternalPath("bootconfig");
 }
 
 std::string CuttlefishConfig::InstanceSpecific::PerInstancePath(

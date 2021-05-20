@@ -145,7 +145,7 @@ PRODUCT_SOONG_NAMESPACES += hardware/google/camera/devices/EmulatedCamera
 #
 PRODUCT_PACKAGES += \
     CuttlefishService \
-    cuttlefish_rotate \
+    cuttlefish_sensor_injection \
     rename_netiface \
     setup_wifi \
     bt_vhci_forwarder \
@@ -290,7 +290,8 @@ PRODUCT_COPY_FILES += \
     frameworks/native/data/etc/android.software.sip.voip.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.sip.voip.xml \
     frameworks/native/data/etc/android.software.verified_boot.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.verified_boot.xml \
     system/bt/vendor_libs/test_vendor_lib/data/controller_properties.json:vendor/etc/bluetooth/controller_properties.json \
-    device/google/cuttlefish/shared/config/task_profiles.json:$(TARGET_COPY_OUT_VENDOR)/etc/task_profiles.json
+    device/google/cuttlefish/shared/config/task_profiles.json:$(TARGET_COPY_OUT_VENDOR)/etc/task_profiles.json \
+    device/google/cuttlefish/shared/config/input/Crosvm_Virtio_Multitouch_Touchscreen.idc:$(TARGET_COPY_OUT_VENDOR)/usr/idc/Crosvm_Virtio_Multitouch_Touchscreen.idc
 
 ifeq ($(TARGET_RO_FILE_SYSTEM_TYPE),ext4)
 PRODUCT_COPY_FILES += \
@@ -360,8 +361,8 @@ PRODUCT_PACKAGES += \
     hwcomposer.drm_minigbm \
     hwcomposer.cutf \
     hwcomposer-stats \
-    android.hardware.graphics.composer@2.2-impl \
-    android.hardware.graphics.composer@2.2-service
+    android.hardware.graphics.composer@2.3-impl \
+    android.hardware.graphics.composer@2.3-service
 
 #
 # Gralloc HAL
@@ -508,22 +509,13 @@ PRODUCT_PACKAGES += \
     android.hardware.lights-service.example \
 
 #
-# Keymaster HAL
-#
-ifeq ($(LOCAL_KEYMASTER_PRODUCT_PACKAGE),)
-       LOCAL_KEYMASTER_PRODUCT_PACKAGE := android.hardware.keymaster@4.1-service
-endif
-PRODUCT_PACKAGES += \
-    $(LOCAL_KEYMASTER_PRODUCT_PACKAGE)
-
-#
 # KeyMint HAL
 #
 ifeq ($(LOCAL_KEYMINT_PRODUCT_PACKAGE),)
        LOCAL_KEYMINT_PRODUCT_PACKAGE := android.hardware.security.keymint-service
 endif
-# PRODUCT_PACKAGES += \
-#    $(LOCAL_KEYMINT_PRODUCT_PACKAGE)
+ PRODUCT_PACKAGES += \
+    $(LOCAL_KEYMINT_PRODUCT_PACKAGE)
 
 #
 # Power HAL
@@ -578,7 +570,14 @@ PRODUCT_PACKAGES += \
     android.hardware.memtrack-service.example
 
 # GKI APEX
-PRODUCT_PACKAGES += com.android.gki.kmi_5_10_android12_0
+# Keep in sync with BOARD_KERNEL_MODULE_INTERFACE_VERSIONS
+ifneq (,$(TARGET_KERNEL_USE))
+  ifneq (,$(filter 5.4, $(TARGET_KERNEL_USE)))
+    PRODUCT_PACKAGES += com.android.gki.kmi_5_4_android12_unstable
+  else
+    PRODUCT_PACKAGES += com.android.gki.kmi_$(subst .,_,$(TARGET_KERNEL_USE))_android12_unstable
+  endif
+endif
 
 # Prevent GKI and boot image downgrades
 PRODUCT_PRODUCT_PROPERTIES += \

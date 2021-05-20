@@ -20,6 +20,7 @@
 
 #include <linux/input.h>
 
+#include <chrono>
 #include <map>
 #include <set>
 #include <thread>
@@ -33,15 +34,11 @@
 #include "common/libs/confui/confui.h"
 #include "common/libs/fs/shared_buf.h"
 #include "host/frontend/webrtc/adb_handler.h"
-#include "host/frontend/webrtc/kernel_log_events_handler.h"
+#include "host/frontend/webrtc/bluetooth_handler.h"
 #include "host/frontend/webrtc/lib/utils.h"
 #include "host/libs/config/cuttlefish_config.h"
 
 DECLARE_bool(write_virtio_input);
-
-// LOG(DEBUG) for confirmation UI debugging
-// that stands for LOG(DEBUG) << "ConfUI: " << ...
-using cuttlefish::confui::DebugLog;
 
 namespace cuttlefish {
 
@@ -101,19 +98,23 @@ std::unique_ptr<InputEventBuffer> GetEventBuffer() {
 class ConnectionObserverForAndroid
     : public cuttlefish::webrtc_streaming::ConnectionObserver {
  public:
-  ConnectionObserverForAndroid(cuttlefish::InputSockets &input_sockets,
-                               cuttlefish::SharedFD kernel_log_events_fd,
-                               std::map<std::string, cuttlefish::SharedFD>
-                                   commands_to_custom_action_servers,
-                               std::weak_ptr<DisplayHandler> display_handler)
+  ConnectionObserverForAndroid(
+      cuttlefish::InputSockets &input_sockets,
+      cuttlefish::KernelLogEventsHandler *kernel_log_events_handler,
+      std::map<std::string, cuttlefish::SharedFD>
+          commands_to_custom_action_servers,
+      std::weak_ptr<DisplayHandler> display_handler)
       : input_sockets_(input_sockets),
-        kernel_log_events_client_(kernel_log_events_fd),
+        kernel_log_events_handler_(kernel_log_events_handler),
         commands_to_custom_action_servers_(commands_to_custom_action_servers),
         weak_display_handler_(display_handler) {}
   virtual ~ConnectionObserverForAndroid() {
     auto display_handler = weak_display_handler_.lock();
     if (display_handler) {
       display_handler->DecClientCount();
+    }
+    if (kernel_log_subscription_id_ != -1) {
+      kernel_log_events_handler_->Unsubscribe(kernel_log_subscription_id_);
     }
   }
 
@@ -122,12 +123,23 @@ class ConnectionObserverForAndroid
     auto display_handler = weak_display_handler_.lock();
     if (display_handler) {
       display_handler->IncClientCount();
-      // A long time may pass before the next frame comes up from the guest.
-      // Send the last one to avoid showing a black screen to the user during
-      // that time.
-      display_handler->SendLastFrame();
+      std::thread th([this]() {
+        // The encoder in libwebrtc won't drop 5 consecutive frames due to frame
+        // size, so we make sure at least 5 frames are sent every time a client
+        // connects to ensure they receive at least one.
+        constexpr int kNumFrames = 5;
+        constexpr int kMillisPerFrame = 16;
+        for (int i = 0; i < kNumFrames; ++i) {
+          auto display_handler = weak_display_handler_.lock();
+          display_handler->SendLastFrame();
+          if (i < kNumFrames - 1) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(kMillisPerFrame));
+          }
+        }
+      });
+      th.detach();
     }
-  }
+    }
 
   void OnTouchEvent(const std::string & /*display_label*/, int x, int y,
                     bool down) override {
@@ -232,9 +244,8 @@ class ConnectionObserverForAndroid
   void OnControlChannelOpen(std::function<bool(const Json::Value)>
                             control_message_sender) override {
     LOG(VERBOSE) << "Control Channel open";
-    kernel_log_events_handler_.reset(new cuttlefish::webrtc_streaming::KernelLogEventsHandler(
-        kernel_log_events_client_,
-        control_message_sender));
+    kernel_log_subscription_id_ =
+        kernel_log_events_handler_->AddSubscriber(control_message_sender);
   }
   void OnControlMessage(const uint8_t* msg, size_t size) override {
     Json::Value evt;
@@ -246,50 +257,86 @@ class ConnectionObserverForAndroid
       LOG(ERROR) << "Received invalid JSON object over control channel: " << errorMessage;
       return;
     }
-    auto result =
-        webrtc_streaming::ValidationResult::ValidateJsonObject(evt, "command",
-                           {{"command", Json::ValueType::stringValue},
-                            {"state", Json::ValueType::stringValue}});
+
+    auto result = webrtc_streaming::ValidationResult::ValidateJsonObject(
+        evt, "command",
+        /*required_fields=*/{{"command", Json::ValueType::stringValue}},
+        /*optional_fields=*/
+        {
+            {"button_state", Json::ValueType::stringValue},
+            {"lid_switch_open", Json::ValueType::booleanValue},
+            {"hinge_angle_value", Json::ValueType::intValue},
+        });
     if (!result.ok()) {
       LOG(ERROR) << result.error();
       return;
     }
     auto command = evt["command"].asString();
-    auto state = evt["state"].asString();
 
-    LOG(VERBOSE) << "Control command: " << command << " (" << state << ")";
+    if (command == "device_state") {
+      if (evt.isMember("lid_switch_open")) {
+        // InputManagerService treats a value of 0 as open and 1 as closed, so
+        // invert the lid_switch_open value that is sent to the input device.
+        OnSwitchEvent(SW_LID, !evt["lid_switch_open"].asBool());
+      }
+      if (evt.isMember("hinge_angle_value")) {
+        // TODO(b/181157794) Propagate hinge angle sensor data using a custom
+        // Sensor HAL.
+      }
+      return;
+    }
+
+    auto button_state = evt["button_state"].asString();
+    LOG(VERBOSE) << "Control command: " << command << " (" << button_state
+                 << ")";
     if (command == "power") {
-      OnKeyboardEvent(KEY_POWER, state == "down");
+      OnKeyboardEvent(KEY_POWER, button_state == "down");
     } else if (command == "home") {
-      OnKeyboardEvent(KEY_HOMEPAGE, state == "down");
+      OnKeyboardEvent(KEY_HOMEPAGE, button_state == "down");
     } else if (command == "menu") {
-      OnKeyboardEvent(KEY_MENU, state == "down");
+      OnKeyboardEvent(KEY_MENU, button_state == "down");
     } else if (command == "volumemute") {
-      OnKeyboardEvent(KEY_MUTE, state == "down");
+      OnKeyboardEvent(KEY_MUTE, button_state == "down");
     } else if (command == "volumedown") {
-      OnKeyboardEvent(KEY_VOLUMEDOWN, state == "down");
+      OnKeyboardEvent(KEY_VOLUMEDOWN, button_state == "down");
     } else if (command == "volumeup") {
-      OnKeyboardEvent(KEY_VOLUMEUP, state == "down");
+      OnKeyboardEvent(KEY_VOLUMEUP, button_state == "down");
     } else if (commands_to_custom_action_servers_.find(command) !=
                commands_to_custom_action_servers_.end()) {
       // Simple protocol for commands forwarded to action servers:
       //   - Always 128 bytes
-      //   - Format:   command:state
+      //   - Format:   command:button_state
       //   - Example:  my_button:down
-      std::string action_server_message = command + ":" + state;
+      std::string action_server_message = command + ":" + button_state;
       cuttlefish::WriteAll(commands_to_custom_action_servers_[command],
                            action_server_message.c_str(), 128);
     } else {
-      LOG(WARNING) << "Unsupported control command: " << command << " (" << state << ")";
-      // TODO(b/163081337): Handle custom commands.
+      LOG(WARNING) << "Unsupported control command: " << command << " ("
+                   << button_state << ")";
     }
+  }
+
+  void OnBluetoothChannelOpen(std::function<bool(const uint8_t *, size_t)>
+                                  bluetooth_message_sender) override {
+    LOG(VERBOSE) << "Bluetooth channel open";
+    bluetooth_handler_.reset(new cuttlefish::webrtc_streaming::BluetoothHandler(
+        cuttlefish::CuttlefishConfig::Get()
+            ->ForDefaultInstance()
+            .rootcanal_test_port(),
+        bluetooth_message_sender));
+  }
+
+  void OnBluetoothMessage(const uint8_t *msg, size_t size) override {
+    bluetooth_handler_->handleMessage(msg, size);
   }
 
  private:
   cuttlefish::InputSockets& input_sockets_;
-  cuttlefish::SharedFD kernel_log_events_client_;
+  cuttlefish::KernelLogEventsHandler* kernel_log_events_handler_;
+  int kernel_log_subscription_id_ = -1;
   std::shared_ptr<cuttlefish::webrtc_streaming::AdbHandler> adb_handler_;
-  std::shared_ptr<cuttlefish::webrtc_streaming::KernelLogEventsHandler> kernel_log_events_handler_;
+  std::shared_ptr<cuttlefish::webrtc_streaming::BluetoothHandler>
+      bluetooth_handler_;
   std::map<std::string, cuttlefish::SharedFD> commands_to_custom_action_servers_;
   std::weak_ptr<DisplayHandler> weak_display_handler_;
   std::set<int32_t> active_touch_slots_;
@@ -301,13 +348,13 @@ class ConnectionObserverDemuxer
   ConnectionObserverDemuxer(
       /* params for the base class */
       cuttlefish::InputSockets &input_sockets,
-      cuttlefish::SharedFD kernel_log_events_fd,
+      cuttlefish::KernelLogEventsHandler *kernel_log_events_handler,
       std::map<std::string, cuttlefish::SharedFD>
           commands_to_custom_action_servers,
       std::weak_ptr<DisplayHandler> display_handler,
       /* params for this class */
       cuttlefish::confui::HostVirtualInput &confui_input)
-      : android_input_(input_sockets, kernel_log_events_fd,
+      : android_input_(input_sockets, kernel_log_events_handler,
                        commands_to_custom_action_servers, display_handler),
         confui_input_{confui_input} {}
   virtual ~ConnectionObserverDemuxer() = default;
@@ -320,7 +367,7 @@ class ConnectionObserverDemuxer
   void OnTouchEvent(const std::string &label, int x, int y,
                     bool down) override {
     if (confui_input_.IsConfUiActive()) {
-      DebugLog("touch event ignored in confirmation UI mode");
+      ConfUiLog(DEBUG) << "touch event ignored in confirmation UI mode";
       return;
     }
     android_input_.OnTouchEvent(label, x, y, down);
@@ -330,7 +377,7 @@ class ConnectionObserverDemuxer
                          Json::Value slot, Json::Value x, Json::Value y,
                          bool down, int size) override {
     if (confui_input_.IsConfUiActive()) {
-      DebugLog("multi-touch event ignored in confirmation UI mode");
+      ConfUiLog(DEBUG) << "multi-touch event ignored in confirmation UI mode";
       return;
     }
     android_input_.OnMultiTouchEvent(label, id, slot, x, y, down, size);
@@ -346,7 +393,8 @@ class ConnectionObserverDemuxer
           confui_input_.PressCancelButton(down);
           break;
         default:
-          DebugLog("key ", code, " is ignored in confirmation UI mode");
+          ConfUiLog(DEBUG) << "key" << code
+                           << "is ignored in confirmation UI mode";
           break;
       }
       return;
@@ -376,6 +424,15 @@ class ConnectionObserverDemuxer
     android_input_.OnControlMessage(msg, size);
   }
 
+  void OnBluetoothChannelOpen(std::function<bool(const uint8_t *, size_t)>
+                                  bluetooth_message_sender) override {
+    android_input_.OnBluetoothChannelOpen(bluetooth_message_sender);
+  }
+
+  void OnBluetoothMessage(const uint8_t *msg, size_t size) override {
+    android_input_.OnBluetoothMessage(msg, size);
+  }
+
  private:
   ConnectionObserverForAndroid android_input_;
   cuttlefish::confui::HostVirtualInput &confui_input_;
@@ -383,16 +440,16 @@ class ConnectionObserverDemuxer
 
 CfConnectionObserverFactory::CfConnectionObserverFactory(
     cuttlefish::InputSockets &input_sockets,
-    cuttlefish::SharedFD kernel_log_events_fd,
+    cuttlefish::KernelLogEventsHandler* kernel_log_events_handler,
     cuttlefish::confui::HostVirtualInput &confui_input)
     : input_sockets_(input_sockets),
-      kernel_log_events_fd_(kernel_log_events_fd),
+      kernel_log_events_handler_(kernel_log_events_handler),
       confui_input_{confui_input} {}
 
 std::shared_ptr<cuttlefish::webrtc_streaming::ConnectionObserver>
 CfConnectionObserverFactory::CreateObserver() {
   return std::shared_ptr<cuttlefish::webrtc_streaming::ConnectionObserver>(
-      new ConnectionObserverDemuxer(input_sockets_, kernel_log_events_fd_,
+      new ConnectionObserverDemuxer(input_sockets_, kernel_log_events_handler_,
                                     commands_to_custom_action_servers_,
                                     weak_display_handler_, confui_input_));
 }

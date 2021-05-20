@@ -22,8 +22,9 @@
 
 namespace keymaster {
 
-RemoteKeymaster::RemoteKeymaster(cuttlefish::KeymasterChannel* channel)
-    : channel_(channel) {}
+RemoteKeymaster::RemoteKeymaster(cuttlefish::KeymasterChannel* channel,
+                                 uint32_t message_version)
+    : channel_(channel), message_version_(message_version) {}
 
 RemoteKeymaster::~RemoteKeymaster() {}
 
@@ -230,10 +231,11 @@ EarlyBootEndedResponse RemoteKeymaster::EarlyBootEnded() {
   return response;
 }
 
-void RemoteKeymaster::GenerateTimestampToken(GenerateTimestampTokenRequest&,
-                                             GenerateTimestampTokenResponse*) {
+void RemoteKeymaster::GenerateTimestampToken(
+    GenerateTimestampTokenRequest& request,
+    GenerateTimestampTokenResponse* response) {
   // TODO(aosp/1641315): Send a message to the host.
-  // ForwardCommand(GENERATE_TIMESTAMP_TOKEN, request, response);
+  ForwardCommand(GENERATE_TIMESTAMP_TOKEN, request, response);
 }
 
 }  // namespace keymaster
