@@ -15,4 +15,12 @@
 
 TARGET_KERNEL_USE ?= 5.10
 
+ifdef BUILD_WITH_KERNEL
+
+PRODUCT_COPY_FILES += $(OUT_DIR)/target/kernel/$(TARGET_KERNEL_USE)/arm64/kernel-$(TARGET_KERNEL_USE):kernel
+
+else # BUILD_WITH_KERNEL
+
 PRODUCT_COPY_FILES += kernel/prebuilts/$(TARGET_KERNEL_USE)/arm64/kernel-$(TARGET_KERNEL_USE):kernel
+
+endif # BUILD_WITH_KERNEL
