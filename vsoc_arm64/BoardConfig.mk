@@ -33,7 +33,11 @@ TARGET_2ND_CPU_VARIANT := cortex-a53
 TARGET_TRANSLATE_2ND_ARCH := false
 
 ifeq ($(BOARD_VENDOR_RAMDISK_KERNEL_MODULES),)
-    BOARD_VENDOR_RAMDISK_KERNEL_MODULES += $(wildcard kernel/prebuilts/common-modules/virtual-device/$(TARGET_KERNEL_USE)/arm64/*.ko)
+    ifdef BUILD_WITH_KERNEL
+        BOARD_VENDOR_RAMDISK_KERNEL_MODULES += $(wildcard $(OUT_DIR)/target/kernel/$(TARGET_KERNEL_USE)/arm64/*.ko)
+    else
+        BOARD_VENDOR_RAMDISK_KERNEL_MODULES += $(wildcard kernel/prebuilts/common-modules/virtual-device/$(TARGET_KERNEL_USE)/arm64/*.ko)
+    endif
 endif
 
 HOST_CROSS_OS := linux_bionic
