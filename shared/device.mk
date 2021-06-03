@@ -466,7 +466,7 @@ PRODUCT_PACKAGES += \
 # Gatekeeper
 #
 ifeq ($(LOCAL_GATEKEEPER_PRODUCT_PACKAGE),)
-       LOCAL_GATEKEEPER_PRODUCT_PACKAGE := android.hardware.gatekeeper@1.0-service.remote
+       LOCAL_GATEKEEPER_PRODUCT_PACKAGE := android.hardware.gatekeeper@1.0-service.software
 endif
 PRODUCT_PACKAGES += \
     $(LOCAL_GATEKEEPER_PRODUCT_PACKAGE)
@@ -521,7 +521,7 @@ PRODUCT_PACKAGES += \
 # KeyMint HAL
 #
 ifeq ($(LOCAL_KEYMINT_PRODUCT_PACKAGE),)
-       LOCAL_KEYMINT_PRODUCT_PACKAGE := android.hardware.security.keymint-service.remote
+       LOCAL_KEYMINT_PRODUCT_PACKAGE := android.hardware.security.keymint-service
 endif
  PRODUCT_PACKAGES += \
     $(LOCAL_KEYMINT_PRODUCT_PACKAGE)
@@ -622,12 +622,6 @@ else
 PRODUCT_PACKAGES += linker.recovery shell_and_utilities_recovery
 endif
 
-#
-# Shell script Vendor Module Loading
-#
-PRODUCT_COPY_FILES += \
-   $(LOCAL_PATH)/config/init.insmod.sh:$(TARGET_COPY_OUT_VENDOR)/bin/init.insmod.sh \
-
 # Host packages to install
 PRODUCT_HOST_PACKAGES += socket_vsock_proxy
 
@@ -654,3 +648,7 @@ PRODUCT_PRODUCT_PROPERTIES += \
 # Set one_handed_mode translate animation duration milliseconds
 PRODUCT_PRODUCT_PROPERTIES += \
     persist.debug.one_handed_translate_animation_duration=300
+
+# Vendor Dlkm Locader
+PRODUCT_PACKAGES += \
+   dlkm_loader
