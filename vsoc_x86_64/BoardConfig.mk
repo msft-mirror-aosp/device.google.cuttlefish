@@ -43,5 +43,9 @@ TARGET_NATIVE_BRIDGE_2ND_ABI := armeabi-v7a armeabi
 BUILD_BROKEN_DUP_RULES := true
 
 ifeq ($(BOARD_VENDOR_RAMDISK_KERNEL_MODULES),)
-    BOARD_VENDOR_RAMDISK_KERNEL_MODULES += $(wildcard kernel/prebuilts/common-modules/virtual-device/$(TARGET_KERNEL_USE)/x86-64/*.ko)
+    ifdef BUILD_WITH_KERNEL
+        BOARD_VENDOR_RAMDISK_KERNEL_MODULES += $(wildcard $(OUT_DIR)/target/kernel/$(TARGET_KERNEL_USE)/x86_64/*.ko)
+    else
+        BOARD_VENDOR_RAMDISK_KERNEL_MODULES += $(wildcard kernel/prebuilts/common-modules/virtual-device/$(TARGET_KERNEL_USE)/x86-64/*.ko)
+    endif
 endif
