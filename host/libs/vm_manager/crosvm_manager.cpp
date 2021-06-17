@@ -397,8 +397,7 @@ std::vector<Command> CrosvmManager::StartCommands(
       << VmManager::kMaxDisks + VmManager::kDefaultNumHvcs << " devices";
 
   if (config.enable_audio()) {
-    crosvm_cmd.AddParameter("--ac97");
-    crosvm_cmd.AddParameter("backend=vios,server=" +
+    crosvm_cmd.AddParameter("--sound=",
                             config.ForDefaultInstance().audio_server_path());
   }
 
