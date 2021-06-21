@@ -13,9 +13,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+package {
+    default_applicable_licenses: ["Android-Apache-2.0"],
+}
+
 cc_library_static {
     name: "libcuttlefish_webrtc",
     srcs: [
+        "lib/audio_device.cpp",
         "lib/audio_track_source_impl.cpp",
         "lib/client_handler.cpp",
         "lib/keyboard.cpp",
@@ -69,6 +74,7 @@ cc_binary_host {
     srcs: [
         "adb_handler.cpp",
         "audio_handler.cpp",
+        "bluetooth_handler.cpp",
         "connection_observer.cpp",
         "cvd_video_frame_buffer.cpp",
         "display_handler.cpp",
@@ -78,6 +84,7 @@ cc_binary_host {
     header_libs: [
         "webrtc_signaling_headers",
         "libwebrtc_absl_headers",
+        "libcuttlefish_confui_host_headers",
     ],
     static_libs: [
         "libwebrtc_absl_base",
@@ -98,6 +105,11 @@ cc_binary_host {
         "libcuttlefish_screen_connector",
         "libcuttlefish_utils",
         "libcuttlefish_wayland_server",
+        "libcuttlefish_confui",
+        "libcuttlefish_confui_host",
+        "libft2.nodep",
+        "libteeui",
+        "libteeui_localization",
         "libdrm",
         "libevent",
         "libffi",

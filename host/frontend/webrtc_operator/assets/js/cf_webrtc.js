@@ -82,9 +82,12 @@ function awaitDataChannel(pc, label, onMessage) {
 }
 
 class DeviceConnection {
-  constructor(pc, control) {
+  constructor(pc, control, audio_stream) {
     this._pc = pc;
     this._control = control;
+    this._audio_stream = audio_stream;
+    // Disable the microphone by default
+    this.useMic(false);
     this._inputChannel = createDataChannel(pc, 'input-channel');
     this._adbChannel = createDataChannel(pc, 'adb-channel', (msg) => {
       if (this._onAdbMessage) {
@@ -98,6 +101,13 @@ class DeviceConnection {
         this._onControlMessage(msg);
       } else {
         console.error('Received unexpected Control message');
+      }
+    });
+    this._bluetoothChannel = createDataChannel(pc, 'bluetooth-channel', (msg) => {
+      if (this._onBluetoothMessage) {
+        this._onBluetoothMessage(msg.data);
+      } else {
+        console.error('Received unexpected Bluetooth message');
       }
     });
     this._streams = {};
@@ -189,9 +199,23 @@ class DeviceConnection {
     this._controlChannel.send(msg);
   }
 
+  useMic(in_use) {
+    if (this._audio_stream) {
+      this._audio_stream.getTracks().forEach(track => track.enabled = in_use);
+    }
+  }
+
   // Provide a callback to receive control-related comms from the device
   onControlMessage(cb) {
     this._onControlMessage = cb;
+  }
+
+  sendBluetoothMessage(msg) {
+    this._bluetoothChannel.send(msg);
+  }
+
+  onBluetoothMessage(cb) {
+    this._onBluetoothMessage = cb;
   }
 
   // Provide a callback to receive connectionstatechange states.
@@ -379,12 +403,28 @@ export async function Connect(deviceId, options) {
     }
   }
   let pc = createPeerConnection(infraConfig, control);
-  let deviceConnection = new DeviceConnection(pc, control);
+
+  let audioStream;
+  try {
+    audioStream =
+        await navigator.mediaDevices.getUserMedia({video: false, audio: true});
+    const audioTracks = audioStream.getAudioTracks();
+    if (audioTracks.length > 0) {
+      console.log(`Using Audio device: ${audioTracks[0].label}, with ${
+        audioTracks.length} tracks`);
+      audioTracks.forEach(track => pc.addTrack(track, audioStream));
+    }
+  } catch (e) {
+    console.error("Failed to open audio device: ", e);
+  }
+
+  let deviceConnection = new DeviceConnection(pc, control, audioStream);
   deviceConnection.description = deviceInfo;
   async function acceptOfferAndReplyAnswer(offer) {
     try {
       await pc.setRemoteDescription(offer);
       let answer = await pc.createAnswer();
+      console.log('Answer: ', answer);
       await pc.setLocalDescription(answer);
       await control.sendClientDescription(answer);
     } catch (e) {

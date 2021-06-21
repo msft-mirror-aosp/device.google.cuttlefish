@@ -28,8 +28,9 @@
 #include <keymaster/km_openssl/triple_des_key.h>
 
 #include "host/commands/secure_env/tpm_attestation_record.h"
-#include "host/commands/secure_env/tpm_random_source.h"
 #include "host/commands/secure_env/tpm_key_blob_maker.h"
+#include "host/commands/secure_env/tpm_random_source.h"
+#include "host/commands/secure_env/tpm_remote_provisioning_context.h"
 
 using keymaster::AuthorizationSet;
 using keymaster::KeymasterKeyBlob;
@@ -39,11 +40,13 @@ using keymaster::OperationFactory;
 TpmKeymasterContext::TpmKeymasterContext(
     TpmResourceManager& resource_manager,
     keymaster::KeymasterEnforcement& enforcement)
-    : resource_manager_(resource_manager)
-    , enforcement_(enforcement)
-    , key_blob_maker_(new TpmKeyBlobMaker(resource_manager_))
-    , random_source_(new TpmRandomSource(resource_manager_.Esys()))
-    , attestation_context_(new TpmAttestationRecordContext()) {
+    : resource_manager_(resource_manager),
+      enforcement_(enforcement),
+      key_blob_maker_(new TpmKeyBlobMaker(resource_manager_)),
+      random_source_(new TpmRandomSource(resource_manager_.Esys())),
+      attestation_context_(new TpmAttestationRecordContext()),
+      remote_provisioning_context_(
+          new TpmRemoteProvisioningContext(resource_manager_)) {
   key_factories_.emplace(
       KM_ALGORITHM_RSA, new keymaster::RsaKeyFactory(*key_blob_maker_, *this));
   key_factories_.emplace(
@@ -146,6 +149,7 @@ keymaster_error_t TpmKeymasterContext::UpgradeKeyBlob(
   keymaster::UniquePtr<keymaster::Key> key;
   auto error = ParseKeyBlob(blob_to_upgrade, upgrade_params, &key);
   if (error != KM_ERROR_OK) {
+    LOG(ERROR) << "Failed to parse key blob";
     return error;
   }
 
@@ -156,30 +160,26 @@ keymaster_error_t TpmKeymasterContext::UpgradeKeyBlob(
     // from proper numbered releases to unnumbered development and preview
     // releases.
 
-    int key_os_version_pos = key->sw_enforced().find(keymaster::TAG_OS_VERSION);
+    int key_os_version_pos = key->hw_enforced().find(keymaster::TAG_OS_VERSION);
     if (key_os_version_pos != -1) {
-      uint32_t key_os_version = key->sw_enforced()[key_os_version_pos].integer;
+      uint32_t key_os_version = key->hw_enforced()[key_os_version_pos].integer;
       if (key_os_version != 0) {
-        key->sw_enforced()[key_os_version_pos].integer = os_version_;
+        key->hw_enforced()[key_os_version_pos].integer = os_version_;
         set_changed = true;
       }
     }
   }
 
-  auto update_os = UpgradeIntegerTag(
-      keymaster::TAG_OS_VERSION,
-      os_version_,
-      &key->sw_enforced(),
-      &set_changed);
+  auto update_os = UpgradeIntegerTag(keymaster::TAG_OS_VERSION, os_version_,
+                                     &key->hw_enforced(), &set_changed);
 
-  auto update_patchlevel = UpgradeIntegerTag(
-      keymaster::TAG_OS_PATCHLEVEL,
-      os_patchlevel_,
-      &key->sw_enforced(),
-      &set_changed);
+  auto update_patchlevel =
+      UpgradeIntegerTag(keymaster::TAG_OS_PATCHLEVEL, os_patchlevel_,
+                        &key->hw_enforced(), &set_changed);
 
   if (!update_os || !update_patchlevel) {
-    // One of the version fields would have been a downgrade. Not allowed.
+    LOG(ERROR) << "One of the version fields would have been a downgrade. "
+               << "Not allowed.";
     return KM_ERROR_INVALID_ARGUMENT;
   }
 
@@ -188,25 +188,9 @@ keymaster_error_t TpmKeymasterContext::UpgradeKeyBlob(
     return KM_ERROR_OK;
   }
 
-  AuthorizationSet combined_authorization;
-  combined_authorization.Union(key->hw_enforced());
-  combined_authorization.Union(key->sw_enforced());
-
-  keymaster_key_origin_t origin = KM_ORIGIN_UNKNOWN;
-  if (!combined_authorization.GetTagValue(keymaster::TAG_ORIGIN, &origin)) {
-    LOG(WARNING) << "Key converted with unknown origin";
-  }
-
-  AuthorizationSet output_hw_enforced;
-  AuthorizationSet output_sw_enforced;
-
-  return key_blob_maker_->CreateKeyBlob(
-      combined_authorization,
-      origin,
-      key->key_material(),
-      upgraded_key,
-      &output_hw_enforced,
-      &output_sw_enforced);
+  return key_blob_maker_->UnvalidatedCreateKeyBlob(
+      key->key_material(), key->hw_enforced(), key->sw_enforced(),
+      upgraded_key);
 }
 
 keymaster_error_t TpmKeymasterContext::ParseKeyBlob(
@@ -266,18 +250,20 @@ keymaster::KeymasterEnforcement* TpmKeymasterContext::enforcement_policy() {
 
 keymaster::CertificateChain TpmKeymasterContext::GenerateAttestation(
     const keymaster::Key& key, const keymaster::AuthorizationSet& attest_params,
-    keymaster::UniquePtr<keymaster::Key> /* attest_key */,
-    const keymaster::KeymasterBlob& /* issuer_subject */,
+    keymaster::UniquePtr<keymaster::Key> attest_key,
+    const keymaster::KeymasterBlob& issuer_subject,
     keymaster_error_t* error) const {
   LOG(INFO) << "TODO(b/155697200): Link attestation back to the TPM";
   keymaster_algorithm_t key_algorithm;
   if (!key.authorizations().GetTagValue(keymaster::TAG_ALGORITHM,
                                         &key_algorithm)) {
+    LOG(ERROR) << "Cannot find key algorithm (TAG_ALGORITHM)";
     *error = KM_ERROR_UNKNOWN_ERROR;
     return {};
   }
 
   if ((key_algorithm != KM_ALGORITHM_RSA && key_algorithm != KM_ALGORITHM_EC)) {
+    LOG(ERROR) << "Invalid algorithm: " << key_algorithm;
     *error = KM_ERROR_INCOMPATIBLE_ALGORITHM;
     return {};
   }
@@ -296,12 +282,20 @@ keymaster::CertificateChain TpmKeymasterContext::GenerateAttestation(
   // hardware/interfaces/keymaster/4.1/vts/functional/DeviceUniqueAttestationTest.cpp:203
   // at commit 36dcf1a404a9cf07ca5a2a6ad92371507194fe1b .
   if (attest_params.find(keymaster::TAG_DEVICE_UNIQUE_ATTESTATION) != -1) {
+    LOG(ERROR) << "TAG_DEVICE_UNIQUE_ATTESTATION not supported";
     *error = KM_ERROR_UNIMPLEMENTED;
     return {};
   }
 
+  keymaster::AttestKeyInfo attest_key_info(attest_key, &issuer_subject, error);
+  if (*error != KM_ERROR_OK) {
+    LOG(ERROR)
+        << "Error creating attestation key info from given key and subject";
+    return {};
+  }
+
   return keymaster::generate_attestation(asymmetric_key, attest_params,
-                                         {} /* attest_key */,
+                                         std::move(attest_key_info),
                                          *attestation_context_, error);
 }
 
@@ -337,4 +331,9 @@ keymaster_error_t TpmKeymasterContext::UnwrapKey(
     KeymasterKeyBlob*) const {
   LOG(ERROR) << "TODO(b/155697375): Implement UnwrapKey";
   return KM_ERROR_UNIMPLEMENTED;
+}
+
+keymaster::RemoteProvisioningContext*
+TpmKeymasterContext::GetRemoteProvisioningContext() const {
+  return remote_provisioning_context_.get();
 }

@@ -624,7 +624,7 @@ struct RadioImpl_1_6 : public V1_6::IRadio {
             const ::android::hardware::radio::V1_6::OptionalTrafficDescriptor& trafficDescriptor,
             bool matchAllRuleAllowed);
     Return<void> sendSms_1_6(int32_t serial, const GsmSmsMessage& message);
-    Return<void> sendSMSExpectMore_1_6(int32_t serial, const GsmSmsMessage& message);
+    Return<void> sendSmsExpectMore_1_6(int32_t serial, const GsmSmsMessage& message);
     Return<void> sendCdmaSms_1_6(int32_t serial, const CdmaSmsMessage& sms);
     Return<void> sendCdmaSmsExpectMore_1_6(int32_t serial, const CdmaSmsMessage& sms);
     Return<void> setRadioPower_1_6(int32_t serial, bool powerOn, bool forEmergencyCall,
@@ -641,11 +641,16 @@ struct RadioImpl_1_6 : public V1_6::IRadio {
     Return<void> getSystemSelectionChannels(int32_t serial);
     Return<void> getVoiceRegistrationState_1_6(int32_t serial);
     Return<void> getDataRegistrationState_1_6(int32_t serial);
-    Return<void> getAllowedNetworkTypesBitmap(uint32_t serial);
+    Return<void> getAllowedNetworkTypesBitmap(int32_t serial);
     Return<void> getSlicingConfig(int32_t serial);
     Return<void> setCarrierInfoForImsiEncryption_1_6(
             int32_t serial,
             const ::android::hardware::radio::V1_6::ImsiEncryptionInfo& imsiEncryptionInfo);
+    Return<void> getSimPhonebookRecords(int32_t serial);
+    Return<void> getSimPhonebookCapacity(int32_t serial);
+    Return<void> updateSimPhonebookRecords(
+            int32_t serial,
+            const ::android::hardware::radio::V1_6::PhonebookRecordInfo& recordInfo);
 };
 
 struct OemHookImpl : public IOemHook {
@@ -1327,16 +1332,16 @@ Return<void> RadioImpl_1_6::sendSms_1_6(int32_t serial, const GsmSmsMessage& mes
 
 Return<void> RadioImpl_1_6::sendSMSExpectMore(int32_t serial, const GsmSmsMessage& message) {
 #if VDBG
-    RLOGD("sendSMSExpectMore: serial %d", serial);
+    RLOGD("sendSmsExpectMore: serial %d", serial);
 #endif
     dispatchStrings(serial, mSlotId, RIL_REQUEST_SEND_SMS_EXPECT_MORE, false,
             2, message.smscPdu.c_str(), message.pdu.c_str());
     return Void();
 }
 
-Return<void> RadioImpl_1_6::sendSMSExpectMore_1_6(int32_t serial, const GsmSmsMessage& message) {
+Return<void> RadioImpl_1_6::sendSmsExpectMore_1_6(int32_t serial, const GsmSmsMessage& message) {
 #if VDBG
-    RLOGD("sendSMSExpectMore: serial %d", serial);
+    RLOGD("sendSmsExpectMore: serial %d", serial);
 #endif
     dispatchStrings(serial, mSlotId, RIL_REQUEST_SEND_SMS_EXPECT_MORE, false,
             2, message.smscPdu.c_str(), message.pdu.c_str());
@@ -3927,7 +3932,7 @@ Return<void> RadioImpl_1_6::setAllowedNetworkTypesBitmap(
     return Void();
 }
 
-Return<void> RadioImpl_1_6::getAllowedNetworkTypesBitmap(uint32_t serial) {
+Return<void> RadioImpl_1_6::getAllowedNetworkTypesBitmap(int32_t serial) {
 #if VDBG
     RLOGD("getAllowedNetworkTypesBitmap: serial %d", serial);
 #endif
@@ -4695,6 +4700,34 @@ Return<void> RadioImpl_1_6::setCarrierInfoForImsiEncryption_1_6(
     delete (imsiEncryption.carrierKey);
     return Void();
 }
+
+
+Return<void> RadioImpl_1_6::getSimPhonebookRecords(int32_t serial) {
+#if VDBG
+    RLOGD("getSimPhonebookRecords: serial %d", serial);
+#endif
+    dispatchVoid(serial, mSlotId, RIL_REQUEST_GET_SIM_PHONEBOOK_RECORDS);
+    return Void();
+}
+
+Return<void> RadioImpl_1_6::getSimPhonebookCapacity(int32_t serial) {
+#if VDBG
+    RLOGD("getSimPhonebookCapacity: serial %d", serial);
+#endif
+    dispatchVoid(serial, mSlotId, RIL_REQUEST_GET_SIM_PHONEBOOK_CAPACITY);
+    return Void();
+}
+
+Return<void> RadioImpl_1_6::updateSimPhonebookRecords(
+    int32_t serial,
+    const ::android::hardware::radio::V1_6::PhonebookRecordInfo& recordInfo) {
+#if VDBG
+    RLOGD("updateSimPhonebookRecords: serial %d", serial);
+#endif
+    dispatchVoid(serial, mSlotId, RIL_REQUEST_UPDATE_SIM_PHONEBOOK_RECORDS);
+    return Void();
+}
+
 
 // OEM hook methods:
 Return<void> OemHookImpl::setResponseFunctions(
@@ -6314,15 +6347,15 @@ int radio_1_6::getVoiceRegistrationStateResponse(int slotId,
                     regResponse.accessTechnologySpecificInfo.cdmaInfo(cdmaInfo);
                 } else if (rat == RADIO_TECH_NR) {
                     // rat is NR only for NR SA
-                    V1_6::RegStateResult::AccessTechnologySpecificInfo::
-                        NgranRegistrationInfo ngranInfo;
-                    ngranInfo.nrVopsInfo.vopsSupported =
+                    V1_6::NrVopsInfo nrVopsInfo;
+                    nrVopsInfo.vopsSupported =
                             ::android::hardware::radio::V1_6::VopsIndicator::VOPS_NOT_SUPPORTED;
-                    ngranInfo.nrVopsInfo.emcSupported =
+                    nrVopsInfo.emcSupported =
                             ::android::hardware::radio::V1_6::EmcIndicator::EMC_NOT_SUPPORTED;
-                    ngranInfo.nrVopsInfo.emfSupported =
+                    nrVopsInfo.emfSupported =
                             ::android::hardware::radio::V1_6::EmfIndicator::EMF_NOT_SUPPORTED;
-                    regResponse.accessTechnologySpecificInfo.ngranInfo(ngranInfo);
+                    regResponse.accessTechnologySpecificInfo.ngranNrVopsInfo(nrVopsInfo);
+
                 } else {
                     V1_5::RegStateResult::AccessTechnologySpecificInfo::
                         EutranRegistrationInfo eutranInfo;
@@ -6491,15 +6524,15 @@ int radio_1_6::getDataRegistrationStateResponse(int slotId,
                         numStrings, resp);
                 if (rat == RADIO_TECH_NR) {
                     // rat is NR only for NR SA
-                    V1_6::RegStateResult::AccessTechnologySpecificInfo::
-                        NgranRegistrationInfo ngranInfo;
-                    ngranInfo.nrVopsInfo.vopsSupported =
+                    V1_6::NrVopsInfo nrVopsInfo;
+                    nrVopsInfo.vopsSupported =
                             ::android::hardware::radio::V1_6::VopsIndicator::VOPS_NOT_SUPPORTED;
-                    ngranInfo.nrVopsInfo.emcSupported =
+                    nrVopsInfo.emcSupported =
                             ::android::hardware::radio::V1_6::EmcIndicator::EMC_NOT_SUPPORTED;
-                    ngranInfo.nrVopsInfo.emfSupported =
+                    nrVopsInfo.emfSupported =
                             ::android::hardware::radio::V1_6::EmfIndicator::EMF_NOT_SUPPORTED;
-                    regResponse.accessTechnologySpecificInfo.ngranInfo(ngranInfo);
+                    regResponse.accessTechnologySpecificInfo.ngranNrVopsInfo(nrVopsInfo);
+
                 } else {
                     V1_5::RegStateResult::AccessTechnologySpecificInfo::
                             EutranRegistrationInfo eutranInfo;
@@ -6776,11 +6809,11 @@ int radio_1_6::sendSmsResponse(int slotId,
     return 0;
 }
 
-int radio_1_6::sendSMSExpectMoreResponse(int slotId,
+int radio_1_6::sendSmsExpectMoreResponse(int slotId,
                                     int responseType, int serial, RIL_Errno e, void *response,
                                     size_t responseLen) {
 #if VDBG
-    RLOGD("sendSMSExpectMoreResponse: serial %d", serial);
+    RLOGD("sendSmsExpectMoreResponse: serial %d", serial);
 #endif
 
     if (radioService[slotId]->mRadioResponseV1_6 != NULL) {
@@ -6789,7 +6822,7 @@ int radio_1_6::sendSMSExpectMoreResponse(int slotId,
                 responseLen);
 
         Return<void> retStatus = radioService[slotId]->mRadioResponseV1_6
-                ->sendSMSExpectMoreResponse_1_6(responseInfo_1_6, result);
+                ->sendSmsExpectMoreResponse_1_6(responseInfo_1_6, result);
         radioService[slotId]->checkReturnStatus(retStatus);
     } else if (radioService[slotId]->mRadioResponse != NULL) {
         RadioResponseInfo responseInfo = {};
@@ -10303,6 +10336,31 @@ int radio_1_6::getSlicingConfigResponse(int slotId, int responseType, int serial
 
     return 0;
 }
+
+int radio_1_6::getSimPhonebookRecordsResponse(int slotId, int responseType, int serial,
+                             RIL_Errno e, void *response, size_t responseLen) {
+#if VDBG
+    RLOGD("getSimPhonebookRecordsResponse: serial %d", serial);
+#endif
+    return 0;
+}
+
+int radio_1_6::getSimPhonebookCapacityResponse(int slotId, int responseType, int serial,
+                             RIL_Errno e, void *response, size_t responseLen) {
+#if VDBG
+    RLOGD("getSimPhonebookRecordsResponse: serial %d", serial);
+#endif
+    return 0;
+}
+
+int radio_1_6::updateSimPhonebookRecordsResponse(int slotId, int responseType, int serial,
+                             RIL_Errno e, void *response, size_t responseLen) {
+#if VDBG
+    RLOGD("getSimPhonebookRecordsResponse: serial %d", serial);
+#endif
+    return 0;
+}
+
 /***************************************************************************************************
  * INDICATION FUNCTIONS
  * The below function handle unsolicited messages coming from the Radio

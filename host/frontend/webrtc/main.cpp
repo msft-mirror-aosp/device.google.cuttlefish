@@ -32,15 +32,19 @@
 #include "host/frontend/webrtc/audio_handler.h"
 #include "host/frontend/webrtc/connection_observer.h"
 #include "host/frontend/webrtc/display_handler.h"
+#include "host/frontend/webrtc/kernel_log_events_handler.h"
 #include "host/frontend/webrtc/lib/local_recorder.h"
 #include "host/frontend/webrtc/lib/streamer.h"
 #include "host/libs/audio_connector/server.h"
 #include "host/libs/config/cuttlefish_config.h"
 #include "host/libs/config/logging.h"
+#include "host/libs/confui/host_mode_ctrl.h"
+#include "host/libs/confui/host_server.h"
 #include "host/libs/screen_connector/screen_connector.h"
 
 DEFINE_int32(touch_fd, -1, "An fd to listen on for touch connections.");
 DEFINE_int32(keyboard_fd, -1, "An fd to listen on for keyboard connections.");
+DEFINE_int32(switches_fd, -1, "An fd to listen on for switch connections.");
 DEFINE_int32(frame_server_fd, -1, "An fd to listen on for frame updates");
 DEFINE_int32(kernel_log_events_fd, -1,
              "An fd to listen on for kernel log events.");
@@ -48,13 +52,14 @@ DEFINE_int32(command_fd, -1, "An fd to listen to for control messages");
 DEFINE_string(action_servers, "",
               "A comma-separated list of server_name:fd pairs, "
               "where each entry corresponds to one custom action server.");
-DEFINE_bool(write_virtio_input, false,
+DEFINE_bool(write_virtio_input, true,
             "Whether to send input events in virtio format.");
 DEFINE_int32(audio_server_fd, -1, "An fd to listen on for audio frames");
 
 using cuttlefish::AudioHandler;
 using cuttlefish::CfConnectionObserverFactory;
 using cuttlefish::DisplayHandler;
+using cuttlefish::KernelLogEventsHandler;
 using cuttlefish::webrtc_streaming::LocalRecorder;
 using cuttlefish::webrtc_streaming::Streamer;
 using cuttlefish::webrtc_streaming::StreamerConfig;
@@ -67,10 +72,10 @@ class CfOperatorObserver
     LOG(VERBOSE) << "Registered with Operator";
   }
   virtual void OnClose() override {
-    LOG(FATAL) << "Connection with Operator unexpectedly closed";
+    LOG(ERROR) << "Connection with Operator unexpectedly closed";
   }
   virtual void OnError() override {
-    LOG(FATAL) << "Error encountered in connection with Operator";
+    LOG(ERROR) << "Error encountered in connection with Operator";
   }
 };
 
@@ -129,9 +134,11 @@ int main(int argc, char** argv) {
 
   input_sockets.touch_server = cuttlefish::SharedFD::Dup(FLAGS_touch_fd);
   input_sockets.keyboard_server = cuttlefish::SharedFD::Dup(FLAGS_keyboard_fd);
+  input_sockets.switches_server = cuttlefish::SharedFD::Dup(FLAGS_switches_fd);
   auto control_socket = cuttlefish::SharedFD::Dup(FLAGS_command_fd);
   close(FLAGS_touch_fd);
   close(FLAGS_keyboard_fd);
+  close(FLAGS_switches_fd);
   close(FLAGS_command_fd);
   // Accepting on these sockets here means the device won't register with the
   // operator as soon as it could, but rather wait until crosvm's input display
@@ -142,6 +149,8 @@ int main(int argc, char** argv) {
       cuttlefish::SharedFD::Accept(*input_sockets.touch_server);
   input_sockets.keyboard_client =
       cuttlefish::SharedFD::Accept(*input_sockets.keyboard_server);
+  input_sockets.switches_client =
+      cuttlefish::SharedFD::Accept(*input_sockets.switches_server);
 
   std::thread touch_accepter([&input_sockets]() {
     for (;;) {
@@ -155,6 +164,12 @@ int main(int argc, char** argv) {
           cuttlefish::SharedFD::Accept(*input_sockets.keyboard_server);
     }
   });
+  std::thread switches_accepter([&input_sockets]() {
+    for (;;) {
+      input_sockets.switches_client =
+          cuttlefish::SharedFD::Accept(*input_sockets.switches_server);
+    }
+  });
 
   auto kernel_log_events_client =
       cuttlefish::SharedFD::Dup(FLAGS_kernel_log_events_fd);
@@ -162,8 +177,16 @@ int main(int argc, char** argv) {
 
   auto cvd_config = cuttlefish::CuttlefishConfig::Get();
   auto instance = cvd_config->ForDefaultInstance();
-  auto screen_connector =
-      cuttlefish::DisplayHandler::ScreenConnector::Get(FLAGS_frame_server_fd);
+  auto& host_mode_ctrl = cuttlefish::HostModeCtrl::Get();
+  auto screen_connector_ptr = cuttlefish::DisplayHandler::ScreenConnector::Get(
+      FLAGS_frame_server_fd, host_mode_ctrl);
+  auto& screen_connector = *(screen_connector_ptr.get());
+
+  // create confirmation UI service, giving host_mode_ctrl and
+  // screen_connector
+  // keep this singleton object alive until the webRTC process ends
+  static auto& host_confui_server =
+      cuttlefish::confui::HostServer::Get(host_mode_ctrl, screen_connector);
 
   StreamerConfig streamer_config;
 
@@ -183,17 +206,18 @@ int main(int argc, char** argv) {
         ParseHttpHeaders(cvd_config->sig_server_headers_path());
   }
 
+  KernelLogEventsHandler kernel_logs_event_handler(kernel_log_events_client);
   auto observer_factory = std::make_shared<CfConnectionObserverFactory>(
-      input_sockets, kernel_log_events_client);
+      input_sockets, &kernel_logs_event_handler, host_confui_server);
 
   auto streamer = Streamer::Create(streamer_config, observer_factory);
   CHECK(streamer) << "Could not create streamer";
 
   auto display_0 = streamer->AddDisplay(
-      "display_0", screen_connector->ScreenWidth(0),
-      screen_connector->ScreenHeight(0), cvd_config->dpi(), true);
-  auto display_handler =
-    std::make_shared<DisplayHandler>(display_0, std::move(screen_connector));
+      "display_0", screen_connector.ScreenWidth(0),
+      screen_connector.ScreenHeight(0), cvd_config->dpi(), true);
+  auto display_handler = std::shared_ptr<DisplayHandler>(
+      new DisplayHandler(display_0, screen_connector));
 
   std::unique_ptr<cuttlefish::webrtc_streaming::LocalRecorder> local_recorder;
   if (cvd_config->record_screen()) {
@@ -229,10 +253,14 @@ int main(int argc, char** argv) {
   }
   streamer->SetHardwareSpec("GPU Mode", user_friendly_gpu_mode);
 
-  auto audio_stream = streamer->AddAudioStream("audio");
-  auto audio_server = CreateAudioServer();
-  auto audio_handler =
-      std::make_shared<AudioHandler>(audio_stream, std::move(audio_server));
+  std::shared_ptr<AudioHandler> audio_handler;
+  if (cvd_config->enable_audio()) {
+    auto audio_stream = streamer->AddAudioStream("audio");
+    auto audio_server = CreateAudioServer();
+    auto audio_source = streamer->GetAudioSource();
+    audio_handler = std::make_shared<AudioHandler>(std::move(audio_server),
+                                                   audio_stream, audio_source);
+  }
 
   // Parse the -action_servers flag, storing a map of action server name -> fd
   std::map<std::string, int> action_server_fds;
@@ -257,11 +285,10 @@ int main(int argc, char** argv) {
                    << *(custom_action.shell_command);
       }
       const auto button = custom_action.buttons[0];
-      streamer->AddCustomControlPanelButton(button.command, button.title,
-                                            button.icon_name,
-                                            custom_action.shell_command);
-    }
-    if (custom_action.server) {
+      streamer->AddCustomControlPanelButtonWithShellCommand(
+          button.command, button.title, button.icon_name,
+          *(custom_action.shell_command));
+    } else if (custom_action.server) {
       if (action_server_fds.find(*(custom_action.server)) !=
           action_server_fds.end()) {
         LOG(INFO) << "Connecting to custom action server "
@@ -288,6 +315,15 @@ int main(int argc, char** argv) {
         LOG(ERROR) << "Custom action server not provided as command line flag: "
                    << *(custom_action.server);
       }
+    } else if (!custom_action.device_states.empty()) {
+      if (custom_action.buttons.size() != 1) {
+        LOG(FATAL)
+            << "Expected exactly one button for custom action device states.";
+      }
+      const auto button = custom_action.buttons[0];
+      streamer->AddCustomControlPanelButtonWithDeviceStates(
+          button.command, button.title, button.icon_name,
+          custom_action.device_states);
     }
   }
 
@@ -314,7 +350,10 @@ int main(int argc, char** argv) {
     LOG(DEBUG) << "control socket closed";
   });
 
-  audio_handler->Start();
+  if (audio_handler) {
+    audio_handler->Start();
+  }
+  host_confui_server.Start();
   display_handler->Loop();
 
   return 0;

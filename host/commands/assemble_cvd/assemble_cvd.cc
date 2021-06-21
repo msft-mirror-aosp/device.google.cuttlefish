@@ -102,7 +102,7 @@ void ValidateAdbModeFlag(const CuttlefishConfig& config) {
 #endif
 
 const CuttlefishConfig* InitFilesystemAndCreateConfig(
-    FetcherConfig fetcher_config) {
+    FetcherConfig fetcher_config, KernelConfig kernel_config) {
   std::string assembly_dir_parent = AbsolutePath(FLAGS_assembly_dir);
   while (assembly_dir_parent[assembly_dir_parent.size() - 1] == '/') {
     assembly_dir_parent =
@@ -131,32 +131,33 @@ const CuttlefishConfig* InitFilesystemAndCreateConfig(
     // two operations, as those will assume they can read the config object from
     // disk.
     auto config = InitializeCuttlefishConfiguration(
-        FLAGS_assembly_dir,
-        FLAGS_instance_dir,
-        FLAGS_modem_simulator_count,
-        fetcher_config);
+        FLAGS_instance_dir, FLAGS_modem_simulator_count, kernel_config);
     std::set<std::string> preserving;
-    if (FLAGS_resume && ShouldCreateAllCompositeDisks(config)) {
+    bool create_os_composite_disk = ShouldCreateOsCompositeDisk(config);
+    if (FLAGS_resume && create_os_composite_disk) {
       LOG(INFO) << "Requested resuming a previous session (the default behavior) "
                 << "but the base images have changed under the overlay, making the "
                 << "overlay incompatible. Wiping the overlay files.";
-    } else if (FLAGS_resume && !ShouldCreateAllCompositeDisks(config)) {
+    } else if (FLAGS_resume && !create_os_composite_disk) {
       preserving.insert("overlay.img");
-      preserving.insert("gpt_header.img");
-      preserving.insert("gpt_footer.img");
-      preserving.insert("composite.img");
+      preserving.insert("os_composite_disk_config.txt");
+      preserving.insert("os_composite_gpt_header.img");
+      preserving.insert("os_composite_gpt_footer.img");
+      preserving.insert("os_composite.img");
       preserving.insert("sdcard.img");
-      preserving.insert("uboot_env.img");
       preserving.insert("boot_repacked.img");
       preserving.insert("vendor_boot_repacked.img");
       preserving.insert("access-kregistry");
-      preserving.insert("disk_hole");
       preserving.insert("NVChip");
       preserving.insert("gatekeeper_secure");
       preserving.insert("gatekeeper_insecure");
       preserving.insert("modem_nvram.json");
-      preserving.insert("disk_config.txt");
       preserving.insert("recording");
+      preserving.insert("persistent_composite_disk_config.txt");
+      preserving.insert("persistent_composite_gpt_header.img");
+      preserving.insert("persistent_composite_gpt_footer.img");
+      preserving.insert("persistent_composite.img");
+      preserving.insert("uboot_env.img");
       preserving.insert("factory_reset_protected.img");
       std::stringstream ss;
       for (int i = 0; i < FLAGS_modem_simulator_count; i++) {
@@ -176,8 +177,6 @@ const CuttlefishConfig* InitFilesystemAndCreateConfig(
                   << config.AssemblyPath("assemble_cvd.log")
                   << ": " << log->StrError();
     }
-    std::string disk_hole_dir = FLAGS_assembly_dir + "/disk_hole";
-    CHECK(EnsureDirectoryExists(disk_hole_dir));
     for (const auto& instance : config.Instances()) {
       // Create instance directory if it doesn't exist.
       CHECK(EnsureDirectoryExists(instance.instance_dir()));
@@ -206,6 +205,21 @@ const CuttlefishConfig* InitFilesystemAndCreateConfig(
   return config;
 }
 
+const std::string kKernelDefaultPath = "kernel";
+const std::string kInitramfsImg = "initramfs.img";
+static void ExtractKernelParamsFromFetcherConfig(
+    const FetcherConfig& fetcher_config) {
+  std::string discovered_kernel =
+      fetcher_config.FindCvdFileWithSuffix(kKernelDefaultPath);
+  std::string discovered_ramdisk =
+      fetcher_config.FindCvdFileWithSuffix(kInitramfsImg);
+
+  SetCommandLineOptionWithMode("kernel_path", discovered_kernel.c_str(),
+                               google::FlagSettingMode::SET_FLAGS_DEFAULT);
+
+  SetCommandLineOptionWithMode("initramfs_path", discovered_ramdisk.c_str(),
+                               google::FlagSettingMode::SET_FLAGS_DEFAULT);
+}
 } // namespace
 
 int AssembleCvdMain(int argc, char** argv) {
@@ -230,9 +244,15 @@ int AssembleCvdMain(int argc, char** argv) {
   }
   std::vector<std::string> input_files = android::base::Split(input_files_str, "\n");
 
-  CHECK(ParseCommandLineFlags(&argc, &argv)) << "Failed to parse arguments";
+  FetcherConfig fetcher_config = FindFetcherConfig(input_files);
+  // set gflags defaults to point to kernel/RD from fetcher config
+  ExtractKernelParamsFromFetcherConfig(fetcher_config);
 
-  auto config = InitFilesystemAndCreateConfig(FindFetcherConfig(input_files));
+  KernelConfig kernel_config;
+  CHECK(ParseCommandLineFlags(&argc, &argv, &kernel_config)) << "Failed to parse arguments";
+
+  auto config =
+      InitFilesystemAndCreateConfig(std::move(fetcher_config), kernel_config);
 
   std::cout << GetConfigFilePath(*config) << "\n";
   std::cout << std::flush;

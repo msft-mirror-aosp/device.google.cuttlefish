@@ -117,7 +117,7 @@ int sendSmsResponse(int slotId,
                    int responseType, int serial, RIL_Errno e, void *response,
                    size_t responselen);
 
-int sendSMSExpectMoreResponse(int slotId,
+int sendSmsExpectMoreResponse(int slotId,
                              int responseType, int serial, RIL_Errno e, void *response,
                              size_t responselen);
 
@@ -819,6 +819,15 @@ int getAllowedNetworkTypesBitmapResponse(int slotId, int responseType, int seria
                                   RIL_Errno e, void *response, size_t responselen);
 
 int getSlicingConfigResponse(int slotId, int responseType, int serial,
+                             RIL_Errno e, void *response, size_t responseLen);
+
+int getSimPhonebookRecordsResponse(int slotId, int responseType, int serial,
+                             RIL_Errno e, void *response, size_t responseLen);
+
+int getSimPhonebookCapacityResponse(int slotId, int responseType, int serial,
+                             RIL_Errno e, void *response, size_t responseLen);
+
+int updateSimPhonebookRecordsResponse(int slotId, int responseType, int serial,
                              RIL_Errno e, void *response, size_t responseLen);
 
 

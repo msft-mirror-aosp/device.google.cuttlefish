@@ -33,6 +33,7 @@ const char TMP_EXTENSION[] = ".tmp";
 const char CPIO_EXT[] = ".cpio";
 const char TMP_RD_DIR[] = "stripped_ramdisk_dir";
 const char STRIPPED_RD[] = "stripped_ramdisk";
+const char CONCATENATED_VENDOR_RAMDISK[] = "concatenated_vendor_ramdisk";
 namespace cuttlefish {
 namespace {
 std::string ExtractValue(const std::string& dictionary, const std::string& key) {
@@ -70,59 +71,6 @@ bool DeleteTmpFileIfNotChanged(const std::string& tmp_file, const std::string& c
   return true;
 }
 
-std::string FindCpio() {
-  for (const auto& path : {"/usr/bin/cpio", "/bin/cpio"}) {
-    if (FileExists(path)) {
-      return path;
-    }
-  }
-  LOG(FATAL) << "Could not find a cpio executable.";
-  return "";
-}
-
-} // namespace
-
-void RepackVendorRamdisk(const std::string& kernel_modules_ramdisk_path,
-                         const std::string& original_ramdisk_path,
-                         const std::string& new_ramdisk_path,
-                         const std::string& build_dir) {
-  const auto& cpio_path = FindCpio();
-  int success = execute({"/bin/bash", "-c", HostBinaryPath("lz4") + " -c -d -l " +
-                        original_ramdisk_path + " > " + original_ramdisk_path + CPIO_EXT});
-  CHECK(success == 0) << "Unable to run lz4. Exited with status " << success;
-
-  success = mkdir((build_dir + "/" + TMP_RD_DIR).c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
-  CHECK(success == 0) << "Could not mkdir \"" << TMP_RD_DIR << "\", error was " << strerror(errno);
-
-  success = execute({"/bin/bash", "-c",
-                     "(cd " + build_dir + "/" + TMP_RD_DIR + " && (while " +
-                         cpio_path + " -id ; do :; done) < " +
-                         original_ramdisk_path + CPIO_EXT + ")"});
-  CHECK(success == 0) << "Unable to run cd or cpio. Exited with status " << success;
-
-  success = execute({"/bin/bash", "-c", "rm -rf " + build_dir + "/" + TMP_RD_DIR + "/lib/modules"});
-  CHECK(success == 0) << "Could not rmdir \"lib/modules\" in TMP_RD_DIR. Exited with status "
-                  << success;
-
-  const std::string stripped_ramdisk_path = build_dir + "/" + STRIPPED_RD;
-  success = execute({"/bin/bash", "-c",
-                     "(cd " + build_dir + "/" + TMP_RD_DIR + " && find . | " +
-                         cpio_path + " -H newc -o --quiet > " +
-                         stripped_ramdisk_path + CPIO_EXT + ")"});
-  CHECK(success == 0) << "Unable to run cd or cpio. Exited with status " << success;
-
-  success = execute({"/bin/bash", "-c", HostBinaryPath("lz4") +
-                     " -c -l -12 --favor-decSpeed " + stripped_ramdisk_path + CPIO_EXT + " > " +
-                     stripped_ramdisk_path});
-  CHECK(success == 0) << "Unable to run lz4. Exited with status " << success;
-
-  // Concatenates the stripped ramdisk and input ramdisk and places the result at new_ramdisk_path
-  std::ofstream final_rd(new_ramdisk_path, std::ios_base::binary | std::ios_base::trunc);
-  std::ifstream ramdisk_a(stripped_ramdisk_path, std::ios_base::binary);
-  std::ifstream ramdisk_b(kernel_modules_ramdisk_path, std::ios_base::binary);
-  final_rd << ramdisk_a.rdbuf() << ramdisk_b.rdbuf();
-}
-
 bool UnpackBootImage(const std::string& boot_image_path,
                      const std::string& unpack_dir) {
   auto unpack_path = HostBinaryPath("unpack_bootimg");
@@ -142,16 +90,115 @@ bool UnpackBootImage(const std::string& boot_image_path,
 
   int success = unpack_cmd.Start().Wait();
   if (success != 0) {
-    LOG(ERROR) << "Unable to run unpack_bootimg. Exited with status " << success;
+    LOG(ERROR) << "Unable to run unpack_bootimg. Exited with status "
+               << success;
     return false;
   }
   return true;
 }
 
+void RepackVendorRamdisk(const std::string& kernel_modules_ramdisk_path,
+                         const std::string& original_ramdisk_path,
+                         const std::string& new_ramdisk_path,
+                         const std::string& build_dir) {
+  int success = execute({"/bin/bash", "-c", HostBinaryPath("lz4") + " -c -d -l " +
+                        original_ramdisk_path + " > " + original_ramdisk_path + CPIO_EXT});
+  CHECK(success == 0) << "Unable to run lz4. Exited with status " << success;
+
+  const std::string ramdisk_stage_dir = build_dir + "/" + TMP_RD_DIR;
+  success =
+      mkdir(ramdisk_stage_dir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+  CHECK(success == 0) << "Could not mkdir \"" << ramdisk_stage_dir
+                      << "\", error was " << strerror(errno);
+
+  success = execute(
+      {"/bin/bash", "-c",
+       "(cd " + ramdisk_stage_dir + " && while " + HostBinaryPath("toybox") +
+           " cpio -idu; do :; done) < " + original_ramdisk_path + CPIO_EXT});
+  CHECK(success == 0) << "Unable to run cd or cpio. Exited with status "
+                      << success;
+
+  success = execute({"rm", "-rf", ramdisk_stage_dir + "/lib/modules"});
+  CHECK(success == 0) << "Could not rmdir \"lib/modules\" in TMP_RD_DIR. "
+                      << "Exited with status " << success;
+
+  const std::string stripped_ramdisk_path = build_dir + "/" + STRIPPED_RD;
+  success = execute({"/bin/bash", "-c",
+                     HostBinaryPath("mkbootfs") + " " + ramdisk_stage_dir +
+                         " > " + stripped_ramdisk_path + CPIO_EXT});
+  CHECK(success == 0) << "Unable to run cd or cpio. Exited with status "
+                      << success;
+
+  success = execute({"/bin/bash", "-c", HostBinaryPath("lz4") +
+                     " -c -l -12 --favor-decSpeed " + stripped_ramdisk_path + CPIO_EXT + " > " +
+                     stripped_ramdisk_path});
+  CHECK(success == 0) << "Unable to run lz4. Exited with status " << success;
+
+  // Concatenates the stripped ramdisk and input ramdisk and places the result at new_ramdisk_path
+  std::ofstream final_rd(new_ramdisk_path, std::ios_base::binary | std::ios_base::trunc);
+  std::ifstream ramdisk_a(stripped_ramdisk_path, std::ios_base::binary);
+  std::ifstream ramdisk_b(kernel_modules_ramdisk_path, std::ios_base::binary);
+  final_rd << ramdisk_a.rdbuf() << ramdisk_b.rdbuf();
+}
+
+bool UnpackVendorBootImageIfNotUnpacked(
+    const std::string& vendor_boot_image_path, const std::string& unpack_dir) {
+  // the vendor boot params file is created during the first unpack. If it's
+  // already there, a unpack has occurred and there's no need to repeat the
+  // process.
+  if (FileExists(unpack_dir + "/vendor_boot_params")) {
+    return true;
+  }
+
+  auto unpack_path = HostBinaryPath("unpack_bootimg");
+  Command unpack_cmd(unpack_path);
+  unpack_cmd.AddParameter("--boot_img");
+  unpack_cmd.AddParameter(vendor_boot_image_path);
+  unpack_cmd.AddParameter("--out");
+  unpack_cmd.AddParameter(unpack_dir);
+  auto output_file = SharedFD::Creat(unpack_dir + "/vendor_boot_params", 0666);
+  if (!output_file->IsOpen()) {
+    LOG(ERROR) << "Unable to create intermediate vendor boot params file: "
+               << output_file->StrError();
+    return false;
+  }
+  unpack_cmd.RedirectStdIO(Subprocess::StdIOChannel::kStdOut, output_file);
+  int success = unpack_cmd.Start().Wait();
+  if (success != 0) {
+    LOG(ERROR) << "Unable to run unpack_bootimg. Exited with status " << success;
+    return false;
+  }
+
+  // Concatenates all vendor ramdisk into one single ramdisk.
+  Command concat_cmd("/bin/bash");
+  concat_cmd.AddParameter("-c");
+  concat_cmd.AddParameter("cat " + unpack_dir + "/vendor_ramdisk*");
+  auto concat_file =
+      SharedFD::Creat(unpack_dir + "/" + CONCATENATED_VENDOR_RAMDISK, 0666);
+  if (!concat_file->IsOpen()) {
+    LOG(ERROR) << "Unable to create concatenated vendor ramdisk file: "
+               << concat_file->StrError();
+    return false;
+  }
+  concat_cmd.RedirectStdIO(Subprocess::StdIOChannel::kStdOut, concat_file);
+  success = concat_cmd.Start().Wait();
+  if (success != 0) {
+    LOG(ERROR) << "Unable to run cat. Exited with status " << success;
+    return false;
+  }
+  return true;
+}
+
+}  // namespace
+
 bool RepackBootImage(const std::string& new_kernel_path,
                      const std::string& boot_image_path,
                      const std::string& new_boot_image_path,
                      const std::string& build_dir) {
+  if (UnpackBootImage(boot_image_path, build_dir) == false) {
+    return false;
+  }
+
   std::string boot_params = ReadFile(build_dir + "/boot_params");
   auto kernel_cmdline = ExtractValue(boot_params, "command line args: ");
   LOG(DEBUG) << "Cmdline from boot image is " << kernel_cmdline;
@@ -184,70 +231,50 @@ bool RepackBootImage(const std::string& new_kernel_path,
   return DeleteTmpFileIfNotChanged(tmp_boot_image_path, new_boot_image_path);
 }
 
-bool UnpackVendorBootImage(const std::string& vendor_boot_image_path,
-                           const std::string& unpack_dir) {
-  auto unpack_path = HostBinaryPath("unpack_bootimg");
-  Command unpack_cmd(unpack_path);
-  unpack_cmd.AddParameter("--boot_img");
-  unpack_cmd.AddParameter(vendor_boot_image_path);
-  unpack_cmd.AddParameter("--out");
-  unpack_cmd.AddParameter(unpack_dir);
-  auto output_file = SharedFD::Creat(unpack_dir + "/vendor_boot_params", 0666);
-  if (!output_file->IsOpen()) {
-    LOG(ERROR) << "Unable to create intermediate vendor boot params file: "
-               << output_file->StrError();
-    return false;
-  }
-  unpack_cmd.RedirectStdIO(Subprocess::StdIOChannel::kStdOut, output_file);
-  int success = unpack_cmd.Start().Wait();
-  if (success != 0) {
-    LOG(ERROR) << "Unable to run unpack_bootimg. Exited with status " << success;
-    return false;
-  }
-  return true;
-}
-
 bool RepackVendorBootImage(const std::string& new_ramdisk,
                            const std::string& vendor_boot_image_path,
                            const std::string& new_vendor_boot_image_path,
-                           const std::string& build_dir,
-                           const std::string& instance_internal_dir,
-                           const std::vector<std::string>& bootconfig_args,
+                           const std::string& unpack_dir,
                            bool bootconfig_supported) {
-  // TODO(b/173134558)
-  // The vendor boot generation below isn't deterministic. i.e. running the same vendor boot
-  // repack function twice with the same inputs will produce two differing vendor boot images.
-  // This is because the vendor boot ramdisk contains a few symlinks. These symlinks affect the
-  // ramdisk regeneration process and cause differing outputs each time (I still haven't figured
-  // out why).
-  std::string ramdisk_path;
-  if (new_ramdisk.size()) {
-    ramdisk_path = instance_internal_dir + "/vendor_ramdisk_repacked";
-    RepackVendorRamdisk(new_ramdisk, build_dir + "/vendor_ramdisk0",
-                        ramdisk_path, instance_internal_dir);
-  } else {
-    ramdisk_path = build_dir + "/vendor_ramdisk0";
-  }
-
-  auto bootconfig_fd =
-      SharedFD::Creat(instance_internal_dir + "/bootconfig", 0666);
-  if (!bootconfig_fd->IsOpen()) {
-    LOG(ERROR) << "Unable to create intermediate bootconfig file: "
-               << bootconfig_fd->StrError();
+  if (UnpackVendorBootImageIfNotUnpacked(vendor_boot_image_path, unpack_dir) ==
+      false) {
     return false;
   }
-  std::string bootconfig = ReadFile(build_dir + "/bootconfig") +
-                           android::base::Join(bootconfig_args, "\n") + "\n";
-  bootconfig_fd->Write(bootconfig.c_str(), bootconfig.size());
-  LOG(DEBUG) << "Bootconfig parameters from vendor boot image and config are "
-             << ReadFile(instance_internal_dir + "/bootconfig");
 
-  std::string vendor_boot_params = ReadFile(build_dir + "/vendor_boot_params");
+  std::string ramdisk_path;
+  if (new_ramdisk.size()) {
+    ramdisk_path = unpack_dir + "/vendor_ramdisk_repacked";
+    if (!FileExists(ramdisk_path)) {
+      RepackVendorRamdisk(new_ramdisk,
+                          unpack_dir + "/" + CONCATENATED_VENDOR_RAMDISK,
+                          ramdisk_path, unpack_dir);
+    }
+  } else {
+    ramdisk_path = unpack_dir + "/" + CONCATENATED_VENDOR_RAMDISK;
+  }
+
+  std::string bootconfig = ReadFile(unpack_dir + "/bootconfig");
+  LOG(DEBUG) << "Bootconfig parameters from vendor boot image are "
+             << bootconfig;
+  std::string vendor_boot_params = ReadFile(unpack_dir + "/vendor_boot_params");
   auto kernel_cmdline =
       ExtractValue(vendor_boot_params, "vendor command line args: ") +
       (bootconfig_supported
            ? ""
            : " " + android::base::StringReplace(bootconfig, "\n", " ", true));
+  if (!bootconfig_supported) {
+    // "androidboot.hardware" kernel parameter has changed to "hardware" in
+    // bootconfig and needs to be replaced before being used in the kernel
+    // cmdline.
+    kernel_cmdline = android::base::StringReplace(
+        kernel_cmdline, " hardware=", " androidboot.hardware=", true);
+    // TODO(b/182417593): Until we pass the module parameters through
+    // modules.options, we pass them through bootconfig using
+    // 'kernel.<key>=<value>' But if we don't support bootconfig, we need to
+    // rename them back to the old cmdline version
+    kernel_cmdline = android::base::StringReplace(
+        kernel_cmdline, " kernel.", " ", true);
+  }
   LOG(DEBUG) << "Cmdline from vendor boot image is " << kernel_cmdline;
 
   auto tmp_vendor_boot_image_path = new_vendor_boot_image_path + TMP_EXTENSION;
@@ -262,10 +289,10 @@ bool RepackVendorBootImage(const std::string& new_ramdisk,
   repack_cmd.AddParameter("--vendor_boot");
   repack_cmd.AddParameter(tmp_vendor_boot_image_path);
   repack_cmd.AddParameter("--dtb");
-  repack_cmd.AddParameter(build_dir + "/dtb");
+  repack_cmd.AddParameter(unpack_dir + "/dtb");
   if (bootconfig_supported) {
     repack_cmd.AddParameter("--vendor_bootconfig");
-    repack_cmd.AddParameter(instance_internal_dir + "/bootconfig");
+    repack_cmd.AddParameter(unpack_dir + "/bootconfig");
   }
 
   int success = repack_cmd.Start().Wait();
@@ -285,14 +312,12 @@ bool RepackVendorBootImage(const std::string& new_ramdisk,
 
 bool RepackVendorBootImageWithEmptyRamdisk(
     const std::string& vendor_boot_image_path,
-    const std::string& new_vendor_boot_image_path, const std::string& build_dir,
-    const std::string& instance_internal_dir,
-    const std::vector<std::string>& bootconfig_args,
-    bool bootconfig_supported) {
-  auto empty_ramdisk_file = SharedFD::Creat(build_dir + "/empty_ramdisk", 0666);
+    const std::string& new_vendor_boot_image_path,
+    const std::string& unpack_dir, bool bootconfig_supported) {
+  auto empty_ramdisk_file =
+      SharedFD::Creat(unpack_dir + "/empty_ramdisk", 0666);
   return RepackVendorBootImage(
-      build_dir + "/empty_ramdisk", vendor_boot_image_path,
-      new_vendor_boot_image_path, build_dir, instance_internal_dir,
-      bootconfig_args, bootconfig_supported);
+      unpack_dir + "/empty_ramdisk", vendor_boot_image_path,
+      new_vendor_boot_image_path, unpack_dir, bootconfig_supported);
 }
 } // namespace cuttlefish

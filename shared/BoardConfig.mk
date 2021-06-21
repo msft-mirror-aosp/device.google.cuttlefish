@@ -123,10 +123,6 @@ BOARD_USERDATAIMAGE_PARTITION_SIZE := $(TARGET_USERDATAIMAGE_PARTITION_SIZE)
 BOARD_USERDATAIMAGE_FILE_SYSTEM_TYPE := $(TARGET_USERDATAIMAGE_FILE_SYSTEM_TYPE)
 TARGET_USERIMAGES_USE_F2FS := true
 
-# Cache partition size: 64M
-BOARD_CACHEIMAGE_PARTITION_SIZE := 67108864
-BOARD_CACHEIMAGE_FILE_SYSTEM_TYPE := ext4
-
 BOARD_GPU_DRIVERS := virgl
 
 # Enable goldfish's encoder.
@@ -151,6 +147,7 @@ USE_OPENGL_RENDERER := true
 BOARD_WLAN_DEVICE           := wlan0
 BOARD_HOSTAPD_DRIVER        := NL80211
 BOARD_WPA_SUPPLICANT_DRIVER := NL80211
+BOARD_WPA_SUPPLICANT_PRIVATE_LIB := lib_driver_cmd_simulated_cf
 WPA_SUPPLICANT_VERSION      := VER_0_8_X
 WIFI_DRIVER_FW_PATH_PARAM   := "/dev/null"
 WIFI_DRIVER_FW_PATH_STA     := "/dev/null"
@@ -159,6 +156,16 @@ WIFI_DRIVER_FW_PATH_AP      := "/dev/null"
 # vendor sepolicy
 BOARD_VENDOR_SEPOLICY_DIRS += device/google/cuttlefish/shared/sepolicy/vendor
 BOARD_VENDOR_SEPOLICY_DIRS += device/google/cuttlefish/shared/sepolicy/vendor/google
+
+BOARD_SEPOLICY_DIRS += system/bt/vendor_libs/linux/sepolicy
+
+# Avoid multiple includes of sepolicy already included by Pixel experience.
+ifneq ($(filter aosp_% %_auto %_go_phone trout_% %_tv,$(PRODUCT_NAME)),)
+
+SYSTEM_EXT_PRIVATE_SEPOLICY_DIRS += hardware/google/pixel-sepolicy/flipendo
+
+endif
+
 # product sepolicy, allow other layers to append
 PRODUCT_PRIVATE_SEPOLICY_DIRS += device/google/cuttlefish/shared/sepolicy/product/private
 # PRODUCT_PUBLIC_SEPOLICY_DIRS += device/google/cuttlefish/shared/sepolicy/product/public
@@ -180,12 +187,13 @@ TARGET_RECOVERY_PIXEL_FORMAT := ABGR_8888
 TARGET_RECOVERY_UI_LIB := librecovery_ui_cuttlefish
 TARGET_RECOVERY_FSTAB ?= device/google/cuttlefish/shared/config/fstab.f2fs
 
-BOARD_SUPER_PARTITION_SIZE := 6442450944
+BOARD_SUPER_PARTITION_SIZE := 7516192768  # 7GiB
 BOARD_SUPER_PARTITION_GROUPS := google_system_dynamic_partitions google_vendor_dynamic_partitions
 BOARD_GOOGLE_SYSTEM_DYNAMIC_PARTITIONS_PARTITION_LIST := product system system_ext
-BOARD_GOOGLE_SYSTEM_DYNAMIC_PARTITIONS_SIZE := 5368709120  # 5GiB
+BOARD_GOOGLE_SYSTEM_DYNAMIC_PARTITIONS_SIZE := 5771362304  # 5.375GiB
 BOARD_GOOGLE_VENDOR_DYNAMIC_PARTITIONS_PARTITION_LIST := odm vendor vendor_dlkm odm_dlkm
-BOARD_GOOGLE_VENDOR_DYNAMIC_PARTITIONS_SIZE := 1073741824
+# 1404MiB, reserve 4MiB for dynamic partition metadata
+BOARD_GOOGLE_VENDOR_DYNAMIC_PARTITIONS_SIZE := 1472200704
 BOARD_BUILD_SUPER_IMAGE_BY_DEFAULT := true
 BOARD_SUPER_IMAGE_IN_UPDATE_PACKAGE := true
 TARGET_RELEASETOOLS_EXTENSIONS := device/google/cuttlefish/shared
@@ -202,23 +210,25 @@ BOARD_KERNEL_CMDLINE += printk.devkmsg=on
 BOARD_KERNEL_CMDLINE += firmware_class.path=/vendor/etc/
 
 BOARD_KERNEL_CMDLINE += init=/init
-BOARD_BOOTCONFIG += androidboot.hardware=cutf_cvm
-
-# TODO(b/176860479): Remove once goldfish and cuttlefish share a wifi implementation
-BOARD_KERNEL_CMDLINE += mac80211_hwsim.radios=0
-
-# TODO(b/175151042): Remove once we are using virtio-snd on cuttlefish
-BOARD_KERNEL_CMDLINE += snd-hda-intel.enable=0
+BOARD_BOOTCONFIG += hardware=cutf_cvm
 
 # TODO(b/179489292): Remove once kfence is enabled everywhere
 BOARD_KERNEL_CMDLINE += kfence.sample_interval=500
 
 BOARD_KERNEL_CMDLINE += loop.max_part=7
-BOARD_KERNEL_CMDLINE += bootconfig
 
+# TODO(b/182417593): Move all of these module options to modules.options
+# TODO(b/176860479): Remove once goldfish and cuttlefish share a wifi implementation
+ifneq ($(PRODUCT_ENFORCE_MAC80211_HWSIM),true)
+BOARD_BOOTCONFIG += kernel.mac80211_hwsim.radios=0
+else
+BOARD_BOOTCONFIG += kernel.mac80211_hwsim.mac_prefix=5554
+endif
+# TODO(b/175151042): Remove once we are using virtio-snd on cuttlefish
+BOARD_BOOTCONFIG += kernel.snd-hda-intel.enable=0
 # Reduce slab size usage from virtio vsock to reduce slab fragmentation
-BOARD_KERNEL_CMDLINE += \
-    vmw_vsock_virtio_transport_common.virtio_transport_max_vsock_pkt_buf_size=16384
+BOARD_BOOTCONFIG += \
+    kernel.vmw_vsock_virtio_transport_common.virtio_transport_max_vsock_pkt_buf_size=16384
 
 ifeq ($(TARGET_USERDATAIMAGE_FILE_SYSTEM_TYPE),f2fs)
 BOARD_BOOTCONFIG += androidboot.fstab_suffix=f2fs
@@ -248,7 +258,16 @@ else
   BOARD_MOVE_RECOVERY_RESOURCES_TO_VENDOR_BOOT := true
 endif
 BOARD_MOVE_GSI_AVB_KEYS_TO_VENDOR_BOOT := true
-BOARD_KERNEL_MODULE_INTERFACE_VERSIONS := 5.10-android12-0
+
+# TARGET_KERNEL_USE is defined in kernel.mk, if not defined in the environment variable.
+# Keep in sync with GKI APEX in device.mk
+ifneq (,$(TARGET_KERNEL_USE))
+  ifneq (,$(filter 5.4, $(TARGET_KERNEL_USE)))
+    BOARD_KERNEL_MODULE_INTERFACE_VERSIONS := 5.4-android12-0
+  else
+    BOARD_KERNEL_MODULE_INTERFACE_VERSIONS := $(TARGET_KERNEL_USE)-android12-unstable
+  endif
+endif
 
 BOARD_GENERIC_RAMDISK_KERNEL_MODULES_LOAD := dm-user.ko
 

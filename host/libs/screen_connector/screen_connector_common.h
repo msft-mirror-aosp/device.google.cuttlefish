@@ -34,16 +34,20 @@ struct is_movable {
 };
 
 // this callback type is going directly to socket-based or wayland ScreenConnector
-using GenerateProcessedFrameCallbackImpl = std::function<void(std::uint32_t /*display_number*/,
-                                                              std::uint8_t* /*frame_pixels*/)>;
+using GenerateProcessedFrameCallbackImpl =
+    std::function<void(std::uint32_t /*display_number*/,      //
+                       std::uint32_t /*frame_width*/,         //
+                       std::uint32_t /*frame_height*/,        //
+                       std::uint32_t /*frame_stride_bytes*/,  //
+                       std::uint8_t* /*frame_pixels*/)>;
 
 class ScreenConnectorSource {
  public:
   virtual ~ScreenConnectorSource() = default;
   // Runs the given callback on the next available frame after the given
   // frame number and returns true if successful.
-  virtual bool OnNextFrame(
-      const GenerateProcessedFrameCallbackImpl& frame_callback) = 0;
+  virtual void SetFrameCallback(
+      GenerateProcessedFrameCallbackImpl frame_callback) = 0;
   virtual void ReportClientsConnected(bool /*have_clients*/) { /* ignore by default */ }
   ScreenConnectorSource() = default;
 };
@@ -80,6 +84,16 @@ struct ScreenConnectorInfo {
     CHECK(config) << "Config is Missing";
     return config;
   }
+};
+
+struct ScreenConnectorFrameRenderer {
+  virtual bool RenderConfirmationUi(std::uint32_t display_number,
+                                    std::uint32_t frame_width,
+                                    std::uint32_t frame_height,
+                                    std::uint32_t frame_stride_bytes,
+                                    std::uint8_t* frame_bytes) = 0;
+  virtual bool IsCallbackSet() const = 0;
+  virtual ~ScreenConnectorFrameRenderer() = default;
 };
 
 // this is inherited by the data type that represents the processed frame

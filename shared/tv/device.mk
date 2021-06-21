@@ -28,9 +28,13 @@ PRODUCT_COPY_FILES += \
     frameworks/native/data/etc/android.hardware.hdmi.cec.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.hdmi.cec.xml \
     frameworks/native/data/etc/android.hardware.sensor.accelerometer.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.sensor.accelerometer.xml \
     frameworks/native/data/etc/android.hardware.sensor.compass.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.sensor.compass.xml \
+    hardware/interfaces/tv/tuner/config/sample_tuner_vts_config.xml:$(TARGET_COPY_OUT_VENDOR)/etc/tuner_vts_config.xml \
 
 # HDMI CEC HAL
 PRODUCT_PACKAGES += android.hardware.tv.cec@1.0-service.mock
+
+# Setup HDMI CEC as Playback Device
+PRODUCT_PROPERTY_OVERRIDES += ro.hdmi.device_type=4
 
 # Tuner HAL
 PRODUCT_PACKAGES += android.hardware.tv.tuner@1.0-service

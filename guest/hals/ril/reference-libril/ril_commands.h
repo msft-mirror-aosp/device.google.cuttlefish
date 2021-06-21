@@ -40,7 +40,7 @@
     {RIL_REQUEST_RADIO_POWER, radio_1_6::setRadioPowerResponse},
     {RIL_REQUEST_DTMF, radio_1_6::sendDtmfResponse},
     {RIL_REQUEST_SEND_SMS, radio_1_6::sendSmsResponse},
-    {RIL_REQUEST_SEND_SMS_EXPECT_MORE, radio_1_6::sendSMSExpectMoreResponse},
+    {RIL_REQUEST_SEND_SMS_EXPECT_MORE, radio_1_6::sendSmsExpectMoreResponse},
     {RIL_REQUEST_SETUP_DATA_CALL, radio_1_6::setupDataCallResponse},
     {RIL_REQUEST_SIM_IO, radio_1_6::iccIOForAppResponse},
     {RIL_REQUEST_SEND_USSD, radio_1_6::sendUssdResponse},
@@ -183,5 +183,7 @@
     {RIL_REQUEST_SET_DATA_THROTTLING, radio_1_6::setDataThrottlingResponse},
     {RIL_REQUEST_GET_SYSTEM_SELECTION_CHANNELS, radio_1_6::getSystemSelectionChannelsResponse},
     {RIL_REQUEST_GET_ALLOWED_NETWORK_TYPES_BITMAP, radio_1_6::getAllowedNetworkTypesBitmapResponse},
-    {RIL_REQUEST_GET_SLICING_CONFIG, radio_1_6::getSlicingConfigResponse}
-
+    {RIL_REQUEST_GET_SLICING_CONFIG, radio_1_6::getSlicingConfigResponse},
+    {RIL_REQUEST_GET_SIM_PHONEBOOK_RECORDS, radio_1_6::getSimPhonebookRecordsResponse},
+    {RIL_REQUEST_GET_SIM_PHONEBOOK_CAPACITY, radio_1_6::getSimPhonebookCapacityResponse},
+    {RIL_REQUEST_UPDATE_SIM_PHONEBOOK_RECORDS, radio_1_6::updateSimPhonebookRecordsResponse}
