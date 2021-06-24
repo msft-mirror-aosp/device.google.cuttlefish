@@ -22,6 +22,7 @@
 #include <android-base/logging.h>
 #include <libwebsockets.h>
 
+#include <common/libs/utils/files.h>
 #include <host/libs/websocket/websocket_handler.h>
 
 namespace cuttlefish {
@@ -32,6 +33,7 @@ WebSocketServer::WebSocketServer(
     int server_port) {
   std::string cert_file = certs_dir + "/server.crt";
   std::string key_file = certs_dir + "/server.key";
+  std::string ca_file = certs_dir + "/CA.crt";
 
   retry_ = {
       .secs_since_valid_ping = 3,
@@ -79,6 +81,9 @@ WebSocketServer::WebSocketServer(
   info.options |= LWS_SERVER_OPTION_DO_SSL_GLOBAL_INIT;
   info.ssl_cert_filepath = cert_file.c_str();
   info.ssl_private_key_filepath = key_file.c_str();
+  if (FileExists(ca_file)) {
+    info.ssl_ca_filepath = ca_file.c_str();
+  }
   info.retry_and_idle_policy = &retry_;
 
   context_ = lws_create_context(&info);
@@ -109,6 +114,11 @@ std::string WebSocketServer::GetPath(struct lws* wsi) {
   auto len = lws_hdr_total_length(wsi, WSI_TOKEN_GET_URI);
   std::string path(len + 1, '\0');
   auto ret = lws_hdr_copy(wsi, path.data(), path.size(), WSI_TOKEN_GET_URI);
+  if (ret <= 0) {
+      len = lws_hdr_total_length(wsi, WSI_TOKEN_HTTP_COLON_PATH);
+      path.resize(len + 1, '\0');
+      ret = lws_hdr_copy(wsi, path.data(), path.size(), WSI_TOKEN_HTTP_COLON_PATH);
+  }
   if (ret < 0) {
     LOG(FATAL) << "Something went wrong getting the path";
   }
@@ -156,8 +166,10 @@ int WebSocketServer::ServerCallback(struct lws* wsi, enum lws_callback_reasons r
     case LWS_CALLBACK_RECEIVE: {
       auto handler = handlers_[wsi];
       if (handler) {
+        bool is_final = (lws_remaining_packet_payload(wsi) == 0) &&
+                        lws_is_final_fragment(wsi);
         handler->OnReceive(reinterpret_cast<const uint8_t*>(in), len,
-                           lws_frame_is_binary(wsi));
+                           lws_frame_is_binary(wsi), is_final);
       } else {
         LOG(WARNING) << "Unkwnown wsi sent data";
       }

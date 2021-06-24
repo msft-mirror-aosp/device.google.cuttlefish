@@ -288,7 +288,7 @@ DEFINE_int32(vsock_guest_cid,
              "The same formula holds when --vsock_guest_cid=C is given, for algorithm's sake."
              "Each vsock server port number is base + C - 3.");
 
-DEFINE_string(secure_hals, "keymint,gatekeeper",
+DEFINE_string(secure_hals, "",
               "Which HALs to use enable host security features for. Supports "
               "keymint and gatekeeper at the moment.");
 
@@ -670,8 +670,9 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
 
     instance.set_uuid(FLAGS_uuid);
 
+    instance.set_modem_simulator_host_id(1000 + num);  // Must be 4 digits
     instance.set_vnc_server_port(6444 + num - 1);
-    instance.set_host_port(6520 + num - 1);
+    instance.set_adb_host_port(6520 + num - 1);
     instance.set_adb_ip_and_port("0.0.0.0:" + std::to_string(6520 + num - 1));
     instance.set_tombstone_receiver_port(calc_vsock_port(6600));
     instance.set_vehicle_hal_server_port(9210 + num - 1);
@@ -708,8 +709,8 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
           {const_instance.PerInstancePath("os_composite.img")});
     } else {
       std::vector<std::string> virtual_disk_paths = {
-        const_instance.PerInstancePath("overlay.img"),
-        const_instance.factory_reset_protected_path(),
+          const_instance.PerInstancePath("overlay.img"),
+          const_instance.PerInstancePath("persistent_composite.img"),
       };
       if (FLAGS_use_sdcard) {
         virtual_disk_paths.push_back(const_instance.sdcard_path());
@@ -865,18 +866,8 @@ void SetDefaultFlagsForCrosvm() {
     SetCommandLineOptionWithMode("start_webrtc", "true", SET_FLAGS_DEFAULT);
   }
 
-  // for now, we support only x86_64 by default
+  // TODO(b/182484563): Re-enable autodetection when we fix the crosvm crashes
   bool default_enable_sandbox = false;
-  std::set<Arch> supported_archs{Arch::X86_64};
-  if (supported_archs.find(HostArch()) != supported_archs.end()) {
-    if (DirectoryExists(kCrosvmVarEmptyDir)) {
-      default_enable_sandbox = IsDirectoryEmpty(kCrosvmVarEmptyDir);
-    } else if (FileExists(kCrosvmVarEmptyDir)) {
-      default_enable_sandbox = false;
-    } else {
-      default_enable_sandbox = EnsureDirectoryExists(kCrosvmVarEmptyDir);
-    }
-  }
 
   SetCommandLineOptionWithMode("enable_sandbox",
                                (default_enable_sandbox ? "true" : "false"),

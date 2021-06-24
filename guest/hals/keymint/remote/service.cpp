@@ -14,32 +14,43 @@
  * limitations under the License.
  */
 
-#define LOG_TAG "android.hardware.security.keymint-service"
+#define LOG_TAG "android.hardware.security.keymint-service.remote"
 
 #include <android-base/logging.h>
 #include <android/binder_manager.h>
 #include <android/binder_process.h>
 
+#include <keymaster/android_keymaster_messages.h>
+#include <keymaster/km_version.h>
 #include <keymaster/soft_keymaster_logger.h>
-#include "guest/hals/keymint/remote/remote_keymint_device.h"
 
+#include <aidl/android/hardware/security/keymint/SecurityLevel.h>
 #include <guest/hals/keymint/remote/remote_keymaster.h>
 #include <guest/hals/keymint/remote/remote_keymint_device.h>
+#include <guest/hals/keymint/remote/remote_remotely_provisioned_component.h>
 #include <guest/hals/keymint/remote/remote_secure_clock.h>
+#include <guest/hals/keymint/remote/remote_shared_secret.h>
 #include "common/libs/fs/shared_fd.h"
 #include "common/libs/security/keymaster_channel.h"
 
-static const char device[] = "/dev/hvc3";
+namespace {
+
+const char device[] = "/dev/hvc3";
 
 using aidl::android::hardware::security::keymint::RemoteKeyMintDevice;
+using aidl::android::hardware::security::keymint::
+    RemoteRemotelyProvisionedComponent;
 using aidl::android::hardware::security::keymint::SecurityLevel;
 using aidl::android::hardware::security::secureclock::RemoteSecureClock;
+using aidl::android::hardware::security::sharedsecret::RemoteSharedSecret;
+using keymaster::GenerateTimestampTokenRequest;
+using keymaster::GenerateTimestampTokenResponse;
 
 template <typename T, class... Args>
-static std::shared_ptr<T> addService(Args&&... args) {
+std::shared_ptr<T> addService(Args&&... args) {
   std::shared_ptr<T> ser =
       ndk::SharedRefBase::make<T>(std::forward<Args>(args)...);
-  auto instanceName = std::string(T::descriptor) + "/remote";
+  auto instanceName = std::string(T::descriptor) + "/default";
   LOG(INFO) << "adding keymint service instance: " << instanceName;
   binder_status_t status =
       AServiceManager_addService(ser->asBinder().get(), instanceName.c_str());
@@ -47,7 +58,23 @@ static std::shared_ptr<T> addService(Args&&... args) {
   return ser;
 }
 
-int main() {
+SecurityLevel getSecurityLevel(::keymaster::RemoteKeymaster& remote_keymaster) {
+  GenerateTimestampTokenRequest request(remote_keymaster.message_version());
+  GenerateTimestampTokenResponse response(remote_keymaster.message_version());
+  remote_keymaster.GenerateTimestampToken(request, &response);
+
+  if (response.error != STATUS_OK) {
+    LOG(FATAL) << "Error getting timestamp token from remote keymaster: "
+               << response.error;
+  }
+
+  return static_cast<SecurityLevel>(response.token.security_level);
+}
+
+}  // namespace
+
+int main(int, char** argv) {
+  android::base::InitLogging(argv, android::base::KernelLogger);
   // Zero threads seems like a useless pool, but below we'll join this thread to
   // it, increasing the pool size to 1.
   ABinderProcess_setThreadPoolMaxThreadCount(0);
@@ -64,11 +91,19 @@ int main() {
 
   cuttlefish::KeymasterChannel keymasterChannel(fd, fd);
 
-  keymaster::RemoteKeymaster remote_keymaster(&keymasterChannel);
+  keymaster::RemoteKeymaster remote_keymaster(
+      &keymasterChannel, keymaster::MessageVersion(
+                             keymaster::KmVersion::KEYMINT_1, 0 /* km_date */));
+
+  if (!remote_keymaster.Initialize()) {
+    LOG(FATAL) << "Could not initialize keymaster";
+  }
 
   addService<RemoteKeyMintDevice>(remote_keymaster,
-                                  SecurityLevel::TRUSTED_ENVIRONMENT);
+                                  getSecurityLevel(remote_keymaster));
   addService<RemoteSecureClock>(remote_keymaster);
+  addService<RemoteSharedSecret>(remote_keymaster);
+  addService<RemoteRemotelyProvisionedComponent>(remote_keymaster);
 
   ABinderProcess_joinThreadPool();
   return EXIT_FAILURE;  // should not reach

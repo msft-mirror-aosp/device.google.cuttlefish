@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#define LOG_TAG "android.hardware.security.keymint-impl"
+#define LOG_TAG "android.hardware.security.keymint-impl.remote"
 #include <android-base/logging.h>
 
 #include "guest/hals/keymint/remote/remote_keymint_device.h"
@@ -37,17 +37,19 @@ using secureclock::TimeStampToken;
 namespace {
 
 vector<KeyCharacteristics> convertKeyCharacteristics(
-    SecurityLevel keyMintSecurityLevel, const AuthorizationSet& sw_enforced,
-    const AuthorizationSet& hw_enforced) {
+    const vector<KeyParameter>& keyParams, SecurityLevel keyMintSecurityLevel,
+    const AuthorizationSet& sw_enforced, const AuthorizationSet& hw_enforced,
+    bool include_keystore_enforced = true) {
   KeyCharacteristics keyMintEnforced{keyMintSecurityLevel, {}};
 
   if (keyMintSecurityLevel != SecurityLevel::SOFTWARE) {
     // We're pretending to be TRUSTED_ENVIRONMENT or STRONGBOX.
     keyMintEnforced.authorizations = kmParamSet2Aidl(hw_enforced);
-    // Put all the software authorizations in the keystore list.
-    KeyCharacteristics keystoreEnforced{SecurityLevel::KEYSTORE,
-                                        kmParamSet2Aidl(sw_enforced)};
-    return {std::move(keyMintEnforced), std::move(keystoreEnforced)};
+    if (include_keystore_enforced) {
+      return {std::move(keyMintEnforced),
+              {SecurityLevel::KEYSTORE, kmParamSet2Aidl(sw_enforced)}};
+    }
+    return {std::move(keyMintEnforced)};
   }
 
   KeyCharacteristics keystoreEnforced{SecurityLevel::KEYSTORE, {}};
@@ -71,15 +73,17 @@ vector<KeyCharacteristics> convertKeyCharacteristics(
       /* Unimplemented */
       case KM_TAG_ALLOW_WHILE_ON_BODY:
       case KM_TAG_BOOTLOADER_ONLY:
-      case KM_TAG_EARLY_BOOT_ONLY:
       case KM_TAG_ROLLBACK_RESISTANT:
       case KM_TAG_STORAGE_KEY:
-      case KM_TAG_TRUSTED_CONFIRMATION_REQUIRED:
-      case KM_TAG_TRUSTED_USER_PRESENCE_REQUIRED:
         break;
 
       /* Unenforceable */
       case KM_TAG_CREATION_DATETIME:
+        for (const auto& p : keyParams) {
+          if (p.tag == Tag::CREATION_DATETIME) {
+            keystoreEnforced.authorizations.push_back(kmParam2Aidl(entry));
+          }
+        }
         break;
 
       /* Disallowed in KeyCharacteristics */
@@ -122,6 +126,7 @@ vector<KeyCharacteristics> convertKeyCharacteristics(
       case KM_TAG_BOOT_PATCHLEVEL:
       case KM_TAG_CALLER_NONCE:
       case KM_TAG_DIGEST:
+      case KM_TAG_EARLY_BOOT_ONLY:
       case KM_TAG_EC_CURVE:
       case KM_TAG_EXPORTABLE:
       case KM_TAG_INCLUDE_UNIQUE_ID:
@@ -140,6 +145,8 @@ vector<KeyCharacteristics> convertKeyCharacteristics(
       case KM_TAG_UNLOCKED_DEVICE_REQUIRED:
       case KM_TAG_USER_AUTH_TYPE:
       case KM_TAG_USER_SECURE_ID:
+      case KM_TAG_TRUSTED_CONFIRMATION_REQUIRED:
+      case KM_TAG_TRUSTED_USER_PRESENCE_REQUIRED:
       case KM_TAG_VENDOR_PATCHLEVEL:
         keyMintEnforced.authorizations.push_back(kmParam2Aidl(entry));
         break;
@@ -160,10 +167,12 @@ vector<KeyCharacteristics> convertKeyCharacteristics(
 
   vector<KeyCharacteristics> retval;
   retval.reserve(2);
-  if (!keyMintEnforced.authorizations.empty())
+  if (!keyMintEnforced.authorizations.empty()) {
     retval.push_back(std::move(keyMintEnforced));
-  if (!keystoreEnforced.authorizations.empty())
+  }
+  if (include_keystore_enforced && !keystoreEnforced.authorizations.empty()) {
     retval.push_back(std::move(keystoreEnforced));
+  }
 
   return retval;
 }
@@ -245,7 +254,7 @@ ScopedAStatus RemoteKeyMintDevice::generateKey(
 
   creationResult->keyBlob = kmBlob2vector(response.key_blob);
   creationResult->keyCharacteristics = convertKeyCharacteristics(
-      securityLevel_, response.unenforced, response.enforced);
+      keyParams, securityLevel_, response.unenforced, response.enforced);
   creationResult->certificateChain =
       convertCertificateChain(response.certificate_chain);
   return ScopedAStatus::ok();
@@ -279,7 +288,7 @@ ScopedAStatus RemoteKeyMintDevice::importKey(
 
   creationResult->keyBlob = kmBlob2vector(response.key_blob);
   creationResult->keyCharacteristics = convertKeyCharacteristics(
-      securityLevel_, response.unenforced, response.enforced);
+      keyParams, securityLevel_, response.unenforced, response.enforced);
   creationResult->certificateChain =
       convertCertificateChain(response.certificate_chain);
 
@@ -310,7 +319,7 @@ ScopedAStatus RemoteKeyMintDevice::importWrappedKey(
 
   creationResult->keyBlob = kmBlob2vector(response.key_blob);
   creationResult->keyCharacteristics = convertKeyCharacteristics(
-      securityLevel_, response.unenforced, response.enforced);
+      unwrappingParams, securityLevel_, response.unenforced, response.enforced);
   creationResult->certificateChain =
       convertCertificateChain(response.certificate_chain);
 
@@ -358,11 +367,10 @@ ScopedAStatus RemoteKeyMintDevice::destroyAttestationIds() {
   return kmError2ScopedAStatus(KM_ERROR_UNIMPLEMENTED);
 }
 
-ScopedAStatus RemoteKeyMintDevice::begin(KeyPurpose purpose,
-                                         const vector<uint8_t>& keyBlob,
-                                         const vector<KeyParameter>& params,
-                                         const HardwareAuthToken& authToken,
-                                         BeginResult* result) {
+ScopedAStatus RemoteKeyMintDevice::begin(
+    KeyPurpose purpose, const vector<uint8_t>& keyBlob,
+    const vector<KeyParameter>& params,
+    const optional<HardwareAuthToken>& authToken, BeginResult* result) {
   BeginOperationRequest request(impl_.message_version());
   request.purpose = legacy_enum_conversion(purpose);
   request.SetKeyMaterial(keyBlob.data(), keyBlob.size());
@@ -413,9 +421,26 @@ ScopedAStatus RemoteKeyMintDevice::convertStorageKeyToEphemeral(
   return kmError2ScopedAStatus(KM_ERROR_UNIMPLEMENTED);
 }
 
-ScopedAStatus RemoteKeyMintDevice::performOperation(
-    const vector<uint8_t>& /* request */, vector<uint8_t>* /* response */) {
-  return kmError2ScopedAStatus(KM_ERROR_UNIMPLEMENTED);
+ScopedAStatus RemoteKeyMintDevice::getKeyCharacteristics(
+    const std::vector<uint8_t>& storageKeyBlob,
+    const std::vector<uint8_t>& appId, const std::vector<uint8_t>& appData,
+    std::vector<KeyCharacteristics>* keyCharacteristics) {
+  GetKeyCharacteristicsRequest request(impl_.message_version());
+  request.SetKeyMaterial(storageKeyBlob.data(), storageKeyBlob.size());
+  addClientAndAppData(appId, appData, &request.additional_params);
+
+  GetKeyCharacteristicsResponse response(impl_.message_version());
+  impl_.GetKeyCharacteristics(request, &response);
+
+  if (response.error != KM_ERROR_OK) {
+    return kmError2ScopedAStatus(response.error);
+  }
+
+  *keyCharacteristics = convertKeyCharacteristics(
+      {} /*keyParams*/, securityLevel_, response.unenforced, response.enforced,
+      false /*include_keystore_enforced*/);
+
+  return ScopedAStatus::ok();
 }
 
 }  // namespace aidl::android::hardware::security::keymint

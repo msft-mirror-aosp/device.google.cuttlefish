@@ -20,14 +20,13 @@
 #include <memory>
 #include <vector>
 
-#include "host/commands/assemble_cvd/image_aggregator.h"
 #include "host/libs/config/cuttlefish_config.h"
 #include "host/libs/config/fetcher_config.h"
 
 namespace cuttlefish {
 
 bool ResolveInstanceFiles();
-bool ShouldCreateAllCompositeDisks(const CuttlefishConfig& config);
+bool ShouldCreateOsCompositeDisk(const CuttlefishConfig& config);
 void CreateDynamicDiskFiles(const FetcherConfig& fetcher_config,
                             const CuttlefishConfig* config);
 

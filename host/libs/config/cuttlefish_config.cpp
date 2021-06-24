@@ -818,6 +818,10 @@ std::string CuttlefishConfig::AssemblyPath(
   return AbsolutePath(assembly_dir() + "/" + file_name);
 }
 
+std::string CuttlefishConfig::os_composite_disk_path() const {
+  return AssemblyPath("os_composite.img");
+}
+
 CuttlefishConfig::MutableInstanceSpecific CuttlefishConfig::ForInstance(int num) {
   return MutableInstanceSpecific(this, std::to_string(num));
 }
@@ -876,11 +880,6 @@ std::string RandomSerialNumber(const std::string& prefix) {
   return prefix + str;
 }
 
-int GetDefaultPerInstanceVsockCid() {
-  constexpr int kFirstGuestCid = 3;
-  return HostSupportsVsock() ? ForCurrentInstance(kFirstGuestCid) : 0;
-}
-
 std::string DefaultHostArtifactsPath(const std::string& file_name) {
   return (StringFromEnv("ANDROID_SOONG_HOST_OUT", StringFromEnv("HOME", ".")) + "/") +
          file_name;
@@ -906,10 +905,4 @@ bool HostSupportsQemuCli() {
   return supported;
 }
 
-bool HostSupportsVsock() {
-  static bool supported =
-      std::system(
-          "/usr/lib/cuttlefish-common/bin/capability_query.py vsock") == 0;
-  return supported;
-}
 }  // namespace cuttlefish

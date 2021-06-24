@@ -28,15 +28,15 @@
 #include <android-base/logging.h>
 #include <teeui/utils.h>
 
+#include "common/libs/concurrency/multiplexer.h"
+#include "common/libs/concurrency/semaphore.h"
 #include "common/libs/confui/confui.h"
 #include "common/libs/fs/shared_fd.h"
-#include "common/libs/semaphore/semaphore.h"
 #include "host/commands/kernel_log_monitor/utils.h"
 #include "host/libs/config/logging.h"
 #include "host/libs/confui/host_mode_ctrl.h"
 #include "host/libs/confui/host_renderer.h"
 #include "host/libs/confui/host_virtual_input.h"
-#include "host/libs/confui/multiplexer.h"
 #include "host/libs/confui/server_common.h"
 #include "host/libs/confui/session.h"
 #include "host/libs/screen_connector/screen_connector.h"
@@ -166,6 +166,8 @@ class HostServer : public HostVirtualInput {
   SharedFD hal_cli_socket_;
   std::mutex input_socket_mtx_;
 
+  using Multiplexer =
+      Multiplexer<ConfUiMessage, ThreadSafeQueue<ConfUiMessage>>;
   /*
    * Multiplexer has N queues. When pop(), it is going to sleep until
    * there's at least one item in at least one queue. The lower the Q
@@ -174,7 +176,7 @@ class HostServer : public HostVirtualInput {
    * For HostServer, we have a queue for the user input events, and
    * another for hal cmd/msg queues
    */
-  Multiplexer<ConfUiMessage> input_multiplexer_;
+  Multiplexer input_multiplexer_;
   int hal_cmd_q_id_;         // Q id in input_multiplexer_
   int user_input_evt_q_id_;  // Q id in input_multiplexer_
 

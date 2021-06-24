@@ -51,18 +51,24 @@ HostServer::HostServer(
       host_mode_ctrl_(host_mode_ctrl),
       screen_connector_{screen_connector},
       renderer_(display_num_),
-      hal_socket_path_(HalGuestSocketPath()),
-      input_multiplexer_{/* max n_elems */ 20, /* n_Qs */ 2} {
-  hal_cmd_q_id_ = input_multiplexer_.GetNewQueueId();         // return 0
-  user_input_evt_q_id_ = input_multiplexer_.GetNewQueueId();  // return 1
+      hal_socket_path_(HalGuestSocketPath()) {
+  const size_t max_elements = 20;
+  auto ignore_new = [](ThreadSafeQueue<ConfUiMessage>::QueueImpl*) {
+    // no op, so the queue is still full, and the new item will be discarded
+    return;
+  };
+  hal_cmd_q_id_ = input_multiplexer_.RegisterQueue(
+      HostServer::Multiplexer::CreateQueue(max_elements, ignore_new));
+  user_input_evt_q_id_ = input_multiplexer_.RegisterQueue(
+      HostServer::Multiplexer::CreateQueue(max_elements, ignore_new));
 }
 
 void HostServer::Start() {
   guest_hal_socket_ = cuttlefish::SharedFD::SocketLocalServer(
       hal_socket_path_, false, SOCK_STREAM, 0666);
   if (!guest_hal_socket_->IsOpen()) {
-    FatalLog("Confirmation UI host service mandates a server socket",
-             "to which the guest HAL to connect.");
+    ConfUiLog(FATAL) << "Confirmation UI host service mandates a server socket"
+                     << "to which the guest HAL to connect.";
     return;
   }
   auto hal_cmd_fetching = [this]() { this->HalCmdFetcherLoop(); };
@@ -70,20 +76,21 @@ void HostServer::Start() {
   hal_input_fetcher_thread_ =
       thread::RunThread("HalInputLoop", hal_cmd_fetching);
   main_loop_thread_ = thread::RunThread("MainLoop", main);
-  DebugLog("configured internal socket based input.");
+  ConfUiLog(DEBUG) << "configured internal socket based input.";
   return;
 }
 
 void HostServer::HalCmdFetcherLoop() {
   hal_cli_socket_ = EstablishHalConnection();
   if (!hal_cli_socket_->IsOpen()) {
-    FatalLog("Confirmation UI host service mandates connection with HAL.");
+    ConfUiLog(FATAL)
+        << "Confirmation UI host service mandates connection with HAL.";
     return;
   }
   while (true) {
     auto opted_msg = RecvConfUiMsg(hal_cli_socket_);
     if (!opted_msg) {
-      ErrorLog("Error in RecvConfUiMsg from HAL");
+      ConfUiLog(ERROR) << "Error in RecvConfUiMsg from HAL";
       continue;
     }
     auto input = std::move(opted_msg.value());
@@ -93,7 +100,7 @@ void HostServer::HalCmdFetcherLoop() {
 
 bool HostServer::SendUserSelection(UserResponse::type selection) {
   if (!curr_session_) {
-    FatalLog("Current session must not be null");
+    ConfUiLog(FATAL) << "Current session must not be null";
     return false;
   }
   if (curr_session_->GetState() != MainLoopState::kInSession) {
@@ -104,8 +111,8 @@ bool HostServer::SendUserSelection(UserResponse::type selection) {
   std::lock_guard<std::mutex> lock(input_socket_mtx_);
   if (selection != UserResponse::kConfirm &&
       selection != UserResponse::kCancel) {
-    FatalLog(selection, " must be either ", UserResponse::kConfirm, " or ",
-             UserResponse::kCancel);
+    ConfUiLog(FATAL) << selection << " must be either" << UserResponse::kConfirm
+                     << "or" << UserResponse::kCancel;
     return false;  // not reaching here
   }
 
@@ -140,17 +147,18 @@ bool HostServer::IsConfUiActive() {
 }
 
 SharedFD HostServer::EstablishHalConnection() {
-  DebugLog("Waiting hal accepting");
+  ConfUiLog(DEBUG) << "Waiting hal accepting";
   auto new_cli = SharedFD::Accept(*guest_hal_socket_);
-  DebugLog("hal client accepted");
+  ConfUiLog(DEBUG) << "hal client accepted";
   return new_cli;
 }
 
 std::unique_ptr<Session> HostServer::ComputeCurrentSession(
     const std::string& session_id) {
   if (curr_session_ && (GetCurrentSessionId() != session_id)) {
-    FatalLog(curr_session_->GetId(), " is active and in the ",
-             GetCurrentState(), " but HAL sends command to ", session_id);
+    ConfUiLog(FATAL) << curr_session_->GetId() << " is active and in the"
+                     << GetCurrentState() << "but HAL sends command to"
+                     << session_id;
   }
   if (curr_session_) {
     return std::move(curr_session_);
@@ -184,17 +192,18 @@ std::unique_ptr<Session> HostServer::ComputeCurrentSession(
     const bool is_user_input = (cmd == ConfUiCmd::kUserInputEvent);
     std::string src = is_user_input ? "input" : "hal";
 
-    DebugLog("In Session ", GetCurrentSessionId(), "m in state ",
-             GetCurrentState(), " received input from ", src,
-             " cmd = ", cmd_str, " and additional_info = " + additional_info,
-             " going to session ", session_id);
+    ConfUiLog(DEBUG) << "In Session" << GetCurrentSessionId() << ","
+                     << "in state" << GetCurrentState() << ","
+                     << "received input from" << src << "cmd =" << cmd_str
+                     << "and additional_info =" << additional_info
+                     << "going to session" << session_id;
 
     FsmInput fsm_input = ToFsmInput(input);
 
     if (is_user_input && !curr_session_) {
       // discard the input, there's no session to take it yet
       // actually, no confirmation UI screen is available
-      DebugLog("Took user input but no active session is available.");
+      ConfUiLog(DEBUG) << "Took user input but no active session is available.";
       continue;
     }
 
@@ -207,11 +216,12 @@ std::unique_ptr<Session> HostServer::ComputeCurrentSession(
      *
      */
     curr_session_ = ComputeCurrentSession(session_id);
-    DebugLog("Host service picked up ",
-             (curr_session_ ? curr_session_->GetId() : "null session"));
-    DebugLog(
-        "The state of current session is ",
-        curr_session_ ? ToString(curr_session_->GetState()) : "null session");
+    ConfUiLog(DEBUG) << "Host service picked up "
+                     << (curr_session_ ? curr_session_->GetId()
+                                       : "null session");
+    ConfUiLog(DEBUG) << "The state of current session is "
+                     << (curr_session_ ? ToString(curr_session_->GetState())
+                                       : "null session");
 
     if (is_user_input) {
       curr_session_->Transition(is_user_input, hal_cli_socket_, fsm_input,

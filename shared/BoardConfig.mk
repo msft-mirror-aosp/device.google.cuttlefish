@@ -147,6 +147,7 @@ USE_OPENGL_RENDERER := true
 BOARD_WLAN_DEVICE           := wlan0
 BOARD_HOSTAPD_DRIVER        := NL80211
 BOARD_WPA_SUPPLICANT_DRIVER := NL80211
+BOARD_WPA_SUPPLICANT_PRIVATE_LIB := lib_driver_cmd_simulated_cf
 WPA_SUPPLICANT_VERSION      := VER_0_8_X
 WIFI_DRIVER_FW_PATH_PARAM   := "/dev/null"
 WIFI_DRIVER_FW_PATH_STA     := "/dev/null"
@@ -159,7 +160,7 @@ BOARD_VENDOR_SEPOLICY_DIRS += device/google/cuttlefish/shared/sepolicy/vendor/go
 BOARD_SEPOLICY_DIRS += system/bt/vendor_libs/linux/sepolicy
 
 # Avoid multiple includes of sepolicy already included by Pixel experience.
-ifneq ($(filter aosp_% %_auto %_tv,$(PRODUCT_NAME)),)
+ifneq ($(filter aosp_% %_auto %_go_phone trout_% %_tv,$(PRODUCT_NAME)),)
 
 SYSTEM_EXT_PRIVATE_SEPOLICY_DIRS += hardware/google/pixel-sepolicy/flipendo
 
@@ -209,7 +210,7 @@ BOARD_KERNEL_CMDLINE += printk.devkmsg=on
 BOARD_KERNEL_CMDLINE += firmware_class.path=/vendor/etc/
 
 BOARD_KERNEL_CMDLINE += init=/init
-BOARD_BOOTCONFIG += hardware=cutf_cvm
+BOARD_BOOTCONFIG += androidboot.hardware=cutf_cvm
 
 # TODO(b/179489292): Remove once kfence is enabled everywhere
 BOARD_KERNEL_CMDLINE += kfence.sample_interval=500
@@ -218,7 +219,11 @@ BOARD_KERNEL_CMDLINE += loop.max_part=7
 
 # TODO(b/182417593): Move all of these module options to modules.options
 # TODO(b/176860479): Remove once goldfish and cuttlefish share a wifi implementation
+ifneq ($(PRODUCT_ENFORCE_MAC80211_HWSIM),true)
 BOARD_BOOTCONFIG += kernel.mac80211_hwsim.radios=0
+else
+BOARD_BOOTCONFIG += kernel.mac80211_hwsim.mac_prefix=5554
+endif
 # TODO(b/175151042): Remove once we are using virtio-snd on cuttlefish
 BOARD_BOOTCONFIG += kernel.snd-hda-intel.enable=0
 # Reduce slab size usage from virtio vsock to reduce slab fragmentation
@@ -253,7 +258,6 @@ else
   BOARD_MOVE_RECOVERY_RESOURCES_TO_VENDOR_BOOT := true
 endif
 BOARD_MOVE_GSI_AVB_KEYS_TO_VENDOR_BOOT := true
-BOARD_KERNEL_MODULE_INTERFACE_VERSIONS := 5.10-android12-0
 
 BOARD_GENERIC_RAMDISK_KERNEL_MODULES_LOAD := dm-user.ko
 

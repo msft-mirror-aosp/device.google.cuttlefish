@@ -22,9 +22,6 @@ function ConnectToDevice(device_id) {
   createToggleControl(keyboardCaptureCtrl, "keyboard", onKeyboardCaptureToggle);
   const micCaptureCtrl = document.getElementById('mic-capture-control');
   createToggleControl(micCaptureCtrl, "mic", onMicCaptureToggle);
-  // TODO(b/163867676): Enable the microphone control when the audio stream is
-  // injected into the guest. Until then, control is disabled.
-  micCaptureCtrl.style.display = 'none';
 
   const deviceScreen = document.getElementById('device-screen');
   const deviceAudio = document.getElementById('device-audio');
@@ -52,7 +49,7 @@ function ConnectToDevice(device_id) {
 
   deviceScreen.addEventListener('loadeddata', (evt) => {
     clearInterval(animateDeviceStatusMessage);
-    statusMessage.textContent = 'Awaiting bootup and adb connection. Please wait...';
+    statusMessage.textContent = 'Awaiting adb connection...';
     resizeDeviceView();
     deviceScreen.style.visibility = 'visible';
     // Enable the buttons after the screen is visible.
@@ -72,24 +69,22 @@ function ConnectToDevice(device_id) {
   let deviceConnection;
   let touchIdSlotMap = new Map();
   let touchSlots = new Array();
+  let deviceStateLidSwitchOpen = null;
+  let deviceStateHingeAngleValue = null;
 
-  let bootCompleted = false;
-  let adbConnected = false;
-  function showBootCompletion() {
+  function showAdbConnected() {
     // Screen changed messages are not reported until after boot has completed.
     // Certain default adb buttons change screen state, so wait for boot
     // completion before enabling these buttons.
-    if (adbConnected && bootCompleted) {
-      statusMessage.className = 'connected';
-      statusMessage.textContent =
-          'bootup and adb connection established successfully.';
-      setTimeout(function() {
-        statusMessage.style.visibility = 'hidden';
-      }, 5000);
-      for (const [_, button] of Object.entries(buttons)) {
-        if (button.adb) {
-          button.button.disabled = false;
-        }
+    statusMessage.className = 'connected';
+    statusMessage.textContent =
+        'adb connection established successfully.';
+    setTimeout(function() {
+      statusMessage.style.visibility = 'hidden';
+    }, 5000);
+    for (const [_, button] of Object.entries(buttons)) {
+      if (button.adb) {
+        button.button.disabled = false;
       }
     }
   }
@@ -97,10 +92,7 @@ function ConnectToDevice(device_id) {
   function initializeAdb() {
     init_adb(
         deviceConnection,
-        function() {
-          adbConnected = true;
-          showBootCompletion();
-        },
+        showAdbConnected,
         function() {
           statusMessage.className = 'error';
           statusMessage.textContent = 'adb connection failed.';
@@ -124,10 +116,6 @@ function ConnectToDevice(device_id) {
       // (This is after the adbd start message. Attempting to connect
       // immediately after adbd starts causes issues.)
       initializeAdb();
-    }
-    if (message_data.event == 'VIRTUAL_DEVICE_BOOT_COMPLETED') {
-      bootCompleted = true;
-      showBootCompletion();
     }
     if (message_data.event == 'VIRTUAL_DEVICE_SCREEN_CHANGED') {
       if (metadata.rotation != currentRotation) {
@@ -204,25 +192,71 @@ function ConnectToDevice(device_id) {
   createControlPanelButton('volumedown', 'Volume Down', 'volume_down');
   createControlPanelButton('volumeup', 'Volume Up', 'volume_up');
 
-  const deviceDetailsModal = document.getElementById('device-details-modal');
-  const deviceDetailsButton = document.getElementById('device-details-button');
-  const deviceDetailsClose = document.getElementById('device-details-close');
-  function showHideDeviceDetailsModal(show) {
-    // Position the modal to the right of the device details button.
-    deviceDetailsModal.style.top = deviceDetailsButton.offsetTop;
-    deviceDetailsModal.style.left = deviceDetailsButton.offsetWidth + 30;
-    if (show) {
-      deviceDetailsModal.style.display = 'block';
-    } else {
-      deviceDetailsModal.style.display = 'none';
+  let modalOffsets = {}
+  function createModalButton(button_id, modal_id, close_id) {
+    const modalButton = document.getElementById(button_id);
+    const modalDiv = document.getElementById(modal_id);
+    const modalHeader = modalDiv.querySelector('.modal-header');
+    const modalClose = document.getElementById(close_id);
+
+    // Position the modal to the right of the show modal button.
+    modalDiv.style.top = modalButton.offsetTop;
+    modalDiv.style.left = modalButton.offsetWidth + 30;
+
+    function showHideModal(show) {
+      if (show) {
+        modalButton.classList.add('modal-button-opened')
+        modalDiv.style.display = 'block';
+      } else {
+        modalButton.classList.remove('modal-button-opened')
+        modalDiv.style.display = 'none';
+      }
     }
+    // Allow the show modal button to toggle the modal,
+    modalButton.addEventListener('click',
+        evt => showHideModal(modalDiv.style.display != 'block'));
+    // but the close button always closes.
+    modalClose.addEventListener('click',
+        evt => showHideModal(false));
+
+    // Allow the modal to be dragged by the header.
+    modalOffsets[modal_id] = {
+      midDrag: false,
+      mouseDownOffsetX: null,
+      mouseDownOffsetY: null,
+    }
+    modalHeader.addEventListener('mousedown',
+        evt => {
+            modalOffsets[modal_id].midDrag = true;
+            // Store the offset of the mouse location from the
+            // modal's current location.
+            modalOffsets[modal_id].mouseDownOffsetX =
+                parseInt(modalDiv.style.left) - evt.clientX;
+            modalOffsets[modal_id].mouseDownOffsetY =
+                parseInt(modalDiv.style.top) - evt.clientY;
+        });
+    modalHeader.addEventListener('mousemove',
+        evt => {
+            let offsets = modalOffsets[modal_id];
+            if (offsets.midDrag) {
+              // Move the modal to the mouse location plus the
+              // offset calculated on the initial mouse-down.
+              modalDiv.style.left =
+                  evt.clientX + offsets.mouseDownOffsetX;
+              modalDiv.style.top =
+                  evt.clientY + offsets.mouseDownOffsetY;
+            }
+        });
+    document.addEventListener('mouseup',
+        evt => {
+          modalOffsets[modal_id].midDrag = false;
+        });
   }
-  // Allow the device details button to toggle the modal,
-  deviceDetailsButton.addEventListener('click',
-      evt => showHideDeviceDetailsModal(deviceDetailsModal.style.display != 'block'));
-  // but the close button always closes.
-  deviceDetailsClose.addEventListener('click',
-      evt => showHideDeviceDetailsModal(false));
+
+  createModalButton(
+    'device-details-button', 'device-details-modal', 'device-details-close');
+  createModalButton(
+    'bluetooth-console-button', 'bluetooth-console-modal', 'bluetooth-console-close');
 
   let options = {
     wsUrl: ((location.protocol == 'http:') ? 'ws://' : 'wss://') +
@@ -271,6 +305,18 @@ function ConnectToDevice(device_id) {
                 e => onCustomShellButton(button.shell_command, e),
                 'control-panel-custom-buttons');
             buttons[button.command].adb = true;
+          } else if (button.device_states) {
+            // This button corresponds to variable hardware device state(s).
+            createControlPanelButton(button.command, button.title, button.icon_name,
+                getCustomDeviceStateButtonCb(button.device_states),
+                'control-panel-custom-buttons');
+            for (const device_state of button.device_states) {
+              // hinge_angle is currently injected via an adb shell command that
+              // triggers a guest binary.
+              if ('hinge_angle_value' in device_state) {
+                buttons[button.command].adb = true;
+              }
+            }
           } else {
             // This button's command is handled by custom action server.
             createControlPanelButton(button.command, button.title, button.icon_name,
@@ -282,22 +328,14 @@ function ConnectToDevice(device_id) {
       deviceConnection.onControlMessage(msg => onControlMessage(msg));
       // Start the screen as hidden. Only show when data is ready.
       deviceScreen.style.visibility = 'hidden';
-      // Send an initial home button press when WebRTC connects. This is needed
-      // so that the device screen receives an initial frame even if WebRTC is
-      // connected long after the device boots up.
-      deviceConnection.sendControlMessage(JSON.stringify({
-        command: 'home',
-        state: 'down',
-      }));
-      deviceConnection.sendControlMessage(JSON.stringify({
-        command: 'home',
-        state: 'up',
-      }));
       // Show the error message and disable buttons when the WebRTC connection fails.
       deviceConnection.onConnectionStateChange(state => {
         if (state == 'disconnected' || state == 'failed') {
           showWebrtcError();
         }
+      });
+      deviceConnection.onBluetoothMessage(msg => {
+        bluetoothConsole.addLine(decodeRootcanalMessage(msg));
       });
   }, rejection => {
       console.error('Unable to connect: ', rejection);
@@ -306,11 +344,13 @@ function ConnectToDevice(device_id) {
 
   let hardwareDetailsText = '';
   let displayDetailsText = '';
+  let deviceStateDetailsText = '';
   function updateDeviceDetailsText() {
     document.getElementById('device-details-hardware').textContent = [
       hardwareDetailsText,
+      deviceStateDetailsText,
       displayDetailsText,
-    ].join('\n');
+    ].filter(e => e /*remove empty*/).join('\n');
   }
   function updateDeviceHardwareDetails(hardware) {
     let hardwareDetailsTextLines = [];
@@ -331,6 +371,18 @@ function ConnectToDevice(device_id) {
     displayDetailsText = `Display - ${x_res}x${y_res} (${dpi}DPI)${rotated}`;
     updateDeviceDetailsText();
   }
+  function updateDeviceStateDetails() {
+    let deviceStateDetailsTextLines = [];
+    if (deviceStateLidSwitchOpen != null) {
+      let state = deviceStateLidSwitchOpen ? 'Opened' : 'Closed';
+      deviceStateDetailsTextLines.push(`Lid Switch - ${state}`);
+    }
+    if (deviceStateHingeAngleValue != null) {
+      deviceStateDetailsTextLines.push(`Hinge Angle - ${deviceStateHingeAngleValue}`);
+    }
+    deviceStateDetailsText = deviceStateDetailsTextLines.join('\n');
+    updateDeviceDetailsText();
+  }
 
   function onKeyboardCaptureToggle(enabled) {
     if (enabled) {
@@ -344,6 +396,68 @@ function ConnectToDevice(device_id) {
     deviceConnection.useMic(enabled);
   }
 
+  function cmdConsole(consoleViewName, consoleInputName) {
+    let consoleView = document.getElementById(consoleViewName);
+
+    let addString = function(str) {
+      consoleView.value += str;
+      consoleView.scrollTop = consoleView.scrollHeight;
+    }
+
+    let addLine = function(line) {
+      addString(line + "\r\n");
+    }
+
+    let commandCallbacks = [];
+
+    let addCommandListener = function(f) {
+      commandCallbacks.push(f);
+    }
+
+    let onCommand = function(cmd) {
+      cmd = cmd.trim();
+
+      if (cmd.length == 0) return;
+
+      commandCallbacks.forEach(f => {
+        f(cmd);
+      })
+    }
+
+    addCommandListener(cmd => addLine(">> " + cmd));
+
+    let consoleInput = document.getElementById(consoleInputName);
+
+    consoleInput.addEventListener('keydown', e => {
+      if ((e.key && e.key == 'Enter') || e.keyCode == 13) {
+        let command = e.target.value;
+
+        e.target.value = '';
+
+        onCommand(command);
+      }
+    })
+
+    return {
+      consoleView: consoleView,
+      consoleInput: consoleInput,
+      addLine: addLine,
+      addString: addString,
+      addCommandListener: addCommandListener,
+    };
+  }
+
+  var bluetoothConsole = cmdConsole(
+    'bluetooth-console-view', 'bluetooth-console-input');
+
+  bluetoothConsole.addCommandListener(cmd => {
+    let inputArr = cmd.split(' ');
+    let command = inputArr[0];
+    inputArr.shift();
+    let args = inputArr;
+    deviceConnection.sendBluetoothMessage(createRootcanalMessage(command, args));
+  })
+
   function onControlPanelButton(e) {
     if (e.type == 'mouseout' && e.which == 0) {
       // Ignore mouseout events if no mouse button is pressed.
@@ -351,7 +465,7 @@ function ConnectToDevice(device_id) {
     }
     deviceConnection.sendControlMessage(JSON.stringify({
       command: e.target.dataset.command,
-      state: e.type == 'mousedown' ? "down" : "up",
+      button_state: e.type == 'mousedown' ? "down" : "up",
     }));
   }
 
@@ -361,16 +475,50 @@ function ConnectToDevice(device_id) {
     initializeAdb();
     if (e.type == 'mousedown') {
       adbShell(
-          '/vendor/bin/cuttlefish_rotate ' +
+          '/vendor/bin/cuttlefish_sensor_injection rotate ' +
           (currentRotation == 0 ? 'landscape' : 'portrait'))
     }
   }
+
   function onCustomShellButton(shell_command, e) {
     // Attempt to init adb again, in case the initial connection failed.
     // This succeeds immediately if already connected.
     initializeAdb();
     if (e.type == 'mousedown') {
       adbShell(shell_command);
+    }
+  }
+
+  function getCustomDeviceStateButtonCb(device_states) {
+    let states = device_states;
+    let index = 0;
+    return e => {
+      if (e.type == 'mousedown') {
+        // Reset any overridden device state.
+        adbShell('cmd device_state state reset');
+        // Send a device_state message for the current state.
+        let message = {
+          command: 'device_state',
+          ...states[index],
+        };
+        deviceConnection.sendControlMessage(JSON.stringify(message));
+        console.log(JSON.stringify(message));
+        if ('lid_switch_open' in states[index]) {
+          deviceStateLidSwitchOpen = states[index].lid_switch_open;
+        }
+        if ('hinge_angle_value' in states[index]) {
+          deviceStateHingeAngleValue = states[index].hinge_angle_value;
+          // TODO(b/181157794): Use a custom Sensor HAL for hinge_angle injection
+          // instead of this guest binary.
+          adbShell(
+              '/vendor/bin/cuttlefish_sensor_injection hinge_angle ' +
+              states[index].hinge_angle_value);
+        }
+        // Update the Device Details view.
+        updateDeviceStateDetails();
+        // Cycle to the next state.
+        index = (index + 1) % states.length;
+      }
     }
   }
 

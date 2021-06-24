@@ -25,35 +25,37 @@
 namespace cuttlefish {
 DisplayHandler::DisplayHandler(
     std::shared_ptr<webrtc_streaming::VideoSink> display_sink,
-    std::unique_ptr<ScreenConnector> screen_connector)
-    : display_sink_(display_sink), screen_connector_(std::move(screen_connector)) {
-  screen_connector_->SetCallback(std::move(GetScreenConnectorCallback()));
+    ScreenConnector& screen_connector)
+    : display_sink_(display_sink), screen_connector_(screen_connector) {
+  screen_connector_.SetCallback(std::move(GetScreenConnectorCallback()));
 }
 
 DisplayHandler::GenerateProcessedFrameCallback DisplayHandler::GetScreenConnectorCallback() {
     // only to tell the producer how to create a ProcessedFrame to cache into the queue
     DisplayHandler::GenerateProcessedFrameCallback callback =
-        [](std::uint32_t display_number, std::uint8_t* frame_pixels,
+        [](std::uint32_t display_number, std::uint32_t frame_width,
+           std::uint32_t frame_height, std::uint32_t frame_stride_bytes,
+           std::uint8_t* frame_pixels,
            WebRtcScProcessedFrame& processed_frame) {
+          processed_frame.display_number_ = display_number;
           // TODO(171305898): handle multiple displays.
           if (display_number != 0) {
-            processed_frame.is_success_ = false;
-            return;
+            // BUG 186580833: display_number comes from surface_id in crosvm
+            // create_surface from virtio_gpu.rs set_scanout.  We cannot use it as
+            // the display number. Either crosvm virtio-gpu is incorrectly ignoring
+            // scanout id and instead using a monotonically increasing surface id
+            // number as the scanout resource is replaced over time, or frontend code
+            // here is incorrectly assuming  surface id == display id.
+            display_number = 0;
           }
-          const int display_w =
-              ScreenConnectorInfo::ScreenWidth(display_number);
-          const int display_h =
-              ScreenConnectorInfo::ScreenHeight(display_number);
-          const int display_stride_bytes =
-              ScreenConnectorInfo::ScreenStrideBytes(display_number);
           processed_frame.display_number_ = display_number;
           processed_frame.buf_ =
-              std::make_unique<CvdVideoFrameBuffer>(display_w, display_h);
+              std::make_unique<CvdVideoFrameBuffer>(frame_width, frame_height);
           libyuv::ABGRToI420(
-              frame_pixels, display_stride_bytes, processed_frame.buf_->DataY(),
+              frame_pixels, frame_stride_bytes, processed_frame.buf_->DataY(),
               processed_frame.buf_->StrideY(), processed_frame.buf_->DataU(),
               processed_frame.buf_->StrideU(), processed_frame.buf_->DataV(),
-              processed_frame.buf_->StrideV(), display_w, display_h);
+              processed_frame.buf_->StrideV(), frame_width, frame_height);
           processed_frame.is_success_ = true;
         };
     return callback;
@@ -61,7 +63,7 @@ DisplayHandler::GenerateProcessedFrameCallback DisplayHandler::GetScreenConnecto
 
 [[noreturn]] void DisplayHandler::Loop() {
   for (;;) {
-    auto processed_frame = screen_connector_->OnNextFrame();
+    auto processed_frame = screen_connector_.OnNextFrame();
     // processed_frame has display number from the guest
     {
       std::lock_guard<std::mutex> lock(last_buffer_mutex_);
@@ -101,14 +103,14 @@ void DisplayHandler::SendLastFrame() {
 void DisplayHandler::IncClientCount() {
   client_count_++;
   if (client_count_ == 1) {
-    screen_connector_->ReportClientsConnected(true);
+    screen_connector_.ReportClientsConnected(true);
   }
 }
 
 void DisplayHandler::DecClientCount() {
   client_count_--;
   if (client_count_ == 0) {
-    screen_connector_->ReportClientsConnected(false);
+    screen_connector_.ReportClientsConnected(false);
   }
 }
 
