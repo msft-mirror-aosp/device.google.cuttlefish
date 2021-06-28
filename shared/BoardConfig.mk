@@ -210,7 +210,7 @@ BOARD_KERNEL_CMDLINE += printk.devkmsg=on
 BOARD_KERNEL_CMDLINE += firmware_class.path=/vendor/etc/
 
 BOARD_KERNEL_CMDLINE += init=/init
-BOARD_BOOTCONFIG += hardware=cutf_cvm
+BOARD_BOOTCONFIG += androidboot.hardware=cutf_cvm
 
 # TODO(b/179489292): Remove once kfence is enabled everywhere
 BOARD_KERNEL_CMDLINE += kfence.sample_interval=500
@@ -219,7 +219,11 @@ BOARD_KERNEL_CMDLINE += loop.max_part=7
 
 # TODO(b/182417593): Move all of these module options to modules.options
 # TODO(b/176860479): Remove once goldfish and cuttlefish share a wifi implementation
+ifneq ($(PRODUCT_ENFORCE_MAC80211_HWSIM),true)
 BOARD_BOOTCONFIG += kernel.mac80211_hwsim.radios=0
+else
+BOARD_BOOTCONFIG += kernel.mac80211_hwsim.mac_prefix=5554
+endif
 # TODO(b/175151042): Remove once we are using virtio-snd on cuttlefish
 BOARD_BOOTCONFIG += kernel.snd-hda-intel.enable=0
 # Reduce slab size usage from virtio vsock to reduce slab fragmentation
@@ -254,16 +258,6 @@ else
   BOARD_MOVE_RECOVERY_RESOURCES_TO_VENDOR_BOOT := true
 endif
 BOARD_MOVE_GSI_AVB_KEYS_TO_VENDOR_BOOT := true
-
-# TARGET_KERNEL_USE is defined in kernel.mk, if not defined in the environment variable.
-# Keep in sync with GKI APEX in device.mk
-ifneq (,$(TARGET_KERNEL_USE))
-  ifneq (,$(filter 5.4, $(TARGET_KERNEL_USE)))
-    BOARD_KERNEL_MODULE_INTERFACE_VERSIONS := 5.4-android12-0
-  else
-    BOARD_KERNEL_MODULE_INTERFACE_VERSIONS := $(TARGET_KERNEL_USE)-android12-unstable
-  endif
-endif
 
 BOARD_GENERIC_RAMDISK_KERNEL_MODULES_LOAD := dm-user.ko
 

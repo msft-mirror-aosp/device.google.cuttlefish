@@ -28,7 +28,7 @@ $(call inherit-product, $(SRC_TARGET_DIR)/product/generic_ramdisk.mk)
 
 PRODUCT_SOONG_NAMESPACES += device/generic/goldfish-opengl # for vulkan
 
-PRODUCT_SHIPPING_API_LEVEL := 31
+PRODUCT_SHIPPING_API_LEVEL := 32
 PRODUCT_USE_DYNAMIC_PARTITIONS := true
 DISABLE_RILD_OEM_HOOK := true
 
@@ -147,7 +147,6 @@ PRODUCT_PACKAGES += \
     CuttlefishService \
     cuttlefish_sensor_injection \
     rename_netiface \
-    setup_wifi \
     bt_vhci_forwarder \
     socket_vsock_proxy \
     tombstone_transmit \
@@ -186,12 +185,6 @@ PRODUCT_PACKAGES += \
     libGLESv1_CM_angle \
     libGLESv2_angle \
     libfeature_support_angle.so
-
-# SwiftShader provides a software-only implementation that is not thread-safe
-PRODUCT_PACKAGES += \
-    libEGL_swiftshader \
-    libGLESv1_CM_swiftshader \
-    libGLESv2_swiftshader
 
 # GL implementation for virgl
 PRODUCT_PACKAGES += \
@@ -509,6 +502,10 @@ endif
  PRODUCT_PACKAGES += \
     $(LOCAL_KEYMINT_PRODUCT_PACKAGE)
 
+# Keymint configuration
+PRODUCT_COPY_FILES += \
+    frameworks/native/data/etc/android.software.device_id_attestation.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.device_id_attestation.xml
+
 #
 # Power HAL
 #
@@ -560,21 +557,6 @@ PRODUCT_PACKAGES += \
 PRODUCT_PACKAGES += \
     android.hardware.memtrack-service.example
 
-# GKI APEX
-# Keep in sync with BOARD_KERNEL_MODULE_INTERFACE_VERSIONS
-ifneq (,$(TARGET_KERNEL_USE))
-  ifneq (,$(filter 5.4, $(TARGET_KERNEL_USE)))
-    PRODUCT_PACKAGES += com.android.gki.kmi_5_4_android12_unstable
-  else
-    PRODUCT_PACKAGES += com.android.gki.kmi_$(subst .,_,$(TARGET_KERNEL_USE))_android12_unstable
-  endif
-endif
-
-# Prevent GKI and boot image downgrades
-PRODUCT_PRODUCT_PROPERTIES += \
-    ro.build.ab_update.gki.prevent_downgrade_version=true \
-    ro.build.ab_update.gki.prevent_downgrade_spl=true \
-
 # WLAN driver configuration files
 PRODUCT_COPY_FILES += \
     external/wpa_supplicant_8/wpa_supplicant/wpa_supplicant_template.conf:$(TARGET_COPY_OUT_VENDOR)/etc/wifi/wpa_supplicant.conf \
@@ -605,11 +587,29 @@ else
 PRODUCT_PACKAGES += linker.recovery shell_and_utilities_recovery
 endif
 
-#
-# Shell script Vendor Module Loading
-#
+# wifi
+ifeq ($(PRODUCT_ENFORCE_MAC80211_HWSIM),true)
+PRODUCT_PACKAGES += \
+    sh_vendor \
+    emulatorip \
+    iw_vendor \
+    execns \
+    hostapd_nohidl \
+    netmgr \
+    wifi_forwarder \
+    createns
+
 PRODUCT_COPY_FILES += \
-   $(LOCAL_PATH)/config/init.insmod.sh:$(TARGET_COPY_OUT_VENDOR)/bin/init.insmod.sh \
+    device/generic/goldfish/wifi/init.wifi.sh:$(TARGET_COPY_OUT_VENDOR)/bin/init.wifi.sh \
+    device/generic/goldfish/wifi/simulated_hostapd.conf:$(TARGET_COPY_OUT_VENDOR)/etc/simulated_hostapd.conf
+
+PRODUCT_SOONG_NAMESPACES += device/generic/goldfish
+
+PRODUCT_VENDOR_PROPERTIES += ro.vendor.wifi_impl=mac8011_hwsim_virtio
+else
+PRODUCT_PACKAGES += setup_wifi
+PRODUCT_VENDOR_PROPERTIES += ro.vendor.wifi_impl=virt_wifi
+endif
 
 # Host packages to install
 PRODUCT_HOST_PACKAGES += socket_vsock_proxy
@@ -622,3 +622,6 @@ PRODUCT_SOONG_NAMESPACES += external/mesa3d
 # with HW VSYNC
 PRODUCT_VENDOR_PROPERTIES += \
     ro.surface_flinger.running_without_sync_framework=true
+# Vendor Dlkm Locader
+PRODUCT_PACKAGES += \
+   dlkm_loader

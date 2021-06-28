@@ -16,7 +16,6 @@
 
 #include <unistd.h>
 #include <fstream>
-#include <iostream>
 #include <memory>
 #include <string>
 #include <utility>
@@ -31,7 +30,6 @@
 #include "common/libs/fs/shared_fd.h"
 #include "common/libs/utils/environment.h"
 #include "common/libs/utils/files.h"
-#include "common/libs/utils/network.h"
 #include "common/libs/utils/size_utils.h"
 #include "common/libs/utils/subprocess.h"
 #include "common/libs/utils/tee_logging.h"
@@ -40,17 +38,13 @@
 #include "host/commands/run_cvd/process_monitor.h"
 #include "host/commands/run_cvd/runner_defs.h"
 #include "host/commands/run_cvd/server_loop.h"
+#include "host/commands/run_cvd/validate.h"
 #include "host/libs/config/cuttlefish_config.h"
-#include "host/libs/vm_manager/host_configuration.h"
 #include "host/libs/vm_manager/vm_manager.h"
-
-DEFINE_int32(reboot_notification_fd, -1,
-             "A file descriptor to notify when boot completes.");
 
 namespace cuttlefish {
 
 using vm_manager::GetVmManager;
-using vm_manager::ValidateHostConfiguration;
 
 namespace {
 
@@ -70,78 +64,6 @@ bool WriteCuttlefishEnvironment(const CuttlefishConfig& config) {
   config_env += "export ANDROID_SERIAL=" + instance.adb_ip_and_port() + "\n";
   env->Write(config_env.c_str(), config_env.size());
   return true;
-}
-
-// Forks and returns the write end of a pipe to the child process. The parent
-// process waits for boot events to come through the pipe and exits accordingly.
-SharedFD DaemonizeLauncher(const CuttlefishConfig& config) {
-  auto instance = config.ForDefaultInstance();
-  SharedFD read_end, write_end;
-  if (!SharedFD::Pipe(&read_end, &write_end)) {
-    LOG(ERROR) << "Unable to create pipe";
-    return {}; // a closed FD
-  }
-  auto pid = fork();
-  if (pid) {
-    // Explicitly close here, otherwise we may end up reading forever if the
-    // child process dies.
-    write_end->Close();
-    RunnerExitCodes exit_code;
-    auto bytes_read = read_end->Read(&exit_code, sizeof(exit_code));
-    if (bytes_read != sizeof(exit_code)) {
-      LOG(ERROR) << "Failed to read a complete exit code, read " << bytes_read
-                 << " bytes only instead of the expected " << sizeof(exit_code);
-      exit_code = RunnerExitCodes::kPipeIOError;
-    } else if (exit_code == RunnerExitCodes::kSuccess) {
-      LOG(INFO) << "Virtual device booted successfully";
-    } else if (exit_code == RunnerExitCodes::kVirtualDeviceBootFailed) {
-      LOG(ERROR) << "Virtual device failed to boot";
-    } else {
-      LOG(ERROR) << "Unexpected exit code: " << exit_code;
-    }
-    if (exit_code == RunnerExitCodes::kSuccess) {
-      LOG(INFO) << kBootCompletedMessage;
-    } else {
-      LOG(INFO) << kBootFailedMessage;
-    }
-    std::exit(exit_code);
-  } else {
-    // The child returns the write end of the pipe
-    if (daemon(/*nochdir*/ 1, /*noclose*/ 1) != 0) {
-      LOG(ERROR) << "Failed to daemonize child process: " << strerror(errno);
-      std::exit(RunnerExitCodes::kDaemonizationError);
-    }
-    // Redirect standard I/O
-    auto log_path = instance.launcher_log_path();
-    auto log = SharedFD::Open(log_path.c_str(), O_CREAT | O_WRONLY | O_APPEND,
-                              S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
-    if (!log->IsOpen()) {
-      LOG(ERROR) << "Failed to create launcher log file: " << log->StrError();
-      std::exit(RunnerExitCodes::kDaemonizationError);
-    }
-    ::android::base::SetLogger(
-        TeeLogger({{LogFileSeverity(), log, MetadataLevel::FULL}}));
-    auto dev_null = SharedFD::Open("/dev/null", O_RDONLY);
-    if (!dev_null->IsOpen()) {
-      LOG(ERROR) << "Failed to open /dev/null: " << dev_null->StrError();
-      std::exit(RunnerExitCodes::kDaemonizationError);
-    }
-    if (dev_null->UNMANAGED_Dup2(0) < 0) {
-      LOG(ERROR) << "Failed dup2 stdin: " << dev_null->StrError();
-      std::exit(RunnerExitCodes::kDaemonizationError);
-    }
-    if (log->UNMANAGED_Dup2(1) < 0) {
-      LOG(ERROR) << "Failed dup2 stdout: " << log->StrError();
-      std::exit(RunnerExitCodes::kDaemonizationError);
-    }
-    if (log->UNMANAGED_Dup2(2) < 0) {
-      LOG(ERROR) << "Failed dup2 seterr: " << log->StrError();
-      std::exit(RunnerExitCodes::kDaemonizationError);
-    }
-
-    read_end->Close();
-    return write_end;
-  }
 }
 
 std::string GetConfigFilePath(const CuttlefishConfig& config) {
@@ -173,11 +95,15 @@ configComponent() {
   return fruit::createComponent().bindInstance(*config).bindInstance(instance);
 }
 
-fruit::Component<KernelLogPipeProvider> runCvdComponent() {
+fruit::Component<> runCvdComponent() {
   return fruit::createComponent()
+      .install(bootStateMachineComponent)
+      .install(configComponent)
+      .install(launchAdbComponent)
       .install(launchComponent)
       .install(launchModemComponent)
-      .install(configComponent);
+      .install(launchStreamerComponent)
+      .install(validationComponent);
 }
 
 }  // namespace
@@ -248,34 +174,7 @@ int RunCvdMain(int argc, char** argv) {
     return RunnerExitCodes::kInstanceDirCreationError;
   }
 
-  auto used_tap_devices = TapInterfacesInUse();
-  if (used_tap_devices.count(instance.wifi_tap_name())) {
-    LOG(ERROR) << "Wifi TAP device already in use";
-    return RunnerExitCodes::kTapDeviceInUse;
-  } else if (used_tap_devices.count(instance.mobile_tap_name())) {
-    LOG(ERROR) << "Mobile TAP device already in use";
-    return RunnerExitCodes::kTapDeviceInUse;
-  } else if (config->ethernet() &&
-             used_tap_devices.count(instance.ethernet_tap_name())) {
-    LOG(ERROR) << "Ethernet TAP device already in use";
-  }
-
   auto vm_manager = GetVmManager(config->vm_manager(), config->target_arch());
-
-#ifndef __ANDROID__
-  // Check host configuration
-  std::vector<std::string> config_commands;
-  if (!ValidateHostConfiguration(&config_commands)) {
-    LOG(ERROR) << "Validation of user configuration failed";
-    std::cout << "Execute the following to correctly configure:" << std::endl;
-    for (auto& command : config_commands) {
-      std::cout << "  " << command << std::endl;
-    }
-    std::cout << "You may need to logout for the changes to take effect"
-              << std::endl;
-    return RunnerExitCodes::kInvalidHostConfiguration;
-  }
-#endif
 
   if (!WriteCuttlefishEnvironment(*config)) {
     LOG(ERROR) << "Unable to write cuttlefish environment file";
@@ -319,34 +218,11 @@ int RunCvdMain(int argc, char** argv) {
                << launcher_monitor_socket->StrError();
     return RunnerExitCodes::kMonitorCreationFailed;
   }
-  SharedFD foreground_launcher_pipe;
-  if (config->run_as_daemon()) {
-    foreground_launcher_pipe = DaemonizeLauncher(*config);
-    if (!foreground_launcher_pipe->IsOpen()) {
-      return RunnerExitCodes::kDaemonizationError;
-    }
-  } else {
-    // Make sure the launcher runs in its own process group even when running in
-    // foreground
-    if (getsid(0) != getpid()) {
-      int retval = setpgid(0, 0);
-      if (retval) {
-        LOG(ERROR) << "Failed to create new process group: " << strerror(errno);
-        std::exit(RunnerExitCodes::kProcessGroupError);
-      }
-    }
-  }
-
-  SharedFD reboot_notification;
-  if (FLAGS_reboot_notification_fd >= 0) {
-    reboot_notification = SharedFD::Dup(FLAGS_reboot_notification_fd);
-    close(FLAGS_reboot_notification_fd);
-  }
 
   // Monitor and restart host processes supporting the CVD
   ProcessMonitor process_monitor(config->restart_subprocesses());
 
-  fruit::Injector<KernelLogPipeProvider> injector(runCvdComponent);
+  fruit::Injector<> injector(runCvdComponent);
   const auto& features = injector.getMultibindings<Feature>();
   CHECK(Feature::RunSetup(features)) << "Failed to run feature setup.";
 
@@ -356,30 +232,11 @@ int RunCvdMain(int argc, char** argv) {
     }
   }
 
-  auto kernel_log_monitor = injector.get<KernelLogPipeProvider*>();
-  SharedFD boot_events_pipe = kernel_log_monitor->KernelLogPipe();
-  SharedFD adbd_events_pipe = kernel_log_monitor->KernelLogPipe();
-  SharedFD webrtc_events_pipe = kernel_log_monitor->KernelLogPipe();
-
-  CvdBootStateMachine boot_state_machine(foreground_launcher_pipe,
-                                         reboot_notification, boot_events_pipe);
-
   // The streamer needs to launch before the VMM because it serves on several
   // sockets (input devices, vsock frame server) when using crosvm.
-  if (config->enable_vnc_server()) {
-    process_monitor.AddCommands(LaunchVNCServer(*config));
-  }
-  if (config->enable_webrtc()) {
-    process_monitor.AddCommands(LaunchWebRTC(*config, webrtc_events_pipe));
-  }
 
   // Start the guest VM
   process_monitor.AddCommands(vm_manager->StartCommands(*config));
-
-  // Start other host processes
-  process_monitor.AddCommands(
-      LaunchSocketVsockProxyIfEnabled(*config, adbd_events_pipe));
-  process_monitor.AddCommands(LaunchAdbConnectorIfEnabled(*config));
 
   CHECK(process_monitor.StartAndMonitorProcesses())
       << "Could not start subprocesses";
