@@ -26,6 +26,7 @@
 #include <vector>
 
 #include "common/libs/utils/environment.h"
+#include "host/libs/config/config_fragment.h"
 #include "host/libs/config/custom_actions.h"
 
 namespace Json {
@@ -54,13 +55,6 @@ constexpr char kSharedDirName[] = "shared";
 constexpr char kCrosvmVarEmptyDir[] = "/var/empty";
 constexpr char kKernelLoadedMessage[] = "] Linux version";
 
-enum class AdbMode {
-  VsockTunnel,
-  VsockHalfTunnel,
-  NativeVsock,
-  Unknown,
-};
-
 enum class SecureHal {
   Unknown,
   Keymint,
@@ -81,6 +75,9 @@ class CuttlefishConfig {
   // Saves the configuration object in a file, it can then be read in other
   // processes by passing the --config_file option.
   bool SaveToFile(const std::string& file) const;
+
+  bool SaveFragment(const ConfigFragment&);
+  bool LoadFragment(ConfigFragment&) const;
 
   std::string assembly_dir() const;
   void set_assembly_dir(const std::string& assembly_dir);
@@ -123,9 +120,6 @@ class CuttlefishConfig {
 
   void set_cuttlefish_env_path(const std::string& path);
   std::string cuttlefish_env_path() const;
-
-  void set_adb_mode(const std::set<std::string>& modes);
-  std::set<AdbMode> adb_mode() const;
 
   void set_secure_hals(const std::set<std::string>& hals);
   std::set<SecureHal> secure_hals() const;
@@ -171,9 +165,6 @@ class CuttlefishConfig {
 
   void set_restart_subprocesses(bool restart_subprocesses);
   bool restart_subprocesses() const;
-
-  void set_run_adb_connector(bool run_adb_connector);
-  bool run_adb_connector() const;
 
   void set_enable_gnss_grpc_proxy(const bool enable_gnss_grpc_proxy);
   bool enable_gnss_grpc_proxy() const;
