@@ -87,6 +87,31 @@ std::string DefaultEnvironmentPath(const char* environment_key,
   return StringFromEnv(environment_key, default_value) + "/" + subpath;
 }
 
+ConfigFragment::~ConfigFragment() = default;
+
+static constexpr char kFragments[] = "fragments";
+bool CuttlefishConfig::LoadFragment(ConfigFragment& fragment) const {
+  if (!dictionary_->isMember(kFragments)) {
+    LOG(ERROR) << "Fragments member was missing";
+    return false;
+  }
+  const Json::Value& json_fragments = (*dictionary_)[kFragments];
+  if (!json_fragments.isMember(fragment.Name())) {
+    LOG(ERROR) << "Could not find a fragment called " << fragment.Name();
+    return false;
+  }
+  return fragment.Deserialize(json_fragments[fragment.Name()]);
+}
+bool CuttlefishConfig::SaveFragment(const ConfigFragment& fragment) {
+  Json::Value& json_fragments = (*dictionary_)[kFragments];
+  if (json_fragments.isMember(fragment.Name())) {
+    LOG(ERROR) << "Already have a fragment called " << fragment.Name();
+    return false;
+  }
+  json_fragments[fragment.Name()] = fragment.Serialize();
+  return true;
+}
+
 static constexpr char kAssemblyDir[] = "assembly_dir";
 std::string CuttlefishConfig::assembly_dir() const {
   return (*dictionary_)[kAssemblyDir].asString();
@@ -193,35 +218,6 @@ void CuttlefishConfig::set_cuttlefish_env_path(const std::string& path) {
 }
 std::string CuttlefishConfig::cuttlefish_env_path() const {
   return (*dictionary_)[kCuttlefishEnvPath].asString();
-}
-
-static AdbMode stringToAdbMode(std::string mode) {
-  std::transform(mode.begin(), mode.end(), mode.begin(), ::tolower);
-  if (mode == "vsock_tunnel") {
-    return AdbMode::VsockTunnel;
-  } else if (mode == "vsock_half_tunnel") {
-    return AdbMode::VsockHalfTunnel;
-  } else if (mode == "native_vsock") {
-    return AdbMode::NativeVsock;
-  } else {
-    return AdbMode::Unknown;
-  }
-}
-
-static constexpr char kAdbMode[] = "adb_mode";
-std::set<AdbMode> CuttlefishConfig::adb_mode() const {
-  std::set<AdbMode> args_set;
-  for (auto& mode : (*dictionary_)[kAdbMode]) {
-    args_set.insert(stringToAdbMode(mode.asString()));
-  }
-  return args_set;
-}
-void CuttlefishConfig::set_adb_mode(const std::set<std::string>& mode) {
-  Json::Value mode_json_obj(Json::arrayValue);
-  for (const auto& arg : mode) {
-    mode_json_obj.append(arg);
-  }
-  (*dictionary_)[kAdbMode] = mode_json_obj;
 }
 
 static SecureHal StringToSecureHal(std::string mode) {
@@ -335,14 +331,6 @@ bool CuttlefishConfig::enable_vehicle_hal_grpc_server() const {
   return (*dictionary_)[kEnableVehicleHalServer].asBool();
 }
 
-static constexpr char kVehicleHalServerBinary[] = "vehicle_hal_server_binary";
-void CuttlefishConfig::set_vehicle_hal_grpc_server_binary(const std::string& vehicle_hal_server_binary) {
-  (*dictionary_)[kVehicleHalServerBinary] = vehicle_hal_server_binary;
-}
-std::string CuttlefishConfig::vehicle_hal_grpc_server_binary() const {
-  return (*dictionary_)[kVehicleHalServerBinary].asString();
-}
-
 static constexpr char kCustomActions[] = "custom_actions";
 void CuttlefishConfig::set_custom_actions(const std::vector<CustomActionConfig>& actions) {
   Json::Value actions_array(Json::arrayValue);
@@ -382,14 +370,6 @@ bool CuttlefishConfig::restart_subprocesses() const {
 }
 void CuttlefishConfig::set_restart_subprocesses(bool restart_subprocesses) {
   (*dictionary_)[kRestartSubprocesses] = restart_subprocesses;
-}
-
-static constexpr char kRunAdbConnector[] = "run_adb_connector";
-bool CuttlefishConfig::run_adb_connector() const {
-  return (*dictionary_)[kRunAdbConnector].asBool();
-}
-void CuttlefishConfig::set_run_adb_connector(bool run_adb_connector) {
-  (*dictionary_)[kRunAdbConnector] = run_adb_connector;
 }
 
 static constexpr char kRunAsDaemon[] = "run_as_daemon";

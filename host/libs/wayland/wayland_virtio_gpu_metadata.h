@@ -16,22 +16,15 @@
 
 #pragma once
 
-#include <fruit/fruit.h>
+#include <stdint.h>
 
-#include "common/libs/fs/shared_fd.h"
-#include "host/commands/run_cvd/process_monitor.h"
-#include "host/libs/config/cuttlefish_config.h"
+#include <wayland-server-core.h>
 
-namespace cuttlefish {
+#include "host/libs/wayland/wayland_surfaces.h"
 
-class ServerLoop {
- public:
-  virtual ~ServerLoop();
-  virtual void Run(ProcessMonitor& process_monitor) = 0;
-};
+namespace wayland {
 
-fruit::Component<fruit::Required<const CuttlefishConfig,
-                                 const CuttlefishConfig::InstanceSpecific>,
-                 ServerLoop>
-serverLoopComponent();
-}
+// Binds the virtio gpu metadata interface to the given wayland server.
+void BindVirtioGpuMetadataInterface(wl_display* display, Surfaces* surfaces);
+
+}  // namespace wayland

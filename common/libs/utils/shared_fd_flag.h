@@ -13,25 +13,16 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 #pragma once
 
-#include <fruit/fruit.h>
+#include <string>
 
 #include "common/libs/fs/shared_fd.h"
-#include "host/commands/run_cvd/process_monitor.h"
-#include "host/libs/config/cuttlefish_config.h"
+#include "common/libs/utils/flag_parser.h"
 
 namespace cuttlefish {
 
-class ServerLoop {
- public:
-  virtual ~ServerLoop();
-  virtual void Run(ProcessMonitor& process_monitor) = 0;
-};
+Flag SharedFDFlag(SharedFD& out);
+Flag SharedFDFlag(const std::string& name, SharedFD& out);
 
-fruit::Component<fruit::Required<const CuttlefishConfig,
-                                 const CuttlefishConfig::InstanceSpecific>,
-                 ServerLoop>
-serverLoopComponent();
-}
+}  // namespace cuttlefish
