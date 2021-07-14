@@ -92,7 +92,12 @@ class StreamerSockets : public virtual Feature {
     if (config_.vm_manager() == vm_manager::QemuManager::name()) {
       cmd.AddParameter("-write_virtio_input");
     }
-    cmd.AddParameter("-touch_fd=", touch_server_);
+    if (!touch_servers_.empty()) {
+      cmd.AddParameter("-touch_fds=", touch_servers_[0]);
+      for (int i = 1; i < touch_servers_.size(); ++i) {
+        cmd.AppendToLastParameter(",", touch_servers_[i]);
+      }
+    }
     cmd.AddParameter("-keyboard_fd=", keyboard_server_);
     cmd.AddParameter("-frame_server_fd=", frames_server_);
     if (config_.enable_audio()) {
@@ -101,26 +106,34 @@ class StreamerSockets : public virtual Feature {
   }
 
   // Feature
-  bool Enabled() const override { return true; }
+  bool Enabled() const override {
+    bool is_qemu = config_.vm_manager() == vm_manager::QemuManager::name();
+    bool is_accelerated = config_.gpu_mode() != kGpuModeGuestSwiftshader;
+    return !(is_qemu && is_accelerated);
+  }
   std::string Name() const override { return "StreamerSockets"; }
   std::unordered_set<Feature*> Dependencies() const override { return {}; }
 
  protected:
   bool Setup() override {
-    if (config_.vm_manager() == vm_manager::QemuManager::name()) {
-      touch_server_ =
-          SharedFD::VsockServer(instance_.touch_server_port(), SOCK_STREAM);
+    auto use_vsockets = config_.vm_manager() == vm_manager::QemuManager::name();
+    for (int i = 0; i < config_.display_configs().size(); ++i) {
+      touch_servers_.push_back(
+          use_vsockets ? SharedFD::VsockServer(instance_.touch_server_port(),
+                                               SOCK_STREAM)
+                       : CreateUnixInputServer(instance_.touch_socket_path(i)));
+      if (!touch_servers_.back()->IsOpen()) {
+        LOG(ERROR) << "Could not open touch server: "
+                   << touch_servers_.back()->StrError();
+        return false;
+      }
+    }
+    if (use_vsockets) {
       keyboard_server_ =
           SharedFD::VsockServer(instance_.keyboard_server_port(), SOCK_STREAM);
     } else {
-      touch_server_ = CreateUnixInputServer(instance_.touch_socket_path());
       keyboard_server_ =
           CreateUnixInputServer(instance_.keyboard_socket_path());
-    }
-    if (!touch_server_->IsOpen()) {
-      LOG(ERROR) << "Failed to open touch server: "
-                 << touch_server_->StrError();
-      return false;
     }
     if (!keyboard_server_->IsOpen()) {
       LOG(ERROR) << "Failed to open keyboard server"
@@ -150,7 +163,7 @@ class StreamerSockets : public virtual Feature {
  private:
   const CuttlefishConfig& config_;
   const CuttlefishConfig::InstanceSpecific& instance_;
-  SharedFD touch_server_;
+  std::vector<SharedFD> touch_servers_;
   SharedFD keyboard_server_;
   SharedFD frames_server_;
   SharedFD audio_server_;
@@ -185,7 +198,9 @@ class VncServer : public virtual CommandSource, public DiagnosticInformation {
   }
 
   // Feature
-  bool Enabled() const override { return config_.enable_vnc_server(); }
+  bool Enabled() const override {
+    return sockets_.Enabled() && config_.enable_vnc_server();
+  }
   std::string Name() const override { return "VncServer"; }
   std::unordered_set<Feature*> Dependencies() const override {
     return {static_cast<Feature*>(&sockets_)};
@@ -251,12 +266,14 @@ class WebRtcServer : public virtual CommandSource,
       int read_ret = host_socket->Read(response, sizeof(response));
       if (read_ret != 0) {
         LOG(ERROR) << "Failed to read response from webrtc";
+        return KillSubprocess(proc);
       }
-      cuttlefish::KillSubprocess(proc);
-      return true;
+      return KillSubprocess(proc) == StopperResult::kStopSuccess
+                 ? StopperResult::kStopCrash
+                 : StopperResult::kStopFailure;
     };
 
-    Command webrtc(WebRtcBinary(), SubprocessStopper(stopper));
+    Command webrtc(WebRtcBinary(), stopper);
     webrtc.UnsetFromEnvironment({"http_proxy"});
     sockets_.AppendCommandArguments(webrtc);
     if (config_.vm_manager() == vm_manager::CrosvmManager::name()) {
@@ -282,7 +299,9 @@ class WebRtcServer : public virtual CommandSource,
   }
 
   // Feature
-  bool Enabled() const override { return config_.enable_webrtc(); }
+  bool Enabled() const override {
+    return sockets_.Enabled() && config_.enable_webrtc();
+  }
   std::string Name() const override { return "WebRtcServer"; }
   std::unordered_set<Feature*> Dependencies() const override {
     return {static_cast<Feature*>(&sockets_),
