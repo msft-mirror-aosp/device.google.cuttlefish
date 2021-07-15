@@ -1,6 +1,7 @@
 #include "host/commands/assemble_cvd/flags.h"
 
 #include <android-base/logging.h>
+#include <android-base/parseint.h>
 #include <android-base/strings.h>
 #include <gflags/gflags.h>
 #include <json/json.h>
@@ -16,12 +17,14 @@
 #include <regex>
 #include <set>
 #include <sstream>
+#include <unordered_map>
 
 #include "common/libs/utils/environment.h"
 #include "common/libs/utils/files.h"
 #include "host/commands/assemble_cvd/alloc.h"
 #include "host/commands/assemble_cvd/boot_config.h"
 #include "host/commands/assemble_cvd/clean.h"
+#include "host/commands/assemble_cvd/config.h"
 #include "host/commands/assemble_cvd/disk_flags.h"
 #include "host/libs/config/adb_config.h"
 #include "host/libs/config/host_tools_version.h"
@@ -36,12 +39,6 @@ using cuttlefish::StringFromEnv;
 using cuttlefish::vm_manager::CrosvmManager;
 using google::FlagSettingMode::SET_FLAGS_DEFAULT;
 
-DEFINE_string(config, "phone",
-              "Config preset name. Will automatically set flag fields "
-              "using the values from this file of presets. See "
-              "device/google/cuttlefish/shared/config/config_*.json "
-              "for possible values.");
-
 DEFINE_int32(cpus, 2, "Virtual CPU count.");
 DEFINE_string(data_policy, "use_existing", "How to handle userdata partition."
             " Either 'use_existing', 'create_if_missing', 'resize_up_to', or "
@@ -55,6 +52,20 @@ DEFINE_int32(gdb_port, 0,
              "kernel must have been built with CONFIG_RANDOMIZE_BASE "
              "disabled.");
 
+constexpr const char kDisplayHelp[] =
+    "Comma separated key-value pairs of display properties. Example usage: "
+    "--display0=width=1280,height=720 "
+    "--display1=width=1440,height=900 ";
+
+// TODO(b/192495477): combine these into a single repeatable '--display' flag
+// when assemble_cvd switches to using the new flag parsing library.
+DEFINE_string(display0, "", kDisplayHelp);
+DEFINE_string(display1, "", kDisplayHelp);
+DEFINE_string(display2, "", kDisplayHelp);
+DEFINE_string(display3, "", kDisplayHelp);
+
+// TODO(b/171305898): mark these as deprecated after multi-display is fully
+// enabled.
 DEFINE_int32(x_res, 0, "Width of the screen in pixels");
 DEFINE_int32(y_res, 0, "Height of the screen in pixels");
 DEFINE_int32(dpi, 0, "Pixels per inch for the screen");
@@ -310,10 +321,6 @@ using vm_manager::GetVmManager;
 
 namespace {
 
-bool IsFlagSet(const std::string& flag) {
-  return !gflags::GetCommandLineFlagInfoOrDie(flag.c_str()).is_default;
-}
-
 std::pair<uint16_t, uint16_t> ParsePortRange(const std::string& flag) {
   static const std::regex rgx("[0-9]+:[0-9]+");
   CHECK(std::regex_match(flag, rgx))
@@ -336,6 +343,43 @@ std::string StrForInstance(const std::string& prefix, int num) {
   std::ostringstream stream;
   stream << prefix << std::setfill('0') << std::setw(2) << num;
   return stream.str();
+}
+
+std::optional<CuttlefishConfig::DisplayConfig> ParseDisplayConfig(
+    const std::string& flag) {
+  if (flag.empty()) {
+    return std::nullopt;
+  }
+
+  std::unordered_map<std::string, std::string> props;
+
+  const std::vector<std::string> pairs = android::base::Split(flag, ",");
+  for (const std::string& pair : pairs) {
+    const std::vector<std::string> keyvalue = android::base::Split(pair, "=");
+    CHECK_EQ(2, keyvalue.size()) << "Invalid display: " << flag;
+
+    const std::string& prop_key = keyvalue[0];
+    const std::string& prop_val = keyvalue[1];
+    props[prop_key] = prop_val;
+  }
+
+  CHECK(props.find("width") != props.end())
+      << "Display configuration missing 'width' in " << flag;
+  CHECK(props.find("height") != props.end())
+      << "Display configuration missing 'height' in " << flag;
+
+  int display_width;
+  CHECK(android::base::ParseInt(props["width"], &display_width))
+      << "Display configuration invalid 'width' in " << flag;
+
+  int display_height;
+  CHECK(android::base::ParseInt(props["height"], &display_height))
+      << "Display configuration invalid 'height' in " << flag;
+
+  return CuttlefishConfig::DisplayConfig{
+      .width = display_width,
+      .height = display_height,
+  };
 }
 
 #ifdef __ANDROID__
@@ -409,6 +453,40 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
   }
   tmp_config_obj.set_vm_manager(FLAGS_vm_manager);
 
+  std::vector<CuttlefishConfig::DisplayConfig> display_configs;
+
+  auto display0 = ParseDisplayConfig(FLAGS_display0);
+  if (display0) {
+    display_configs.push_back(*display0);
+  }
+  auto display1 = ParseDisplayConfig(FLAGS_display1);
+  if (display1) {
+    display_configs.push_back(*display1);
+  }
+  auto display2 = ParseDisplayConfig(FLAGS_display2);
+  if (display2) {
+    display_configs.push_back(*display2);
+  }
+  auto display3 = ParseDisplayConfig(FLAGS_display3);
+  if (display3) {
+    display_configs.push_back(*display3);
+  }
+
+  if (FLAGS_x_res > 0 && FLAGS_y_res > 0) {
+    if (display_configs.empty()) {
+      display_configs.push_back({
+          .width = FLAGS_x_res,
+          .height = FLAGS_y_res,
+      });
+    } else {
+      LOG(WARNING) << "Ignoring --x_res and --y_res when --displayN specified.";
+    }
+  }
+
+  tmp_config_obj.set_display_configs(display_configs);
+  tmp_config_obj.set_dpi(FLAGS_dpi);
+  tmp_config_obj.set_refresh_rate_hz(FLAGS_refresh_rate_hz);
+
   const GraphicsAvailability graphics_availability =
     GetGraphicsAvailabilityWithSubprocessCheck();
 
@@ -423,9 +501,15 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
     LOG(FATAL) << "Invalid gpu_mode: " << FLAGS_gpu_mode;
   }
   if (tmp_config_obj.gpu_mode() == kGpuModeAuto) {
-    if (ShouldEnableAcceleratedRendering(graphics_availability)) {
-        LOG(INFO) << "GPU auto mode: detected prerequisites for accelerated "
-                     "rendering support.";
+    // TODO(b/171305898): remove this branch once HostComposer can send
+    // multiple displays.
+    if (tmp_config_obj.display_configs().size() > 1) {
+      LOG(INFO) << "Enabling --gpu_mode=guest_swiftshader due to "
+                   "multi-display.";
+      tmp_config_obj.set_gpu_mode(kGpuModeGuestSwiftshader);
+    } else if (ShouldEnableAcceleratedRendering(graphics_availability)) {
+      LOG(INFO) << "GPU auto mode: detected prerequisites for accelerated "
+                   "rendering support.";
       if (FLAGS_vm_manager == QemuManager::name()) {
         LOG(INFO) << "Enabling --gpu_mode=drm_virgl.";
         tmp_config_obj.set_gpu_mode(kGpuModeDrmVirgl);
@@ -469,14 +553,6 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
   tmp_config_obj.set_memory_mb(FLAGS_memory_mb);
 
   tmp_config_obj.set_setupwizard_mode(FLAGS_setupwizard_mode);
-
-  std::vector<cuttlefish::CuttlefishConfig::DisplayConfig> display_configs = {{
-    .width = FLAGS_x_res,
-    .height = FLAGS_y_res,
-  }};
-  tmp_config_obj.set_display_configs(display_configs);
-  tmp_config_obj.set_dpi(FLAGS_dpi);
-  tmp_config_obj.set_refresh_rate_hz(FLAGS_refresh_rate_hz);
 
   auto secure_hals = android::base::Split(FLAGS_secure_hals, ",");
   tmp_config_obj.set_secure_hals(
@@ -782,74 +858,6 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
   tmp_config_obj.set_enable_audio(FLAGS_enable_audio);
 
   return tmp_config_obj;
-}
-
-void SetDefaultFlagsFromConfigPreset() {
-  std::string config_preset = FLAGS_config;  // The name of the preset config.
-  std::string config_file_path;  // The path to the preset config JSON.
-  std::set<std::string> allowed_config_presets;
-  for (const std::string& file :
-       DirectoryContents(DefaultHostArtifactsPath("etc/cvd_config"))) {
-    std::string_view local_file(file);
-    if (android::base::ConsumePrefix(&local_file, "cvd_config_") &&
-        android::base::ConsumeSuffix(&local_file, ".json")) {
-      allowed_config_presets.emplace(local_file);
-    }
-  }
-
-  // If the user specifies a --config name, then use that config
-  // preset option.
-  std::string android_info_path = FLAGS_system_image_dir + "/android-info.txt";
-  if (IsFlagSet("config")) {
-    if (!allowed_config_presets.count(config_preset)) {
-      LOG(FATAL) << "Invalid --config option '" << config_preset
-                 << "'. Valid options: "
-                 << android::base::Join(allowed_config_presets, ",");
-    }
-  } else if (FileExists(android_info_path)) {
-    // Otherwise try to load the correct preset using android-info.txt.
-    std::ifstream ifs(android_info_path);
-    if (ifs.is_open()) {
-      std::string android_info;
-      ifs >> android_info;
-      std::string_view local_android_info(android_info);
-      if (android::base::ConsumePrefix(&local_android_info, "config=")) {
-        config_preset = local_android_info;
-      }
-      if (!allowed_config_presets.count(config_preset)) {
-        LOG(WARNING) << android_info_path
-                     << " contains invalid config preset: '"
-                     << local_android_info << "'. Defaulting to 'phone'.";
-        config_preset = "phone";
-      }
-    }
-  }
-  LOG(INFO) << "Launching CVD using --config='" << config_preset << "'.";
-
-  config_file_path = DefaultHostArtifactsPath("etc/cvd_config/cvd_config_" +
-                                              config_preset + ".json");
-  Json::Value config;
-  Json::CharReaderBuilder builder;
-  std::ifstream ifs(config_file_path);
-  std::string errorMessage;
-  if (!Json::parseFromStream(builder, ifs, &config, &errorMessage)) {
-    LOG(FATAL) << "Could not read config file " << config_file_path << ": "
-               << errorMessage;
-  }
-  for (const std::string& flag : config.getMemberNames()) {
-    std::string value;
-    if (flag == "custom_actions") {
-      Json::StreamWriterBuilder factory;
-      value = Json::writeString(factory, config[flag]);
-    } else {
-      value = config[flag].asString();
-    }
-    if (gflags::SetCommandLineOptionWithMode(flag.c_str(), value.c_str(),
-                                             SET_FLAGS_DEFAULT)
-            .empty()) {
-      LOG(FATAL) << "Error setting flag '" << flag << "'.";
-    }
-  }
 }
 
 void SetDefaultFlagsForQemu() {
