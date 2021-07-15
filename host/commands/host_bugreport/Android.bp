@@ -18,15 +18,16 @@ package {
 }
 
 cc_binary {
-    name: "cvd_status",
+    name: "cvd_internal_host_bugreport",
     srcs: [
-        "cvd_status.cc",
+        "main.cc",
     ],
     shared_libs: [
         "libbase",
         "libcuttlefish_fs",
         "libcuttlefish_utils",
         "libjsoncpp",
+        "libziparchive",
     ],
     static_libs: [
         "libcuttlefish_host_config",

@@ -69,11 +69,13 @@ class ModemSimulator : public CommandSource {
     Command cmd(ModemSimulatorBinary(), [this](Subprocess* proc) {
       auto stopped = StopModemSimulator(instance_.modem_simulator_host_id());
       if (stopped) {
-        return true;
+        return StopperResult::kStopSuccess;
       }
       LOG(WARNING) << "Failed to stop modem simulator nicely, "
                    << "attempting to KILL";
-      return KillSubprocess(proc);
+      return KillSubprocess(proc) == StopperResult::kStopSuccess
+                 ? StopperResult::kStopCrash
+                 : StopperResult::kStopFailure;
     });
 
     auto sim_type = config_.modem_simulator_sim_type();
@@ -114,7 +116,7 @@ class ModemSimulator : public CommandSource {
     auto ports = instance_.modem_simulator_ports();
     for (int i = 0; i < instance_number; ++i) {
       auto pos = ports.find(',');
-      auto temp = (pos != std::string::npos) ? ports.substr(0, pos - 1) : ports;
+      auto temp = (pos != std::string::npos) ? ports.substr(0, pos) : ports;
       auto port = std::stoi(temp);
       ports = ports.substr(pos + 1);
 
