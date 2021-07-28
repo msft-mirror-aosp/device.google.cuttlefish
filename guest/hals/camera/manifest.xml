@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2018 The Android Open Source Project
+ * Copyright (C) 2021 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,16 +13,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-#include "common/libs/utils/size_utils.h"
-
-#include <unistd.h>
-
-namespace cuttlefish {
-
-uint64_t AlignToPowerOf2(uint64_t val, uint8_t align_log) {
-  uint64_t align = 1ULL << align_log;
-  return ((val + (align - 1)) / align) * align;
-}
-
-}  // namespace cuttlefish
+<manifest version="1.0" type="device">
+    <hal format="hidl">
+        <name>android.hardware.camera.provider</name>
+        <transport>hwbinder</transport>
+        <version>2.7</version>
+        <interface>
+          <name>ICameraProvider</name>
+          <instance>external/0</instance>
+        </interface>
+    </hal>
+</manifest>
