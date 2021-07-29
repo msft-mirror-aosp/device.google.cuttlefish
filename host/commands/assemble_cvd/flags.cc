@@ -53,9 +53,15 @@ DEFINE_int32(gdb_port, 0,
              "disabled.");
 
 constexpr const char kDisplayHelp[] =
-    "Comma separated key-value pairs of display properties. Example usage: "
-    "--display0=width=1280,height=720 "
-    "--display1=width=1440,height=900 ";
+    "Comma separated key=value pairs of display properties. Supported "
+    "properties:\n"
+    " 'width': required, width of the display in pixels\n"
+    " 'height': required, height of the display in pixels\n"
+    " 'dpi': optional, default 320, density of the display\n"
+    " 'refresh_rate_hz': optional, default 60, display refresh rate in Hertz\n"
+    ". Example usage: \n"
+    "--display0=width=1280,height=720\n"
+    "--display1=width=1440,height=900,dpi=480,refresh_rate_hz=30\n";
 
 // TODO(b/192495477): combine these into a single repeatable '--display' flag
 // when assemble_cvd switches to using the new flag parsing library.
@@ -283,6 +289,8 @@ DEFINE_bool(vhost_net, false, "Enable vhost acceleration of networking");
 
 DEFINE_string(vhost_user_mac80211_hwsim, "",
               "Unix socket path for vhost-user of mac80211_hwsim");
+DEFINE_string(ap_rootfs_image, "", "rootfs image for AP instance");
+DEFINE_string(ap_kernel_image, "", "kernel image for AP instance");
 
 DEFINE_bool(record_screen, false, "Enable screen recording. "
                                   "Requires --start_webrtc");
@@ -317,6 +325,8 @@ DEFINE_bool(protected_vm, false, "Boot in Protected VM mode");
 
 DEFINE_bool(enable_audio, cuttlefish::HostArch() != cuttlefish::Arch::Arm64,
             "Whether to play or capture audio");
+
+DEFINE_uint32(camera_server_port, 0, "camera vsock port");
 
 DECLARE_string(assembly_dir);
 DECLARE_string(boot_image);
@@ -383,9 +393,26 @@ std::optional<CuttlefishConfig::DisplayConfig> ParseDisplayConfig(
   CHECK(android::base::ParseInt(props["height"], &display_height))
       << "Display configuration invalid 'height' in " << flag;
 
+  int display_dpi = 320;
+  auto display_dpi_it = props.find("dpi");
+  if (display_dpi_it != props.end()) {
+    CHECK(android::base::ParseInt(display_dpi_it->second, &display_dpi))
+        << "Display configuration invalid 'dpi' in " << flag;
+  }
+
+  int display_refresh_rate_hz = 60;
+  auto display_refresh_rate_hz_it = props.find("refresh_rate_hz");
+  if (display_refresh_rate_hz_it != props.end()) {
+    CHECK(android::base::ParseInt(display_refresh_rate_hz_it->second,
+                                  &display_refresh_rate_hz))
+        << "Display configuration invalid 'refresh_rate_hz' in " << flag;
+  }
+
   return CuttlefishConfig::DisplayConfig{
       .width = display_width,
       .height = display_height,
+      .dpi = display_dpi,
+      .refresh_rate_hz = display_refresh_rate_hz,
   };
 }
 
@@ -484,6 +511,8 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
       display_configs.push_back({
           .width = FLAGS_x_res,
           .height = FLAGS_y_res,
+          .dpi = FLAGS_dpi,
+          .refresh_rate_hz = FLAGS_refresh_rate_hz,
       });
     } else {
       LOG(WARNING) << "Ignoring --x_res and --y_res when --displayN specified.";
@@ -491,8 +520,6 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
   }
 
   tmp_config_obj.set_display_configs(display_configs);
-  tmp_config_obj.set_dpi(FLAGS_dpi);
-  tmp_config_obj.set_refresh_rate_hz(FLAGS_refresh_rate_hz);
 
   const GraphicsAvailability graphics_availability =
     GetGraphicsAvailabilityWithSubprocessCheck();
@@ -508,13 +535,7 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
     LOG(FATAL) << "Invalid gpu_mode: " << FLAGS_gpu_mode;
   }
   if (tmp_config_obj.gpu_mode() == kGpuModeAuto) {
-    // TODO(b/171305898): remove this branch once HostComposer can send
-    // multiple displays.
-    if (tmp_config_obj.display_configs().size() > 1) {
-      LOG(INFO) << "Enabling --gpu_mode=guest_swiftshader due to "
-                   "multi-display.";
-      tmp_config_obj.set_gpu_mode(kGpuModeGuestSwiftshader);
-    } else if (ShouldEnableAcceleratedRendering(graphics_availability)) {
+    if (ShouldEnableAcceleratedRendering(graphics_availability)) {
       LOG(INFO) << "GPU auto mode: detected prerequisites for accelerated "
                    "rendering support.";
       if (FLAGS_vm_manager == QemuManager::name()) {
@@ -704,6 +725,18 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
 
   tmp_config_obj.set_vhost_user_mac80211_hwsim(FLAGS_vhost_user_mac80211_hwsim);
 
+  if ((FLAGS_ap_rootfs_image.empty()) != (FLAGS_ap_kernel_image.empty())) {
+    LOG(FATAL) << "Either both ap_rootfs_image and ap_kernel_image should be "
+                  "set or neither should be set.";
+  } else if (FLAGS_vhost_user_mac80211_hwsim.empty() &&
+             !FLAGS_ap_rootfs_image.empty() && !FLAGS_ap_kernel_image.empty()) {
+    LOG(FATAL) << "To use external AP instance, vhost_user_mac80211_hwsim must "
+                  "be set.";
+  }
+
+  tmp_config_obj.set_ap_rootfs_image(FLAGS_ap_rootfs_image);
+  tmp_config_obj.set_ap_kernel_image(FLAGS_ap_kernel_image);
+
   tmp_config_obj.set_record_screen(FLAGS_record_screen);
 
   tmp_config_obj.set_ethernet(FLAGS_ethernet);
@@ -792,6 +825,7 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
     instance.set_rootcanal_default_commands_file(
         FLAGS_bluetooth_default_commands_file);
 
+    instance.set_camera_server_port(FLAGS_camera_server_port);
     instance.set_device_title(FLAGS_device_title);
 
     if (FLAGS_protected_vm) {
@@ -884,9 +918,7 @@ void SetDefaultFlagsForCrosvm() {
     SetCommandLineOptionWithMode("start_webrtc", "true", SET_FLAGS_DEFAULT);
   }
 
-  // TODO(b/182484563): Re-enable autodetection when we fix the crosvm crashes
-  bool default_enable_sandbox = false;
-
+  bool default_enable_sandbox = HostArch() != Arch::Arm64;
   SetCommandLineOptionWithMode("enable_sandbox",
                                (default_enable_sandbox ? "true" : "false"),
                                SET_FLAGS_DEFAULT);
