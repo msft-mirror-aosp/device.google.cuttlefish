@@ -95,7 +95,7 @@ static std::vector<std::string> VmManagerKernelCmdline(
         vm_manager_cmdline.push_back("ramoops.dump_oops=1");
       } else {
         // crosvm requires these additional parameters on x86_64 in bootloader mode
-        AppendVector(&vm_manager_cmdline, {"pci=noacpi", "reboot=k"});
+        AppendVector(&vm_manager_cmdline, {"reboot=k"});
       }
     }
   }
