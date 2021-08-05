@@ -315,7 +315,7 @@ DEFINE_int32(vsock_guest_cid,
              "The same formula holds when --vsock_guest_cid=C is given, for algorithm's sake."
              "Each vsock server port number is base + C - 3.");
 
-DEFINE_string(secure_hals, "",
+DEFINE_string(secure_hals, "keymint,gatekeeper",
               "Which HALs to use enable host security features for. Supports "
               "keymint and gatekeeper at the moment.");
 
@@ -897,7 +897,7 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
   return tmp_config_obj;
 }
 
-void SetDefaultFlagsForQemu() {
+void SetDefaultFlagsForQemu(Arch target_arch) {
   // for now, we don't set non-default options for QEMU
   if (FLAGS_gpu_mode == kGpuModeGuestSwiftshader && NumStreamers() == 0) {
     // This makes WebRTC the default streamer unless the user requests
@@ -905,7 +905,16 @@ void SetDefaultFlagsForQemu() {
     // possible to run without any streamer by setting --start_webrtc=false.
     SetCommandLineOptionWithMode("start_webrtc", "true", SET_FLAGS_DEFAULT);
   }
-  std::string default_bootloader = FLAGS_system_image_dir + "/bootloader.qemu";
+  std::string default_bootloader =
+      DefaultHostArtifactsPath("etc/bootloader_");
+  if(target_arch == Arch::Arm) {
+      default_bootloader += "arm";
+  } else if (target_arch == Arch::Arm64) {
+      default_bootloader += "aarch64";
+  } else {
+      default_bootloader += "x86_64";
+  }
+  default_bootloader += "/bootloader.qemu";
   SetCommandLineOptionWithMode("bootloader", default_bootloader.c_str(),
                                SET_FLAGS_DEFAULT);
 }
@@ -918,7 +927,17 @@ void SetDefaultFlagsForCrosvm() {
     SetCommandLineOptionWithMode("start_webrtc", "true", SET_FLAGS_DEFAULT);
   }
 
-  bool default_enable_sandbox = HostArch() != Arch::Arm64;
+  bool default_enable_sandbox = false;
+  std::set<Arch> supported_archs{Arch::X86_64};
+  if (supported_archs.find(HostArch()) != supported_archs.end()) {
+    if (DirectoryExists(kCrosvmVarEmptyDir)) {
+      default_enable_sandbox = IsDirectoryEmpty(kCrosvmVarEmptyDir);
+    } else if (FileExists(kCrosvmVarEmptyDir)) {
+      default_enable_sandbox = false;
+    } else {
+      default_enable_sandbox = EnsureDirectoryExists(kCrosvmVarEmptyDir);
+    }
+  }
   SetCommandLineOptionWithMode("enable_sandbox",
                                (default_enable_sandbox ? "true" : "false"),
                                SET_FLAGS_DEFAULT);
@@ -948,7 +967,7 @@ bool ParseCommandLineFlags(int* argc, char*** argv, KernelConfig* kernel_config)
   }
 
   if (FLAGS_vm_manager == QemuManager::name()) {
-    SetDefaultFlagsForQemu();
+    SetDefaultFlagsForQemu(kernel_config->target_arch);
   } else if (FLAGS_vm_manager == CrosvmManager::name()) {
     SetDefaultFlagsForCrosvm();
   } else {
