@@ -21,10 +21,13 @@
 
 #include "common/libs/utils/environment.h"
 #include "common/libs/utils/files.h"
+#include "common/libs/utils/flag_parser.h"
 #include "host/commands/assemble_cvd/alloc.h"
 #include "host/commands/assemble_cvd/boot_config.h"
 #include "host/commands/assemble_cvd/clean.h"
+#include "host/commands/assemble_cvd/config.h"
 #include "host/commands/assemble_cvd/disk_flags.h"
+#include "host/commands/assemble_cvd/flag_feature.h"
 #include "host/libs/config/adb_config.h"
 #include "host/libs/config/host_tools_version.h"
 #include "host/libs/graphics_detector/graphics_detector.h"
@@ -37,12 +40,6 @@ using cuttlefish::HostBinaryPath;
 using cuttlefish::StringFromEnv;
 using cuttlefish::vm_manager::CrosvmManager;
 using google::FlagSettingMode::SET_FLAGS_DEFAULT;
-
-DEFINE_string(config, "phone",
-              "Config preset name. Will automatically set flag fields "
-              "using the values from this file of presets. See "
-              "device/google/cuttlefish/shared/config/config_*.json "
-              "for possible values.");
 
 DEFINE_int32(cpus, 2, "Virtual CPU count.");
 DEFINE_string(data_policy, "use_existing", "How to handle userdata partition."
@@ -58,9 +55,15 @@ DEFINE_int32(gdb_port, 0,
              "disabled.");
 
 constexpr const char kDisplayHelp[] =
-    "Comma separated key-value pairs of display properties. Example usage: "
-    "--display0=width=1280,height=720 "
-    "--display1=width=1440,height=900 ";
+    "Comma separated key=value pairs of display properties. Supported "
+    "properties:\n"
+    " 'width': required, width of the display in pixels\n"
+    " 'height': required, height of the display in pixels\n"
+    " 'dpi': optional, default 320, density of the display\n"
+    " 'refresh_rate_hz': optional, default 60, display refresh rate in Hertz\n"
+    ". Example usage: \n"
+    "--display0=width=1280,height=720\n"
+    "--display1=width=1440,height=900,dpi=480,refresh_rate_hz=30\n";
 
 // TODO(b/192495477): combine these into a single repeatable '--display' flag
 // when assemble_cvd switches to using the new flag parsing library.
@@ -102,6 +105,7 @@ DEFINE_bool(start_vnc_server, false, "Whether to start the vnc server process. "
                                      "The VNC server runs at port 6443 + i for "
                                      "the vsoc-i user or CUTTLEFISH_INSTANCE=i, "
                                      "starting from 1.");
+
 DEFINE_bool(use_allocd, false,
             "Acquire static resources from the resource allocator daemon.");
 DEFINE_bool(enable_minimal_mode, false,
@@ -197,9 +201,13 @@ DEFINE_string(webrtc_sig_server_path, "/register_device",
               "The path section of the URL where the device should be "
               "registered with the signaling server.");
 
+DEFINE_bool(webrtc_sig_server_secure, true,
+            "Whether the WebRTC signaling server uses secure protocols (WSS vs WS).");
+
 DEFINE_bool(verify_sig_server_certificate, false,
             "Whether to verify the signaling server's certificate with a "
-            "trusted signing authority (Disallow self signed certificates).");
+            "trusted signing authority (Disallow self signed certificates). "
+            "This is ignored if an insecure server is configured.");
 
 DEFINE_string(sig_server_headers_file, "",
               "Path to a file containing HTTP headers to be included in the "
@@ -282,6 +290,11 @@ DEFINE_bool(console, false, "Enable the serial console");
 
 DEFINE_bool(vhost_net, false, "Enable vhost acceleration of networking");
 
+DEFINE_string(vhost_user_mac80211_hwsim, "",
+              "Unix socket path for vhost-user of mac80211_hwsim");
+DEFINE_string(ap_rootfs_image, "", "rootfs image for AP instance");
+DEFINE_string(ap_kernel_image, "", "kernel image for AP instance");
+
 DEFINE_bool(record_screen, false, "Enable screen recording. "
                                   "Requires --start_webrtc");
 
@@ -305,7 +318,7 @@ DEFINE_int32(vsock_guest_cid,
              "The same formula holds when --vsock_guest_cid=C is given, for algorithm's sake."
              "Each vsock server port number is base + C - 3.");
 
-DEFINE_string(secure_hals, "",
+DEFINE_string(secure_hals, "keymint,gatekeeper",
               "Which HALs to use enable host security features for. Supports "
               "keymint and gatekeeper at the moment.");
 
@@ -316,6 +329,8 @@ DEFINE_bool(protected_vm, false, "Boot in Protected VM mode");
 DEFINE_bool(enable_audio, cuttlefish::HostArch() != cuttlefish::Arch::Arm64,
             "Whether to play or capture audio");
 
+DEFINE_uint32(camera_server_port, 0, "camera vsock port");
+
 DECLARE_string(assembly_dir);
 DECLARE_string(boot_image);
 DECLARE_string(system_image_dir);
@@ -325,10 +340,6 @@ using vm_manager::QemuManager;
 using vm_manager::GetVmManager;
 
 namespace {
-
-bool IsFlagSet(const std::string& flag) {
-  return !gflags::GetCommandLineFlagInfoOrDie(flag.c_str()).is_default;
-}
 
 std::pair<uint16_t, uint16_t> ParsePortRange(const std::string& flag) {
   static const std::regex rgx("[0-9]+:[0-9]+");
@@ -385,9 +396,26 @@ std::optional<CuttlefishConfig::DisplayConfig> ParseDisplayConfig(
   CHECK(android::base::ParseInt(props["height"], &display_height))
       << "Display configuration invalid 'height' in " << flag;
 
+  int display_dpi = 320;
+  auto display_dpi_it = props.find("dpi");
+  if (display_dpi_it != props.end()) {
+    CHECK(android::base::ParseInt(display_dpi_it->second, &display_dpi))
+        << "Display configuration invalid 'dpi' in " << flag;
+  }
+
+  int display_refresh_rate_hz = 60;
+  auto display_refresh_rate_hz_it = props.find("refresh_rate_hz");
+  if (display_refresh_rate_hz_it != props.end()) {
+    CHECK(android::base::ParseInt(display_refresh_rate_hz_it->second,
+                                  &display_refresh_rate_hz))
+        << "Display configuration invalid 'refresh_rate_hz' in " << flag;
+  }
+
   return CuttlefishConfig::DisplayConfig{
       .width = display_width,
       .height = display_height,
+      .dpi = display_dpi,
+      .refresh_rate_hz = display_refresh_rate_hz,
   };
 }
 
@@ -486,6 +514,8 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
       display_configs.push_back({
           .width = FLAGS_x_res,
           .height = FLAGS_y_res,
+          .dpi = FLAGS_dpi,
+          .refresh_rate_hz = FLAGS_refresh_rate_hz,
       });
     } else {
       LOG(WARNING) << "Ignoring --x_res and --y_res when --displayN specified.";
@@ -493,8 +523,6 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
   }
 
   tmp_config_obj.set_display_configs(display_configs);
-  tmp_config_obj.set_dpi(FLAGS_dpi);
-  tmp_config_obj.set_refresh_rate_hz(FLAGS_refresh_rate_hz);
 
   const GraphicsAvailability graphics_availability =
     GetGraphicsAvailabilityWithSubprocessCheck();
@@ -510,13 +538,7 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
     LOG(FATAL) << "Invalid gpu_mode: " << FLAGS_gpu_mode;
   }
   if (tmp_config_obj.gpu_mode() == kGpuModeAuto) {
-    // TODO(b/171305898): remove this branch once HostComposer can send
-    // multiple displays.
-    if (tmp_config_obj.display_configs().size() > 1) {
-      LOG(INFO) << "Enabling --gpu_mode=guest_swiftshader due to "
-                   "multi-display.";
-      tmp_config_obj.set_gpu_mode(kGpuModeGuestSwiftshader);
-    } else if (ShouldEnableAcceleratedRendering(graphics_availability)) {
+    if (ShouldEnableAcceleratedRendering(graphics_availability)) {
       LOG(INFO) << "GPU auto mode: detected prerequisites for accelerated "
                    "rendering support.";
       if (FLAGS_vm_manager == QemuManager::name()) {
@@ -603,6 +625,7 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
   tmp_config_obj.set_enable_webrtc(FLAGS_start_webrtc);
   tmp_config_obj.set_webrtc_assets_dir(FLAGS_webrtc_assets_dir);
   tmp_config_obj.set_webrtc_certs_dir(FLAGS_webrtc_certs_dir);
+  tmp_config_obj.set_sig_server_secure(FLAGS_webrtc_sig_server_secure);
   // Note: This will be overridden if the sig server is started by us
   tmp_config_obj.set_sig_server_port(FLAGS_webrtc_sig_server_port);
   tmp_config_obj.set_sig_server_address(FLAGS_webrtc_sig_server_addr);
@@ -703,6 +726,20 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
 
   tmp_config_obj.set_vhost_net(FLAGS_vhost_net);
 
+  tmp_config_obj.set_vhost_user_mac80211_hwsim(FLAGS_vhost_user_mac80211_hwsim);
+
+  if ((FLAGS_ap_rootfs_image.empty()) != (FLAGS_ap_kernel_image.empty())) {
+    LOG(FATAL) << "Either both ap_rootfs_image and ap_kernel_image should be "
+                  "set or neither should be set.";
+  } else if (FLAGS_vhost_user_mac80211_hwsim.empty() &&
+             !FLAGS_ap_rootfs_image.empty() && !FLAGS_ap_kernel_image.empty()) {
+    LOG(FATAL) << "To use external AP instance, vhost_user_mac80211_hwsim must "
+                  "be set.";
+  }
+
+  tmp_config_obj.set_ap_rootfs_image(FLAGS_ap_rootfs_image);
+  tmp_config_obj.set_ap_kernel_image(FLAGS_ap_kernel_image);
+
   tmp_config_obj.set_record_screen(FLAGS_record_screen);
 
   tmp_config_obj.set_ethernet(FLAGS_ethernet);
@@ -763,6 +800,7 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
     instance.set_vnc_server_port(6444 + num - 1);
     instance.set_adb_host_port(6520 + num - 1);
     instance.set_adb_ip_and_port("0.0.0.0:" + std::to_string(6520 + num - 1));
+    instance.set_confui_host_vsock_port(7700 + num - 1);
     instance.set_tombstone_receiver_port(calc_vsock_port(6600));
     instance.set_vehicle_hal_server_port(9210 + num - 1);
     instance.set_audiocontrol_server_port(9410);  /* OK to use the same port number across instances */
@@ -791,6 +829,7 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
     instance.set_rootcanal_default_commands_file(
         FLAGS_bluetooth_default_commands_file);
 
+    instance.set_camera_server_port(FLAGS_camera_server_port);
     instance.set_device_title(FLAGS_device_title);
 
     if (FLAGS_protected_vm) {
@@ -807,14 +846,7 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
       instance.set_virtual_disk_paths(virtual_disk_paths);
     }
 
-    std::array<unsigned char, 6> mac_address;
-    mac_address[0] = 1 << 6; // locally administered
-    // TODO(schuffelen): Randomize these and preserve the state.
-    for (int i = 1; i < 5; i++) {
-      mac_address[i] = i;
-    }
-    mac_address[5] = num;
-    instance.set_wifi_mac_address(mac_address);
+    instance.set_wifi_mac_prefix(5554 + (num - 1) * 2);
 
     instance.set_start_webrtc_signaling_server(false);
 
@@ -869,75 +901,7 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
   return tmp_config_obj;
 }
 
-void SetDefaultFlagsFromConfigPreset() {
-  std::string config_preset = FLAGS_config;  // The name of the preset config.
-  std::string config_file_path;  // The path to the preset config JSON.
-  std::set<std::string> allowed_config_presets;
-  for (const std::string& file :
-       DirectoryContents(DefaultHostArtifactsPath("etc/cvd_config"))) {
-    std::string_view local_file(file);
-    if (android::base::ConsumePrefix(&local_file, "cvd_config_") &&
-        android::base::ConsumeSuffix(&local_file, ".json")) {
-      allowed_config_presets.emplace(local_file);
-    }
-  }
-
-  // If the user specifies a --config name, then use that config
-  // preset option.
-  std::string android_info_path = FLAGS_system_image_dir + "/android-info.txt";
-  if (IsFlagSet("config")) {
-    if (!allowed_config_presets.count(config_preset)) {
-      LOG(FATAL) << "Invalid --config option '" << config_preset
-                 << "'. Valid options: "
-                 << android::base::Join(allowed_config_presets, ",");
-    }
-  } else if (FileExists(android_info_path)) {
-    // Otherwise try to load the correct preset using android-info.txt.
-    std::ifstream ifs(android_info_path);
-    if (ifs.is_open()) {
-      std::string android_info;
-      ifs >> android_info;
-      std::string_view local_android_info(android_info);
-      if (android::base::ConsumePrefix(&local_android_info, "config=")) {
-        config_preset = local_android_info;
-      }
-      if (!allowed_config_presets.count(config_preset)) {
-        LOG(WARNING) << android_info_path
-                     << " contains invalid config preset: '"
-                     << local_android_info << "'. Defaulting to 'phone'.";
-        config_preset = "phone";
-      }
-    }
-  }
-  LOG(INFO) << "Launching CVD using --config='" << config_preset << "'.";
-
-  config_file_path = DefaultHostArtifactsPath("etc/cvd_config/cvd_config_" +
-                                              config_preset + ".json");
-  Json::Value config;
-  Json::CharReaderBuilder builder;
-  std::ifstream ifs(config_file_path);
-  std::string errorMessage;
-  if (!Json::parseFromStream(builder, ifs, &config, &errorMessage)) {
-    LOG(FATAL) << "Could not read config file " << config_file_path << ": "
-               << errorMessage;
-  }
-  for (const std::string& flag : config.getMemberNames()) {
-    std::string value;
-    if (flag == "custom_actions") {
-      Json::StreamWriterBuilder factory;
-      value = Json::writeString(factory, config[flag]);
-    } else {
-      value = config[flag].asString();
-    }
-    if (gflags::SetCommandLineOptionWithMode(flag.c_str(), value.c_str(),
-                                             SET_FLAGS_DEFAULT)
-            .empty()) {
-      LOG(FATAL) << "Error setting flag '" << flag << "'.";
-    }
-  }
-}
-
-void SetDefaultFlagsForQemu() {
+void SetDefaultFlagsForQemu(Arch target_arch) {
   // for now, we don't set non-default options for QEMU
   if (FLAGS_gpu_mode == kGpuModeGuestSwiftshader && NumStreamers() == 0) {
     // This makes WebRTC the default streamer unless the user requests
@@ -945,7 +909,16 @@ void SetDefaultFlagsForQemu() {
     // possible to run without any streamer by setting --start_webrtc=false.
     SetCommandLineOptionWithMode("start_webrtc", "true", SET_FLAGS_DEFAULT);
   }
-  std::string default_bootloader = FLAGS_system_image_dir + "/bootloader.qemu";
+  std::string default_bootloader =
+      DefaultHostArtifactsPath("etc/bootloader_");
+  if(target_arch == Arch::Arm) {
+      default_bootloader += "arm";
+  } else if (target_arch == Arch::Arm64) {
+      default_bootloader += "aarch64";
+  } else {
+      default_bootloader += "x86_64";
+  }
+  default_bootloader += "/bootloader.qemu";
   SetCommandLineOptionWithMode("bootloader", default_bootloader.c_str(),
                                SET_FLAGS_DEFAULT);
 }
@@ -958,9 +931,11 @@ void SetDefaultFlagsForCrosvm() {
     SetCommandLineOptionWithMode("start_webrtc", "true", SET_FLAGS_DEFAULT);
   }
 
-  // TODO(b/182484563): Re-enable autodetection when we fix the crosvm crashes
-  bool default_enable_sandbox = false;
-
+  std::set<Arch> supported_archs{Arch::X86_64};
+  bool default_enable_sandbox =
+      supported_archs.find(HostArch()) != supported_archs.end() &&
+      EnsureDirectoryExists(kCrosvmVarEmptyDir) &&
+      IsDirectoryEmpty(kCrosvmVarEmptyDir) && !IsRunningInContainer();
   SetCommandLineOptionWithMode("enable_sandbox",
                                (default_enable_sandbox ? "true" : "false"),
                                SET_FLAGS_DEFAULT);
@@ -970,10 +945,55 @@ void SetDefaultFlagsForCrosvm() {
                                SET_FLAGS_DEFAULT);
 }
 
-bool ParseCommandLineFlags(int* argc, char*** argv, KernelConfig* kernel_config) {
-  google::ParseCommandLineNonHelpFlags(argc, argv, true);
+fruit::Component<> FlagsComponent() {
+  return fruit::createComponent().install(GflagsComponent);
+}
+
+bool ParseCommandLineFlags(std::vector<std::string>& args,
+                           KernelConfig* kernel_config) {
+  bool help = false;
+  std::string help_str;
+  bool helpxml = false;
+
+  std::vector<Flag> help_flags = {
+      GflagsCompatFlag("help", help),
+      GflagsCompatFlag("helpfull", help),
+      GflagsCompatFlag("helpshort", help),
+      GflagsCompatFlag("helpmatch", help_str),
+      GflagsCompatFlag("helpon", help_str),
+      GflagsCompatFlag("helppackage", help_str),
+      GflagsCompatFlag("helpxml", helpxml),
+  };
+  for (const auto& help_flag : help_flags) {
+    if (!help_flag.Parse(args)) {
+      LOG(ERROR) << "Failed to process help flag.";
+      return false;
+    }
+  }
+
+  fruit::Injector<> injector(FlagsComponent);
+  auto flag_features = injector.getMultibindings<FlagFeature>();
+  if (!FlagFeature::ProcessFlags(flag_features, args)) {
+    LOG(ERROR) << "Failed to parse flags.";
+    return false;
+  }
+
   SetDefaultFlagsFromConfigPreset();
-  google::HandleCommandLineHelpFlags();
+
+  if (help || help_str != "") {
+    LOG(WARNING) << "TODO(schuffelen): Implement `--help` for assemble_cvd.";
+    LOG(WARNING) << "In the meantime, call `launch_cvd --help`";
+    return false;
+  } else if (helpxml) {
+    if (!FlagFeature::WriteGflagsHelpXml(flag_features, std::cout)) {
+      LOG(ERROR) << "Failure in writing gflags helpxml output";
+    }
+    std::exit(1);  // For parity with gflags
+  }
+  // TODO(schuffelen): Put in "unknown flag" guards after gflags is removed.
+  // gflags either consumes all arguments that start with - or leaves all of
+  // them in place, and either errors out on unknown flags or accepts any flags.
+
   bool invalid_manager = false;
 
   if (!ResolveInstanceFiles()) {
@@ -990,7 +1010,7 @@ bool ParseCommandLineFlags(int* argc, char*** argv, KernelConfig* kernel_config)
   }
 
   if (FLAGS_vm_manager == QemuManager::name()) {
-    SetDefaultFlagsForQemu();
+    SetDefaultFlagsForQemu(kernel_config->target_arch);
   } else if (FLAGS_vm_manager == CrosvmManager::name()) {
     SetDefaultFlagsForCrosvm();
   } else {

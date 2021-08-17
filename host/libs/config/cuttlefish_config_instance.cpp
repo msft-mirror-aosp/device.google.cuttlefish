@@ -197,9 +197,14 @@ void CuttlefishConfig::MutableInstanceSpecific::set_mobile_tap_name(
   (*Dictionary())[kMobileTapName] = mobile_tap_name;
 }
 
-std::string CuttlefishConfig::InstanceSpecific::confui_hal_guest_socket_path()
-    const {
-  return PerInstanceInternalPath("confui_mock_hal_guest.sock");
+static constexpr char kConfUiHostPort[] = "confirmation_ui_host_port";
+int CuttlefishConfig::InstanceSpecific::confui_host_vsock_port() const {
+  return (*Dictionary())[kConfUiHostPort].asInt();
+}
+
+void CuttlefishConfig::MutableInstanceSpecific::set_confui_host_vsock_port(
+    int port) {
+  (*Dictionary())[kConfUiHostPort] = port;
 }
 
 static constexpr char kWifiTapName[] = "wifi_tap_name";
@@ -390,6 +395,15 @@ void CuttlefishConfig::MutableInstanceSpecific::set_rootcanal_test_port(
   (*Dictionary())[kRootcanalTestPort] = rootcanal_test_port;
 }
 
+static constexpr char kCameraServerPort[] = "camera_server_port";
+int CuttlefishConfig::InstanceSpecific::camera_server_port() const {
+  return (*Dictionary())[kCameraServerPort].asInt();
+}
+void CuttlefishConfig::MutableInstanceSpecific::set_camera_server_port(
+    int camera_server_port) {
+  (*Dictionary())[kCameraServerPort] = camera_server_port;
+}
+
 static constexpr char kRootcanalConfigFile[] = "rootcanal_config_file";
 std::string CuttlefishConfig::InstanceSpecific::rootcanal_config_file() const {
   return (*Dictionary())[kRootcanalConfigFile].asString();
@@ -448,26 +462,13 @@ std::string CuttlefishConfig::InstanceSpecific::frames_socket_path() const {
   return PerInstanceInternalPath("frames.sock");
 }
 
-static constexpr char kWifiMacAddress[] = "wifi_mac_address";
-void CuttlefishConfig::MutableInstanceSpecific::set_wifi_mac_address(
-    const std::array<unsigned char, 6>& mac_address) {
-  Json::Value mac_address_obj(Json::arrayValue);
-  for (const auto& num : mac_address) {
-    mac_address_obj.append(num);
-  }
-  (*Dictionary())[kWifiMacAddress] = mac_address_obj;
+static constexpr char kWifiMacPrefix[] = "wifi_mac_prefix";
+int CuttlefishConfig::InstanceSpecific::wifi_mac_prefix() const {
+  return (*Dictionary())[kWifiMacPrefix].asInt();
 }
-std::array<unsigned char, 6> CuttlefishConfig::InstanceSpecific::wifi_mac_address() const {
-  std::array<unsigned char, 6> mac_address{0, 0, 0, 0, 0, 0};
-  auto mac_address_obj = (*Dictionary())[kWifiMacAddress];
-  if (mac_address_obj.size() != 6) {
-    LOG(ERROR) << kWifiMacAddress << " entry had wrong size";
-    return {};
-  }
-  for (int i = 0; i < 6; i++) {
-    mac_address[i] = mac_address_obj[i].asInt();
-  }
-  return mac_address;
+void CuttlefishConfig::MutableInstanceSpecific::set_wifi_mac_prefix(
+    int wifi_mac_prefix) {
+  (*Dictionary())[kWifiMacPrefix] = wifi_mac_prefix;
 }
 
 std::string CuttlefishConfig::InstanceSpecific::factory_reset_protected_path() const {

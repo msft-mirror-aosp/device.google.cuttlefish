@@ -48,15 +48,6 @@ std::string concat(const S& s, const T& t) {
   return os.str();
 }
 
-std::string mac_to_str(const std::array<unsigned char, 6>& mac) {
-  std::ostringstream stream;
-  stream << std::hex << (int)mac[0];
-  for (int i = 1; i < 6; i++) {
-    stream << ":" << std::hex << (int)mac[i];
-  }
-  return stream.str();
-}
-
 // TODO(schuffelen): Move more of this into host/libs/vm_manager, as a
 // substitute for the vm_manager comparisons.
 std::vector<std::string> VmManagerBootconfig(const CuttlefishConfig& config) {
@@ -91,7 +82,13 @@ std::vector<std::string> BootconfigArgsFromConfig(
 
   bootconfig_args.push_back(
       concat("androidboot.serialno=", instance.serial_number()));
-  bootconfig_args.push_back(concat("androidboot.lcd_density=", config.dpi()));
+
+  // TODO(b/131884992): update to specify multiple once supported.
+  const auto display_configs = config.display_configs();
+  CHECK_GE(display_configs.size(), 1);
+  bootconfig_args.push_back(
+      concat("androidboot.lcd_density=", display_configs[0].dpi));
+
   bootconfig_args.push_back(
       concat("androidboot.setupwizard_mode=", config.setupwizard_mode()));
   if (!config.guest_enforce_security()) {
@@ -144,15 +141,21 @@ std::vector<std::string> BootconfigArgsFromConfig(
                                      instance.frames_server_port()));
   }
 
+  if (instance.camera_server_port()) {
+    bootconfig_args.push_back(concat("androidboot.vsock_camera_port=",
+                                     instance.camera_server_port()));
+    bootconfig_args.push_back(
+        concat("androidboot.vsock_camera_cid=", instance.vsock_guest_cid()));
+  }
+
   if (config.enable_modem_simulator() &&
       instance.modem_simulator_ports() != "") {
     bootconfig_args.push_back(concat("androidboot.modem_simulator_ports=",
                                      instance.modem_simulator_ports()));
   }
 
-  // TODO(b/158131610): Set this in crosvm instead
-  bootconfig_args.push_back(concat("androidboot.wifi_mac_address=",
-                                   mac_to_str(instance.wifi_mac_address())));
+  bootconfig_args.push_back(
+      concat("androidboot.wifi_mac_prefix=", instance.wifi_mac_prefix()));
 
   bootconfig_args.push_back("androidboot.verifiedbootstate=orange");
 

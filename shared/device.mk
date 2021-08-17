@@ -26,7 +26,14 @@ $(call inherit-product, $(SRC_TARGET_DIR)/product/userspace_reboot.mk)
 # Enforce generic ramdisk allow list
 $(call inherit-product, $(SRC_TARGET_DIR)/product/generic_ramdisk.mk)
 
+# Set Vendor SPL to match platform
+VENDOR_SECURITY_PATCH = $(PLATFORM_SECURITY_PATCH)
+
+# Set boot SPL
+BOOT_SECURITY_PATCH = $(PLATFORM_SECURITY_PATCH)
+
 PRODUCT_SOONG_NAMESPACES += device/generic/goldfish-opengl # for vulkan
+PRODUCT_SOONG_NAMESPACES += device/generic/goldfish # for audio and wifi
 
 PRODUCT_SHIPPING_API_LEVEL := 32
 PRODUCT_USE_DYNAMIC_PARTITIONS := true
@@ -62,7 +69,7 @@ AB_OTA_PARTITIONS += \
     vendor_dlkm \
 
 # Enable Virtual A/B
-$(call inherit-product, $(SRC_TARGET_DIR)/product/virtual_ab_ota/compression.mk)
+$(call inherit-product, $(SRC_TARGET_DIR)/product/virtual_ab_ota/compression_with_xor.mk)
 
 # Enable Scoped Storage related
 $(call inherit-product, $(SRC_TARGET_DIR)/product/emulated_storage.mk)
@@ -139,6 +146,9 @@ PRODUCT_PACKAGES += \
 
 # DRM service opt-in
 PRODUCT_VENDOR_PROPERTIES += drm.service.enabled=true
+
+# Call deleteAllKeys if vold detects a factory reset
+PRODUCT_VENDOR_PROPERTIES += ro.crypto.metadata_init_delete_all_keys.enabled=true
 
 PRODUCT_SOONG_NAMESPACES += hardware/google/camera
 PRODUCT_SOONG_NAMESPACES += hardware/google/camera/devices/EmulatedCamera
@@ -226,7 +236,9 @@ PRODUCT_PACKAGES += \
 #
 PRODUCT_PACKAGES += \
     aidl_lazy_test_server \
-    hidl_lazy_test_server
+    aidl_lazy_cb_test_server \
+    hidl_lazy_test_server \
+    hidl_lazy_cb_test_server
 
 DEVICE_PACKAGE_OVERLAYS := device/google/cuttlefish/shared/overlay
 # PRODUCT_AAPT_CONFIG and PRODUCT_AAPT_PREF_CONFIG are intentionally not set to
@@ -392,16 +404,17 @@ PRODUCT_PACKAGES += android.hardware.bluetooth.audio@2.1-impl
 # Audio HAL
 #
 LOCAL_AUDIO_PRODUCT_PACKAGE ?= \
-    audio.primary.cutf \
-    audio.r_submix.default \
-    android.hardware.audio@6.0-impl \
+    android.hardware.audio.service \
+    android.hardware.audio@6.0-impl.ranchu \
     android.hardware.audio.effect@6.0-impl \
-    android.hardware.audio@2.0-service
 
 LOCAL_AUDIO_PRODUCT_COPY_FILES ?= \
-    device/google/cuttlefish/shared/config/audio_policy.conf:$(TARGET_COPY_OUT_VENDOR)/etc/audio_policy.conf \
-    frameworks/av/services/audiopolicy/config/audio_policy_configuration_generic.xml:$(TARGET_COPY_OUT_VENDOR)/etc/audio_policy_configuration.xml \
-    frameworks/av/services/audiopolicy/config/primary_audio_policy_configuration.xml:$(TARGET_COPY_OUT_VENDOR)/etc/primary_audio_policy_configuration.xml
+    device/generic/goldfish/audio/policy/audio_policy_configuration.xml:$(TARGET_COPY_OUT_VENDOR)/etc/audio_policy_configuration.xml \
+    device/generic/goldfish/audio/policy/primary_audio_policy_configuration.xml:$(TARGET_COPY_OUT_VENDOR)/etc/primary_audio_policy_configuration.xml \
+    frameworks/av/services/audiopolicy/config/r_submix_audio_policy_configuration.xml:$(TARGET_COPY_OUT_VENDOR)/etc/r_submix_audio_policy_configuration.xml \
+    frameworks/av/services/audiopolicy/config/audio_policy_volumes.xml:$(TARGET_COPY_OUT_VENDOR)/etc/audio_policy_volumes.xml \
+    frameworks/av/services/audiopolicy/config/default_volume_tables.xml:$(TARGET_COPY_OUT_VENDOR)/etc/default_volume_tables.xml \
+    frameworks/av/media/libeffects/data/audio_effects.xml:$(TARGET_COPY_OUT_VENDOR)/etc/audio_effects.xml \
 
 LOCAL_AUDIO_DEVICE_PACKAGE_OVERLAYS ?=
 
@@ -445,11 +458,19 @@ PRODUCT_PACKAGES += $(LOCAL_DUMPSTATE_PRODUCT_PACKAGE)
 #
 # Camera
 #
+ifeq ($(TARGET_USE_VSOCK_CAMERA_HAL_IMPL),true)
+PRODUCT_PACKAGES += \
+    android.hardware.camera.provider@2.6-external-vsock-service \
+    android.hardware.camera.provider@2.6-impl-cuttlefish
+DEVICE_MANIFEST_FILE += \
+    device/google/cuttlefish/guest/hals/camera/manifest.xml
+else
 PRODUCT_PACKAGES += \
     android.hardware.camera.provider@2.6-service-google \
     libgooglecamerahwl_impl \
     android.hardware.camera.provider@2.6-impl-google \
 
+endif
 #
 # Gatekeeper
 #
@@ -602,20 +623,12 @@ endif
 # wifi
 ifeq ($(PRODUCT_ENFORCE_MAC80211_HWSIM),true)
 PRODUCT_PACKAGES += \
-    sh_vendor \
-    emulatorip \
-    iw_vendor \
-    execns \
-    hostapd_nohidl \
-    netmgr \
-    wifi_forwarder \
-    createns
+    mac80211_create_radios \
+    hostapd \
+    android.hardware.wifi@1.0-service
 
 PRODUCT_COPY_FILES += \
-    device/generic/goldfish/wifi/init.wifi.sh:$(TARGET_COPY_OUT_VENDOR)/bin/init.wifi.sh \
-    device/generic/goldfish/wifi/simulated_hostapd.conf:$(TARGET_COPY_OUT_VENDOR)/etc/simulated_hostapd.conf
-
-PRODUCT_SOONG_NAMESPACES += device/generic/goldfish
+    device/google/cuttlefish/guest/services/wifi/init.wifi.sh:$(TARGET_COPY_OUT_VENDOR)/bin/init.wifi.sh \
 
 PRODUCT_VENDOR_PROPERTIES += ro.vendor.wifi_impl=mac8011_hwsim_virtio
 else

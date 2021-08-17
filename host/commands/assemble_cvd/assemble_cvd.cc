@@ -23,6 +23,7 @@
 #include "common/libs/fs/shared_fd.h"
 #include "common/libs/utils/environment.h"
 #include "common/libs/utils/files.h"
+#include "common/libs/utils/flag_parser.h"
 #include "common/libs/utils/tee_logging.h"
 #include "host/commands/assemble_cvd/clean.h"
 #include "host/commands/assemble_cvd/disk_flags.h"
@@ -52,8 +53,7 @@ std::string kFetcherConfigFile = "fetcher_config.json";
 FetcherConfig FindFetcherConfig(const std::vector<std::string>& files) {
   FetcherConfig fetcher_config;
   for (const auto& file : files) {
-    auto expected_pos = file.size() - kFetcherConfigFile.size();
-    if (file.rfind(kFetcherConfigFile) == expected_pos) {
+    if (android::base::EndsWith(file, kFetcherConfigFile)) {
       if (fetcher_config.LoadFromFile(file)) {
         return fetcher_config;
       }
@@ -252,7 +252,9 @@ int AssembleCvdMain(int argc, char** argv) {
   ExtractKernelParamsFromFetcherConfig(fetcher_config);
 
   KernelConfig kernel_config;
-  CHECK(ParseCommandLineFlags(&argc, &argv, &kernel_config)) << "Failed to parse arguments";
+  auto flags = ArgsToVec(argc - 1, argv + 1);
+  CHECK(ParseCommandLineFlags(flags, &kernel_config))
+      << "Failed to parse arguments";
 
   auto config =
       InitFilesystemAndCreateConfig(std::move(fetcher_config), kernel_config);

@@ -1,11 +1,11 @@
 /*
- * Copyright (C) 2018 The Android Open Source Project
+ * Copyright 2020, The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -14,15 +14,20 @@
  * limitations under the License.
  */
 
-#include "common/libs/utils/size_utils.h"
+#pragma once
 
-#include <unistd.h>
+#include <android/hardware/confirmationui/1.0/IConfirmationUI.h>
 
-namespace cuttlefish {
+namespace android {
+namespace hardware {
+namespace confirmationui {
+namespace V1_0 {
+namespace implementation {
 
-uint64_t AlignToPowerOf2(uint64_t val, uint8_t align_log) {
-  uint64_t align = 1ULL << align_log;
-  return ((val + (align - 1)) / align) * align;
-}
+android::sp<IConfirmationUI> createTrustyConfirmationUI();
 
-}  // namespace cuttlefish
+}  // namespace implementation
+}  // namespace V1_0
+}  // namespace confirmationui
+}  // namespace hardware
+}  // namespace android

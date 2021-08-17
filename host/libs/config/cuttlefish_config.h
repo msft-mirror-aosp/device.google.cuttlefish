@@ -98,15 +98,11 @@ class CuttlefishConfig {
   int memory_mb() const;
   void set_memory_mb(int memory_mb);
 
-  int dpi() const;
-  void set_dpi(int dpi);
-
-  int refresh_rate_hz() const;
-  void set_refresh_rate_hz(int refresh_rate_hz);
-
   struct DisplayConfig {
     int width;
     int height;
+    int dpi;
+    int refresh_rate_hz;
   };
 
   std::vector<DisplayConfig> display_configs() const;
@@ -240,6 +236,11 @@ class CuttlefishConfig {
   void set_sig_server_path(const std::string& path);
   std::string sig_server_path() const;
 
+  // Whether the webrtc process should use a secure connection (WSS) to the
+  // signaling server.
+  void set_sig_server_secure(bool secure);
+  bool sig_server_secure() const;
+
   // Whether the webrtc process should attempt to verify the authenticity of the
   // signaling server (reject self signed certificates)
   void set_sig_server_strict(bool strict);
@@ -281,6 +282,15 @@ class CuttlefishConfig {
 
   void set_vhost_net(bool vhost_net);
   bool vhost_net() const;
+
+  void set_vhost_user_mac80211_hwsim(const std::string& path);
+  std::string vhost_user_mac80211_hwsim() const;
+
+  void set_ap_rootfs_image(const std::string& path);
+  std::string ap_rootfs_image() const;
+
+  void set_ap_kernel_image(const std::string& path);
+  std::string ap_kernel_image() const;
 
   void set_ethernet(bool ethernet);
   bool ethernet() const;
@@ -360,6 +370,8 @@ class CuttlefishConfig {
     int rootcanal_hci_port() const;
     int rootcanal_link_port() const;
     int rootcanal_test_port() const;
+    // Port number to connect to the camera hal on the guest
+    int camera_server_port() const;
     std::string rootcanal_config_file() const;
     std::string rootcanal_default_commands_file() const;
 
@@ -391,8 +403,7 @@ class CuttlefishConfig {
     std::string switches_socket_path() const;
     std::string frames_socket_path() const;
 
-    // mock hal guest socket that will be vsock/virtio later on
-    std::string confui_hal_guest_socket_path() const;
+    int confui_host_vsock_port() const;
 
     std::string access_kregistry_path() const;
 
@@ -437,7 +448,7 @@ class CuttlefishConfig {
     bool start_webrtc_sig_server() const;
 
     // Wifi MAC address inside the guest
-    std::array<unsigned char, 6> wifi_mac_address() const;
+    int wifi_mac_prefix() const;
 
     std::string factory_reset_protected_path() const;
 
@@ -469,9 +480,11 @@ class CuttlefishConfig {
     void set_adb_host_port(int adb_host_port);
     void set_modem_simulator_host_id(int modem_simulator_id);
     void set_adb_ip_and_port(const std::string& ip_port);
+    void set_confui_host_vsock_port(int confui_host_port);
     void set_rootcanal_hci_port(int rootcanal_hci_port);
     void set_rootcanal_link_port(int rootcanal_link_port);
     void set_rootcanal_test_port(int rootcanal_test_port);
+    void set_camera_server_port(int camera_server_port);
     void set_rootcanal_config_file(const std::string& rootcanal_config_file);
     void set_rootcanal_default_commands_file(
         const std::string& rootcanal_default_commands_file);
@@ -491,7 +504,7 @@ class CuttlefishConfig {
     void set_webrtc_device_id(const std::string& id);
     void set_start_webrtc_signaling_server(bool start);
     // Wifi MAC address inside the guest
-    void set_wifi_mac_address(const std::array<unsigned char, 6>&);
+    void set_wifi_mac_prefix(const int wifi_mac_prefix);
     // Gnss grpc proxy server port inside the host
     void set_gnss_grpc_proxy_server_port(int gnss_grpc_proxy_server_port);
     // Gnss grpc proxy local file path
