@@ -40,6 +40,7 @@ PRODUCT_OTA_ENFORCE_VINTF_KERNEL_REQUIREMENTS := false
 $(call inherit-product, $(SRC_TARGET_DIR)/product/go_defaults_512.mk)
 PRODUCT_ARTIFACT_PATH_REQUIREMENT_ALLOWED_LIST += \
     system/apex/com.android.tethering.inprocess.apex \
+    system/apex/com.android.tethering.inprocess.capex \
     system/app/PlatformCaptivePortalLogin/PlatformCaptivePortalLogin.apk \
     system/priv-app/CellBroadcastServiceModulePlatform/CellBroadcastServiceModulePlatform.apk \
     system/priv-app/InProcessNetworkStack/InProcessNetworkStack.apk \
@@ -63,7 +64,7 @@ PRODUCT_COPY_FILES += \
 PRODUCT_NAME := aosp_cf_arm_only_phone
 PRODUCT_DEVICE := vsoc_arm_only
 PRODUCT_MANUFACTURER := Google
-PRODUCT_MODEL := Cuttlefish arm phone (32-bit only)
+PRODUCT_MODEL := Cuttlefish arm phone 32-bit only
 
 PRODUCT_VENDOR_PROPERTIES += \
     ro.soc.manufacturer=$(PRODUCT_MANUFACTURER) \

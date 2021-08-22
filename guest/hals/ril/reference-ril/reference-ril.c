@@ -4218,6 +4218,16 @@ void getConfigSlotStatus(RIL_SimSlotStatus_V1_2 *pSimSlotStatus) {
     pSimSlotStatus->eid = "";
 }
 
+void sendUnsolNetworkScanResult() {
+    RIL_NetworkScanResult scanr;
+    memset(&scanr, 0, sizeof(scanr));
+    scanr.status = COMPLETE;
+    scanr.error = RIL_E_SUCCESS;
+    scanr.network_infos = NULL;
+    scanr.network_infos_length = 0;
+    RIL_onUnsolicitedResponse(RIL_UNSOL_NETWORK_SCAN_RESULT, &scanr, sizeof(scanr));
+}
+
 void onIccSlotStatus(RIL_Token t) {
     RIL_SimSlotStatus_V1_2 *pSimSlotStatusList =
         (RIL_SimSlotStatus_V1_2 *)calloc(SIM_COUNT, sizeof(RIL_SimSlotStatus_V1_2));
@@ -4836,6 +4846,8 @@ onRequest (int request, void *data, size_t datalen, RIL_Token t)
         // New requests after P.
         case RIL_REQUEST_START_NETWORK_SCAN:
             RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
+            // send unsol network scan results after a short while
+            RIL_requestTimedCallback (sendUnsolNetworkScanResult, NULL, &TIMEVAL_SIMPOLL);
             break;
         case RIL_REQUEST_GET_MODEM_STACK_STATUS:
             RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
@@ -4902,9 +4914,15 @@ onRequest (int request, void *data, size_t datalen, RIL_Token t)
                             phoneCapability, sizeof(RIL_PhoneCapability));
             break;
         }
-        case RIL_REQUEST_CONFIG_SET_MODEM_CONFIG:
-            RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
+        case RIL_REQUEST_CONFIG_SET_MODEM_CONFIG: {
+            RIL_ModemConfig *mdConfig = (RIL_ModemConfig*)(data);
+            if (mdConfig == NULL || mdConfig->numOfLiveModems != 1) {
+                RIL_onRequestComplete(t, RIL_E_INVALID_ARGUMENTS, NULL, 0);
+            } else {
+                RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
+            }
             break;
+        }
         case RIL_REQUEST_CONFIG_GET_MODEM_CONFIG: {
             RIL_ModemConfig mdConfig;
             mdConfig.numOfLiveModems = 1;
@@ -4912,10 +4930,15 @@ onRequest (int request, void *data, size_t datalen, RIL_Token t)
             RIL_onRequestComplete(t, RIL_E_SUCCESS, &mdConfig, sizeof(RIL_ModemConfig));
             break;
         }
-        case RIL_REQUEST_CONFIG_SET_PREFER_DATA_MODEM:
-            RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
+        case RIL_REQUEST_CONFIG_SET_PREFER_DATA_MODEM: {
+            int *modemId = (int*)(data);
+            if (modemId == NULL || *modemId != 0) {
+                RIL_onRequestComplete(t, RIL_E_INVALID_ARGUMENTS, NULL, 0);
+            } else {
+                RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
+            }
             break;
-
+        }
         case RIL_REQUEST_SET_SIGNAL_STRENGTH_REPORTING_CRITERIA:
             RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
             break;

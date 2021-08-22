@@ -34,6 +34,7 @@
 
 #include "host/frontend/webrtc/lib/audio_device.h"
 #include "host/frontend/webrtc/lib/audio_track_source_impl.h"
+#include "host/frontend/webrtc/lib/camera_streamer.h"
 #include "host/frontend/webrtc/lib/client_handler.h"
 #include "host/frontend/webrtc/lib/port_range_socket_factory.h"
 #include "host/frontend/webrtc/lib/video_track_source_impl.h"
@@ -60,6 +61,9 @@ constexpr auto kControlPanelButtonDeviceStates = "device_states";
 constexpr auto kControlPanelButtonLidSwitchOpen = "lid_switch_open";
 constexpr auto kControlPanelButtonHingeAngleValue = "hinge_angle_value";
 constexpr auto kCustomControlPanelButtonsField = "custom_control_panel_buttons";
+
+constexpr int kRegistrationRetries = 3;
+constexpr int kRetryFirstIntervalMs = 1000;
 
 void SendJson(WsConnection* ws_conn, const Json::Value& data) {
   Json::StreamWriterBuilder factory;
@@ -141,6 +145,7 @@ class Streamer::Impl : public WsConnectionObserver {
 
   void SendMessageToClient(int client_id, const Json::Value& msg);
   void DestroyClientHandler(int client_id);
+  void SetupCameraForClient(int client_id);
 
   // WsObserver
   void OnOpen() override;
@@ -170,6 +175,9 @@ class Streamer::Impl : public WsConnectionObserver {
   std::map<std::string, std::string> hardware_;
   std::vector<ControlPanelButtonDescriptor> custom_control_panel_buttons_;
   std::shared_ptr<AudioDeviceModuleWrapper> audio_device_module_;
+  std::unique_ptr<CameraStreamer> camera_streamer_;
+  int registration_retries_left_ = kRegistrationRetries;
+  int retry_interval_ms_ = kRetryFirstIntervalMs;
 };
 
 Streamer::Streamer(std::unique_ptr<Streamer::Impl> impl)
@@ -261,6 +269,11 @@ std::shared_ptr<AudioSink> Streamer::AddAudioStream(const std::string& label) {
 
 std::shared_ptr<AudioSource> Streamer::GetAudioSource() {
   return impl_->audio_device_module_;
+}
+
+CameraController* Streamer::AddCamera(unsigned int port, unsigned int cid) {
+  impl_->camera_streamer_ = std::make_unique<CameraStreamer>(port, cid);
+  return impl_->camera_streamer_.get();
 }
 
 void Streamer::SetHardwareSpec(std::string key, std::string value) {
@@ -426,13 +439,23 @@ void Streamer::Impl::OnClose() {
 
 void Streamer::Impl::OnError(const std::string& error) {
   // Called from websocket thread.
-  LOG(ERROR) << "Error on connection with the operator: " << error;
-  signal_thread_->PostTask(RTC_FROM_HERE, [this]() {
-    auto observer = operator_observer_.lock();
-    if (observer) {
-      observer->OnError();
-    }
-  });
+  if (registration_retries_left_) {
+    LOG(WARNING) << "Connection to operator failed (" << error << "), "
+                 << registration_retries_left_ << " retries left";
+    --registration_retries_left_;
+    signal_thread_->PostDelayedTask(
+        RTC_FROM_HERE, [this]() { server_connection_->Connect(); },
+        retry_interval_ms_);
+    retry_interval_ms_ *= 2;
+  } else {
+    LOG(ERROR) << "Error on connection with the operator: " << error;
+    signal_thread_->PostTask(RTC_FROM_HERE, [this]() {
+      auto observer = operator_observer_.lock();
+      if (observer) {
+        observer->OnError();
+      }
+    });
+  }
 }
 
 void Streamer::Impl::HandleConfigMessage(const Json::Value& server_message) {
@@ -566,7 +589,13 @@ std::shared_ptr<ClientHandler> Streamer::Impl::CreateClientHandler(
       [this, client_id](const Json::Value& msg) {
         SendMessageToClient(client_id, msg);
       },
-      [this, client_id] { DestroyClientHandler(client_id); });
+      [this, client_id](bool isOpen) {
+        if (isOpen) {
+          SetupCameraForClient(client_id);
+        } else {
+          DestroyClientHandler(client_id);
+        }
+      });
 
   webrtc::PeerConnectionInterface::RTCConfiguration config;
   config.sdp_semantics = webrtc::SdpSemantics::kUnifiedPlan;
@@ -639,6 +668,20 @@ void Streamer::Impl::DestroyClientHandler(int client_id) {
     // deadlock.
     clients_.erase(client_id);
   });
+}
+
+void Streamer::Impl::SetupCameraForClient(int client_id) {
+  if (!camera_streamer_) {
+    return;
+  }
+  auto client_handler = clients_[client_id];
+  if (client_handler) {
+    auto camera_track = client_handler->GetCameraStream();
+    if (camera_track) {
+      camera_track->AddOrUpdateSink(camera_streamer_.get(),
+                                    rtc::VideoSinkWants());
+    }
+  }
 }
 
 }  // namespace webrtc_streaming
