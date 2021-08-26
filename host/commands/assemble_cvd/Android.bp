@@ -25,7 +25,6 @@ cc_binary {
         "boot_config.cc",
         "boot_image_utils.cc",
         "clean.cc",
-        "config.cpp",
         "disk_flags.cc",
         "flags.cc",
         "flag_feature.cpp",
@@ -36,6 +35,7 @@ cc_binary {
         "bootimg_headers",
     ],
     shared_libs: [
+        "libext2_blkid",
         "libcuttlefish_fs",
         "libcuttlefish_utils",
         "libbase",

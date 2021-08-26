@@ -19,16 +19,17 @@
 #include <sstream>
 #include <unordered_map>
 
+#include <fruit/fruit.h>
+
 #include "common/libs/utils/environment.h"
 #include "common/libs/utils/files.h"
 #include "common/libs/utils/flag_parser.h"
 #include "host/commands/assemble_cvd/alloc.h"
 #include "host/commands/assemble_cvd/boot_config.h"
 #include "host/commands/assemble_cvd/clean.h"
-#include "host/commands/assemble_cvd/config.h"
 #include "host/commands/assemble_cvd/disk_flags.h"
-#include "host/commands/assemble_cvd/flag_feature.h"
 #include "host/libs/config/adb_config.h"
+#include "host/libs/config/config_flag.h"
 #include "host/libs/config/host_tools_version.h"
 #include "host/libs/graphics_detector/graphics_detector.h"
 #include "host/libs/vm_manager/crosvm_manager.h"
@@ -47,8 +48,6 @@ DEFINE_string(data_policy, "use_existing", "How to handle userdata partition."
             "'always_create'.");
 DEFINE_int32(blank_data_image_mb, 0,
              "The size of the blank data image to generate, MB.");
-DEFINE_string(blank_data_image_fmt, "f2fs",
-              "The fs format for the blank data image. Used with mkfs.");
 DEFINE_int32(gdb_port, 0,
              "Port number to spawn kernel gdb on e.g. -gdb_port=1234. The"
              "kernel must have been built with CONFIG_RANDOMIZE_BASE "
@@ -220,17 +219,6 @@ DEFINE_string(
     "appearance of the substring '{num}' in the device id will be substituted "
     "with the instance number to support multiple instances");
 
-DEFINE_string(adb_mode, "vsock_half_tunnel",
-              "Mode for ADB connection."
-              "'vsock_tunnel' for a TCP connection tunneled through vsock, "
-              "'native_vsock' for a  direct connection to the guest ADB over "
-              "vsock, 'vsock_half_tunnel' for a TCP connection forwarded to "
-              "the guest ADB server, or a comma separated list of types as in "
-              "'native_vsock,vsock_half_tunnel'");
-DEFINE_bool(run_adb_connector, !cuttlefish::IsRunningInContainer(),
-            "Maintain adb connection by sending 'adb connect' commands to the "
-            "server. Only relevant with -adb_mode=tunnel or vsock_tunnel");
-
 DEFINE_string(uuid, cuttlefish::ForCurrentInstance(cuttlefish::kDefaultUuidPrefix),
               "UUID to use for the device. Random if not specified");
 DEFINE_bool(daemon, false,
@@ -298,8 +286,6 @@ DEFINE_string(ap_kernel_image, "", "kernel image for AP instance");
 DEFINE_bool(record_screen, false, "Enable screen recording. "
                                   "Requires --start_webrtc");
 
-DEFINE_bool(ethernet, false, "Enable Ethernet network interface");
-
 DEFINE_bool(smt, false, "Enable simultaneous multithreading (SMT/HT)");
 
 DEFINE_int32(vsock_guest_cid,
@@ -330,6 +316,8 @@ DEFINE_bool(enable_audio, cuttlefish::HostArch() != cuttlefish::Arch::Arm64,
             "Whether to play or capture audio");
 
 DEFINE_uint32(camera_server_port, 0, "camera vsock port");
+
+DEFINE_string(userdata_format, "f2fs", "The userdata filesystem format");
 
 DECLARE_string(assembly_dir);
 DECLARE_string(boot_image);
@@ -476,11 +464,17 @@ void ReadKernelConfig(KernelConfig* kernel_config) {
 
 CuttlefishConfig InitializeCuttlefishConfiguration(
     const std::string& instance_dir, int modem_simulator_count,
-    KernelConfig kernel_config) {
+    KernelConfig kernel_config, fruit::Injector<>& injector) {
   // At most one streamer can be started.
   CHECK(NumStreamers() <= 1);
 
   CuttlefishConfig tmp_config_obj;
+
+  for (const auto& fragment : injector.getMultibindings<ConfigFragment>()) {
+    CHECK(tmp_config_obj.SaveFragment(*fragment))
+        << "Failed to save fragment " << fragment->Name();
+  }
+
   tmp_config_obj.set_assembly_dir(FLAGS_assembly_dir);
   tmp_config_obj.set_target_arch(kernel_config.target_arch);
   tmp_config_obj.set_bootconfig_supported(kernel_config.bootconfig_supported);
@@ -591,14 +585,6 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
 
   tmp_config_obj.set_gdb_port(FLAGS_gdb_port);
 
-  {
-    AdbConfig adb_config;
-    std::vector<std::string> adb = android::base::Split(FLAGS_adb_mode, ",");
-    adb_config.set_adb_mode(std::set<std::string>(adb.begin(), adb.end()));
-    adb_config.set_run_adb_connector(FLAGS_run_adb_connector);
-    CHECK(tmp_config_obj.SaveFragment(adb_config)) << "Failed to save adb info";
-  }
-
   tmp_config_obj.set_guest_enforce_security(FLAGS_guest_enforce_security);
   tmp_config_obj.set_guest_audit_security(FLAGS_guest_audit_security);
   tmp_config_obj.set_extra_kernel_cmdline(FLAGS_extra_kernel_cmdline);
@@ -651,7 +637,6 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
 
   tmp_config_obj.set_data_policy(FLAGS_data_policy);
   tmp_config_obj.set_blank_data_image_mb(FLAGS_blank_data_image_mb);
-  tmp_config_obj.set_blank_data_image_fmt(FLAGS_blank_data_image_fmt);
 
   tmp_config_obj.set_enable_gnss_grpc_proxy(FLAGS_start_gnss_proxy);
 
@@ -742,11 +727,11 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
 
   tmp_config_obj.set_record_screen(FLAGS_record_screen);
 
-  tmp_config_obj.set_ethernet(FLAGS_ethernet);
-
   tmp_config_obj.set_enable_host_bluetooth(FLAGS_enable_host_bluetooth);
 
   tmp_config_obj.set_protected_vm(FLAGS_protected_vm);
+
+  tmp_config_obj.set_userdata_format(FLAGS_userdata_format);
 
   std::vector<int> num_instances;
   for (int i = 0; i < FLAGS_num_instances; i++) {
@@ -802,7 +787,7 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
     instance.set_adb_ip_and_port("0.0.0.0:" + std::to_string(6520 + num - 1));
     instance.set_confui_host_vsock_port(7700 + num - 1);
     instance.set_tombstone_receiver_port(calc_vsock_port(6600));
-    instance.set_vehicle_hal_server_port(9210 + num - 1);
+    instance.set_vehicle_hal_server_port(9300 + num - 1);
     instance.set_audiocontrol_server_port(9410);  /* OK to use the same port number across instances */
     instance.set_config_server_port(calc_vsock_port(6800));
 
@@ -945,55 +930,7 @@ void SetDefaultFlagsForCrosvm() {
                                SET_FLAGS_DEFAULT);
 }
 
-fruit::Component<> FlagsComponent() {
-  return fruit::createComponent().install(GflagsComponent);
-}
-
-bool ParseCommandLineFlags(std::vector<std::string>& args,
-                           KernelConfig* kernel_config) {
-  bool help = false;
-  std::string help_str;
-  bool helpxml = false;
-
-  std::vector<Flag> help_flags = {
-      GflagsCompatFlag("help", help),
-      GflagsCompatFlag("helpfull", help),
-      GflagsCompatFlag("helpshort", help),
-      GflagsCompatFlag("helpmatch", help_str),
-      GflagsCompatFlag("helpon", help_str),
-      GflagsCompatFlag("helppackage", help_str),
-      GflagsCompatFlag("helpxml", helpxml),
-  };
-  for (const auto& help_flag : help_flags) {
-    if (!help_flag.Parse(args)) {
-      LOG(ERROR) << "Failed to process help flag.";
-      return false;
-    }
-  }
-
-  fruit::Injector<> injector(FlagsComponent);
-  auto flag_features = injector.getMultibindings<FlagFeature>();
-  if (!FlagFeature::ProcessFlags(flag_features, args)) {
-    LOG(ERROR) << "Failed to parse flags.";
-    return false;
-  }
-
-  SetDefaultFlagsFromConfigPreset();
-
-  if (help || help_str != "") {
-    LOG(WARNING) << "TODO(schuffelen): Implement `--help` for assemble_cvd.";
-    LOG(WARNING) << "In the meantime, call `launch_cvd --help`";
-    return false;
-  } else if (helpxml) {
-    if (!FlagFeature::WriteGflagsHelpXml(flag_features, std::cout)) {
-      LOG(ERROR) << "Failure in writing gflags helpxml output";
-    }
-    std::exit(1);  // For parity with gflags
-  }
-  // TODO(schuffelen): Put in "unknown flag" guards after gflags is removed.
-  // gflags either consumes all arguments that start with - or leaves all of
-  // them in place, and either errors out on unknown flags or accepts any flags.
-
+bool GetKernelConfigAndSetDefaults(KernelConfig* kernel_config) {
   bool invalid_manager = false;
 
   if (!ResolveInstanceFiles()) {
