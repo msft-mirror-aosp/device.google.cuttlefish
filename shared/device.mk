@@ -82,10 +82,6 @@ PRODUCT_PRODUCT_PROPERTIES += \
     ro.com.google.locationfeatures=1 \
     persist.sys.fuse.passthrough.enable=true \
 
-# Storage: for factory reset protection feature
-PRODUCT_VENDOR_PROPERTIES += \
-    ro.frp.pst=/dev/block/by-name/frp
-
 # Explanation of specific properties:
 #   debug.hwui.swap_with_damage avoids boot failure on M http://b/25152138
 #   ro.opengles.version OpenGLES 3.0
@@ -314,14 +310,18 @@ ifeq ($(TARGET_RO_FILE_SYSTEM_TYPE),ext4)
 PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/config/fstab.f2fs:$(TARGET_COPY_OUT_VENDOR_RAMDISK)/first_stage_ramdisk/fstab.f2fs \
     device/google/cuttlefish/shared/config/fstab.f2fs:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.f2fs \
+    device/google/cuttlefish/shared/config/fstab.f2fs:$(TARGET_COPY_OUT_RECOVERY)/root/first_stage_ramdisk/fstab.f2fs \
     device/google/cuttlefish/shared/config/fstab.ext4:$(TARGET_COPY_OUT_VENDOR_RAMDISK)/first_stage_ramdisk/fstab.ext4 \
-    device/google/cuttlefish/shared/config/fstab.ext4:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.ext4
+    device/google/cuttlefish/shared/config/fstab.ext4:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.ext4 \
+    device/google/cuttlefish/shared/config/fstab.ext4:$(TARGET_COPY_OUT_RECOVERY)/root/first_stage_ramdisk/fstab.ext4
 else
 PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/config/fstab-$(TARGET_RO_FILE_SYSTEM_TYPE).f2fs:$(TARGET_COPY_OUT_VENDOR_RAMDISK)/first_stage_ramdisk/fstab.f2fs \
     device/google/cuttlefish/shared/config/fstab-$(TARGET_RO_FILE_SYSTEM_TYPE).f2fs:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.f2fs \
+    device/google/cuttlefish/shared/config/fstab-$(TARGET_RO_FILE_SYSTEM_TYPE).f2fs:$(TARGET_COPY_OUT_RECOVERY)/root/first_stage_ramdisk/fstab.f2fs \
     device/google/cuttlefish/shared/config/fstab-$(TARGET_RO_FILE_SYSTEM_TYPE).ext4:$(TARGET_COPY_OUT_VENDOR_RAMDISK)/first_stage_ramdisk/fstab.ext4 \
-    device/google/cuttlefish/shared/config/fstab-$(TARGET_RO_FILE_SYSTEM_TYPE).ext4:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.ext4
+    device/google/cuttlefish/shared/config/fstab-$(TARGET_RO_FILE_SYSTEM_TYPE).ext4:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.ext4 \
+    device/google/cuttlefish/shared/config/fstab-$(TARGET_RO_FILE_SYSTEM_TYPE).ext4:$(TARGET_COPY_OUT_RECOVERY)/root/first_stage_ramdisk/fstab.ext4
 endif
 
 ifeq ($(TARGET_VULKAN_SUPPORT),true)
@@ -405,8 +405,8 @@ PRODUCT_PACKAGES += android.hardware.bluetooth.audio@2.1-impl
 #
 LOCAL_AUDIO_PRODUCT_PACKAGE ?= \
     android.hardware.audio.service \
-    android.hardware.audio@6.0-impl.ranchu \
-    android.hardware.audio.effect@6.0-impl \
+    android.hardware.audio@7.0-impl.ranchu \
+    android.hardware.audio.effect@7.0-impl \
 
 LOCAL_AUDIO_PRODUCT_COPY_FILES ?= \
     device/generic/goldfish/audio/policy/audio_policy_configuration.xml:$(TARGET_COPY_OUT_VENDOR)/etc/audio_policy_configuration.xml \
@@ -591,9 +591,10 @@ PRODUCT_PACKAGES += \
     android.hardware.memtrack-service.example
 
 # WLAN driver configuration files
+LOCAL_WPA_SUPPLICANT_OVERLAY ?= $(LOCAL_PATH)/config/wpa_supplicant_overlay.conf
 PRODUCT_COPY_FILES += \
     external/wpa_supplicant_8/wpa_supplicant/wpa_supplicant_template.conf:$(TARGET_COPY_OUT_VENDOR)/etc/wifi/wpa_supplicant.conf \
-    $(LOCAL_PATH)/config/wpa_supplicant_overlay.conf:$(TARGET_COPY_OUT_VENDOR)/etc/wifi/wpa_supplicant_overlay.conf
+    $(LOCAL_WPA_SUPPLICANT_OVERLAY):$(TARGET_COPY_OUT_VENDOR)/etc/wifi/wpa_supplicant_overlay.conf
 
 # Fastboot HAL & fastbootd
 PRODUCT_PACKAGES += \

@@ -212,12 +212,6 @@ std::vector<Command> CrosvmManager::StartCommands(
     crosvm_cmd.AddParameter("--serial=hardware=virtio-console,num=", ++hvc_num,
                             ",type=file,path=", output, ",input=", input);
   };
-  // Deprecated; do not add any more users
-  auto add_serial = [&crosvm_cmd, &serial_num](const std::string& output,
-                                               const std::string& input) {
-    crosvm_cmd.AddParameter("--serial=hardware=serial,num=", ++serial_num,
-                            ",type=file,path=", output, ",input=", input);
-  };
 
   crosvm_cmd.AddParameter("run");
   ap_cmd.AddParameter("run");
@@ -300,6 +294,7 @@ std::vector<Command> CrosvmManager::StartCommands(
   }
 
   AddTapFdParameter(&crosvm_cmd, instance.mobile_tap_name());
+  AddTapFdParameter(&crosvm_cmd, instance.ethernet_tap_name());
 
   SharedFD wifi_tap;
   if (config.vhost_user_mac80211_hwsim().empty()) {
@@ -378,10 +373,6 @@ std::vector<Command> CrosvmManager::StartCommands(
     add_hvc_sink();
   }
 
-  if (config.enable_gnss_grpc_proxy()) {
-    add_serial(instance.gnss_out_pipe_name(), instance.gnss_in_pipe_name());
-  }
-
   SharedFD log_out_rd, log_out_wr;
   if (!SharedFD::Pipe(&log_out_rd, &log_out_wr)) {
     LOG(ERROR) << "Failed to create log pipe for crosvm's stdout/stderr: "
@@ -409,6 +400,13 @@ std::vector<Command> CrosvmManager::StartCommands(
   } else {
     add_hvc_sink();
   }
+  if (config.enable_gnss_grpc_proxy()) {
+    add_hvc(instance.PerInstanceInternalPath("gnsshvc_fifo_vm.out"),
+            instance.PerInstanceInternalPath("gnsshvc_fifo_vm.in"));
+  } else {
+    add_hvc_sink();
+  }
+
   for (auto i = 0; i < VmManager::kMaxDisks - disk_num; i++) {
     add_hvc_sink();
   }
@@ -420,12 +418,6 @@ std::vector<Command> CrosvmManager::StartCommands(
   if (config.enable_audio()) {
     crosvm_cmd.AddParameter("--sound=",
                             config.ForDefaultInstance().audio_server_path());
-  }
-
-  // TODO(b/172286896): This is temporarily optional, but should be made
-  // unconditional and moved up to the other network devices area
-  if (config.ethernet()) {
-    AddTapFdParameter(&crosvm_cmd, instance.ethernet_tap_name());
   }
 
   // TODO(b/162071003): virtiofs crashes without sandboxing, this should be fixed
