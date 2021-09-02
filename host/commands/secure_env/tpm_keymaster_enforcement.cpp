@@ -25,6 +25,8 @@
 #include "host/commands/secure_env/tpm_key_blob_maker.h"
 #include "host/commands/secure_env/tpm_random_source.h"
 
+namespace cuttlefish {
+
 using keymaster::km_id_t;
 using keymaster::HmacSharingParameters;
 using keymaster::HmacSharingParametersArray;
@@ -99,7 +101,7 @@ bool TpmKeymasterEnforcement::activation_date_valid(
 
 bool TpmKeymasterEnforcement::expiration_date_passed(
     uint64_t expiration_date) const {
-  return expiration_date > get_wall_clock_time_ms();
+  return expiration_date < get_wall_clock_time_ms();
 }
 
 bool TpmKeymasterEnforcement::auth_token_timed_out(
@@ -349,3 +351,5 @@ bool TpmKeymasterEnforcement::CreateKeyId(
   memcpy(keyid, hmac->buffer, sizeof(km_id_t));
   return true;
 }
+
+}  // namespace cuttlefish
