@@ -93,108 +93,127 @@ async function ajaxPostJson(url, data) {
 }
 
 class DeviceConnection {
-  constructor(pc, control, media_stream) {
-    this._pc = pc;
-    this._control = control;
-    this._media_stream = media_stream;
-    // Disable the microphone by default
-    this.useMic(false);
-    this._cameraDataChannel = pc.createDataChannel('camera-data-channel');
-    this._cameraDataChannel.binaryType = 'arraybuffer';
-    this._cameraInputQueue = new Array();
+  #pc;
+  #control;
+  #description;
+
+  #cameraDataChannel;
+  #cameraInputQueue;
+  #controlChannel;
+  #inputChannel;
+  #adbChannel;
+  #bluetoothChannel;
+
+  #streams;
+  #streamPromiseResolvers;
+  #micSenders = [];
+  #cameraSenders = [];
+  #camera_res_x;
+  #camera_res_y;
+
+  #onAdbMessage;
+  #onControlMessage;
+  #onBluetoothMessage;
+
+  constructor(pc, control) {
+    this.#pc = pc;
+    this.#control = control;
+    this.#cameraDataChannel = pc.createDataChannel('camera-data-channel');
+    this.#cameraDataChannel.binaryType = 'arraybuffer';
+    this.#cameraInputQueue = new Array();
     var self = this;
-    this._cameraDataChannel.onbufferedamountlow = () => {
-      if (self._cameraInputQueue.length > 0) {
-        self.sendCameraData(self._cameraInputQueue.shift());
+    this.#cameraDataChannel.onbufferedamountlow = () => {
+      if (self.#cameraInputQueue.length > 0) {
+        self.sendCameraData(self.#cameraInputQueue.shift());
       }
     };
-    this._inputChannel = createDataChannel(pc, 'input-channel');
-    this._adbChannel = createDataChannel(pc, 'adb-channel', (msg) => {
-      if (this._onAdbMessage) {
-        this._onAdbMessage(msg.data);
+    this.#inputChannel = createDataChannel(pc, 'input-channel');
+    this.#adbChannel = createDataChannel(pc, 'adb-channel', (msg) => {
+      if (this.#onAdbMessage) {
+        this.#onAdbMessage(msg.data);
       } else {
         console.error('Received unexpected ADB message');
       }
     });
-    this._controlChannel = awaitDataChannel(pc, 'device-control', (msg) => {
-      if (this._onControlMessage) {
-        this._onControlMessage(msg);
+    this.#controlChannel = awaitDataChannel(pc, 'device-control', (msg) => {
+      if (this.#onControlMessage) {
+        this.#onControlMessage(msg);
       } else {
         console.error('Received unexpected Control message');
       }
     });
-    this._bluetoothChannel =
+    this.#bluetoothChannel =
         createDataChannel(pc, 'bluetooth-channel', (msg) => {
-          if (this._onBluetoothMessage) {
-            this._onBluetoothMessage(msg.data);
+          if (this.#onBluetoothMessage) {
+            this.#onBluetoothMessage(msg.data);
           } else {
             console.error('Received unexpected Bluetooth message');
           }
         });
-    this._streams = {};
-    this._streamPromiseResolvers = {};
+    this.#streams = {};
+    this.#streamPromiseResolvers = {};
 
     pc.addEventListener('track', e => {
       console.debug('Got remote stream: ', e);
       for (const stream of e.streams) {
-        this._streams[stream.id] = stream;
-        if (this._streamPromiseResolvers[stream.id]) {
-          for (let resolver of this._streamPromiseResolvers[stream.id]) {
+        this.#streams[stream.id] = stream;
+        if (this.#streamPromiseResolvers[stream.id]) {
+          for (let resolver of this.#streamPromiseResolvers[stream.id]) {
             resolver();
           }
-          delete this._streamPromiseResolvers[stream.id];
+          delete this.#streamPromiseResolvers[stream.id];
         }
       }
     });
   }
 
   set description(desc) {
-    this._description = desc;
+    this.#description = desc;
   }
 
   get description() {
-    return this._description;
+    return this.#description;
   }
 
   get imageCapture() {
-    if (this._cameraSenders && this._cameraSenders.length > 0) {
-      let track = this._cameraSenders[0].track;
+    if (this.#cameraSenders && this.#cameraSenders.length > 0) {
+      let track = this.#cameraSenders[0].track;
       return new ImageCapture(track);
     }
     return undefined;
   }
 
   get cameraWidth() {
-    return this._x_res;
+    return this.#camera_res_x;
   }
 
   get cameraHeight() {
-    return this._y_res;
+    return this.#camera_res_y;
   }
 
   get cameraEnabled() {
-    return this._cameraSenders && this._cameraSenders.length > 0;
+    return this.#cameraSenders && this.#cameraSenders.length > 0;
   }
 
   getStream(stream_id) {
     return new Promise((resolve, reject) => {
-      if (this._streams[stream_id]) {
-        resolve(this._streams[stream_id]);
+      if (this.#streams[stream_id]) {
+        resolve(this.#streams[stream_id]);
       } else {
-        if (!this._streamPromiseResolvers[stream_id]) {
-          this._streamPromiseResolvers[stream_id] = [];
+        if (!this.#streamPromiseResolvers[stream_id]) {
+          this.#streamPromiseResolvers[stream_id] = [];
         }
-        this._streamPromiseResolvers[stream_id].push(resolve);
+        this.#streamPromiseResolvers[stream_id].push(resolve);
       }
     });
   }
 
-  _sendJsonInput(evt) {
-    this._inputChannel.send(JSON.stringify(evt));
+  #sendJsonInput(evt) {
+    this.#inputChannel.send(JSON.stringify(evt));
   }
 
   sendMousePosition({x, y, down, display_label}) {
-    this._sendJsonInput({
+    this.#sendJsonInput({
       type: 'mouse',
       down: down ? 1 : 0,
       x,
@@ -206,7 +225,7 @@ class DeviceConnection {
   // TODO (b/124121375): This should probably be an array of pointer events and
   // have different properties.
   sendMultiTouch({idArr, xArr, yArr, down, slotArr, display_label}) {
-    this._sendJsonInput({
+    this.#sendJsonInput({
       type: 'multi-touch',
       id: idArr,
       x: xArr,
@@ -218,75 +237,81 @@ class DeviceConnection {
   }
 
   sendKeyEvent(code, type) {
-    this._sendJsonInput({type: 'keyboard', keycode: code, event_type: type});
+    this.#sendJsonInput({type: 'keyboard', keycode: code, event_type: type});
   }
 
   disconnect() {
-    this._pc.close();
+    this.#pc.close();
   }
 
   // Sends binary data directly to the in-device adb daemon (skipping the host)
   sendAdbMessage(msg) {
-    this._adbChannel.send(msg);
+    this.#adbChannel.send(msg);
   }
 
   // Provide a callback to receive data from the in-device adb daemon
   onAdbMessage(cb) {
-    this._onAdbMessage = cb;
+    this.#onAdbMessage = cb;
   }
 
   // Send control commands to the device
   sendControlMessage(msg) {
-    this._controlChannel.send(msg);
+    this.#controlChannel.send(msg);
   }
 
-  useMic(in_use) {
-    if (this._media_stream) {
-      this._media_stream.getAudioTracks().forEach(
-          track => track.enabled = in_use);
+  async #useDevice(in_use, senders_arr, device_opt) {
+    // An empty array means no tracks are currently in use
+    if (senders_arr.length > 0 === !!in_use) {
+      console.warn('Device is already ' + (in_use ? '' : 'not ') + 'in use');
+      return in_use;
     }
-  }
-
-  async useVideo(in_use) {
+    let renegotiation_needed = false;
     if (in_use) {
-      if (this._cameraSenders) {
-        console.warn('Video is already in use');
-        return;
-      }
-      this._cameraSenders = [];
       try {
-        let videoStream = await navigator.mediaDevices.getUserMedia(
-            {video: true, audio: false});
-        this.sendCameraResolution(videoStream);
-        videoStream.getTracks().forEach(track => {
+        let stream = await navigator.mediaDevices.getUserMedia(device_opt);
+        stream.getTracks().forEach(track => {
           console.info(`Using ${track.kind} device: ${track.label}`);
-          this._cameraSenders.push(this._pc.addTrack(track));
+          senders_arr.push(this.#pc.addTrack(track));
+          renegotiation_needed = true;
         });
       } catch (e) {
-        console.error('Failed to add video stream to peer connection: ', e);
+        console.error('Failed to add stream to peer connection: ', e);
+        // Don't return yet, if there were errors some tracks may have been
+        // added so the connection should be renegotiated again.
       }
     } else {
-      if (!this._cameraSenders) {
-        return;
-      }
-      for (const sender of this._cameraSenders) {
+      for (const sender of senders_arr) {
         console.info(
             `Removing ${sender.track.kind} device: ${sender.track.label}`);
         let track = sender.track;
         track.stop();
-        this._pc.removeTrack(sender);
+        this.#pc.removeTrack(sender);
+        renegotiation_needed = true;
       }
-      delete this._cameraSenders;
+      // Empty the array passed by reference, just assigning [] won't do that.
+      senders_arr.length = 0;
     }
-    this._control.renegotiateConnection();
+    if (renegotiation_needed) {
+      this.#control.renegotiateConnection();
+    }
+    // Return the new state
+    return senders_arr.length > 0;
+  }
+
+  async useMic(in_use) {
+    return this.#useDevice(in_use, this.#micSenders, {audio: true, video: false});
+  }
+
+  async useVideo(in_use) {
+    return this.#useDevice(in_use, this.#micSenders, {audio: false, video: true});
   }
 
   sendCameraResolution(stream) {
     const cameraTracks = stream.getVideoTracks();
     if (cameraTracks.length > 0) {
       const settings = cameraTracks[0].getSettings();
-      this._x_res = settings.width;
-      this._y_res = settings.height;
+      this.#camera_res_x = settings.width;
+      this.#camera_res_y = settings.height;
       this.sendControlMessage(JSON.stringify({
         command: 'camera_settings',
         width: settings.width,
@@ -298,9 +323,9 @@ class DeviceConnection {
   }
 
   sendOrQueueCameraData(data) {
-    if (this._cameraDataChannel.bufferedAmount > 0 ||
-        this._cameraInputQueue.length > 0) {
-      this._cameraInputQueue.push(data);
+    if (this.#cameraDataChannel.bufferedAmount > 0 ||
+        this.#cameraInputQueue.length > 0) {
+      this.#cameraInputQueue.push(data);
     } else {
       this.sendCameraData(data);
     }
@@ -311,28 +336,28 @@ class DeviceConnection {
     const END_MARKER = 'EOF';
     for (let i = 0; i < data.byteLength; i += MAX_SIZE) {
       // range is clamped to the valid index range
-      this._cameraDataChannel.send(data.slice(i, i + MAX_SIZE));
+      this.#cameraDataChannel.send(data.slice(i, i + MAX_SIZE));
     }
-    this._cameraDataChannel.send(END_MARKER);
+    this.#cameraDataChannel.send(END_MARKER);
   }
 
   // Provide a callback to receive control-related comms from the device
   onControlMessage(cb) {
-    this._onControlMessage = cb;
+    this.#onControlMessage = cb;
   }
 
   sendBluetoothMessage(msg) {
-    this._bluetoothChannel.send(msg);
+    this.#bluetoothChannel.send(msg);
   }
 
   onBluetoothMessage(cb) {
-    this._onBluetoothMessage = cb;
+    this.#onBluetoothMessage = cb;
   }
 
   // Provide a callback to receive connectionstatechange states.
   onConnectionStateChange(cb) {
-    this._pc.addEventListener(
-        'connectionstatechange', evt => cb(this._pc.connectionState));
+    this.#pc.addEventListener(
+        'connectionstatechange', evt => cb(this.#pc.connectionState));
   }
 }
 
@@ -624,20 +649,7 @@ export async function Connect(deviceId, options) {
   }
   let pc = createPeerConnection(infraConfig);
 
-  let mediaStream;
-  try {
-    mediaStream =
-        await navigator.mediaDevices.getUserMedia({video: false, audio: true});
-    const tracks = mediaStream.getTracks();
-    tracks.forEach(track => {
-      console.info(`Using ${track.kind} device: ${track.label}`);
-      pc.addTrack(track, mediaStream);
-    });
-  } catch (e) {
-    console.error('Failed to open device: ', e);
-  }
-
-  let deviceConnection = new DeviceConnection(pc, control, mediaStream);
+  let deviceConnection = new DeviceConnection(pc, control);
   deviceConnection.description = deviceInfo;
 
   let connected_promise = new Promise((resolve, reject) => {

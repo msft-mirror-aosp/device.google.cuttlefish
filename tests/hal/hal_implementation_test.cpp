@@ -95,6 +95,7 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hardware.wifi.offload@1.0",
     "android.hidl.base@1.0",
     "android.hidl.memory.token@1.0",
+    "android.system.suspend@1.0", // Converted to AIDL (see b/170260236)
 };
 // clang-format on
 
@@ -113,6 +114,9 @@ static const std::set<VersionedAidlPackage> kKnownMissingAidl = {
     {"android.hardware.common.fmq.", 1},
     {"android.hardware.graphics.common.", 1},
     {"android.hardware.graphics.common.", 2},
+
+    // No implementations on cuttlefish for wifi aidl hal
+    {"android.hardware.wifi.hostapd.", 1},
 
     // These KeyMaster types are in an AIDL types-only HAL because they're used
     // by the Identity Credential AIDL HAL. Remove this when fully porting
