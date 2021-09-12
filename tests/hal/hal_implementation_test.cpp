@@ -50,7 +50,6 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hardware.broadcastradio@1.1",
     "android.hardware.broadcastradio@2.0",
     "android.hardware.cas.native@1.0",
-    "android.hardware.confirmationui@1.0",
     "android.hardware.configstore@1.1", // deprecated, see b/149050985, b/149050733
     "android.hardware.fastboot@1.1",
     "android.hardware.gnss.measurement_corrections@1.1", // is sub-interface of gnss
@@ -95,6 +94,7 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hardware.wifi.offload@1.0",
     "android.hidl.base@1.0",
     "android.hidl.memory.token@1.0",
+    "android.system.suspend@1.0", // Converted to AIDL (see b/170260236)
 };
 // clang-format on
 
@@ -114,6 +114,9 @@ static const std::set<VersionedAidlPackage> kKnownMissingAidl = {
     {"android.hardware.graphics.common.", 1},
     {"android.hardware.graphics.common.", 2},
 
+    // No implementations on cuttlefish for wifi aidl hal
+    {"android.hardware.wifi.hostapd.", 1},
+
     // These KeyMaster types are in an AIDL types-only HAL because they're used
     // by the Identity Credential AIDL HAL. Remove this when fully porting
     // KeyMaster to AIDL.
@@ -129,6 +132,9 @@ static const std::set<VersionedAidlPackage> kKnownMissingAidl = {
 
     // This version needs to be implemented (b/190236358)
     {"android.hardware.vibrator.", 2},
+
+    // This version needs to be implemented (b/198331776)
+    {"android.hardware.radio.", 1},
 };
 
 // AOSP packages which are never considered

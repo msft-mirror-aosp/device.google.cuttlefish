@@ -278,8 +278,14 @@ DEFINE_bool(console, false, "Enable the serial console");
 
 DEFINE_bool(vhost_net, false, "Enable vhost acceleration of networking");
 
-DEFINE_string(vhost_user_mac80211_hwsim, "",
-              "Unix socket path for vhost-user of mac80211_hwsim");
+DEFINE_string(
+    vhost_user_mac80211_hwsim, "",
+    "Unix socket path for vhost-user of mac80211_hwsim, typically served by "
+    "wmediumd. You can set this when using an external wmediumd instance.");
+DEFINE_string(wmediumd_config, "",
+              "Path to the wmediumd config file. When missing, the default "
+              "configuration is used which adds MAC addresses for up to 16 "
+              "cuttlefish instances including AP.");
 DEFINE_string(ap_rootfs_image, "", "rootfs image for AP instance");
 DEFINE_string(ap_kernel_image, "", "kernel image for AP instance");
 
@@ -716,14 +722,12 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
   if ((FLAGS_ap_rootfs_image.empty()) != (FLAGS_ap_kernel_image.empty())) {
     LOG(FATAL) << "Either both ap_rootfs_image and ap_kernel_image should be "
                   "set or neither should be set.";
-  } else if (FLAGS_vhost_user_mac80211_hwsim.empty() &&
-             !FLAGS_ap_rootfs_image.empty() && !FLAGS_ap_kernel_image.empty()) {
-    LOG(FATAL) << "To use external AP instance, vhost_user_mac80211_hwsim must "
-                  "be set.";
   }
 
   tmp_config_obj.set_ap_rootfs_image(FLAGS_ap_rootfs_image);
   tmp_config_obj.set_ap_kernel_image(FLAGS_ap_kernel_image);
+
+  tmp_config_obj.set_wmediumd_config(FLAGS_wmediumd_config);
 
   tmp_config_obj.set_record_screen(FLAGS_record_screen);
 
@@ -831,7 +835,10 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
       instance.set_virtual_disk_paths(virtual_disk_paths);
     }
 
-    instance.set_wifi_mac_prefix(5554 + (num - 1) * 2);
+    // We'd like to set mac prefix to be 5554, 5555, 5556, ... in normal cases.
+    // When --base_instance_num=3, this might be 5556, 5557, 5558, ... (skipping
+    // first two)
+    instance.set_wifi_mac_prefix(5554 + (num - 1));
 
     instance.set_start_webrtc_signaling_server(false);
 
@@ -854,6 +861,21 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
     } else {
       instance.set_start_webrtc_signaling_server(false);
     }
+
+    // Start wmediumd process for the first instance if
+    // vhost_user_mac80211_hwsim is not specified.
+    const bool start_wmediumd =
+        FLAGS_vhost_user_mac80211_hwsim.empty() && is_first_instance;
+    if (start_wmediumd) {
+      // TODO(b/199020470) move this to the directory for shared resources
+      auto socket_path =
+          const_instance.PerInstanceInternalPath("vhost_user_mac80211");
+      tmp_config_obj.set_vhost_user_mac80211_hwsim(socket_path);
+      instance.set_start_wmediumd(true);
+    } else {
+      instance.set_start_wmediumd(false);
+    }
+
     is_first_instance = false;
 
     // instance.modem_simulator_ports := "" or "[port,]*port"
