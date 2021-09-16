@@ -54,6 +54,7 @@ cc_binary {
         "libsparse",
         "libcuttlefish_graphics_detector",
         "libcuttlefish_host_config",
+        "libcuttlefish_host_config_adb",
         "libcuttlefish_vm_manager",
         "libgflags",
     ],
