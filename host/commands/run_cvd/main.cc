@@ -14,17 +14,17 @@
  * limitations under the License.
  */
 
+#include <android-base/logging.h>
+#include <android-base/strings.h>
+#include <fruit/fruit.h>
+#include <gflags/gflags.h>
 #include <unistd.h>
+
 #include <fstream>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
-
-#include <android-base/logging.h>
-#include <android-base/strings.h>
-#include <fruit/fruit.h>
-#include <gflags/gflags.h>
 
 #include "common/libs/fs/shared_buf.h"
 #include "common/libs/fs/shared_fd.h"
@@ -48,8 +48,6 @@
 #include "host/libs/vm_manager/vm_manager.h"
 
 namespace cuttlefish {
-
-using vm_manager::GetVmManager;
 
 namespace {
 
@@ -119,7 +117,8 @@ fruit::Component<ServerLoop> runCvdComponent(
       .install(launchModemComponent)
       .install(launchStreamerComponent)
       .install(serverLoopComponent)
-      .install(validationComponent);
+      .install(validationComponent)
+      .install(vm_manager::VmManagerComponent);
 }
 
 bool IsStdinValid() {
@@ -226,13 +225,6 @@ int RunCvdMain(int argc, char** argv) {
       process_monitor.AddCommands(command_source->Commands());
     }
   }
-
-  // The streamer needs to launch before the VMM because it serves on several
-  // sockets (input devices, vsock frame server) when using crosvm.
-
-  // Start the guest VM
-  auto vm_manager = GetVmManager(config->vm_manager(), config->target_arch());
-  process_monitor.AddCommands(vm_manager->StartCommands(*config));
 
   CHECK(process_monitor.StartAndMonitorProcesses())
       << "Could not start subprocesses";

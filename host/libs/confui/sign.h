@@ -1,11 +1,11 @@
 /*
- * Copyright (C) 2019 The Android Open Source Project
+ * Copyright 2021, The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,19 +16,16 @@
 
 #pragma once
 
-#include <memory>
-
-#include "host/libs/screen_connector/screen_connector_common.h"
-#include "host/libs/wayland/wayland_server.h"
+#include <cstdint>
+#include <optional>
+#include <vector>
 
 namespace cuttlefish {
+namespace confui {
 
-class WaylandScreenConnector {
- public:
-  WaylandScreenConnector(int frames_fd);
-  void SetFrameCallback(GenerateProcessedFrameCallbackImpl frame_callback);
+// TODO(kwstephenkim): replace this with signing using secure env host services
+std::optional<std::vector<std::uint8_t>> sign(
+    const std::vector<std::uint8_t>& message);
 
- private:
-  std::unique_ptr<wayland::WaylandServer> server_;
-};
-}
+}  // namespace confui
+}  // end of namespace cuttlefish

@@ -16,6 +16,7 @@
 #include "host/commands/run_cvd/launch.h"
 
 #include <android-base/logging.h>
+
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -29,8 +30,11 @@
 #include "host/libs/config/cuttlefish_config.h"
 #include "host/libs/config/inject.h"
 #include "host/libs/config/known_paths.h"
+#include "host/libs/vm_manager/vm_manager.h"
 
 namespace cuttlefish {
+
+using vm_manager::VmManager;
 
 namespace {
 
@@ -675,10 +679,33 @@ class WmediumdServer : public CommandSource {
   std::string config_path_;
 };
 
-using PublicDeps = fruit::Required<const CuttlefishConfig,
+class VmmCommands : public CommandSource {
+ public:
+  INJECT(VmmCommands(const CuttlefishConfig& config, VmManager& vmm))
+      : config_(config), vmm_(vmm) {}
+
+  // CommandSource
+  std::vector<Command> Commands() override {
+    return vmm_.StartCommands(config_);
+  }
+
+  // Feature
+  bool Enabled() const override { return true; }
+  std::string Name() const override { return "VirtualMachineManager"; }
+  std::unordered_set<Feature*> Dependencies() const override { return {}; }
+
+ protected:
+  bool Setup() override { return true; }
+
+ private:
+  const CuttlefishConfig& config_;
+  VmManager& vmm_;
+};
+
+using PublicDeps = fruit::Required<const CuttlefishConfig, VmManager,
                                    const CuttlefishConfig::InstanceSpecific>;
 fruit::Component<PublicDeps, KernelLogPipeProvider> launchComponent() {
-  using InternalDeps = fruit::Required<const CuttlefishConfig,
+  using InternalDeps = fruit::Required<const CuttlefishConfig, VmManager,
                                        const CuttlefishConfig::InstanceSpecific,
                                        KernelLogPipeProvider>;
   using Multi = Multibindings<InternalDeps>;
@@ -696,6 +723,7 @@ fruit::Component<PublicDeps, KernelLogPipeProvider> launchComponent() {
       .install(Bases::Impls<SecureEnvironment>)
       .install(Bases::Impls<TombstoneReceiver>)
       .install(Bases::Impls<VehicleHalServer>)
+      .install(Bases::Impls<VmmCommands>)
       .install(Bases::Impls<WmediumdServer>);
 }
 
