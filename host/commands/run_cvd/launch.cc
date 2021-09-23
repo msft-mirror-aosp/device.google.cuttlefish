@@ -16,6 +16,7 @@
 #include "host/commands/run_cvd/launch.h"
 
 #include <android-base/logging.h>
+
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -29,8 +30,11 @@
 #include "host/libs/config/cuttlefish_config.h"
 #include "host/libs/config/inject.h"
 #include "host/libs/config/known_paths.h"
+#include "host/libs/vm_manager/vm_manager.h"
 
 namespace cuttlefish {
+
+using vm_manager::VmManager;
 
 namespace {
 
@@ -42,10 +46,6 @@ std::vector<T> single_element_emplace(T&& element) {
 }
 
 }  // namespace
-
-CommandSource::~CommandSource() = default;
-
-KernelLogPipeProvider::~KernelLogPipeProvider() = default;
 
 class KernelLogMonitor : public CommandSource,
                          public KernelLogPipeProvider,
@@ -631,10 +631,81 @@ class ConsoleForwarder : public CommandSource, public DiagnosticInformation {
   SharedFD console_forwarder_out_rd_;
 };
 
-using PublicDeps = fruit::Required<const CuttlefishConfig,
+class WmediumdServer : public CommandSource {
+ public:
+  INJECT(WmediumdServer(const CuttlefishConfig& config,
+                        const CuttlefishConfig::InstanceSpecific& instance))
+      : config_(config), instance_(instance) {}
+
+  // CommandSource
+  std::vector<Command> Commands() override {
+    Command cmd(WmediumdBinary());
+    cmd.AddParameter("-u", config_.vhost_user_mac80211_hwsim());
+    cmd.AddParameter("-c", config_path_);
+    return single_element_emplace(std::move(cmd));
+  }
+
+  // Feature
+  bool Enabled() const override { return instance_.start_wmediumd(); }
+  std::string Name() const override { return "WmediumdServer"; }
+  std::unordered_set<Feature*> Dependencies() const override { return {}; }
+
+ protected:
+  bool Setup() override {
+    // If wmediumd configuration is given, use it
+    if (!config_.wmediumd_config().empty()) {
+      config_path_ = config_.wmediumd_config();
+      return true;
+    }
+    // Otherwise, generate wmediumd configuration using the current wifi mac
+    // prefix before start
+    config_path_ = instance_.PerInstanceInternalPath("wmediumd.cfg");
+    Command gen_config_cmd(WmediumdGenConfigBinary());
+    gen_config_cmd.AddParameter("-o", config_path_);
+    gen_config_cmd.AddParameter("-p", instance_.wifi_mac_prefix());
+
+    int success = gen_config_cmd.Start().Wait();
+    if (success != 0) {
+      LOG(ERROR) << "Unable to run " << gen_config_cmd.Executable()
+                 << ". Exited with status " << success;
+      return false;
+    }
+    return true;
+  }
+
+ private:
+  const CuttlefishConfig& config_;
+  const CuttlefishConfig::InstanceSpecific& instance_;
+  std::string config_path_;
+};
+
+class VmmCommands : public CommandSource {
+ public:
+  INJECT(VmmCommands(const CuttlefishConfig& config, VmManager& vmm))
+      : config_(config), vmm_(vmm) {}
+
+  // CommandSource
+  std::vector<Command> Commands() override {
+    return vmm_.StartCommands(config_);
+  }
+
+  // Feature
+  bool Enabled() const override { return true; }
+  std::string Name() const override { return "VirtualMachineManager"; }
+  std::unordered_set<Feature*> Dependencies() const override { return {}; }
+
+ protected:
+  bool Setup() override { return true; }
+
+ private:
+  const CuttlefishConfig& config_;
+  VmManager& vmm_;
+};
+
+using PublicDeps = fruit::Required<const CuttlefishConfig, VmManager,
                                    const CuttlefishConfig::InstanceSpecific>;
 fruit::Component<PublicDeps, KernelLogPipeProvider> launchComponent() {
-  using InternalDeps = fruit::Required<const CuttlefishConfig,
+  using InternalDeps = fruit::Required<const CuttlefishConfig, VmManager,
                                        const CuttlefishConfig::InstanceSpecific,
                                        KernelLogPipeProvider>;
   using Multi = Multibindings<InternalDeps>;
@@ -651,7 +722,9 @@ fruit::Component<PublicDeps, KernelLogPipeProvider> launchComponent() {
       .install(Bases::Impls<RootCanal>)
       .install(Bases::Impls<SecureEnvironment>)
       .install(Bases::Impls<TombstoneReceiver>)
-      .install(Bases::Impls<VehicleHalServer>);
+      .install(Bases::Impls<VehicleHalServer>)
+      .install(Bases::Impls<VmmCommands>)
+      .install(Bases::Impls<WmediumdServer>);
 }
 
 } // namespace cuttlefish

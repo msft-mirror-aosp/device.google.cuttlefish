@@ -29,8 +29,9 @@
 #include "host/commands/assemble_cvd/disk_flags.h"
 #include "host/commands/assemble_cvd/flag_feature.h"
 #include "host/commands/assemble_cvd/flags.h"
-#include "host/libs/config/adb_config.h"
+#include "host/libs/config/adb/adb.h"
 #include "host/libs/config/config_flag.h"
+#include "host/libs/config/custom_actions.h"
 #include "host/libs/config/fetcher_config.h"
 
 using cuttlefish::StringFromEnv;
@@ -195,7 +196,7 @@ const CuttlefishConfig* InitFilesystemAndCreateConfig(
   auto config = CuttlefishConfig::Get();
   CHECK(config) << "Failed to obtain config singleton";
 
-  CreateDynamicDiskFiles(fetcher_config, config);
+  CreateDynamicDiskFiles(fetcher_config, *config);
 
   return config;
 }
@@ -219,8 +220,11 @@ static void ExtractKernelParamsFromFetcherConfig(
 fruit::Component<> FlagsComponent() {
   return fruit::createComponent()
       .install(AdbConfigComponent)
+      .install(AdbConfigFlagComponent)
+      .install(AdbConfigFragmentComponent)
       .install(GflagsComponent)
-      .install(ConfigFlagComponent);
+      .install(ConfigFlagComponent)
+      .install(CustomActionsComponent);
 }
 
 } // namespace

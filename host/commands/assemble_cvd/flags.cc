@@ -28,7 +28,6 @@
 #include "host/commands/assemble_cvd/boot_config.h"
 #include "host/commands/assemble_cvd/clean.h"
 #include "host/commands/assemble_cvd/disk_flags.h"
-#include "host/libs/config/adb_config.h"
 #include "host/libs/config/config_flag.h"
 #include "host/libs/config/host_tools_version.h"
 #include "host/libs/graphics_detector/graphics_detector.h"
@@ -48,8 +47,6 @@ DEFINE_string(data_policy, "use_existing", "How to handle userdata partition."
             "'always_create'.");
 DEFINE_int32(blank_data_image_mb, 0,
              "The size of the blank data image to generate, MB.");
-DEFINE_string(blank_data_image_fmt, "f2fs",
-              "The fs format for the blank data image. Used with mkfs.");
 DEFINE_int32(gdb_port, 0,
              "Port number to spawn kernel gdb on e.g. -gdb_port=1234. The"
              "kernel must have been built with CONFIG_RANDOMIZE_BASE "
@@ -240,17 +237,6 @@ DEFINE_string(tpm_device, "", "A host TPM device to pass through commands to.");
 DEFINE_bool(restart_subprocesses, true, "Restart any crashed host process");
 DEFINE_bool(enable_vehicle_hal_grpc_server, true, "Enables the vehicle HAL "
             "emulation gRPC server on the host");
-DEFINE_string(custom_action_config, "",
-              "Path to a custom action config JSON. Defaults to the file provided by "
-              "build variable CVD_CUSTOM_ACTION_CONFIG. If this build variable "
-              "is empty then the custom action config will be empty as well.");
-DEFINE_string(custom_actions, "",
-              "Serialized JSON of an array of custom action objects (in the "
-              "same format as custom action config JSON files). For use "
-              "within --config preset config files; prefer "
-              "--custom_action_config to specify a custom config file on the "
-              "command line. Actions in this flag are combined with actions "
-              "in --custom_action_config.");
 DEFINE_string(bootloader, "", "Bootloader binary path");
 DEFINE_string(boot_slot, "", "Force booting into the given slot. If empty, "
              "the slot will be chosen based on the misc partition if using a "
@@ -280,8 +266,14 @@ DEFINE_bool(console, false, "Enable the serial console");
 
 DEFINE_bool(vhost_net, false, "Enable vhost acceleration of networking");
 
-DEFINE_string(vhost_user_mac80211_hwsim, "",
-              "Unix socket path for vhost-user of mac80211_hwsim");
+DEFINE_string(
+    vhost_user_mac80211_hwsim, "",
+    "Unix socket path for vhost-user of mac80211_hwsim, typically served by "
+    "wmediumd. You can set this when using an external wmediumd instance.");
+DEFINE_string(wmediumd_config, "",
+              "Path to the wmediumd config file. When missing, the default "
+              "configuration is used which adds MAC addresses for up to 16 "
+              "cuttlefish instances including AP.");
 DEFINE_string(ap_rootfs_image, "", "rootfs image for AP instance");
 DEFINE_string(ap_kernel_image, "", "kernel image for AP instance");
 
@@ -318,6 +310,8 @@ DEFINE_bool(enable_audio, cuttlefish::HostArch() != cuttlefish::Arch::Arm64,
             "Whether to play or capture audio");
 
 DEFINE_uint32(camera_server_port, 0, "camera vsock port");
+
+DEFINE_string(userdata_format, "f2fs", "The userdata filesystem format");
 
 DECLARE_string(assembly_dir);
 DECLARE_string(boot_image);
@@ -637,64 +631,11 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
 
   tmp_config_obj.set_data_policy(FLAGS_data_policy);
   tmp_config_obj.set_blank_data_image_mb(FLAGS_blank_data_image_mb);
-  tmp_config_obj.set_blank_data_image_fmt(FLAGS_blank_data_image_fmt);
 
   tmp_config_obj.set_enable_gnss_grpc_proxy(FLAGS_start_gnss_proxy);
 
   tmp_config_obj.set_enable_vehicle_hal_grpc_server(
       FLAGS_enable_vehicle_hal_grpc_server);
-
-  std::string custom_action_config;
-  if (!FLAGS_custom_action_config.empty()) {
-    custom_action_config = FLAGS_custom_action_config;
-  } else {
-    std::string custom_action_config_dir =
-        DefaultHostArtifactsPath("etc/cvd_custom_action_config");
-    if (DirectoryExists(custom_action_config_dir)) {
-      auto custom_action_configs = DirectoryContents(custom_action_config_dir);
-      // Two entries are always . and ..
-      if (custom_action_configs.size() > 3) {
-        LOG(ERROR) << "Expected at most one custom action config in "
-                   << custom_action_config_dir << ". Please delete extras.";
-      } else if (custom_action_configs.size() == 3) {
-        for (const auto& config : custom_action_configs) {
-          if (android::base::EndsWithIgnoreCase(config, ".json")) {
-            custom_action_config = custom_action_config_dir + "/" + config;
-          }
-        }
-      }
-    }
-  }
-  std::vector<CustomActionConfig> custom_actions;
-  Json::CharReaderBuilder builder;
-  Json::Value custom_action_array(Json::arrayValue);
-  if (custom_action_config != "") {
-    // Load the custom action config JSON.
-    std::ifstream ifs(custom_action_config);
-    std::string errorMessage;
-    if (!Json::parseFromStream(builder, ifs, &custom_action_array, &errorMessage)) {
-      LOG(FATAL) << "Could not read custom actions config file "
-                 << custom_action_config << ": "
-                 << errorMessage;
-    }
-    for (const auto& custom_action : custom_action_array) {
-      custom_actions.push_back(CustomActionConfig(custom_action));
-    }
-  }
-  if (FLAGS_custom_actions != "") {
-    // Load the custom action from the --config preset file.
-    std::unique_ptr<Json::CharReader> reader(builder.newCharReader());
-    std::string errorMessage;
-    if (!reader->parse(&*FLAGS_custom_actions.begin(), &*FLAGS_custom_actions.end(),
-                       &custom_action_array, &errorMessage)) {
-      LOG(FATAL) << "Could not read custom actions config flag: "
-                 << errorMessage;
-    }
-    for (const auto& custom_action : custom_action_array) {
-      custom_actions.push_back(CustomActionConfig(custom_action));
-    }
-  }
-  tmp_config_obj.set_custom_actions(custom_actions);
 
   tmp_config_obj.set_bootloader(FLAGS_bootloader);
 
@@ -717,20 +658,20 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
   if ((FLAGS_ap_rootfs_image.empty()) != (FLAGS_ap_kernel_image.empty())) {
     LOG(FATAL) << "Either both ap_rootfs_image and ap_kernel_image should be "
                   "set or neither should be set.";
-  } else if (FLAGS_vhost_user_mac80211_hwsim.empty() &&
-             !FLAGS_ap_rootfs_image.empty() && !FLAGS_ap_kernel_image.empty()) {
-    LOG(FATAL) << "To use external AP instance, vhost_user_mac80211_hwsim must "
-                  "be set.";
   }
 
   tmp_config_obj.set_ap_rootfs_image(FLAGS_ap_rootfs_image);
   tmp_config_obj.set_ap_kernel_image(FLAGS_ap_kernel_image);
+
+  tmp_config_obj.set_wmediumd_config(FLAGS_wmediumd_config);
 
   tmp_config_obj.set_record_screen(FLAGS_record_screen);
 
   tmp_config_obj.set_enable_host_bluetooth(FLAGS_enable_host_bluetooth);
 
   tmp_config_obj.set_protected_vm(FLAGS_protected_vm);
+
+  tmp_config_obj.set_userdata_format(FLAGS_userdata_format);
 
   std::vector<int> num_instances;
   for (int i = 0; i < FLAGS_num_instances; i++) {
@@ -830,7 +771,10 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
       instance.set_virtual_disk_paths(virtual_disk_paths);
     }
 
-    instance.set_wifi_mac_prefix(5554 + (num - 1) * 2);
+    // We'd like to set mac prefix to be 5554, 5555, 5556, ... in normal cases.
+    // When --base_instance_num=3, this might be 5556, 5557, 5558, ... (skipping
+    // first two)
+    instance.set_wifi_mac_prefix(5554 + (num - 1));
 
     instance.set_start_webrtc_signaling_server(false);
 
@@ -853,6 +797,21 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
     } else {
       instance.set_start_webrtc_signaling_server(false);
     }
+
+    // Start wmediumd process for the first instance if
+    // vhost_user_mac80211_hwsim is not specified.
+    const bool start_wmediumd =
+        FLAGS_vhost_user_mac80211_hwsim.empty() && is_first_instance;
+    if (start_wmediumd) {
+      // TODO(b/199020470) move this to the directory for shared resources
+      auto socket_path =
+          const_instance.PerInstanceInternalPath("vhost_user_mac80211");
+      tmp_config_obj.set_vhost_user_mac80211_hwsim(socket_path);
+      instance.set_start_wmediumd(true);
+    } else {
+      instance.set_start_wmediumd(false);
+    }
+
     is_first_instance = false;
 
     // instance.modem_simulator_ports := "" or "[port,]*port"

@@ -46,14 +46,14 @@ std::string GetPath(struct lws* wsi) {
 }
 
 bool WriteCommonHttpHeaders(int status, const char* mime_type,
-                            struct lws* wsi) {
+                            size_t content_len, struct lws* wsi) {
   constexpr size_t BUFF_SIZE = 2048;
   uint8_t header_buffer[LWS_PRE + BUFF_SIZE];
   const auto start = &header_buffer[LWS_PRE];
   auto p = &header_buffer[LWS_PRE];
   auto end = start + BUFF_SIZE;
-  if (lws_add_http_common_headers(wsi, status, mime_type,
-                                  LWS_ILLEGAL_HTTP_CONTENT_LEN, &p, end)) {
+  if (lws_add_http_common_headers(wsi, status, mime_type, content_len, &p,
+                                  end)) {
     LOG(ERROR) << "Failed to write headers for response";
     return false;
   }
@@ -205,8 +205,8 @@ void WebSocketServer::RegisterHandlerFactory(
 
 void WebSocketServer::RegisterDynHandlerFactory(
     const std::string& path,
-    std::unique_ptr<DynHandlerFactory> handler_factory_p) {
-  dyn_handler_factories_[path] = std::move(handler_factory_p);
+    DynHandlerFactory handler_factory) {
+  dyn_handler_factories_[path] = std::move(handler_factory);
 }
 
 void WebSocketServer::Serve() {
@@ -256,12 +256,20 @@ int WebSocketServer::DynServerCallback(struct lws* wsi,
       }
       std::string path(path_raw, path_len);
       auto handler = InstantiateDynHandler(path, wsi);
+      if (!handler) {
+        if (!WriteCommonHttpHeaders(static_cast<int>(HttpStatusCode::NotFound),
+                                    "application/json", 0, wsi)) {
+          return 1;
+        }
+        return lws_http_transaction_completed(wsi);
+      }
       dyn_handlers_[wsi] = std::move(handler);
       switch (method) {
         case LWSHUMETH_GET: {
           auto status = dyn_handlers_[wsi]->DoGet();
           if (!WriteCommonHttpHeaders(static_cast<int>(status),
-                                      "application/json", wsi)) {
+                                      "application/json",
+                                      dyn_handlers_[wsi]->content_len(), wsi)) {
             return 1;
           }
           // Write the response later, when the server is ready
@@ -288,9 +296,13 @@ int WebSocketServer::DynServerCallback(struct lws* wsi,
     }
     case LWS_CALLBACK_HTTP_BODY_COMPLETION: {
       auto handler = dyn_handlers_[wsi].get();
+      if (!handler) {
+        LOG(WARNING) << "Unexpected body completion event from unknown wsi";
+        return 1;
+      }
       auto status = handler->DoPost();
       if (!WriteCommonHttpHeaders(static_cast<int>(status), "application/json",
-                                  wsi)) {
+                                  dyn_handlers_[wsi]->content_len(), wsi)) {
         return 1;
       }
       lws_callback_on_writable(wsi);
@@ -302,13 +314,13 @@ int WebSocketServer::DynServerCallback(struct lws* wsi,
         LOG(WARNING) << "Unknown wsi became writable";
         return 1;
       }
-      handler->OnWritable();
+      auto ret = handler->OnWritable();
+      dyn_handlers_.erase(wsi);
       // Make sure the connection (in HTTP 1) or stream (in HTTP 2) is closed
       // after the response is written
-      return 1;
+      return ret;
     }
     case LWS_CALLBACK_CLOSED_HTTP:
-      dyn_handlers_.erase(wsi);
       break;
     default:
       return lws_callback_http_dummy(wsi, reason, user, in, len);
@@ -362,7 +374,7 @@ int WebSocketServer::ServerCallback(struct lws* wsi,
         handler->OnReceive(reinterpret_cast<const uint8_t*>(in), len,
                            lws_frame_is_binary(wsi), is_final);
       } else {
-        LOG(WARNING) << "Unkwnown wsi sent data";
+        LOG(WARNING) << "Unknown wsi sent data";
       }
       break;
     }
@@ -379,7 +391,7 @@ std::shared_ptr<WebSocketHandler> WebSocketServer::InstantiateHandler(
     LOG(ERROR) << "Wrong path provided in URI: " << uri_path;
     return nullptr;
   } else {
-    LOG(INFO) << "Creating handler for " << uri_path;
+    LOG(VERBOSE) << "Creating handler for " << uri_path;
     return it->second->Build(wsi);
   }
 }
@@ -391,8 +403,8 @@ std::unique_ptr<DynHandler> WebSocketServer::InstantiateDynHandler(
     LOG(ERROR) << "Wrong path provided in URI: " << uri_path;
     return nullptr;
   } else {
-    LOG(INFO) << "Creating handler for " << uri_path;
-    return it->second->Build(wsi);
+    LOG(VERBOSE) << "Creating handler for " << uri_path;
+    return it->second(wsi);
   }
 }
 

@@ -33,8 +33,12 @@ function showDeviceControlUI() {
 }
 
 function websocketUrl(path) {
-  return ((location.protocol == 'http:') ? 'ws:' : 'wss:') + location.host +
+  return ((location.protocol == 'http:') ? 'ws://' : 'wss://') + location.host +
       '/' + path;
+}
+
+function httpUrl(path) {
+  return location.protocol + '//' + location.host + '/' + path;
 }
 
 async function ConnectDevice(deviceId) {
@@ -56,6 +60,10 @@ async function ConnectDevice(deviceId) {
 
   let options = {
     wsUrl: websocketUrl('connect_client'),
+    pollConfigUrl: httpUrl('infra_config'),
+    pollConnectUrl: httpUrl('connect'),
+    pollForwardUrl: httpUrl('forward'),
+    pollMessagesUrl: httpUrl('poll_messages'),
   };
 
   let module = await import('./cf_webrtc.js');
@@ -80,11 +88,11 @@ function showError(msg) {
 }
 
 class DeviceListApp {
-  #websocketUrl;
+  #url;
   #selectDeviceCb;
 
-  constructor({websocketUrl, selectDeviceCb}) {
-    this.#websocketUrl = websocketUrl;
+  constructor({url, selectDeviceCb}) {
+    this.#url = url;
     this.#selectDeviceCb = selectDeviceCb;
   }
 
@@ -97,15 +105,17 @@ class DeviceListApp {
         .addEventListener('click', evt => this.#UpdateDeviceList());
   }
 
-  #UpdateDeviceList() {
-    let ws = new WebSocket(this.#websocketUrl);
-    ws.onopen = () => {
-      ws.send('give me those device ids');
-    };
-    ws.onmessage = msg => {
-      let device_ids = JSON.parse(msg.data);
-      this.#ShowNewDeviceList(device_ids);
-    };
+  async #UpdateDeviceList() {
+    try {
+      const device_ids = await fetch(this.#url, {
+        method: 'GET',
+        cache: 'no-cache',
+        redirect: 'follow',
+      });
+      this.#ShowNewDeviceList(await device_ids.json());
+    } catch (e) {
+      console.error('Error getting list of device ids: ', e);
+    }
   }
 
   #ShowNewDeviceList(device_ids) {
@@ -886,11 +896,11 @@ class DeviceControlApp {
   }
 
   #onMicCaptureToggle(enabled) {
-    this.#deviceConnection.useMic(enabled);
+    return this.#deviceConnection.useMic(enabled);
   }
 
   #onVideoCaptureToggle(enabled) {
-    this.#deviceConnection.useVideo(enabled);
+    return this.#deviceConnection.useVideo(enabled);
   }
 
   #onCustomShellButton(shell_command, e) {
@@ -906,7 +916,7 @@ class DeviceControlApp {
 
 // The app starts by showing the device list
 showDeviceListUI();
-let listDevicesUrl = websocketUrl('list_devices');
+let listDevicesUrl = httpUrl('devices');
 let selectDeviceCb = deviceId => {
   ConnectDevice(deviceId).then(
       deviceConnection => {
@@ -922,5 +932,5 @@ let selectDeviceCb = deviceId => {
       });
 };
 let deviceListApp =
-    new DeviceListApp({websocketUrl: listDevicesUrl, selectDeviceCb});
+    new DeviceListApp({url: listDevicesUrl, selectDeviceCb});
 deviceListApp.start();

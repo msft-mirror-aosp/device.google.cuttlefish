@@ -15,15 +15,15 @@
 
 #include "host/commands/secure_env/tpm_keymaster_enforcement.h"
 
+#include <android-base/endian.h>
 #include <android-base/logging.h>
-#if defined(__BIONIC__)
-#include <sys/endian.h> // for be64toh
-#endif
 
 #include "host/commands/secure_env/primary_key_builder.h"
 #include "host/commands/secure_env/tpm_hmac.h"
 #include "host/commands/secure_env/tpm_key_blob_maker.h"
 #include "host/commands/secure_env/tpm_random_source.h"
+
+namespace cuttlefish {
 
 using keymaster::km_id_t;
 using keymaster::HmacSharingParameters;
@@ -99,7 +99,7 @@ bool TpmKeymasterEnforcement::activation_date_valid(
 
 bool TpmKeymasterEnforcement::expiration_date_passed(
     uint64_t expiration_date) const {
-  return expiration_date > get_wall_clock_time_ms();
+  return expiration_date < get_wall_clock_time_ms();
 }
 
 bool TpmKeymasterEnforcement::auth_token_timed_out(
@@ -349,3 +349,5 @@ bool TpmKeymasterEnforcement::CreateKeyId(
   memcpy(keyid, hmac->buffer, sizeof(km_id_t));
   return true;
 }
+
+}  // namespace cuttlefish

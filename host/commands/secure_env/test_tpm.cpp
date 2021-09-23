@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2018 The Android Open Source Project
+ * Copyright (C) 2021 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,31 +13,24 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#pragma once
 
-#include <fruit/fruit.h>
-#include <set>
+#include "host/commands/secure_env/test_tpm.h"
 
-#include "common/libs/utils/flag_parser.h"
-#include "host/libs/config/config_flag.h"
-#include "host/libs/config/config_fragment.h"
-#include "host/libs/config/feature.h"
+#include <android-base/logging.h>
+#include <tss2/tss2_rc.h>
 
 namespace cuttlefish {
 
-enum class AdbMode {
-  VsockTunnel,
-  VsockHalfTunnel,
-  NativeVsock,
-  Unknown,
-};
+TestTpm::TestTpm() {
+  auto rc = Esys_Initialize(&esys_, tpm_.TctiContext(), nullptr);
+  if (rc != TPM2_RC_SUCCESS) {
+    LOG(FATAL) << "Could not initialize esys: " << Tss2_RC_Decode(rc) << " ("
+               << rc << ")";
+  }
+}
 
-class AdbConfig : public ConfigFragment, public FlagFeature {
- public:
-  virtual std::set<AdbMode> adb_mode() const = 0;
-  virtual bool run_adb_connector() const = 0;
-};
+TestTpm::~TestTpm() { Esys_Finalize(&esys_); }
 
-fruit::Component<fruit::Required<ConfigFlag>, AdbConfig> AdbConfigComponent();
+ESYS_CONTEXT* TestTpm::Esys() { return esys_; }
 
 }  // namespace cuttlefish
