@@ -42,12 +42,12 @@
 #include "common/libs/fs/shared_buf.h"
 #include "common/libs/fs/shared_fd.h"
 #include "common/libs/fs/shared_select.h"
-#include "common/libs/fs/tee.h"
 #include "common/libs/utils/environment.h"
 #include "common/libs/utils/files.h"
 #include "common/libs/utils/network.h"
 #include "common/libs/utils/subprocess.h"
 #include "common/libs/utils/size_utils.h"
+#include "common/libs/utils/tee_logging.h"
 #include "host/commands/run_cvd/kernel_args.h"
 #include "host/commands/run_cvd/launch.h"
 #include "host/commands/run_cvd/runner_defs.h"
@@ -207,12 +207,15 @@ cuttlefish::SharedFD DaemonizeLauncher(const cuttlefish::CuttlefishConfig& confi
     // Redirect standard I/O
     auto log_path = config.launcher_log_path();
     auto log =
-        cuttlefish::SharedFD::Open(log_path.c_str(), O_CREAT | O_WRONLY | O_TRUNC,
+        cuttlefish::SharedFD::Open(log_path.c_str(), O_CREAT | O_WRONLY | O_APPEND,
                             S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
     if (!log->IsOpen()) {
       LOG(ERROR) << "Failed to create launcher log file: " << log->StrError();
       std::exit(RunnerExitCodes::kDaemonizationError);
     }
+    ::android::base::SetLogger(cuttlefish::TeeLogger({
+      {cuttlefish::LogFileSeverity(), log},
+    }));
     auto dev_null = cuttlefish::SharedFD::Open("/dev/null", O_RDONLY);
     if (!dev_null->IsOpen()) {
       LOG(ERROR) << "Failed to open /dev/null: " << dev_null->StrError();
@@ -277,6 +280,7 @@ std::string GetConfigFilePath(const cuttlefish::CuttlefishConfig& config) {
 }  // namespace
 
 int main(int argc, char** argv) {
+  setenv("ANDROID_LOG_TAGS", "*:v", /* overwrite */ 0);
   ::android::base::InitLogging(argv, android::base::StderrLogger);
   google::ParseCommandLineFlags(&argc, &argv, false);
 
@@ -292,8 +296,6 @@ int main(int argc, char** argv) {
       return cuttlefish::RunnerExitCodes::kInvalidHostConfiguration;
     }
   }
-
-  cuttlefish::TeeStderrToFile stderr_tee;
 
   std::string input_files_str;
   {
@@ -317,8 +319,8 @@ int main(int argc, char** argv) {
 
   auto config = cuttlefish::CuttlefishConfig::Get();
 
-  auto runner_log_path = config->PerInstancePath("run_cvd.log");
-  stderr_tee.SetFile(cuttlefish::SharedFD::Creat(runner_log_path.c_str(), 0755));
+  auto log_path = config->launcher_log_path();
+  ::android::base::SetLogger(cuttlefish::LogToStderrAndFiles({log_path}));
 
   // Change working directory to the instance directory as early as possible to
   // ensure all host processes have the same working dir. This helps stop_cvd
