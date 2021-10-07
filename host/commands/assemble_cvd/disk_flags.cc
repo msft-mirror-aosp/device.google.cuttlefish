@@ -134,63 +134,77 @@ bool ResolveInstanceFiles() {
 
 std::vector<ImagePartition> os_composite_disk_config() {
   std::vector<ImagePartition> partitions;
-  partitions.push_back(ImagePartition {
-    .label = "misc",
-    .image_file_path = FLAGS_misc_image,
+  partitions.push_back(ImagePartition{
+      .label = "misc",
+      .image_file_path = FLAGS_misc_image,
+      .read_only = true,
   });
-  partitions.push_back(ImagePartition {
-    .label = "boot_a",
-    .image_file_path = FLAGS_boot_image,
+  partitions.push_back(ImagePartition{
+      .label = "boot_a",
+      .image_file_path = FLAGS_boot_image,
+      .read_only = true,
   });
-  partitions.push_back(ImagePartition {
-    .label = "boot_b",
-    .image_file_path = FLAGS_boot_image,
+  partitions.push_back(ImagePartition{
+      .label = "boot_b",
+      .image_file_path = FLAGS_boot_image,
+      .read_only = true,
   });
   partitions.push_back(ImagePartition{
       .label = "vendor_boot_a",
       .image_file_path = FLAGS_vendor_boot_image,
+      .read_only = true,
   });
   partitions.push_back(ImagePartition{
       .label = "vendor_boot_b",
       .image_file_path = FLAGS_vendor_boot_image,
+      .read_only = true,
   });
-  partitions.push_back(ImagePartition {
-    .label = "vbmeta_a",
-    .image_file_path = FLAGS_vbmeta_image,
+  partitions.push_back(ImagePartition{
+      .label = "vbmeta_a",
+      .image_file_path = FLAGS_vbmeta_image,
+      .read_only = true,
   });
-  partitions.push_back(ImagePartition {
-    .label = "vbmeta_b",
-    .image_file_path = FLAGS_vbmeta_image,
+  partitions.push_back(ImagePartition{
+      .label = "vbmeta_b",
+      .image_file_path = FLAGS_vbmeta_image,
+      .read_only = true,
   });
-  partitions.push_back(ImagePartition {
-    .label = "vbmeta_system_a",
-    .image_file_path = FLAGS_vbmeta_system_image,
+  partitions.push_back(ImagePartition{
+      .label = "vbmeta_system_a",
+      .image_file_path = FLAGS_vbmeta_system_image,
+      .read_only = true,
   });
-  partitions.push_back(ImagePartition {
-    .label = "vbmeta_system_b",
-    .image_file_path = FLAGS_vbmeta_system_image,
+  partitions.push_back(ImagePartition{
+      .label = "vbmeta_system_b",
+      .image_file_path = FLAGS_vbmeta_system_image,
+      .read_only = true,
   });
-  partitions.push_back(ImagePartition {
-    .label = "super",
-    .image_file_path = FLAGS_super_image,
+  partitions.push_back(ImagePartition{
+      .label = "super",
+      .image_file_path = FLAGS_super_image,
+      .read_only = true,
   });
-  partitions.push_back(ImagePartition {
-    .label = "userdata",
-    .image_file_path = FLAGS_data_image,
+  partitions.push_back(ImagePartition{
+      .label = "userdata",
+      .image_file_path = FLAGS_data_image,
+      .read_only = true,
   });
-  partitions.push_back(ImagePartition {
-    .label = "metadata",
-    .image_file_path = FLAGS_metadata_image,
+  partitions.push_back(ImagePartition{
+      .label = "metadata",
+      .image_file_path = FLAGS_metadata_image,
+      .read_only = true,
   });
   if (!FLAGS_otheros_root_image.empty()) {
     partitions.push_back(ImagePartition{
         .label = "otheros_esp",
         .image_file_path = FLAGS_otheros_esp_image,
         .type = kEfiSystemPartition,
+        .read_only = true,
     });
     partitions.push_back(ImagePartition{
         .label = "otheros_root",
         .image_file_path = FLAGS_otheros_root_image,
+        .read_only = true,
     });
   }
   return partitions;
@@ -440,11 +454,36 @@ static void GeneratePersistentBootconfig(
       << bootconfig_path << "` failed:" << bootconfig_fd->StrError();
 }
 
+class InitializeMetadataImage : public Feature {
+ public:
+  INJECT(InitializeMetadataImage()) {}
+
+  // Feature
+  std::string Name() const override { return "InitializeMetadataImage"; }
+  std::unordered_set<Feature*> Dependencies() const override { return {}; }
+  bool Enabled() const override { return true; }
+
+ private:
+  bool Setup() {
+    if (!FileExists(FLAGS_metadata_image)) {
+      bool success = CreateBlankImage(FLAGS_metadata_image,
+                                      FLAGS_blank_metadata_image_mb, "none");
+      if (!success) {
+        LOG(ERROR) << "Failed to create \"" << FLAGS_metadata_image
+                   << "\" with size " << FLAGS_blank_metadata_image_mb;
+      }
+      return success;
+    }
+    return true;
+  }
+};
+
 static fruit::Component<> DiskChangesComponent(const FetcherConfig* fetcher,
                                                const CuttlefishConfig* config) {
   return fruit::createComponent()
       .bindInstance(*fetcher)
       .bindInstance(*config)
+      .addMultibinding<Feature, InitializeMetadataImage>()
       .install(FixedMiscImagePathComponent, &FLAGS_misc_image)
       .install(InitializeMiscImageComponent)
       .install(FixedDataImagePathComponent, &FLAGS_data_image)
@@ -465,10 +504,6 @@ void CreateDynamicDiskFiles(const FetcherConfig& fetcher_config,
     CHECK(InitializeEspImage(FLAGS_otheros_esp_image, FLAGS_otheros_kernel_path,
                              FLAGS_otheros_initramfs_path))
         << "Failed to create esp image";
-  }
-
-  if (!FileExists(FLAGS_metadata_image)) {
-    CreateBlankImage(FLAGS_metadata_image, FLAGS_blank_metadata_image_mb, "none");
   }
 
   // If we are booting a protected VM, for now, assume we want a super minimal
