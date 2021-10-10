@@ -20,12 +20,7 @@ $(call inherit-product, $(SRC_TARGET_DIR)/product/languages_full.mk)
 # Enable updating of APEXes
 $(call inherit-product, $(SRC_TARGET_DIR)/product/updatable_apex.mk)
 
-ifndef GRF_SHIPPING_API_LEVEL
 PRODUCT_SHIPPING_API_LEVEL := 30
-else
-PRODUCT_SHIPPING_API_LEVEL := $(GRF_SHIPPING_API_LEVEL)
-PRODUCT_PROPERTY_OVERRIDES += ro.board.first_api_level=$(BOARD_SHIPPING_API_LEVEL)
-endif
 PRODUCT_BUILD_BOOT_IMAGE := true
 PRODUCT_USE_DYNAMIC_PARTITIONS := true
 DISABLE_RILD_OEM_HOOK := true
