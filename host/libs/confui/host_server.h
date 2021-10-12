@@ -35,7 +35,6 @@
 #include "host/commands/kernel_log_monitor/utils.h"
 #include "host/libs/config/logging.h"
 #include "host/libs/confui/host_mode_ctrl.h"
-#include "host/libs/confui/host_renderer.h"
 #include "host/libs/confui/host_virtual_input.h"
 #include "host/libs/confui/server_common.h"
 #include "host/libs/confui/session.h"
@@ -53,8 +52,7 @@ class HostServer : public HostVirtualInput {
   virtual ~HostServer() {}
 
   // implement input interfaces. called by webRTC & vnc
-  void PressConfirmButton(const bool is_down) override;
-  void PressCancelButton(const bool is_down) override;
+  void TouchEvent(const int x, const int y, const bool is_down) override;
   void UserAbortEvent() override;
   bool IsConfUiActive() override;
 
@@ -116,7 +114,9 @@ class HostServer : public HostVirtualInput {
 
   SharedFD EstablishHalConnection();
 
-  std::unique_ptr<Session> CreateSession(const std::string& session_name);
+  std::shared_ptr<Session> CreateSession(const std::string& session_name);
+  void SendUserSelection(std::unique_ptr<ConfUiMessage>& input);
+
   void Transition(std::unique_ptr<ConfUiMessage>& input_ptr);
   std::string GetCurrentSessionId() {
     if (curr_session_) {
@@ -131,25 +131,19 @@ class HostServer : public HostVirtualInput {
     }
     return ToString(curr_session_->GetState());
   }
-  bool SendUserSelection(UserResponse::type selection);
 
   const std::uint32_t display_num_;
   HostModeCtrl& host_mode_ctrl_;
   ScreenConnectorFrameRenderer& screen_connector_;
 
-  // this member creates a raw frame
-  ConfUiRenderer renderer_;
-
   std::string input_socket_path_;
   int hal_vsock_port_;
 
-  // curr_session_ doesn't belong to session_map_
-  std::unique_ptr<Session> curr_session_;
+  std::shared_ptr<Session> curr_session_;
 
   SharedFD guest_hal_socket_;
   // ACCEPTED fd on guest_hal_socket_
   SharedFD hal_cli_socket_;
-  std::mutex input_socket_mtx_;
 
   using Multiplexer =
       Multiplexer<std::unique_ptr<ConfUiMessage>,
