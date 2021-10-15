@@ -79,6 +79,8 @@ on boot
     mkdir /data/vendor/wifi/wpa 0770 wifi wifi
     mkdir /data/vendor/wifi/wpa/sockets 0770 wifi wifi
     start socket_vsock_proxy
+    # Update dm-verity state and set partition.*.verified properties
+    verity_update_state
 
 service bt_vhci_forwarder /vendor/bin/bt_vhci_forwarder -virtio_console_dev=/dev/hvc5
     user bluetooth
