@@ -25,7 +25,6 @@ using namespace android;
 
 // clang-format off
 static const std::set<std::string> kKnownMissingHidl = {
-    "android.frameworks.bufferhub@1.0",
     "android.frameworks.cameraservice.device@2.1",
     "android.frameworks.schedulerservice@1.0", // deprecated, see b/37226359
     "android.frameworks.vr.composer@1.0",
@@ -48,6 +47,7 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hardware.automotive.vehicle@2.0",
     "android.hardware.biometrics.fingerprint@2.3",
     "android.hardware.bluetooth.a2dp@1.0",
+    "android.hardware.bluetooth.audio@2.2",
     "android.hardware.broadcastradio@1.1",
     "android.hardware.broadcastradio@2.0",
     "android.hardware.cas.native@1.0",
@@ -137,6 +137,9 @@ static const std::set<VersionedAidlPackage> kKnownMissingAidl = {
 
     // This version needs to be implemented (b/190505425)
     {"android.system.keystore2.", 2},
+
+    // This version needs to be implemented (b/177269435)
+    {"android.hardware.health.", 1},
 
     // These versions need to be implemented (b/198331776)
     {"android.hardware.radio.", 1},

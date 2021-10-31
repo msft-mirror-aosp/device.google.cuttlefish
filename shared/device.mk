@@ -174,17 +174,8 @@ PRODUCT_PACKAGES += \
     vsoc_input_service \
     vtpm_manager \
 
-SOONG_CONFIG_NAMESPACES += cvd
-SOONG_CONFIG_cvd += launch_configs
-SOONG_CONFIG_cvd_launch_configs += \
-    cvd_config_auto.json \
-    cvd_config_phone.json \
-    cvd_config_tablet.json \
-    cvd_config_tv.json \
-
-SOONG_CONFIG_cvd += grub_config
-SOONG_CONFIG_cvd_grub_config += \
-    grub.cfg \
+$(call soong_config_append, cvd, launch_configs, cvd_config_auto.json cvd_config_phone.json cvd_config_tablet.json cvd_config_tv.json)
+$(call soong_config_append, cvd, grub_config, grub.cfg)
 
 #
 # Packages for AOSP-available stuff we use from the framework
@@ -244,7 +235,14 @@ PRODUCT_PACKAGES += \
     hidl_lazy_test_server \
     hidl_lazy_cb_test_server
 
-DEVICE_PACKAGE_OVERLAYS := device/google/cuttlefish/shared/overlay
+# Runtime Resource Overlays
+ifneq ($(LOCAL_PREFER_VENDOR_APEX),true)
+PRODUCT_PACKAGES += \
+    cuttlefish_overlay_frameworks_base_core \
+    cuttlefish_overlay_settings_provider \
+
+endif
+
 # PRODUCT_AAPT_CONFIG and PRODUCT_AAPT_PREF_CONFIG are intentionally not set to
 # pick up every density resources.
 
@@ -312,7 +310,6 @@ PRODUCT_COPY_FILES += \
     frameworks/av/services/audiopolicy/config/audio_policy_volumes.xml:$(TARGET_COPY_OUT_VENDOR)/etc/audio_policy_volumes.xml \
     frameworks/av/services/audiopolicy/config/default_volume_tables.xml:$(TARGET_COPY_OUT_VENDOR)/etc/default_volume_tables.xml \
     frameworks/av/services/audiopolicy/config/surround_sound_configuration_5_0.xml:$(TARGET_COPY_OUT_VENDOR)/etc/surround_sound_configuration_5_0.xml \
-    system/bt/vendor_libs/test_vendor_lib/data/controller_properties.json:vendor/etc/bluetooth/controller_properties.json \
     device/google/cuttlefish/shared/config/task_profiles.json:$(TARGET_COPY_OUT_VENDOR)/etc/task_profiles.json \
     device/google/cuttlefish/shared/config/input/Crosvm_Virtio_Multitouch_Touchscreen_0.idc:$(TARGET_COPY_OUT_VENDOR)/usr/idc/Crosvm_Virtio_Multitouch_Touchscreen_0.idc \
     device/google/cuttlefish/shared/config/input/Crosvm_Virtio_Multitouch_Touchscreen_1.idc:$(TARGET_COPY_OUT_VENDOR)/usr/idc/Crosvm_Virtio_Multitouch_Touchscreen_1.idc \
@@ -414,6 +411,12 @@ PRODUCT_PACKAGES += $(LOCAL_BLUETOOTH_PRODUCT_PACKAGE)
 
 PRODUCT_PACKAGES += android.hardware.bluetooth.audio@2.1-impl
 
+# Bluetooth initialization configuration is copied to the init folder here instead of being added
+# as an init_rc attribute of the bt_vhci_forward binary.  The bt_vhci_forward binary is used by
+# multiple targets with different initialization configurations.
+PRODUCT_COPY_FILES += \
+    device/google/cuttlefish/guest/commands/bt_vhci_forwarder/bt_vhci_forwarder.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/bt_vhci_forwarder.rc
+
 #
 # Audio HAL
 #
@@ -471,13 +474,15 @@ PRODUCT_PACKAGES += \
 #
 PRODUCT_PACKAGES += \
     android.hardware.drm@1.4-service.clearkey \
-    android.hardware.drm@1.4-service.widevine
+    android.hardware.drm@latest-service.widevine
 
 #
 # Confirmation UI HAL
 #
-PRODUCT_PACKAGES += \
-    android.hardware.confirmationui@1.0-service.cuttlefish
+ifeq ($(LOCAL_CONFIRMATIONUI_PRODUCT_PACKAGE),)
+    LOCAL_CONFIRMATIONUI_PRODUCT_PACKAGE := android.hardware.confirmationui@1.0-service.cuttlefish
+endif
+PRODUCT_PACKAGES += $(LOCAL_CONFIRMATIONUI_PRODUCT_PACKAGE)
 
 #
 # Dumpstate HAL
@@ -691,9 +696,7 @@ PRODUCT_COPY_FILES += \
 
 PRODUCT_VENDOR_PROPERTIES += ro.vendor.wifi_impl=mac8011_hwsim_virtio
 
-SOONG_CONFIG_NAMESPACES += cvdhost
-SOONG_CONFIG_cvdhost += enforce_mac80211_hwsim
-SOONG_CONFIG_cvdhost_enforce_mac80211_hwsim += true
+$(call soong_config_append,cvdhost,enforce_mac80211_hwsim,true)
 
 else
 PRODUCT_PACKAGES += setup_wifi
