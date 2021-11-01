@@ -81,7 +81,7 @@ std::vector<std::string> CrosvmManager::ConfigureGpu(const std::string& gpu_mode
         "androidboot.hardware.hwcomposer=ranchu",
         "androidboot.hardware.egl=angle",
         "androidboot.hardware.vulkan=pastel",
-    };
+        "androidboot.opengles.version=196609"};  // OpenGL ES 3.1
   }
 
   // Try to load the Nvidia modeset kernel module. Running Crosvm with Nvidia's EGL library on a
@@ -99,7 +99,8 @@ std::vector<std::string> CrosvmManager::ConfigureGpu(const std::string& gpu_mode
       "androidboot.hardware.hwcomposer=ranchu",
       "androidboot.hardware.hwcomposer.mode=client",
       "androidboot.hardware.egl=mesa",
-    };
+      // No "hardware" Vulkan support, yet
+      "androidboot.opengles.version=196608"};  // OpenGL ES 3.0
   }
   if (gpu_mode == cuttlefish::kGpuModeGfxStream) {
     return {
@@ -109,7 +110,7 @@ std::vector<std::string> CrosvmManager::ConfigureGpu(const std::string& gpu_mode
         "androidboot.hardware.egl=emulation",
         "androidboot.hardware.vulkan=ranchu",
         "androidboot.hardware.gltransport=virtio-gpu-asg",
-    };
+        "androidboot.opengles.version=196608"};  // OpenGL ES 3.0
   }
   return {};
 }

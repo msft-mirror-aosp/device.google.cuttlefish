@@ -103,7 +103,7 @@ std::vector<std::string> QemuManager::ConfigureGpu(const std::string& gpu_mode) 
       "androidboot.hardware.hwcomposer=cutf",
       "androidboot.hardware.egl=swiftshader",
       "androidboot.hardware.vulkan=pastel",
-  };
+      "androidboot.opengles.version=196608"};  // OpenGL ES 3.0
 }
 
 std::vector<std::string> QemuManager::ConfigureBootDevices() {
