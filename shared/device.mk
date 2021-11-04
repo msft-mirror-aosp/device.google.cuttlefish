@@ -66,7 +66,6 @@ PRODUCT_PROPERTY_OVERRIDES += \
     tombstoned.max_tombstone_count=500 \
     vendor.bt.rootcanal_test_console=off \
     debug.hwui.swap_with_damage=0 \
-    debug.renderengine.backend=gles \
     ro.carrier=unknown \
     ro.com.android.dataroaming=false \
     ro.hardware.virtual_device=1 \
