@@ -85,7 +85,6 @@ PRODUCT_PRODUCT_PROPERTIES += \
 
 # Explanation of specific properties:
 #   debug.hwui.swap_with_damage avoids boot failure on M http://b/25152138
-#   ro.opengles.version OpenGLES 3.0
 #   ro.hardware.keystore_desede=true needed for CtsKeystoreTestCases
 PRODUCT_VENDOR_PROPERTIES += \
     tombstoned.max_tombstone_count=500 \
@@ -95,7 +94,6 @@ PRODUCT_VENDOR_PROPERTIES += \
     ro.com.android.dataroaming?=false \
     ro.hardware.virtual_device=1 \
     ro.logd.size=1M \
-    ro.opengles.version=196608 \
     wifi.interface=wlan0 \
     persist.sys.zram_enabled=1 \
     ro.hardware.keystore_desede=true \
@@ -166,7 +164,6 @@ PRODUCT_SOONG_NAMESPACES += hardware/google/camera/devices/EmulatedCamera
 PRODUCT_PACKAGES += \
     CuttlefishService \
     cuttlefish_sensor_injection \
-    bt_vhci_forwarder \
     socket_vsock_proxy \
     tombstone_transmit \
     tombstone_producer \
@@ -174,17 +171,8 @@ PRODUCT_PACKAGES += \
     vsoc_input_service \
     vtpm_manager \
 
-SOONG_CONFIG_NAMESPACES += cvd
-SOONG_CONFIG_cvd += launch_configs
-SOONG_CONFIG_cvd_launch_configs += \
-    cvd_config_auto.json \
-    cvd_config_phone.json \
-    cvd_config_tablet.json \
-    cvd_config_tv.json \
-
-SOONG_CONFIG_cvd += grub_config
-SOONG_CONFIG_cvd_grub_config += \
-    grub.cfg \
+$(call soong_config_append, cvd, launch_configs, cvd_config_auto.json cvd_config_phone.json cvd_config_tablet.json cvd_config_tv.json)
+$(call soong_config_append, cvd, grub_config, grub.cfg)
 
 #
 # Packages for AOSP-available stuff we use from the framework
@@ -282,8 +270,6 @@ ifneq ($(LOCAL_PREFER_VENDOR_APEX),true)
 PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/permissions/cuttlefish_excluded_hardware.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/cuttlefish_excluded_hardware.xml \
     frameworks/native/data/etc/android.hardware.audio.low_latency.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.audio.low_latency.xml \
-    frameworks/native/data/etc/android.hardware.bluetooth.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.bluetooth.xml \
-    frameworks/native/data/etc/android.hardware.bluetooth_le.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.bluetooth_le.xml \
     frameworks/native/data/etc/android.hardware.camera.concurrent.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.camera.concurrent.xml \
     frameworks/native/data/etc/android.hardware.camera.flash-autofocus.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.camera.flash-autofocus.xml \
     frameworks/native/data/etc/android.hardware.camera.front.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.camera.front.xml \
@@ -403,6 +389,7 @@ PRODUCT_PACKAGES += \
 #
 # Bluetooth HAL and Compatibility Bluetooth library (for older revs).
 #
+ifneq ($(LOCAL_PREFER_VENDOR_APEX),true)
 ifeq ($(LOCAL_BLUETOOTH_PRODUCT_PACKAGE),)
 ifeq ($(TARGET_ENABLE_HOST_BLUETOOTH_EMULATION),true)
 ifeq ($(TARGET_USE_BTLINUX_HAL_IMPL),true)
@@ -416,15 +403,23 @@ endif
     DEVICE_MANIFEST_FILE += device/google/cuttlefish/shared/config/manifest_android.hardware.bluetooth@1.1-service.xml
 endif
 
+PRODUCT_COPY_FILES +=\
+    frameworks/native/data/etc/android.hardware.bluetooth.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.bluetooth.xml \
+    frameworks/native/data/etc/android.hardware.bluetooth_le.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.bluetooth_le.xml
+
 PRODUCT_PACKAGES += $(LOCAL_BLUETOOTH_PRODUCT_PACKAGE)
 
-PRODUCT_PACKAGES += android.hardware.bluetooth.audio@2.1-impl
+PRODUCT_PACKAGES += android.hardware.bluetooth.audio@2.1-impl  bt_vhci_forwarder
 
 # Bluetooth initialization configuration is copied to the init folder here instead of being added
 # as an init_rc attribute of the bt_vhci_forward binary.  The bt_vhci_forward binary is used by
 # multiple targets with different initialization configurations.
 PRODUCT_COPY_FILES += \
     device/google/cuttlefish/guest/commands/bt_vhci_forwarder/bt_vhci_forwarder.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/bt_vhci_forwarder.rc
+
+else
+PRODUCT_PACKAGES += com.google.cf.bt android.hardware.bluetooth.audio@2.1-impl
+endif
 
 #
 # Audio HAL
@@ -705,9 +700,7 @@ PRODUCT_COPY_FILES += \
 
 PRODUCT_VENDOR_PROPERTIES += ro.vendor.wifi_impl=mac8011_hwsim_virtio
 
-SOONG_CONFIG_NAMESPACES += cvdhost
-SOONG_CONFIG_cvdhost += enforce_mac80211_hwsim
-SOONG_CONFIG_cvdhost_enforce_mac80211_hwsim += true
+$(call soong_config_append,cvdhost,enforce_mac80211_hwsim,true)
 
 else
 PRODUCT_PACKAGES += setup_wifi
@@ -730,6 +723,10 @@ PRODUCT_SOONG_NAMESPACES += vendor/google_devices/common/proprietary/confirmatio
 # with HW VSYNC
 PRODUCT_VENDOR_PROPERTIES += \
     ro.surface_flinger.running_without_sync_framework=true
+
+# Enable GPU-intensive background blur support on Cuttlefish when requested by apps
+PRODUCT_VENDOR_PROPERTIES += \
+    ro.surface_flinger.supports_background_blur 1
 
 # Set support one-handed mode
 PRODUCT_PRODUCT_PROPERTIES += \
