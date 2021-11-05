@@ -511,6 +511,37 @@ class InitializeMetadataImage : public Feature {
   }
 };
 
+class InitializeAccessKregistryImage : public Feature {
+ public:
+  INJECT(InitializeAccessKregistryImage(
+      const CuttlefishConfig& config,
+      const CuttlefishConfig::InstanceSpecific& instance))
+      : config_(config), instance_(instance) {}
+
+  // Feature
+  std::string Name() const override { return "InitializeAccessKregistryImage"; }
+  bool Enabled() const override { return !config_.protected_vm(); }
+
+ private:
+  std::unordered_set<Feature*> Dependencies() const override { return {}; }
+  bool Setup() {
+    if (FileExists(instance_.access_kregistry_path())) {
+      return true;
+    }
+    bool success =
+        CreateBlankImage(instance_.access_kregistry_path(), 2 /* mb */, "none");
+    if (!success) {
+      LOG(ERROR) << "Failed to create access_kregistry_path \""
+                 << instance_.access_kregistry_path() << "\"";
+      return false;
+    }
+    return true;
+  }
+
+  const CuttlefishConfig& config_;
+  const CuttlefishConfig::InstanceSpecific& instance_;
+};
+
 static fruit::Component<> DiskChangesComponent(const FetcherConfig* fetcher,
                                                const CuttlefishConfig* config) {
   return fruit::createComponent()
@@ -521,7 +552,20 @@ static fruit::Component<> DiskChangesComponent(const FetcherConfig* fetcher,
       .install(FixedMiscImagePathComponent, &FLAGS_misc_image)
       .install(InitializeMiscImageComponent)
       .install(FixedDataImagePathComponent, &FLAGS_data_image)
-      .install(InitializeDataImageComponent);
+      .install(InitializeDataImageComponent)
+      // Create esp if necessary
+      .install(InitializeEspImageComponent, &FLAGS_otheros_esp_image,
+               &FLAGS_otheros_kernel_path, &FLAGS_otheros_initramfs_path);
+}
+
+static fruit::Component<> DiskChangesPerInstanceComponent(
+    const FetcherConfig* fetcher, const CuttlefishConfig* config,
+    const CuttlefishConfig::InstanceSpecific* instance) {
+  return fruit::createComponent()
+      .bindInstance(*fetcher)
+      .bindInstance(*config)
+      .bindInstance(*instance)
+      .addMultibinding<Feature, InitializeAccessKregistryImage>();
 }
 
 void CreateDynamicDiskFiles(const FetcherConfig& fetcher_config,
@@ -533,11 +577,13 @@ void CreateDynamicDiskFiles(const FetcherConfig& fetcher_config,
   const auto& features = injector.getMultibindings<Feature>();
   CHECK(Feature::RunSetup(features)) << "Failed to run feature setup.";
 
-  // Create esp if necessary
-  if (!FLAGS_otheros_root_image.empty()) {
-    CHECK(InitializeEspImage(FLAGS_otheros_esp_image, FLAGS_otheros_kernel_path,
-                             FLAGS_otheros_initramfs_path))
-        << "Failed to create esp image";
+  for (const auto& instance : config.Instances()) {
+    fruit::Injector<> instance_injector(DiskChangesPerInstanceComponent,
+                                        &fetcher_config, &config, &instance);
+    const auto& instance_features =
+        instance_injector.getMultibindings<Feature>();
+    CHECK(Feature::RunSetup(instance_features))
+        << "Failed to run instance feature setup.";
   }
 
   // If we are booting a protected VM, for now, assume we want a super minimal
@@ -546,10 +592,6 @@ void CreateDynamicDiskFiles(const FetcherConfig& fetcher_config,
   // support.
   if (!FLAGS_protected_vm) {
     for (const auto& instance : config.Instances()) {
-      if (!FileExists(instance.access_kregistry_path())) {
-        CreateBlankImage(instance.access_kregistry_path(), 2 /* mb */, "none");
-      }
-
       if (!FileExists(instance.pstore_path())) {
         CreateBlankImage(instance.pstore_path(), 2 /* mb */, "none");
       }
