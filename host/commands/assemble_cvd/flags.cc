@@ -40,6 +40,7 @@ using cuttlefish::HostBinaryPath;
 using cuttlefish::StringFromEnv;
 using cuttlefish::vm_manager::CrosvmManager;
 using google::FlagSettingMode::SET_FLAGS_DEFAULT;
+using google::FlagSettingMode::SET_FLAGS_VALUE;
 
 DEFINE_int32(cpus, 2, "Virtual CPU count.");
 DEFINE_string(data_policy, "use_existing", "How to handle userdata partition."
@@ -275,8 +276,12 @@ DEFINE_string(wmediumd_config, "",
               "Path to the wmediumd config file. When missing, the default "
               "configuration is used which adds MAC addresses for up to 16 "
               "cuttlefish instances including AP.");
-DEFINE_string(ap_rootfs_image, "", "rootfs image for AP instance");
-DEFINE_string(ap_kernel_image, "", "kernel image for AP instance");
+DEFINE_string(ap_rootfs_image,
+              DefaultHostArtifactsPath("etc/openwrt/images/openwrt_rootfs"),
+              "rootfs image for AP instance");
+DEFINE_string(ap_kernel_image,
+              DefaultHostArtifactsPath("etc/openwrt/images/kernel_for_openwrt"),
+              "kernel image for AP instance");
 
 DEFINE_bool(record_screen, false, "Enable screen recording. "
                                   "Requires --start_webrtc");
@@ -835,6 +840,12 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
     }
   } // end of num_instances loop
 
+  std::vector<std::string> names;
+  for (const auto& instance : tmp_config_obj.Instances()) {
+    names.emplace_back(instance.instance_name());
+  }
+  tmp_config_obj.set_instance_names(names);
+
   tmp_config_obj.set_enable_sandbox(FLAGS_enable_sandbox);
 
   // Audio is not available for Arm64
@@ -858,6 +869,8 @@ void SetDefaultFlagsForQemu(Arch target_arch) {
   std::string default_bootloader =
       DefaultHostArtifactsPath("etc/bootloader_");
   if(target_arch == Arch::Arm) {
+      // Bootloader is unstable >512MB RAM on 32-bit ARM
+      SetCommandLineOptionWithMode("memory_mb", "512", SET_FLAGS_VALUE);
       default_bootloader += "arm";
   } else if (target_arch == Arch::Arm64) {
       default_bootloader += "aarch64";
