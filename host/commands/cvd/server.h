@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019 The Android Open Source Project
+ * Copyright (C) 2021 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,22 +14,16 @@
  * limitations under the License.
  */
 
-#pragma once
-
-#include <chrono>
-#include <memory>
-#include <vector>
-
-#include "host/libs/config/cuttlefish_config.h"
-#include "host/libs/config/fetcher_config.h"
-#include "host/libs/image_aggregator/image_aggregator.h"
-
 namespace cuttlefish {
+namespace cvd {
 
-bool ResolveInstanceFiles();
-bool ShouldCreateOsCompositeDisk(const CuttlefishConfig& config);
-void CreateDynamicDiskFiles(const FetcherConfig& fetcher_config,
-                            const CuttlefishConfig& config);
-std::vector<ImagePartition> GetOsCompositeDiskConfig();
+// Major version uprevs are backwards incompatible.
+// Minor version uprevs are backwards compatible within major version.
+constexpr int kVersionMajor = 1;
+constexpr int kVersionMinor = 0;
 
-} // namespace cuttlefish
+// Pathname of the abstract cvd_server socket.
+constexpr char kServerSocketPath[] = "cvd_server";
+
+}  // namespace cvd
+}  // namespace cuttlefish
