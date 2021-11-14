@@ -276,8 +276,12 @@ DEFINE_string(wmediumd_config, "",
               "Path to the wmediumd config file. When missing, the default "
               "configuration is used which adds MAC addresses for up to 16 "
               "cuttlefish instances including AP.");
-DEFINE_string(ap_rootfs_image, "", "rootfs image for AP instance");
-DEFINE_string(ap_kernel_image, "", "kernel image for AP instance");
+DEFINE_string(ap_rootfs_image,
+              DefaultHostArtifactsPath("etc/openwrt/images/openwrt_rootfs"),
+              "rootfs image for AP instance");
+DEFINE_string(ap_kernel_image,
+              DefaultHostArtifactsPath("etc/openwrt/images/kernel_for_openwrt"),
+              "kernel image for AP instance");
 
 DEFINE_bool(record_screen, false, "Enable screen recording. "
                                   "Requires --start_webrtc");
@@ -835,6 +839,12 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
       instance.set_modem_simulator_ports("");
     }
   } // end of num_instances loop
+
+  std::vector<std::string> names;
+  for (const auto& instance : tmp_config_obj.Instances()) {
+    names.emplace_back(instance.instance_name());
+  }
+  tmp_config_obj.set_instance_names(names);
 
   tmp_config_obj.set_enable_sandbox(FLAGS_enable_sandbox);
 

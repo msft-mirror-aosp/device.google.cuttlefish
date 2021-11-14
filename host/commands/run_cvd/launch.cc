@@ -397,7 +397,7 @@ class BluetoothConnector : public CommandSource {
 
   // CommandSource
   std::vector<Command> Commands() override {
-    Command command(DefaultHostArtifactsPath("bin/bt_connector"));
+    Command command(HostBinaryPath("bt_connector"));
     command.AddParameter("-bt_out=", fifos_[0]);
     command.AddParameter("-bt_in=", fifos_[1]);
     command.AddParameter("-hci_port=", instance_.rootcanal_hci_port());
@@ -745,8 +745,13 @@ class OpenWrt : public CommandSource {
     } else {
       ap_cmd.Cmd().AddParameter("--disable-sandbox");
     }
+    ap_cmd.Cmd().AddParameter("--rwdisk=",
+                              instance_.PerInstancePath("ap_overlay.img"));
+    ap_cmd.Cmd().AddParameter(
+        "--disk=", instance_.PerInstancePath("persistent_composite.img"));
+    ap_cmd.Cmd().AddParameter("--params=\"root=" + config_.ap_image_dev_path() +
+                              "\"");
 
-    ap_cmd.Cmd().AddParameter("--root=", config_.ap_rootfs_image());
     ap_cmd.Cmd().AddParameter(config_.ap_kernel_image());
 
     return single_element_emplace(std::move(ap_cmd.Cmd()));

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019 The Android Open Source Project
+ * Copyright (C) 2021 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,22 +13,18 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#pragma once
 
-#include <string>
+package {
+    default_applicable_licenses: ["Android-Apache-2.0"],
+}
 
-#include <fruit/fruit.h>
-
-#include "host/libs/config/cuttlefish_config.h"
-#include "host/libs/config/feature.h"
-
-namespace cuttlefish {
-
-class InitBootloaderEnvPartition : public Feature {};
-
-fruit::Component<fruit::Required<const CuttlefishConfig,
-                                 const CuttlefishConfig::InstanceSpecific>,
-                 InitBootloaderEnvPartition>
-InitBootloaderEnvPartitionComponent();
-
-} // namespace cuttlefish
+cc_library_static {
+    name: "libcuttlefish_cvd_proto",
+    host_supported: true,
+    proto: {
+        export_proto_headers: true,
+        type: "lite",
+        //include_dirs: ["external/protobuf/src"],
+    },
+    srcs: ["cvd_server.proto"],
+}
