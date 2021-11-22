@@ -17,6 +17,8 @@
 body {
   background-color:black;
   margin: 0;
+  touch-action: none;
+  overscroll-behavior: none;
 }
 
 #device-connection {
@@ -77,6 +79,13 @@ body {
   font-family: 'Open Sans', sans-serif;
   padding: 10px;
   margin: 10px;
+  border-radius: 10px;
+}
+#error-message .close-btn {
+  float: right;
+  cursor: pointer;
+}
+#error-message.hidden {
   display: none;
 }
 #error-message.warning {

@@ -174,13 +174,17 @@ DEFINE_bool(
         false,
         "[Experimental] If enabled, exposes local adb service through a websocket.");
 
+static constexpr auto HOST_OPERATOR_SOCKET_PATH = "/run/cuttlefish/operator";
+
 DEFINE_bool(
-    start_webrtc_sig_server, false,
+    // The actual default for this flag is set with SetCommandLineOption() in
+    // GetKernelConfigsAndSetDefaults() at the end of this file.
+    start_webrtc_sig_server, true,
     "Whether to start the webrtc signaling server. This option only applies to "
     "the first instance, if multiple instances are launched they'll share the "
     "same signaling server, which is owned by the first one.");
 
-DEFINE_string(webrtc_sig_server_addr, "0.0.0.0",
+DEFINE_string(webrtc_sig_server_addr, "",
               "The address of the webrtc signaling server.");
 
 DEFINE_int32(
@@ -276,8 +280,12 @@ DEFINE_string(wmediumd_config, "",
               "Path to the wmediumd config file. When missing, the default "
               "configuration is used which adds MAC addresses for up to 16 "
               "cuttlefish instances including AP.");
-DEFINE_string(ap_rootfs_image, "", "rootfs image for AP instance");
-DEFINE_string(ap_kernel_image, "", "kernel image for AP instance");
+DEFINE_string(ap_rootfs_image,
+              DefaultHostArtifactsPath("etc/openwrt/images/openwrt_rootfs"),
+              "rootfs image for AP instance");
+DEFINE_string(ap_kernel_image,
+              DefaultHostArtifactsPath("etc/openwrt/images/kernel_for_openwrt"),
+              "kernel image for AP instance");
 
 DEFINE_bool(record_screen, false, "Enable screen recording. "
                                   "Requires --start_webrtc");
@@ -807,9 +815,13 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
         FLAGS_vhost_user_mac80211_hwsim.empty() && is_first_instance;
     if (start_wmediumd) {
       // TODO(b/199020470) move this to the directory for shared resources
-      auto socket_path =
+      auto vhost_user_socket_path =
           const_instance.PerInstanceInternalPath("vhost_user_mac80211");
-      tmp_config_obj.set_vhost_user_mac80211_hwsim(socket_path);
+      auto wmediumd_api_socket_path =
+          const_instance.PerInstanceInternalPath("wmediumd_api_server");
+
+      tmp_config_obj.set_vhost_user_mac80211_hwsim(vhost_user_socket_path);
+      tmp_config_obj.set_wmediumd_api_server_socket(wmediumd_api_socket_path);
       instance.set_start_wmediumd(true);
     } else {
       instance.set_start_wmediumd(false);
@@ -835,6 +847,12 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
       instance.set_modem_simulator_ports("");
     }
   } // end of num_instances loop
+
+  std::vector<std::string> names;
+  for (const auto& instance : tmp_config_obj.Instances()) {
+    names.emplace_back(instance.instance_name());
+  }
+  tmp_config_obj.set_instance_names(names);
 
   tmp_config_obj.set_enable_sandbox(FLAGS_enable_sandbox);
 
@@ -919,11 +937,18 @@ bool GetKernelConfigAndSetDefaults(KernelConfig* kernel_config) {
               << std::endl;
     invalid_manager = true;
   }
-  // The default for starting signaling server is whether or not webrt is to be
-  // started.
-  SetCommandLineOptionWithMode("start_webrtc_sig_server",
-                               FLAGS_start_webrtc ? "true" : "false",
-                               SET_FLAGS_DEFAULT);
+  auto host_operator_present =
+      cuttlefish::FileIsSocket(HOST_OPERATOR_SOCKET_PATH);
+  // The default for starting signaling server depends on whether or not webrtc
+  // is to be started and the presence of the host orchestrator.
+  SetCommandLineOptionWithMode(
+      "start_webrtc_sig_server",
+      FLAGS_start_webrtc && !host_operator_present ? "true" : "false",
+      SET_FLAGS_DEFAULT);
+  SetCommandLineOptionWithMode(
+      "webrtc_sig_server_addr",
+      host_operator_present ? HOST_OPERATOR_SOCKET_PATH : "0.0.0.0",
+      SET_FLAGS_DEFAULT);
   if (invalid_manager) {
     return false;
   }

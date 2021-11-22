@@ -220,9 +220,6 @@ BOARD_KERNEL_CMDLINE += firmware_class.path=/vendor/etc/
 BOARD_KERNEL_CMDLINE += init=/init
 BOARD_BOOTCONFIG += androidboot.hardware=cutf_cvm
 
-# TODO(b/179489292): Remove once kfence is enabled everywhere
-BOARD_KERNEL_CMDLINE += kfence.sample_interval=500
-
 BOARD_KERNEL_CMDLINE += loop.max_part=7
 
 # TODO(b/182417593): Move all of these module options to modules.options
@@ -231,6 +228,9 @@ BOARD_BOOTCONFIG += kernel.mac80211_hwsim.radios=0
 # Reduce slab size usage from virtio vsock to reduce slab fragmentation
 BOARD_BOOTCONFIG += \
     kernel.vmw_vsock_virtio_transport_common.virtio_transport_max_vsock_pkt_buf_size=16384
+
+BOARD_BOOTCONFIG += \
+    androidboot.vendor.apex.com.android.wifi.hal=com.google.cf.wifi
 
 BOARD_INCLUDE_DTB_IN_BOOTIMG := true
 BOARD_BOOT_HEADER_VERSION := 4

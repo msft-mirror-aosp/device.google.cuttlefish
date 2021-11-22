@@ -40,18 +40,30 @@ async function ConnectDevice(deviceId, serverConnector) {
   return deviceConnection;
 }
 
-function showWarning(msg) {
+function setupMessages() {
+  let closeBtn = document.querySelector('#error-message .close-btn');
+  closeBtn.addEventListener('click', evt => {
+    evt.target.parentElement.className = 'hidden';
+  });
+}
+
+function showMessage(msg, className) {
   let element = document.getElementById('error-message');
-  element.className = 'warning';
-  element.textContent = msg;
-  element.style.visibility = 'visible';
+  if (element.childNodes.length < 2) {
+    // First time, no text node yet
+    element.insertAdjacentText('afterBegin', msg);
+  } else {
+    element.childNodes[0].data = msg;
+  }
+  element.className = className;
+}
+
+function showWarning(msg) {
+  showMessage(msg, 'warning');
 }
 
 function showError(msg) {
-  let element = document.getElementById('error-message');
-  element.className = 'error';
-  element.textContent = msg;
-  element.style.visibility = 'visible';
+  showMessage(msg, 'error');
 }
 
 
@@ -194,10 +206,8 @@ class DeviceControlApp {
             let playPromise = deviceAudio.play();
             if (playPromise !== undefined) {
               playPromise.catch(error => {
-                // Autoplay not allowed, mute and try again
-                deviceAudio.muted = true;
-                deviceAudio.play();
-                showWarning("Audio playback is muted");
+                showWarning(
+                    'Audio failed to play automatically, click on the play button to activate it');
               });
             }
           })
@@ -911,18 +921,18 @@ class DeviceControlApp {
 
 window.addEventListener("load", async evt => {
   try {
+    setupMessages();
     let connectorModule = await import('./server_connector.js');
     let deviceConnection = await ConnectDevice(
         connectorModule.deviceId(), await connectorModule.createConnector());
     let deviceControlApp = new DeviceControlApp(deviceConnection);
     deviceControlApp.start();
-    document.getElementById('loader').style.display = 'none';
     document.getElementById('device-connection').style.display = 'block';
   } catch(err) {
     console.error('Unable to connect: ', err);
     showError(
       'No connection to the guest device. ' +
       'Please ensure the WebRTC process on the host machine is active.');
-    throw err;
   }
+  document.getElementById('loader').style.display = 'none';
 });
