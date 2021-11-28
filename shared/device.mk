@@ -39,6 +39,11 @@ PRODUCT_SHIPPING_API_LEVEL := 33
 PRODUCT_USE_DYNAMIC_PARTITIONS := true
 DISABLE_RILD_OEM_HOOK := true
 
+# TODO(b/205788876) remove this condition when openwrt has an image for arm.
+ifndef PRODUCT_ENFORCE_MAC80211_HWSIM
+PRODUCT_ENFORCE_MAC80211_HWSIM := true
+endif
+
 PRODUCT_SET_DEBUGFS_RESTRICTIONS := true
 
 PRODUCT_SOONG_NAMESPACES += device/generic/goldfish-opengl # for vulkan
@@ -71,6 +76,8 @@ AB_OTA_PARTITIONS += \
 
 # Enable Virtual A/B
 $(call inherit-product, $(SRC_TARGET_DIR)/product/virtual_ab_ota/compression_with_xor.mk)
+
+PRODUCT_VENDOR_PROPERTIES += ro.virtual_ab.userspace.snapshots.enabled=true
 
 # Enable Scoped Storage related
 $(call inherit-product, $(SRC_TARGET_DIR)/product/emulated_storage.mk)
