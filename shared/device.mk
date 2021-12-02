@@ -39,6 +39,11 @@ PRODUCT_SHIPPING_API_LEVEL := 33
 PRODUCT_USE_DYNAMIC_PARTITIONS := true
 DISABLE_RILD_OEM_HOOK := true
 
+# TODO(b/205788876) remove this condition when openwrt has an image for arm.
+ifndef PRODUCT_ENFORCE_MAC80211_HWSIM
+PRODUCT_ENFORCE_MAC80211_HWSIM := true
+endif
+
 PRODUCT_SET_DEBUGFS_RESTRICTIONS := true
 
 PRODUCT_SOONG_NAMESPACES += device/generic/goldfish-opengl # for vulkan
@@ -508,7 +513,7 @@ PRODUCT_PACKAGES += $(LOCAL_CONFIRMATIONUI_PRODUCT_PACKAGE)
 # Dumpstate HAL
 #
 ifeq ($(LOCAL_DUMPSTATE_PRODUCT_PACKAGE),)
-    LOCAL_DUMPSTATE_PRODUCT_PACKAGE := android.hardware.dumpstate@1.1-service.example
+    LOCAL_DUMPSTATE_PRODUCT_PACKAGE += android.hardware.dumpstate-service.example
 endif
 PRODUCT_PACKAGES += $(LOCAL_DUMPSTATE_PRODUCT_PACKAGE)
 

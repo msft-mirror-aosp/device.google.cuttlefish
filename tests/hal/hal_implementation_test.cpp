@@ -54,6 +54,7 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hardware.cas.native@1.0",
     "android.hardware.configstore@1.1", // deprecated, see b/149050985, b/149050733
     "android.hardware.fastboot@1.1",
+    "android.hardware.dumpstate@1.1", // deprecated, see b/205760700
     "android.hardware.gnss.measurement_corrections@1.1", // is sub-interface of gnss
     "android.hardware.gnss.visibility_control@1.0",
     "android.hardware.graphics.allocator@2.0",
@@ -90,8 +91,6 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hardware.vibrator@1.3",
     "android.hardware.vr@1.0",
     "android.hardware.weaver@1.0",
-    "android.hardware.wifi@1.5",
-    "android.hardware.wifi.hostapd@1.3",
     "android.hardware.wifi.offload@1.0",
     "android.hidl.base@1.0",
     "android.hidl.memory.token@1.0",
