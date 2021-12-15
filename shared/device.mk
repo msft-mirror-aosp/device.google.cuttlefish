@@ -341,7 +341,7 @@ PRODUCT_PACKAGES += \
 # Gatekeeper
 #
 PRODUCT_PACKAGES += \
-    android.hardware.gatekeeper@1.0-service.remote
+    android.hardware.gatekeeper@1.0-service.software
 
 #
 # GPS
@@ -393,7 +393,7 @@ PRODUCT_PACKAGES += \
 # Keymaster HAL
 #
 PRODUCT_PACKAGES += \
-     android.hardware.keymaster@4.1-service.remote
+     android.hardware.keymaster@4.1-service
 
 #
 # Power HAL

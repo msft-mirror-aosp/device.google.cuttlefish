@@ -98,6 +98,8 @@ bool KeymasterResponder::ProcessMessage() {
       keymaster_.AddRngEntropy(request, &response);
       return channel_.SendResponse(ADD_RNG_ENTROPY, response);
     }
+    case CONFIGURE_VENDOR_PATCHLEVEL: // TODO(schuffelen): Backport
+    case CONFIGURE_BOOT_PATCHLEVEL: // TODO(schuffelen): Backport
     case DESTROY_ATTESTATION_IDS: // Not defined in AndroidKeymaster?
       break;
   }
