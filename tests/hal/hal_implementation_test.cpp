@@ -64,6 +64,7 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hardware.graphics.mapper@2.1",
     "android.hardware.graphics.mapper@3.0",
     "android.hardware.health.storage@1.0", // converted to AIDL, see b/177470478
+    "android.hardware.health@2.1", // converted to AIDL, see b/177269435
     "android.hardware.ir@1.0",
     "android.hardware.keymaster@3.0",
     "android.hardware.keymaster@4.1", // Replaced by KeyMint
@@ -138,11 +139,8 @@ static const std::set<VersionedAidlPackage> kKnownMissingAidl = {
     {"android.hardware.automotive.audiocontrol.", 1},
     {"android.hardware.automotive.occupant_awareness.", 1},
 
-    // This version needs to be implemented (b/190505425)
-    {"android.system.keystore2.", 2},
-
-    // This version needs to be implemented (b/177269435)
-    {"android.hardware.health.", 1},
+    // No implementation in AOSP for supplicant aidl hal (b/210166896)
+    {"android.hardware.wifi.supplicant.", 1},
 
     // These versions need to be implemented (b/198331776)
     {"android.hardware.radio.", 1},
