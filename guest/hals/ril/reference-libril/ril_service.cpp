@@ -118,8 +118,8 @@ void convertRilLceDataInfoToHal(void *response, size_t responseLen, LceDataInfo&
 void convertRilSignalStrengthToHal(void *response, size_t responseLen,
         SignalStrength& signalStrength);
 
-void convertRilDataCallToHal(RIL_Data_Call_Response_v11 *dcResponse,
-        SetupDataCallResult& dcResult);
+void convertRilSignalStrengthToHal_1_2(void* response, size_t responseLen,
+                                       V1_2::SignalStrength& signalStrength);
 
 void convertRilSignalStrengthToHal_1_4(void *response, size_t responseLen,
         V1_4::SignalStrength& signalStrength);
@@ -135,8 +135,18 @@ void convertRilDataCallToHal(RIL_Data_Call_Response_v11* dcResponse,
 void convertRilDataCallListToHal(void *response, size_t responseLen,
         hidl_vec<SetupDataCallResult>& dcResultList);
 
+void convertRilDataCallListToHal_1_4(void* response, size_t responseLen,
+                                     hidl_vec<V1_4::SetupDataCallResult>& dcResultList);
+
+void convertRilDataCallListToHal_1_5(void* response, size_t responseLen,
+                                     hidl_vec<V1_5::SetupDataCallResult>& dcResultList);
+
 void convertRilCellInfoListToHal(void *response, size_t responseLen, hidl_vec<CellInfo>& records);
 void convertRilCellInfoListToHal_1_2(void *response, size_t responseLen, hidl_vec<V1_2::CellInfo>& records);
+void convertRilCellInfoListToHal_1_4(void* response, size_t responseLen,
+                                     hidl_vec<V1_4::CellInfo>& records);
+void convertRilCellInfoListToHal_1_5(void* response, size_t responseLen,
+                                     hidl_vec<V1_5::CellInfo>& records);
 
 void populateResponseInfo(RadioResponseInfo& responseInfo, int serial, int responseType,
                          RIL_Errno e);
@@ -3249,12 +3259,14 @@ Return<void> RadioImpl_1_5::setSignalStrengthReportingCriteria(int32_t serial,
              e = RIL_E_SUCCESS;
          }
          populateResponseInfo(responseInfo, serial, RESPONSE_SOLICITED, e);
-         Return<void> retStatus
-                   = radioService[mSlotId]->mRadioResponseV1_2->setSignalStrengthReportingCriteriaResponse(responseInfo);
+         Return<void> retStatus =
+                 radioService[mSlotId]
+                         ->mRadioResponseV1_2->setSignalStrengthReportingCriteriaResponse(
+                                 responseInfo);
          radioService[mSlotId]->checkReturnStatus(retStatus);
     } else {
-        RLOGE("setIndicationFilterResponse: radioService[%d]->mRadioResponse == NULL",
-           mSlotId);
+        RLOGE("setSignalStrengthReportingCriteria: radioService[%d]->mRadioResponse == NULL",
+              mSlotId);
     }
     return Void();
 }
@@ -4110,8 +4122,9 @@ Return<void> RadioImpl_1_5::setInitialAttachApn_1_5(int32_t  serial ,
     populateResponseInfo(responseInfo, serial, RESPONSE_SOLICITED, RIL_E_SUCCESS);
 
     if (radioService[mSlotId]->mRadioResponseV1_5 != NULL) {
-        Return<void> retStatus
-                = radioService[mSlotId]->mRadioResponseV1_5->setInitialAttachApnResponse(responseInfo);
+        Return<void> retStatus =
+                radioService[mSlotId]->mRadioResponseV1_5->setInitialAttachApnResponse_1_5(
+                        responseInfo);
     } else if (radioService[mSlotId]->mRadioResponseV1_4 != NULL) {
         Return<void> retStatus
                 = radioService[mSlotId]->mRadioResponseV1_4->setInitialAttachApnResponse(responseInfo);
@@ -4139,8 +4152,8 @@ Return<void> RadioImpl_1_5::setDataProfile_1_5(int32_t  serial ,
     populateResponseInfo(responseInfo, serial, RESPONSE_SOLICITED, RIL_E_SUCCESS);
 
     if (radioService[mSlotId]->mRadioResponseV1_5 != NULL) {
-        Return<void> retStatus
-                = radioService[mSlotId]->mRadioResponseV1_5->setDataProfileResponse(responseInfo);
+        Return<void> retStatus =
+                radioService[mSlotId]->mRadioResponseV1_5->setDataProfileResponse_1_5(responseInfo);
     } else if (radioService[mSlotId]->mRadioResponseV1_4 != NULL) {
         Return<void> retStatus
                 = radioService[mSlotId]->mRadioResponseV1_4->setDataProfileResponse(responseInfo);
@@ -4589,50 +4602,87 @@ int radio_1_5::getCurrentCallsResponse(int slotId,
     RLOGD("getCurrentCallsResponse: serial %d", serial);
 #endif
 
-    if (radioService[slotId]->mRadioResponse != NULL) {
+    if (radioService[slotId]->mRadioResponseV1_2 != NULL ||
+        radioService[slotId]->mRadioResponse != NULL) {
         RadioResponseInfo responseInfo = {};
         populateResponseInfo(responseInfo, serial, responseType, e);
-
-        hidl_vec<Call> calls;
-        if ((response == NULL && responseLen != 0)
-                || (responseLen % sizeof(RIL_Call *)) != 0) {
+        if ((response == NULL && responseLen != 0) || (responseLen % sizeof(RIL_Call*)) != 0) {
             RLOGE("getCurrentCallsResponse: Invalid response");
-            if (e == RIL_E_SUCCESS) responseInfo.error = RadioError::INVALID_RESPONSE;
-        } else {
-            int num = responseLen / sizeof(RIL_Call *);
-            calls.resize(num);
-
-            for (int i = 0 ; i < num ; i++) {
-                RIL_Call *p_cur = ((RIL_Call **) response)[i];
-                /* each call info */
-                calls[i].state = (CallState) p_cur->state;
-                calls[i].index = p_cur->index;
-                calls[i].toa = p_cur->toa;
-                calls[i].isMpty = p_cur->isMpty;
-                calls[i].isMT = p_cur->isMT;
-                calls[i].als = p_cur->als;
-                calls[i].isVoice = p_cur->isVoice;
-                calls[i].isVoicePrivacy = p_cur->isVoicePrivacy;
-                calls[i].number = convertCharPtrToHidlString(p_cur->number);
-                calls[i].numberPresentation = (CallPresentation) p_cur->numberPresentation;
-                calls[i].name = convertCharPtrToHidlString(p_cur->name);
-                calls[i].namePresentation = (CallPresentation) p_cur->namePresentation;
-                if (p_cur->uusInfo != NULL && p_cur->uusInfo->uusData != NULL) {
-                    RIL_UUS_Info *uusInfo = p_cur->uusInfo;
-                    calls[i].uusInfo.resize(1);
-                    calls[i].uusInfo[0].uusType = (UusType) uusInfo->uusType;
-                    calls[i].uusInfo[0].uusDcs = (UusDcs) uusInfo->uusDcs;
-                    // convert uusInfo->uusData to a null-terminated string
-                    char *nullTermStr = strndup(uusInfo->uusData, uusInfo->uusLength);
-                    calls[i].uusInfo[0].uusData = nullTermStr;
-                    free(nullTermStr);
-                }
+            if (e == RIL_E_SUCCESS) {
+                responseInfo.error = RadioError::INVALID_RESPONSE;
             }
-        }
+            return 0;
+        } else {
+            Return<void> retStatus;
+            if (radioService[slotId]->mRadioResponseV1_2 != NULL) {
+                hidl_vec<V1_2::Call> calls;
+                int num = responseLen / sizeof(RIL_Call*);
+                calls.resize(num);
 
-        Return<void> retStatus = radioService[slotId]->mRadioResponse->
-                getCurrentCallsResponse(responseInfo, calls);
-        radioService[slotId]->checkReturnStatus(retStatus);
+                for (int i = 0; i < num; i++) {
+                    RIL_Call* p_cur = ((RIL_Call**)response)[i];
+                    /* each call info */
+                    calls[i].base.state = (CallState)p_cur->state;
+                    calls[i].base.index = p_cur->index;
+                    calls[i].base.toa = p_cur->toa;
+                    calls[i].base.isMpty = p_cur->isMpty;
+                    calls[i].base.isMT = p_cur->isMT;
+                    calls[i].base.als = p_cur->als;
+                    calls[i].base.isVoice = p_cur->isVoice;
+                    calls[i].base.isVoicePrivacy = p_cur->isVoicePrivacy;
+                    calls[i].base.number = convertCharPtrToHidlString(p_cur->number);
+                    calls[i].base.numberPresentation = (CallPresentation)p_cur->numberPresentation;
+                    calls[i].base.name = convertCharPtrToHidlString(p_cur->name);
+                    calls[i].base.namePresentation = (CallPresentation)p_cur->namePresentation;
+                    if (p_cur->uusInfo != NULL && p_cur->uusInfo->uusData != NULL) {
+                        RIL_UUS_Info* uusInfo = p_cur->uusInfo;
+                        calls[i].base.uusInfo.resize(1);
+                        calls[i].base.uusInfo[0].uusType = (UusType)uusInfo->uusType;
+                        calls[i].base.uusInfo[0].uusDcs = (UusDcs)uusInfo->uusDcs;
+                        // convert uusInfo->uusData to a null-terminated string
+                        char* nullTermStr = strndup(uusInfo->uusData, uusInfo->uusLength);
+                        calls[i].base.uusInfo[0].uusData = nullTermStr;
+                        free(nullTermStr);
+                    }
+                }
+                retStatus = radioService[slotId]->mRadioResponseV1_2->getCurrentCallsResponse_1_2(
+                        responseInfo, calls);
+            } else {
+                hidl_vec<Call> calls;
+                int num = responseLen / sizeof(RIL_Call*);
+                calls.resize(num);
+
+                for (int i = 0; i < num; i++) {
+                    RIL_Call* p_cur = ((RIL_Call**)response)[i];
+                    /* each call info */
+                    calls[i].state = (CallState)p_cur->state;
+                    calls[i].index = p_cur->index;
+                    calls[i].toa = p_cur->toa;
+                    calls[i].isMpty = p_cur->isMpty;
+                    calls[i].isMT = p_cur->isMT;
+                    calls[i].als = p_cur->als;
+                    calls[i].isVoice = p_cur->isVoice;
+                    calls[i].isVoicePrivacy = p_cur->isVoicePrivacy;
+                    calls[i].number = convertCharPtrToHidlString(p_cur->number);
+                    calls[i].numberPresentation = (CallPresentation)p_cur->numberPresentation;
+                    calls[i].name = convertCharPtrToHidlString(p_cur->name);
+                    calls[i].namePresentation = (CallPresentation)p_cur->namePresentation;
+                    if (p_cur->uusInfo != NULL && p_cur->uusInfo->uusData != NULL) {
+                        RIL_UUS_Info* uusInfo = p_cur->uusInfo;
+                        calls[i].uusInfo.resize(1);
+                        calls[i].uusInfo[0].uusType = (UusType)uusInfo->uusType;
+                        calls[i].uusInfo[0].uusDcs = (UusDcs)uusInfo->uusDcs;
+                        // convert uusInfo->uusData to a null-terminated string
+                        char* nullTermStr = strndup(uusInfo->uusData, uusInfo->uusLength);
+                        calls[i].uusInfo[0].uusData = nullTermStr;
+                        free(nullTermStr);
+                    }
+                }
+                retStatus = radioService[slotId]->mRadioResponse->getCurrentCallsResponse(
+                        responseInfo, calls);
+            }
+            radioService[slotId]->checkReturnStatus(retStatus);
+        }
     } else {
         RLOGE("getCurrentCallsResponse: radioService[%d]->mRadioResponse == NULL", slotId);
     }
@@ -4727,19 +4777,19 @@ int radio_1_5::hangupForegroundResumeBackgroundResponse(int slotId, int response
                                                     RIL_Errno e, void *response,
                                                     size_t responseLen) {
 #if VDBG
-    RLOGD("hangupWaitingOrBackgroundResponse: serial %d", serial);
+    RLOGD("hangupForegroundResumeBackgroundResponse: serial %d", serial);
 #endif
 
     if (radioService[slotId]->mRadioResponse != NULL) {
         RadioResponseInfo responseInfo = {};
         populateResponseInfo(responseInfo, serial, responseType, e);
         Return<void> retStatus =
-                radioService[slotId]->mRadioResponse->hangupWaitingOrBackgroundResponse(
-                responseInfo);
+                radioService[slotId]->mRadioResponse->hangupForegroundResumeBackgroundResponse(
+                        responseInfo);
         radioService[slotId]->checkReturnStatus(retStatus);
     } else {
-        RLOGE("hangupWaitingOrBackgroundResponse: radioService[%d]->mRadioResponse == NULL",
-                slotId);
+        RLOGE("hangupForegroundResumeBackgroundResponse: radioService[%d]->mRadioResponse == NULL",
+              slotId);
     }
 
     return 0;
@@ -4821,7 +4871,7 @@ int radio_1_5::getLastCallFailCauseResponse(int slotId,
         LastCallFailCauseInfo info = {};
         info.vendorCause = hidl_string();
         if (response == NULL) {
-            RLOGE("getCurrentCallsResponse Invalid response: NULL");
+            RLOGE("getLastCallFailCauseResponse Invalid response: NULL");
             if (e == RIL_E_SUCCESS) responseInfo.error = RadioError::INVALID_RESPONSE;
         } else if (responseLen == sizeof(int)) {
             int *pInt = (int *) response;
@@ -4831,7 +4881,7 @@ int radio_1_5::getLastCallFailCauseResponse(int slotId,
             info.causeCode = (LastCallFailCause) pFailCauseInfo->cause_code;
             info.vendorCause = convertCharPtrToHidlString(pFailCauseInfo->vendor_cause);
         } else {
-            RLOGE("getCurrentCallsResponse Invalid response: NULL");
+            RLOGE("getLastCallFailCauseResponse Invalid response: NULL");
             if (e == RIL_E_SUCCESS) responseInfo.error = RadioError::INVALID_RESPONSE;
         }
 
@@ -4853,39 +4903,40 @@ int radio_1_5::getSignalStrengthResponse(int slotId,
     RLOGD("getSignalStrengthResponse: serial %d", serial);
 #endif
 
-    if (radioService[slotId]->mRadioResponseV1_4 != NULL) {
-        RadioResponseInfo responseInfo = {};
-        populateResponseInfo(responseInfo, serial, responseType, e);
-        ::android::hardware::radio::V1_4::SignalStrength signalStrength_1_4 = {};
-        if (response == NULL || responseLen != sizeof(RIL_SignalStrength_v12)) {
-            RLOGE("getSignalStrengthResponse: Invalid response");
-            if (e == RIL_E_SUCCESS) responseInfo.error = RadioError::INVALID_RESPONSE;
-        } else {
-            convertRilSignalStrengthToHal_1_4(response, responseLen, signalStrength_1_4);
+    RadioResponseInfo responseInfo = {};
+    populateResponseInfo(responseInfo, serial, responseType, e);
+
+    if (response == NULL || responseLen != sizeof(RIL_SignalStrength_v12)) {
+        RLOGE("getSignalStrengthResponse: Invalid response");
+        if (e == RIL_E_SUCCESS) {
+            responseInfo.error = RadioError::INVALID_RESPONSE;
         }
-
-        //TODO: future implementation needs to fill tdScdma, wcdma and nr signal strength.
-
-        Return<void> retStatus = radioService[slotId]->mRadioResponseV1_4->
-                getSignalStrengthResponse_1_4(responseInfo, signalStrength_1_4);
-        radioService[slotId]->checkReturnStatus(retStatus);
-    } else if (radioService[slotId]->mRadioResponse != NULL) {
-        RadioResponseInfo responseInfo = {};
-        populateResponseInfo(responseInfo, serial, responseType, e);
-        SignalStrength signalStrength = {};
-        if (response == NULL || responseLen != sizeof(RIL_SignalStrength_v12)) {
-            RLOGE("getSignalStrengthResponse: Invalid response");
-            if (e == RIL_E_SUCCESS) responseInfo.error = RadioError::INVALID_RESPONSE;
-        } else {
-            convertRilSignalStrengthToHal(response, responseLen, signalStrength);
-        }
-
-        Return<void> retStatus = radioService[slotId]->mRadioResponse->getSignalStrengthResponse(
-                responseInfo, signalStrength);
-        radioService[slotId]->checkReturnStatus(retStatus);
     } else {
-        RLOGE("getSignalStrengthResponse: radioService[%d]->mRadioResponse == NULL",
-                slotId);
+        if (radioService[slotId]->mRadioResponseV1_4 != NULL) {
+            V1_4::SignalStrength signalStrength_1_4 = {};
+            convertRilSignalStrengthToHal_1_4(response, responseLen, signalStrength_1_4);
+            // TODO: future implementation needs to fill tdScdma, wcdma and nr signal strength.
+            Return<void> retStatus =
+                    radioService[slotId]->mRadioResponseV1_4->getSignalStrengthResponse_1_4(
+                            responseInfo, signalStrength_1_4);
+            radioService[slotId]->checkReturnStatus(retStatus);
+        } else if (radioService[slotId]->mRadioResponseV1_2 != NULL) {
+            V1_2::SignalStrength signalStrength_1_2 = {};
+            convertRilSignalStrengthToHal_1_2(response, responseLen, signalStrength_1_2);
+            Return<void> retStatus =
+                    radioService[slotId]->mRadioResponseV1_2->getSignalStrengthResponse_1_2(
+                            responseInfo, signalStrength_1_2);
+            radioService[slotId]->checkReturnStatus(retStatus);
+        } else if (radioService[slotId]->mRadioResponse != NULL) {
+            SignalStrength signalStrength = {};
+            convertRilSignalStrengthToHal(response, responseLen, signalStrength);
+            Return<void> retStatus =
+                    radioService[slotId]->mRadioResponse->getSignalStrengthResponse(responseInfo,
+                                                                                    signalStrength);
+            radioService[slotId]->checkReturnStatus(retStatus);
+        } else {
+            RLOGE("getSignalStrengthResponse: radioService[%d]->mRadioResponse == NULL", slotId);
+        }
     }
 
     return 0;
@@ -5928,11 +5979,11 @@ int radio_1_5::getDataRegistrationStateResponse(int slotId,
                         numStrings, resp);
 
                 Return<void> retStatus =
-                    radioService[slotId]
-                        ->mRadioResponseV1_5
-                        ->getDataRegistrationStateResponse_1_5(
-                            responseInfo, regResponse);
+                        radioService[slotId]
+                                ->mRadioResponseV1_5->getDataRegistrationStateResponse_1_5(
+                                        responseInfo, regResponse);
                 radioService[slotId]->checkReturnStatus(retStatus);
+                return 0;
             }
         } else if (s_vendorFunctions->version <= 14 &&
                     radioService[slotId]->mRadioResponseV1_2 != NULL) {
@@ -5952,6 +6003,7 @@ int radio_1_5::getDataRegistrationStateResponse(int slotId,
                 Return<void> retStatus = radioService[slotId]->mRadioResponseV1_2->
                         getDataRegistrationStateResponse_1_2(responseInfo, dataRegResponse);
                 radioService[slotId]->checkReturnStatus(retStatus);
+                return 0;
             }
       } else if (s_vendorFunctions->version <= 14) {
             int numStrings = responseLen / sizeof(char *);
@@ -6884,22 +6936,38 @@ int radio_1_5::getDataCallListResponse(int slotId,
     RLOGD("getDataCallListResponse: serial %d", serial);
 #endif
 
-    if (radioService[slotId]->mRadioResponse != NULL) {
+    if (radioService[slotId]->mRadioResponse != NULL ||
+        radioService[slotId]->mRadioResponseV1_4 != NULL ||
+        radioService[slotId]->mRadioResponseV1_5 != NULL) {
         RadioResponseInfo responseInfo = {};
         populateResponseInfo(responseInfo, serial, responseType, e);
 
-        hidl_vec<SetupDataCallResult> ret;
         if ((response == NULL && responseLen != 0)
                 || responseLen % sizeof(RIL_Data_Call_Response_v11) != 0) {
             RLOGE("getDataCallListResponse: invalid response");
-            if (e == RIL_E_SUCCESS) responseInfo.error = RadioError::INVALID_RESPONSE;
+            if (e == RIL_E_SUCCESS) {
+                responseInfo.error = RadioError::INVALID_RESPONSE;
+            }
         } else {
-            convertRilDataCallListToHal(response, responseLen, ret);
+            Return<void> retStatus;
+            if (radioService[slotId]->mRadioResponseV1_5 != NULL) {
+                hidl_vec<V1_5::SetupDataCallResult> ret;
+                convertRilDataCallListToHal_1_5(response, responseLen, ret);
+                retStatus = radioService[slotId]->mRadioResponseV1_5->getDataCallListResponse_1_5(
+                        responseInfo, ret);
+            } else if (radioService[slotId]->mRadioResponseV1_4 != NULL) {
+                hidl_vec<V1_4::SetupDataCallResult> ret;
+                convertRilDataCallListToHal_1_4(response, responseLen, ret);
+                retStatus = radioService[slotId]->mRadioResponseV1_4->getDataCallListResponse_1_4(
+                        responseInfo, ret);
+            } else {
+                hidl_vec<SetupDataCallResult> ret;
+                convertRilDataCallListToHal(response, responseLen, ret);
+                retStatus = radioService[slotId]->mRadioResponse->getDataCallListResponse(
+                        responseInfo, ret);
+            }
+            radioService[slotId]->checkReturnStatus(retStatus);
         }
-
-        Return<void> retStatus = radioService[slotId]->mRadioResponse->getDataCallListResponse(
-                responseInfo, ret);
-        radioService[slotId]->checkReturnStatus(retStatus);
     } else {
         RLOGE("getDataCallListResponse: radioService[%d]->mRadioResponse == NULL", slotId);
     }
@@ -8094,18 +8162,18 @@ int radio_1_5::setInitialAttachApnResponse(int slotId,
     if (radioService[slotId]->mRadioResponseV1_5 != NULL) {
         RadioResponseInfo responseInfo = {};
         populateResponseInfo(responseInfo, serial, responseType, e);
-        Return<void> retStatus
-                = radioService[slotId]->mRadioResponseV1_5->setInitialAttachApnResponse_1_5(
-                responseInfo);
+        Return<void> retStatus =
+                radioService[slotId]->mRadioResponseV1_5->setInitialAttachApnResponse_1_5(
+                        responseInfo);
+        radioService[slotId]->checkReturnStatus(retStatus);
     } else if (radioService[slotId]->mRadioResponse != NULL) {
         RadioResponseInfo responseInfo = {};
         populateResponseInfo(responseInfo, serial, responseType, e);
-        Return<void> retStatus
-                = radioService[slotId]->mRadioResponse->setInitialAttachApnResponse(responseInfo);
+        Return<void> retStatus =
+                radioService[slotId]->mRadioResponse->setInitialAttachApnResponse(responseInfo);
         radioService[slotId]->checkReturnStatus(retStatus);
     } else {
-        RLOGE("setInitialAttachApnResponse: radioService[%d]->mRadioResponse == NULL",
-                slotId);
+        RLOGE("setInitialAttachApnResponse: radioService[%d]->mRadioResponse == NULL", slotId);
     }
 
     return 0;
@@ -9616,6 +9684,26 @@ void convertRilSignalStrengthToHal(void *response, size_t responseLen,
     signalStrength.tdScdma.rscp = rilSignalStrength->TD_SCDMA_SignalStrength.rscp;
 }
 
+void convertRilSignalStrengthToHal_1_2(void* response, size_t responseLen,
+                                       V1_2::SignalStrength& signalStrength_1_2) {
+    SignalStrength signalStrength = {};
+    convertRilSignalStrengthToHal(response, responseLen, signalStrength);
+    signalStrength_1_2.gsm = signalStrength.gw;
+    signalStrength_1_2.cdma = signalStrength.cdma;
+    signalStrength_1_2.evdo = signalStrength.evdo;
+    signalStrength_1_2.lte = signalStrength.lte;
+
+    RIL_SignalStrength_v12* rilSignalStrength = (RIL_SignalStrength_v12*)response;
+    signalStrength_1_2.wcdma.base.signalStrength =
+            rilSignalStrength->WCDMA_SignalStrength.signalStrength;
+    signalStrength_1_2.wcdma.base.bitErrorRate =
+            rilSignalStrength->WCDMA_SignalStrength.bitErrorRate;
+    signalStrength_1_2.wcdma.rscp = INT_MAX;
+    signalStrength_1_2.wcdma.ecno = INT_MAX;
+
+    signalStrength_1_2.tdScdma.rscp = INT_MAX;
+}
+
 void convertRilSignalStrengthToHal_1_4(void *response, size_t responseLen,
         V1_4::SignalStrength& signalStrength_1_4) {
     SignalStrength signalStrength = {};
@@ -9645,12 +9733,11 @@ void convertRilSignalStrengthToHal_1_4(void *response, size_t responseLen,
     signalStrength_1_4.nr.csiSinr = rilSignalStrength->NR_SignalStrength.ssSinr;
 }
 
-int radio_1_5::currentSignalStrengthInd(int slotId,
-                                    int indicationType, int token, RIL_Errno e,
-                                    void *response, size_t responseLen) {
-    if (radioService[slotId] != NULL &&
-       (radioService[slotId]->mRadioIndication != NULL ||
-        radioService[slotId]->mRadioIndicationV1_4 != NULL)) {
+int radio_1_5::currentSignalStrengthInd(int slotId, int indicationType, int token, RIL_Errno e,
+                                        void* response, size_t responseLen) {
+    if (radioService[slotId] != NULL && (radioService[slotId]->mRadioIndication != NULL ||
+                                         radioService[slotId]->mRadioIndicationV1_2 != NULL ||
+                                         radioService[slotId]->mRadioIndicationV1_4 != NULL)) {
         if (response == NULL || responseLen != sizeof(RIL_SignalStrength_v12)) {
             RLOGE("currentSignalStrengthInd: invalid response");
             return 0;
@@ -9661,15 +9748,20 @@ int radio_1_5::currentSignalStrengthInd(int slotId,
 #endif
         Return<void> retStatus;
         if (radioService[slotId]->mRadioIndicationV1_4 != NULL) {
-          V1_4::SignalStrength signalStrength_1_4 = {};
-          convertRilSignalStrengthToHal_1_4(response, responseLen, signalStrength_1_4);
-          retStatus = radioService[slotId]->mRadioIndicationV1_4->currentSignalStrength_1_4(
-                          convertIntToRadioIndicationType(indicationType), signalStrength_1_4);
+            V1_4::SignalStrength signalStrength_1_4 = {};
+            convertRilSignalStrengthToHal_1_4(response, responseLen, signalStrength_1_4);
+            retStatus = radioService[slotId]->mRadioIndicationV1_4->currentSignalStrength_1_4(
+                    convertIntToRadioIndicationType(indicationType), signalStrength_1_4);
+        } else if (radioService[slotId]->mRadioIndicationV1_2 != NULL) {
+            V1_2::SignalStrength signalStrength_1_2 = {};
+            convertRilSignalStrengthToHal_1_2(response, responseLen, signalStrength_1_2);
+            retStatus = radioService[slotId]->mRadioIndicationV1_2->currentSignalStrength_1_2(
+                    convertIntToRadioIndicationType(indicationType), signalStrength_1_2);
         } else {
-          SignalStrength signalStrength = {};
-          convertRilSignalStrengthToHal(response, responseLen, signalStrength);
-          retStatus = radioService[slotId]->mRadioIndication->currentSignalStrength(
-                          convertIntToRadioIndicationType(indicationType), signalStrength);
+            SignalStrength signalStrength = {};
+            convertRilSignalStrengthToHal(response, responseLen, signalStrength);
+            retStatus = radioService[slotId]->mRadioIndication->currentSignalStrength(
+                    convertIntToRadioIndicationType(indicationType), signalStrength);
         }
         radioService[slotId]->checkReturnStatus(retStatus);
     } else {
@@ -11022,6 +11114,176 @@ void convertRilCellInfoListToHal_1_4(void *response, size_t responseLen, hidl_ve
     }
 }
 
+void convertRilCellInfoListToHal_1_5(void* response, size_t responseLen,
+                                     hidl_vec<V1_5::CellInfo>& records) {
+    int num = responseLen / sizeof(RIL_CellInfo_v16);
+    records.resize(num);
+    RIL_CellInfo_v16* rillCellInfo = (RIL_CellInfo_v16*)response;
+    for (int i = 0; i < num; i++) {
+        records[i].registered = rillCellInfo->registered;
+        records[i].connectionStatus = (V1_2::CellConnectionStatus)rillCellInfo->connectionStatus;
+
+        switch (rillCellInfo->cellInfoType) {
+            case RIL_CELL_INFO_TYPE_GSM: {
+                V1_5::CellInfoGsm cellInfoGsm;
+                cellInfoGsm.cellIdentityGsm.base.base.mcc =
+                        std::to_string(rillCellInfo->CellInfo.gsm.cellIdentityGsm.mcc);
+                cellInfoGsm.cellIdentityGsm.base.base.mnc =
+                        ril::util::mnc::decode(rillCellInfo->CellInfo.gsm.cellIdentityGsm.mnc);
+                cellInfoGsm.cellIdentityGsm.base.base.lac =
+                        rillCellInfo->CellInfo.gsm.cellIdentityGsm.lac;
+                cellInfoGsm.cellIdentityGsm.base.base.cid =
+                        rillCellInfo->CellInfo.gsm.cellIdentityGsm.cid;
+                cellInfoGsm.cellIdentityGsm.base.base.arfcn =
+                        rillCellInfo->CellInfo.gsm.cellIdentityGsm.arfcn;
+                cellInfoGsm.cellIdentityGsm.base.base.bsic =
+                        rillCellInfo->CellInfo.gsm.cellIdentityGsm.bsic;
+                cellInfoGsm.signalStrengthGsm.signalStrength =
+                        rillCellInfo->CellInfo.gsm.signalStrengthGsm.signalStrength;
+                cellInfoGsm.signalStrengthGsm.bitErrorRate =
+                        rillCellInfo->CellInfo.gsm.signalStrengthGsm.bitErrorRate;
+                cellInfoGsm.signalStrengthGsm.timingAdvance =
+                        rillCellInfo->CellInfo.gsm.signalStrengthGsm.timingAdvance;
+                records[i].ratSpecificInfo.gsm(cellInfoGsm);
+                break;
+            }
+
+            case RIL_CELL_INFO_TYPE_WCDMA: {
+                V1_5::CellInfoWcdma cellInfoWcdma;
+                cellInfoWcdma.cellIdentityWcdma.base.base.mcc =
+                        std::to_string(rillCellInfo->CellInfo.wcdma.cellIdentityWcdma.mcc);
+                cellInfoWcdma.cellIdentityWcdma.base.base.mnc =
+                        ril::util::mnc::decode(rillCellInfo->CellInfo.wcdma.cellIdentityWcdma.mnc);
+                cellInfoWcdma.cellIdentityWcdma.base.base.lac =
+                        rillCellInfo->CellInfo.wcdma.cellIdentityWcdma.lac;
+                cellInfoWcdma.cellIdentityWcdma.base.base.cid =
+                        rillCellInfo->CellInfo.wcdma.cellIdentityWcdma.cid;
+                cellInfoWcdma.cellIdentityWcdma.base.base.psc =
+                        rillCellInfo->CellInfo.wcdma.cellIdentityWcdma.psc;
+                cellInfoWcdma.cellIdentityWcdma.base.base.uarfcn =
+                        rillCellInfo->CellInfo.wcdma.cellIdentityWcdma.uarfcn;
+                cellInfoWcdma.signalStrengthWcdma.base.signalStrength =
+                        rillCellInfo->CellInfo.wcdma.signalStrengthWcdma.signalStrength;
+                cellInfoWcdma.signalStrengthWcdma.base.bitErrorRate =
+                        rillCellInfo->CellInfo.wcdma.signalStrengthWcdma.bitErrorRate;
+                records[i].ratSpecificInfo.wcdma(cellInfoWcdma);
+                break;
+            }
+
+            case RIL_CELL_INFO_TYPE_CDMA: {
+                V1_2::CellInfoCdma cellInfoCdma;
+                cellInfoCdma.cellIdentityCdma.base.networkId =
+                        rillCellInfo->CellInfo.cdma.cellIdentityCdma.networkId;
+                cellInfoCdma.cellIdentityCdma.base.systemId =
+                        rillCellInfo->CellInfo.cdma.cellIdentityCdma.systemId;
+                cellInfoCdma.cellIdentityCdma.base.baseStationId =
+                        rillCellInfo->CellInfo.cdma.cellIdentityCdma.basestationId;
+                cellInfoCdma.cellIdentityCdma.base.longitude =
+                        rillCellInfo->CellInfo.cdma.cellIdentityCdma.longitude;
+                cellInfoCdma.cellIdentityCdma.base.latitude =
+                        rillCellInfo->CellInfo.cdma.cellIdentityCdma.latitude;
+                cellInfoCdma.signalStrengthCdma.dbm =
+                        rillCellInfo->CellInfo.cdma.signalStrengthCdma.dbm;
+                cellInfoCdma.signalStrengthCdma.ecio =
+                        rillCellInfo->CellInfo.cdma.signalStrengthCdma.ecio;
+                cellInfoCdma.signalStrengthEvdo.dbm =
+                        rillCellInfo->CellInfo.cdma.signalStrengthEvdo.dbm;
+                cellInfoCdma.signalStrengthEvdo.ecio =
+                        rillCellInfo->CellInfo.cdma.signalStrengthEvdo.ecio;
+                cellInfoCdma.signalStrengthEvdo.signalNoiseRatio =
+                        rillCellInfo->CellInfo.cdma.signalStrengthEvdo.signalNoiseRatio;
+                records[i].ratSpecificInfo.cdma(cellInfoCdma);
+                break;
+            }
+
+            case RIL_CELL_INFO_TYPE_LTE: {
+                V1_5::CellInfoLte cellInfoLte;
+                cellInfoLte.cellIdentityLte.base.base.mcc =
+                        std::to_string(rillCellInfo->CellInfo.lte.cellIdentityLte.mcc);
+                cellInfoLte.cellIdentityLte.base.base.mnc =
+                        ril::util::mnc::decode(rillCellInfo->CellInfo.lte.cellIdentityLte.mnc);
+                cellInfoLte.cellIdentityLte.base.base.ci =
+                        rillCellInfo->CellInfo.lte.cellIdentityLte.ci;
+                cellInfoLte.cellIdentityLte.base.base.pci =
+                        rillCellInfo->CellInfo.lte.cellIdentityLte.pci;
+                cellInfoLte.cellIdentityLte.base.base.tac =
+                        rillCellInfo->CellInfo.lte.cellIdentityLte.tac;
+                cellInfoLte.cellIdentityLte.base.base.earfcn =
+                        rillCellInfo->CellInfo.lte.cellIdentityLte.earfcn;
+                cellInfoLte.signalStrengthLte.signalStrength =
+                        rillCellInfo->CellInfo.lte.signalStrengthLte.signalStrength;
+                cellInfoLte.signalStrengthLte.rsrp =
+                        rillCellInfo->CellInfo.lte.signalStrengthLte.rsrp;
+                cellInfoLte.signalStrengthLte.rsrq =
+                        rillCellInfo->CellInfo.lte.signalStrengthLte.rsrq;
+                cellInfoLte.signalStrengthLte.rssnr =
+                        rillCellInfo->CellInfo.lte.signalStrengthLte.rssnr;
+                cellInfoLte.signalStrengthLte.cqi =
+                        rillCellInfo->CellInfo.lte.signalStrengthLte.cqi;
+                cellInfoLte.signalStrengthLte.timingAdvance =
+                        rillCellInfo->CellInfo.lte.signalStrengthLte.timingAdvance;
+                records[i].ratSpecificInfo.lte(cellInfoLte);
+                break;
+            }
+
+            case RIL_CELL_INFO_TYPE_TD_SCDMA: {
+                V1_5::CellInfoTdscdma cellInfoTdscdma;
+                cellInfoTdscdma.cellIdentityTdscdma.base.base.mcc =
+                        std::to_string(rillCellInfo->CellInfo.tdscdma.cellIdentityTdscdma.mcc);
+                cellInfoTdscdma.cellIdentityTdscdma.base.base.mnc = ril::util::mnc::decode(
+                        rillCellInfo->CellInfo.tdscdma.cellIdentityTdscdma.mnc);
+                cellInfoTdscdma.cellIdentityTdscdma.base.base.lac =
+                        rillCellInfo->CellInfo.tdscdma.cellIdentityTdscdma.lac;
+                cellInfoTdscdma.cellIdentityTdscdma.base.base.cid =
+                        rillCellInfo->CellInfo.tdscdma.cellIdentityTdscdma.cid;
+                cellInfoTdscdma.cellIdentityTdscdma.base.base.cpid =
+                        rillCellInfo->CellInfo.tdscdma.cellIdentityTdscdma.cpid;
+                cellInfoTdscdma.signalStrengthTdscdma.rscp =
+                        rillCellInfo->CellInfo.tdscdma.signalStrengthTdscdma.rscp;
+                records[i].ratSpecificInfo.tdscdma(cellInfoTdscdma);
+                break;
+            }
+
+            case RIL_CELL_INFO_TYPE_NR: {
+                V1_5::CellInfoNr cellInfoNr;
+                cellInfoNr.cellIdentityNr.base.mcc =
+                        std::to_string(rillCellInfo->CellInfo.nr.cellidentity.mcc);
+                cellInfoNr.cellIdentityNr.base.mnc =
+                        ril::util::mnc::decode(rillCellInfo->CellInfo.nr.cellidentity.mnc);
+                cellInfoNr.cellIdentityNr.base.nci = rillCellInfo->CellInfo.nr.cellidentity.nci;
+                cellInfoNr.cellIdentityNr.base.pci = rillCellInfo->CellInfo.nr.cellidentity.pci;
+                cellInfoNr.cellIdentityNr.base.tac = rillCellInfo->CellInfo.nr.cellidentity.tac;
+                cellInfoNr.cellIdentityNr.base.nrarfcn =
+                        rillCellInfo->CellInfo.nr.cellidentity.nrarfcn;
+                cellInfoNr.cellIdentityNr.base.operatorNames.alphaLong = convertCharPtrToHidlString(
+                        rillCellInfo->CellInfo.nr.cellidentity.operatorNames.alphaLong);
+                cellInfoNr.cellIdentityNr.base.operatorNames.alphaShort =
+                        convertCharPtrToHidlString(
+                                rillCellInfo->CellInfo.nr.cellidentity.operatorNames.alphaShort);
+
+                cellInfoNr.signalStrengthNr.ssRsrp =
+                        rillCellInfo->CellInfo.nr.signalStrength.ssRsrp;
+                cellInfoNr.signalStrengthNr.ssRsrq =
+                        rillCellInfo->CellInfo.nr.signalStrength.ssRsrq;
+                cellInfoNr.signalStrengthNr.ssSinr =
+                        rillCellInfo->CellInfo.nr.signalStrength.ssSinr;
+                cellInfoNr.signalStrengthNr.csiRsrp =
+                        rillCellInfo->CellInfo.nr.signalStrength.csiRsrp;
+                cellInfoNr.signalStrengthNr.csiRsrq =
+                        rillCellInfo->CellInfo.nr.signalStrength.csiRsrq;
+                cellInfoNr.signalStrengthNr.csiSinr =
+                        rillCellInfo->CellInfo.nr.signalStrength.csiSinr;
+                records[i].ratSpecificInfo.nr(cellInfoNr);
+                break;
+            }
+            default: {
+                break;
+            }
+        }
+        rillCellInfo += 1;
+    }
+}
+
 int radio_1_5::cellInfoListInd(int slotId,
                            int indicationType, int token, RIL_Errno e, void *response,
                            size_t responseLen) {
@@ -11403,95 +11665,156 @@ int radio_1_5::modemResetInd(int slotId,
     return 0;
 }
 
-int radio_1_5::networkScanResultInd(int slotId,
-                                int indicationType, int token, RIL_Errno e, void *response,
-                                size_t responseLen) {
+int radio_1_5::networkScanResultInd(int slotId, int indicationType, int token, RIL_Errno e,
+                                    void* response, size_t responseLen) {
 #if VDBG
     RLOGD("networkScanResultInd");
 #endif
-    if (radioService[slotId] != NULL && radioService[slotId]->mRadioIndicationV1_4 != NULL) {
+    if (radioService[slotId] != NULL && (radioService[slotId]->mRadioIndicationV1_5 != NULL ||
+                                         radioService[slotId]->mRadioIndicationV1_4 != NULL ||
+                                         radioService[slotId]->mRadioIndicationV1_2 != NULL ||
+                                         radioService[slotId]->mRadioIndicationV1_1 != NULL)) {
         if (response == NULL || responseLen == 0) {
             RLOGE("networkScanResultInd: invalid response");
             return 0;
         }
         RLOGD("networkScanResultInd");
 
-#if VDBG
-        RLOGD("networkScanResultInd");
-#endif
-
         RIL_NetworkScanResult *networkScanResult = (RIL_NetworkScanResult *) response;
-
-        V1_1::NetworkScanResult result;
-        result.status = (V1_1::ScanStatus) networkScanResult->status;
-        result.error = (RadioError) networkScanResult->error;
-        convertRilCellInfoListToHal(
-                networkScanResult->network_infos,
-                networkScanResult->network_infos_length * sizeof(RIL_CellInfo_v12),
-                result.networkInfos);
-
-        Return<void> retStatus = radioService[slotId]->mRadioIndicationV1_4->networkScanResult(
-                convertIntToRadioIndicationType(indicationType), result);
+        Return<void> retStatus;
+        if (radioService[slotId]->mRadioIndicationV1_5 != NULL) {
+            V1_5::NetworkScanResult result;
+            result.status = (V1_1::ScanStatus)networkScanResult->status;
+            result.error = (RadioError)networkScanResult->error;
+            convertRilCellInfoListToHal_1_5(
+                    networkScanResult->network_infos,
+                    networkScanResult->network_infos_length * sizeof(RIL_CellInfo_v12),
+                    result.networkInfos);
+            retStatus = radioService[slotId]->mRadioIndicationV1_5->networkScanResult_1_5(
+                    convertIntToRadioIndicationType(indicationType), result);
+        } else if (radioService[slotId]->mRadioIndicationV1_4 != NULL) {
+            V1_4::NetworkScanResult result;
+            result.status = (V1_1::ScanStatus)networkScanResult->status;
+            result.error = (RadioError)networkScanResult->error;
+            convertRilCellInfoListToHal_1_4(
+                    networkScanResult->network_infos,
+                    networkScanResult->network_infos_length * sizeof(RIL_CellInfo_v12),
+                    result.networkInfos);
+            retStatus = radioService[slotId]->mRadioIndicationV1_4->networkScanResult_1_4(
+                    convertIntToRadioIndicationType(indicationType), result);
+        } else if (radioService[slotId]->mRadioIndicationV1_2 != NULL) {
+            V1_2::NetworkScanResult result;
+            result.status = (V1_1::ScanStatus)networkScanResult->status;
+            result.error = (RadioError)networkScanResult->error;
+            convertRilCellInfoListToHal_1_2(
+                    networkScanResult->network_infos,
+                    networkScanResult->network_infos_length * sizeof(RIL_CellInfo_v12),
+                    result.networkInfos);
+            retStatus = radioService[slotId]->mRadioIndicationV1_2->networkScanResult_1_2(
+                    convertIntToRadioIndicationType(indicationType), result);
+        } else {
+            V1_1::NetworkScanResult result;
+            result.status = (V1_1::ScanStatus)networkScanResult->status;
+            result.error = (RadioError)networkScanResult->error;
+            convertRilCellInfoListToHal(
+                    networkScanResult->network_infos,
+                    networkScanResult->network_infos_length * sizeof(RIL_CellInfo),
+                    result.networkInfos);
+            retStatus = radioService[slotId]->mRadioIndicationV1_1->networkScanResult(
+                    convertIntToRadioIndicationType(indicationType), result);
+        }
         radioService[slotId]->checkReturnStatus(retStatus);
     } else {
-        RLOGE("networkScanResultInd: radioService[%d]->mRadioIndicationV1_4 == NULL", slotId);
+        RLOGE("networkScanResultInd: radioService[%d]->mRadioIndication == NULL", slotId);
     }
     return 0;
 }
 
-int radio_1_5::carrierInfoForImsiEncryption(int slotId,
-                                  int indicationType, int token, RIL_Errno e, void *response,
-                                  size_t responseLen) {
-    if (radioService[slotId] != NULL && radioService[slotId]->mRadioIndicationV1_4 != NULL) {
+int radio_1_5::carrierInfoForImsiEncryption(int slotId, int indicationType, int token, RIL_Errno e,
+                                            void* response, size_t responseLen) {
+    if (radioService[slotId] != NULL && (radioService[slotId]->mRadioIndicationV1_2 != NULL)) {
         if (response == NULL || responseLen == 0) {
             RLOGE("carrierInfoForImsiEncryption: invalid response");
             return 0;
         }
         RLOGD("carrierInfoForImsiEncryption");
-        Return<void> retStatus = radioService[slotId]->mRadioIndicationV1_4->
-                carrierInfoForImsiEncryption(convertIntToRadioIndicationType(indicationType));
+        Return<void> retStatus =
+                radioService[slotId]->mRadioIndicationV1_2->carrierInfoForImsiEncryption(
+                        convertIntToRadioIndicationType(indicationType));
         radioService[slotId]->checkReturnStatus(retStatus);
     } else {
-        RLOGE("carrierInfoForImsiEncryption: radioService[%d]->mRadioIndicationV1_4 == NULL",
-                slotId);
+        RLOGE("carrierInfoForImsiEncryption: radioService[%d]->mRadioIndication == NULL", slotId);
     }
 
     return 0;
 }
 
-int radio_1_5::reportPhysicalChannelConfigs(int slotId, int indicationType,
-                                            int token, RIL_Errno e,
-                                            void *response,
-                                            size_t responseLen) {
-    if (radioService[slotId] != NULL &&
-        radioService[slotId]->mRadioIndicationV1_4 != NULL) {
-      int *configs = (int *)response;
-      ::android::hardware::hidl_vec<PhysicalChannelConfigV1_4> physChanConfig;
-      physChanConfig.resize(1);
-      physChanConfig[0].base.status =
-          (::android::hardware::radio::V1_2::CellConnectionStatus)configs[0];
-      physChanConfig[0].base.cellBandwidthDownlink = configs[1];
-      physChanConfig[0].rat =
-          (::android::hardware::radio::V1_4::RadioTechnology)configs[2];
-      physChanConfig[0].rfInfo.range(
-          (::android::hardware::radio::V1_4::FrequencyRange)configs[3]);
-      physChanConfig[0].contextIds.resize(1);
-      physChanConfig[0].contextIds[0] = configs[4];
-      RLOGD("reportPhysicalChannelConfigs: %d %d %d %d %d", configs[0],
-            configs[1], configs[2], configs[3], configs[4]);
-      Return<void> retStatus = radioService[slotId]
-          ->mRadioIndicationV1_4->currentPhysicalChannelConfigs_1_4(
-              RadioIndicationType::UNSOLICITED, physChanConfig);
-      radioService[slotId]->checkReturnStatus(retStatus);
+int radio_1_5::reportPhysicalChannelConfigs(int slotId, int indicationType, int token, RIL_Errno e,
+                                            void* response, size_t responseLen) {
+    if (radioService[slotId] != NULL && (radioService[slotId]->mRadioIndicationV1_4 != NULL ||
+                                         radioService[slotId]->mRadioIndicationV1_2 != NULL)) {
+        int* configs = (int*)response;
+        if (radioService[slotId]->mRadioIndicationV1_4 != NULL) {
+            hidl_vec<PhysicalChannelConfigV1_4> physChanConfig;
+            physChanConfig.resize(1);
+            physChanConfig[0].base.status = (V1_2::CellConnectionStatus)configs[0];
+            physChanConfig[0].base.cellBandwidthDownlink = configs[1];
+            physChanConfig[0].rat = (V1_4::RadioTechnology)configs[2];
+            physChanConfig[0].rfInfo.range((V1_4::FrequencyRange)configs[3]);
+            physChanConfig[0].contextIds.resize(1);
+            physChanConfig[0].contextIds[0] = configs[4];
+            RLOGD("reportPhysicalChannelConfigs_1_4: %d %d %d %d %d", configs[0], configs[1],
+                  configs[2], configs[3], configs[4]);
+            Return<void> retStatus =
+                    radioService[slotId]->mRadioIndicationV1_4->currentPhysicalChannelConfigs_1_4(
+                            RadioIndicationType::UNSOLICITED, physChanConfig);
+            radioService[slotId]->checkReturnStatus(retStatus);
+            {
+                // Just send the link estimate along with physical channel config, as it has
+                // at least the downlink bandwidth.
+                // Note: the bandwidth is just some hardcoded value, as there is not way to get
+                // that reliably on virtual devices, as of now.
+                V1_2::LinkCapacityEstimate lce = {
+                        .downlinkCapacityKbps = static_cast<uint32_t>(configs[1]),
+                        .uplinkCapacityKbps = static_cast<uint32_t>(configs[1])};
+                RLOGD("reporting link capacity estimate download: %d upload: %d",
+                      lce.downlinkCapacityKbps, lce.uplinkCapacityKbps);
+                Return<void> retStatus =
+                        radioService[slotId]->mRadioIndicationV1_4->currentLinkCapacityEstimate(
+                                RadioIndicationType::UNSOLICITED, lce);
+                radioService[slotId]->checkReturnStatus(retStatus);
+            }
+        } else {
+            hidl_vec<V1_2::PhysicalChannelConfig> physChanConfig;
+            physChanConfig.resize(1);
+            physChanConfig[0].status = (V1_2::CellConnectionStatus)configs[0];
+            physChanConfig[0].cellBandwidthDownlink = configs[1];
+            RLOGD("reportPhysicalChannelConfigs_1_2: %d %d", configs[0], configs[1]);
+            Return<void> retStatus =
+                    radioService[slotId]->mRadioIndicationV1_2->currentPhysicalChannelConfigs(
+                            RadioIndicationType::UNSOLICITED, physChanConfig);
+            radioService[slotId]->checkReturnStatus(retStatus);
+            {
+                // Just send the link estimate along with physical channel config, as it has
+                // at least the downlink bandwidth.
+                // Note: the bandwidth is just some hardcoded value, as there is not way to get
+                // that reliably on virtual devices, as of now.
+                V1_2::LinkCapacityEstimate lce = {
+                        .downlinkCapacityKbps = static_cast<uint32_t>(configs[1]),
+                        .uplinkCapacityKbps = static_cast<uint32_t>(configs[1])};
+                RLOGD("reporting link capacity estimate download: %d upload: %d",
+                      lce.downlinkCapacityKbps, lce.uplinkCapacityKbps);
+                Return<void> retStatus =
+                        radioService[slotId]->mRadioIndicationV1_2->currentLinkCapacityEstimate(
+                                RadioIndicationType::UNSOLICITED, lce);
+                radioService[slotId]->checkReturnStatus(retStatus);
+            }
+        }
     } else {
-      RLOGE(
-          "reportPhysicalChannelConfigs: radioService[%d]->mRadioIndicationV1_4 "
-          "== NULL",
-          slotId);
-      return -1;
+        RLOGE("reportPhysicalChannelConfigs: radioService[%d]->mRadioIndication == NULL", slotId);
+        return -1;
     }
-
-  return 0;
+    return 0;
 }
 
 int radio_1_5::keepaliveStatusInd(int slotId,
