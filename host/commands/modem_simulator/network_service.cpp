@@ -31,20 +31,12 @@ static const std::string kAreaCode = "2142";
 // string type; four byte GERAN/UTRAN cell ID in hexadecimal format
 static const std::string kCellId = "0000B804";
 
-// Check SignalStrength.java file for more details on how these map to
-// signal strength bars
-const std::pair<int, int> kGSMSignalStrength = std::make_pair(4, 30);
-const std::pair<int, int> kCDMASignalStrength = std::make_pair(4, 120);
-const std::pair<int, int> kEVDOSignalStrength = std::make_pair(4, 120);
-const std::pair<int, int> kLTESignalStrength = std::make_pair(4, 30);
-const std::pair<int, int> kWCDMASignalStrength = std::make_pair(4, 30);
-const std::pair<int, int> kNRSignalStrength = std::make_pair(45, 135);
-
 NetworkService::NetworkService(int32_t service_id,
                                ChannelMonitor* channel_monitor,
                                ThreadLooper* thread_looper)
     : ModemService(service_id, this->InitializeCommandHandlers(),
-                   channel_monitor, thread_looper) {
+                   channel_monitor, thread_looper),
+      keep_signal_strength_changing_loop_(this) {
   InitializeServiceState();
 }
 
@@ -255,9 +247,10 @@ void NetworkService::OnSimStatusChanged(SimService::SimStatus sim_status) {
     // Note: not saved to nvram config due to sim status may change after reboot
     current_network_mode_ = M_MODEM_TECH_WCDMA;
   }
-  thread_looper_->PostWithDelay(std::chrono::seconds(1),
+  thread_looper_->Post(
       makeSafeCallback(this, &NetworkService::UpdateRegisterState,
-          voice_registration_status_.registration_state));
+                       voice_registration_status_.registration_state),
+      std::chrono::seconds(1));
 }
 
 /**
@@ -368,7 +361,7 @@ bool NetworkService::WakeupFromSleep() {
  *   8 is the highest signal to noise ratio.
  * <lte_rssi>: Refer gsm_rssi.
  * <lte_rsrp>:
- *   The current Reference Signal Receive Power in dBm multiplied by 1.
+ *   The current Reference Signal Receive Power in dBm multiplied by -1.
  *   Range: 44 to 140 dBm.
  *   INT_MAX: 0x7FFFFFFF denotes invalid value.
  *   Reference: 3GPP TS 36.133 9.1.4.
@@ -721,8 +714,10 @@ void NetworkService::HandleSetNetworkSelectionMode(const Client& client, std::st
 
   NvramConfig::SaveToFile();
 
-  thread_looper_->PostWithDelay(std::chrono::seconds(1),
-      makeSafeCallback(this, &NetworkService::UpdateRegisterState, registration_state));
+  thread_looper_->Post(
+      makeSafeCallback(this, &NetworkService::UpdateRegisterState,
+                       registration_state),
+      std::chrono::seconds(1));
 }
 
 NetworkService::NetworkRegistrationStatus::AccessTechnoloy
@@ -999,7 +994,7 @@ void NetworkService::UpdateRegisterState(RegistrationState state ) {
 
   OnVoiceRegisterStateChanged();
   OnDataRegisterStateChanged();
-  OnSignalStrengthChanged();
+  keep_signal_strength_changing_loop_.Start();
 
   int cellBandwidthDownlink = 5000;
   const int UNKNOWN = 0;
@@ -1035,9 +1030,10 @@ void NetworkService::HandleSetPreferredNetworkType(const Client& client, std::st
 
     ss << "+CTEC: "<< current_network_mode_;
 
-    thread_looper_->PostWithDelay(std::chrono::milliseconds(200),
+    thread_looper_->Post(
         makeSafeCallback(this, &NetworkService::UpdateRegisterState,
-            NET_REGISTRATION_HOME));
+                         NET_REGISTRATION_HOME),
+        std::chrono::milliseconds(200));
   } else {
     ss << "+CTEC: DONE";
   }
@@ -1160,25 +1156,25 @@ NetworkService::SignalStrength NetworkService::GetCurrentSignalStrength() {
   int percent = signal_strength_percent_;
   switch (current_network_mode_) {
     case M_MODEM_TECH_GSM:
-      result.gsm_rssi = GetValueInRange(kGSMSignalStrength, percent);
+      result.gsm_rssi = GetValueInRange(kRssiRange, percent);
       break;
     case M_MODEM_TECH_CDMA:
-      result.cdma_dbm = GetValueInRange(kCDMASignalStrength, percent);
+      result.cdma_dbm = GetValueInRange(kDbmRange, percent) * -1;
       break;
     case M_MODEM_TECH_EVDO:
-      result.evdo_dbm = GetValueInRange(kEVDOSignalStrength, percent);
+      result.evdo_dbm = GetValueInRange(kDbmRange, percent) * -1;
       break;
     case M_MODEM_TECH_LTE:
-      result.lte_rssi = GetValueInRange(kLTESignalStrength, percent);
+      result.lte_rsrp = GetValueInRange(kRsrpRange, percent) * -1;
       break;
     case M_MODEM_TECH_WCDMA:
-      result.wcdma_rssi = GetValueInRange(kWCDMASignalStrength, percent);
+      result.wcdma_rssi = GetValueInRange(kRssiRange, percent);
       break;
     case M_MODEM_TECH_NR:
       // special for NR: it uses LTE as primary, so LTE signal strength is
       // needed as well
-      result.lte_rssi = GetValueInRange(kLTESignalStrength, percent);
-      result.nr_ss_rsrp = GetValueInRange(kNRSignalStrength, percent);
+      result.lte_rsrp = GetValueInRange(kRsrpRange, percent) * -1;
+      result.nr_ss_rsrp = GetValueInRange(kRsrpRange, percent) * -1;
       break;
     default:
       break;
@@ -1196,10 +1192,10 @@ void NetworkService::HandleReceiveRemoteVoiceDataReg(const Client& client,
 
   UpdateRegisterState(NET_REGISTRATION_UNREGISTERED);
 
-  thread_looper_->PostWithDelay(
-      std::chrono::seconds(1),
+  thread_looper_->Post(
       makeSafeCallback(this, &NetworkService::UpdateRegisterState,
-                       (cuttlefish::NetworkService::RegistrationState)stated));
+                       (cuttlefish::NetworkService::RegistrationState)stated),
+      std::chrono::seconds(1));
 }
 
 /* AT+REMOTECTEC: ctec */
@@ -1223,10 +1219,10 @@ void NetworkService::HandleReceiveRemoteCTEC(const Client& client,
 
     ss << "+CTEC: " << current_network_mode_;
 
-    thread_looper_->PostWithDelay(
-        std::chrono::seconds(1),
+    thread_looper_->Post(
         makeSafeCallback(this, &NetworkService::UpdateRegisterState,
-                         saved_state));
+                         saved_state),
+        std::chrono::seconds(1));
   }
 }
 
@@ -1255,4 +1251,30 @@ void NetworkService::OnSignalStrengthChanged() {
 NetworkService::RegistrationState NetworkService::GetVoiceRegistrationState() const {
   return voice_registration_status_.registration_state;
 }
+
+NetworkService::KeepSignalStrengthChangingLoop::KeepSignalStrengthChangingLoop(
+    NetworkService* network_service)
+    : network_service_(network_service) {}
+
+void NetworkService::KeepSignalStrengthChangingLoop::Start() {
+  if (loop_started_.test_and_set()) {
+    LOG(ERROR) << "Signal strength is already changing automatically";
+  } else {
+    UpdateSignalStrengthCallback();
+  }
+}
+
+void NetworkService::KeepSignalStrengthChangingLoop::
+    UpdateSignalStrengthCallback() {
+  network_service_->signal_strength_percent_ -= 5;
+  if (network_service_->signal_strength_percent_ <= 0) {
+    network_service_->signal_strength_percent_ = 100;
+  }
+  network_service_->thread_looper_->Post(
+      makeSafeCallback(this, &NetworkService::KeepSignalStrengthChangingLoop::
+                                 UpdateSignalStrengthCallback),
+      std::chrono::seconds(10));
+  network_service_->OnSignalStrengthChanged();
+}
+
 }  // namespace cuttlefish
