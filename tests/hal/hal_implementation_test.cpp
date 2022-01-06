@@ -54,6 +54,7 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hardware.cas.native@1.0",
     "android.hardware.configstore@1.1", // deprecated, see b/149050985, b/149050733
     "android.hardware.fastboot@1.1",
+    "android.hardware.dumpstate@1.1", // deprecated, see b/205760700
     "android.hardware.gnss.measurement_corrections@1.1", // is sub-interface of gnss
     "android.hardware.gnss.visibility_control@1.0",
     "android.hardware.graphics.allocator@2.0",
@@ -63,7 +64,8 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hardware.graphics.mapper@2.1",
     "android.hardware.graphics.mapper@3.0",
     "android.hardware.health.storage@1.0", // converted to AIDL, see b/177470478
-    "android.hardware.ir@1.0",
+    "android.hardware.health@2.1", // converted to AIDL, see b/177269435
+    "android.hardware.ir@1.0", // converted to AIDL, see b/205000342
     "android.hardware.keymaster@3.0",
     "android.hardware.keymaster@4.1", // Replaced by KeyMint
     "android.hardware.light@2.0",
@@ -90,8 +92,6 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hardware.vibrator@1.3",
     "android.hardware.vr@1.0",
     "android.hardware.weaver@1.0",
-    "android.hardware.wifi@1.5",
-    "android.hardware.wifi.hostapd@1.3",
     "android.hardware.wifi.offload@1.0",
     "android.hidl.base@1.0",
     "android.hidl.memory.token@1.0",
@@ -119,6 +119,13 @@ static const std::set<VersionedAidlPackage> kKnownMissingAidl = {
     // No implementations on cuttlefish for wifi aidl hal
     {"android.hardware.wifi.hostapd.", 1},
 
+    // No implementations on cuttlefish for omapi aidl hal
+    {"android.se.omapi.", 1},
+
+    // Temporarily treat the dice hal default implementation as missing until it
+    // and its dependencies have landed. b/198197213
+    {"android.hardware.security.dice.", 1},
+
     // These KeyMaster types are in an AIDL types-only HAL because they're used
     // by the Identity Credential AIDL HAL. Remove this when fully porting
     // KeyMaster to AIDL.
@@ -136,11 +143,8 @@ static const std::set<VersionedAidlPackage> kKnownMissingAidl = {
     {"android.hardware.automotive.audiocontrol.", 1},
     {"android.hardware.automotive.occupant_awareness.", 1},
 
-    // This version needs to be implemented (b/190505425)
-    {"android.system.keystore2.", 2},
-
-    // This version needs to be implemented (b/177269435)
-    {"android.hardware.health.", 1},
+    // No implementation in AOSP for supplicant aidl hal (b/210166896)
+    {"android.hardware.wifi.supplicant.", 1},
 
     // These versions need to be implemented (b/198331776)
     {"android.hardware.radio.", 1},
