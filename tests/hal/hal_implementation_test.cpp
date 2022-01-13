@@ -109,6 +109,7 @@ struct VersionedAidlPackage {
 
 static const std::set<VersionedAidlPackage> kKnownMissingAidl = {
     // types-only packages, which never expect a default implementation
+    {"android.hardware.audio.common.", 1},
     {"android.hardware.biometrics.common.", 1},
     {"android.hardware.common.", 1},
     {"android.hardware.common.", 2},
@@ -132,6 +133,8 @@ static const std::set<VersionedAidlPackage> kKnownMissingAidl = {
     {"android.hardware.keymaster.", 1},
     {"android.hardware.keymaster.", 2},
     {"android.hardware.keymaster.", 3},
+
+    {"android.media.audio.common.", 1},
 
     // These types are only used in Automotive.
     {"android.automotive.computepipe.registry.", 1},
@@ -157,6 +160,9 @@ static const std::set<VersionedAidlPackage> kKnownMissingAidl = {
 
     // This version needs to be implemented (b/198331886)
     {"android.hardware.radio.config.", 1},
+
+    // These versions need to be implemented (b/203490261)
+    {"android.hardware.bluetooth.audio.", 1},
 };
 
 static const std::set<VersionedAidlPackage> kComingSoonAidl = {
