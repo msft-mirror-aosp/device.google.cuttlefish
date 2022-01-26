@@ -110,6 +110,7 @@ PRODUCT_VENDOR_PROPERTIES += \
     persist.sys.zram_enabled=1 \
     ro.hardware.keystore_desede=true \
     ro.rebootescrow.device=/dev/block/pmem0 \
+    ro.vendor.hwcomposer.pmem=/dev/block/pmem1 \
     ro.incremental.enable=1 \
     debug.c2.use_dmabufheaps=1 \
     ro.camerax.extensions.enabled=true \
@@ -183,7 +184,7 @@ PRODUCT_PACKAGES += \
     vsoc_input_service \
     vtpm_manager \
 
-$(call soong_config_append, cvd, launch_configs, cvd_config_auto.json cvd_config_phone.json cvd_config_tablet.json cvd_config_tv.json)
+$(call soong_config_append, cvd, launch_configs, cvd_config_auto.json cvd_config_foldable.json cvd_config_phone.json cvd_config_tablet.json cvd_config_tv.json)
 $(call soong_config_append, cvd, grub_config, grub.cfg)
 
 #
