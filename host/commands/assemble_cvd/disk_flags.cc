@@ -39,6 +39,8 @@
 
 // Taken from external/avb/libavb/avb_slot_verify.c; this define is not in the headers
 #define VBMETA_MAX_SIZE 65536ul
+// Taken from external/avb/avbtool.py; this define is not in the headers
+#define MAX_AVB_METADATA_SIZE 69632ul
 
 DECLARE_string(system_image_dir);
 
@@ -246,6 +248,7 @@ std::vector<ImagePartition> GetOsCompositeDiskConfig() {
 }
 
 std::vector<ImagePartition> persistent_composite_disk_config(
+    const CuttlefishConfig& config,
     const CuttlefishConfig::InstanceSpecific& instance) {
   std::vector<ImagePartition> partitions;
 
@@ -262,10 +265,16 @@ std::vector<ImagePartition> persistent_composite_disk_config(
         .image_file_path = instance.factory_reset_protected_path(),
     });
   }
-  partitions.push_back(ImagePartition{
-      .label = "bootconfig",
-      .image_file_path = instance.persistent_bootconfig_path(),
-  });
+  if (config.bootconfig_supported()) {
+    partitions.push_back(ImagePartition{
+        .label = "bootconfig",
+        .image_file_path = instance.persistent_bootconfig_path(),
+    });
+    partitions.push_back(ImagePartition{
+        .label = "vbmeta",
+        .image_file_path = instance.vbmeta_path(),
+    });
+  }
   return partitions;
 }
 
@@ -400,10 +409,11 @@ bool CreatePersistentCompositeDisk(
         instance.PerInstancePath("persistent_composite_gpt_header.img");
     std::string footer_path =
         instance.PerInstancePath("persistent_composite_gpt_footer.img");
-    CreateCompositeDisk(persistent_composite_disk_config(instance), header_path,
-                        footer_path, instance.persistent_composite_disk_path());
+    CreateCompositeDisk(persistent_composite_disk_config(config, instance),
+                        header_path, footer_path,
+                        instance.persistent_composite_disk_path());
   } else {
-    AggregateImage(persistent_composite_disk_config(instance),
+    AggregateImage(persistent_composite_disk_config(config, instance),
                    instance.persistent_composite_disk_path());
   }
   return true;
@@ -491,16 +501,25 @@ class BootImageRepacker : public Feature {
   const CuttlefishConfig& config_;
 };
 
-class GeneratePersistentBootconfig : public Feature {
+class GeneratePersistentBootconfigAndVbmeta : public Feature {
  public:
-  INJECT(GeneratePersistentBootconfig(
+  INJECT(GeneratePersistentBootconfigAndVbmeta(
       const CuttlefishConfig& config,
       const CuttlefishConfig::InstanceSpecific& instance))
       : config_(config), instance_(instance) {}
 
   // Feature
-  std::string Name() const override { return "GeneratePersistentBootconfig"; }
-  bool Enabled() const override { return !config_.protected_vm(); }
+  std::string Name() const override {
+    return "GeneratePersistentBootconfigAndVbmeta";
+  }
+  //  Cuttlefish for the time being won't be able to support OTA from a
+  //  non-bootconfig kernel to a bootconfig-kernel (or vice versa) IF the
+  //  device is stopped (via stop_cvd). This is rarely an issue since OTA
+  //  testing run on cuttlefish is done within one launch cycle of the device.
+  //  If this ever becomes an issue, this code will have to be rewritten.
+  bool Enabled() const override {
+    return (!config_.protected_vm() && config_.bootconfig_supported());
+  }
 
  private:
   std::unordered_set<Feature*> Dependencies() const override { return {}; }
@@ -520,20 +539,12 @@ class GeneratePersistentBootconfig : public Feature {
       return false;
     }
 
-    //  Cuttlefish for the time being won't be able to support OTA from a
-    //  non-bootconfig kernel to a bootconfig-kernel (or vice versa) IF the
-    //  device is stopped (via stop_cvd). This is rarely an issue since OTA
-    //  testing run on cuttlefish is done within one launch cycle of the device.
-    //  If this ever becomes an issue, this code will have to be rewritten.
-    if (!config_.bootconfig_supported()) {
-      return true;
-    }
-
     const std::string bootconfig =
         android::base::Join(BootconfigArgsFromConfig(config_, instance_),
                             "\n") +
         "\n";
     ssize_t bytesWritten = WriteAll(bootconfig_fd, bootconfig);
+    LOG(DEBUG) << "bootconfig size is " << bytesWritten;
     if (bytesWritten != bootconfig.size()) {
       LOG(ERROR) << "Failed to write contents of bootconfig to \""
                  << bootconfig_path << "\"";
@@ -542,12 +553,71 @@ class GeneratePersistentBootconfig : public Feature {
     LOG(DEBUG) << "Bootconfig parameters from vendor boot image and config are "
                << ReadFile(bootconfig_path);
 
-    const off_t bootconfig_size_bytes =
-        AlignToPowerOf2(bootconfig.size(), PARTITION_SIZE_SHIFT);
-    if (bootconfig_fd->Truncate(bootconfig_size_bytes) != 0) {
-      LOG(ERROR) << "`truncate --size=" << bootconfig_size_bytes << " bytes "
+    if (bootconfig_fd->Truncate(bytesWritten) != 0) {
+      LOG(ERROR) << "`truncate --size=" << bytesWritten << " bytes "
                  << bootconfig_path << "` failed:" << bootconfig_fd->StrError();
       return false;
+    }
+    bootconfig_fd->Close();
+
+    const off_t bootconfig_size_bytes = AlignToPowerOf2(
+        MAX_AVB_METADATA_SIZE + bytesWritten, PARTITION_SIZE_SHIFT);
+
+    auto avbtool_path = HostBinaryPath("avbtool");
+    Command bootconfig_hash_footer_cmd(avbtool_path);
+    bootconfig_hash_footer_cmd.AddParameter("add_hash_footer");
+    bootconfig_hash_footer_cmd.AddParameter("--image");
+    bootconfig_hash_footer_cmd.AddParameter(bootconfig_path);
+    bootconfig_hash_footer_cmd.AddParameter("--partition_size");
+    bootconfig_hash_footer_cmd.AddParameter(bootconfig_size_bytes);
+    bootconfig_hash_footer_cmd.AddParameter("--partition_name");
+    bootconfig_hash_footer_cmd.AddParameter("bootconfig");
+    bootconfig_hash_footer_cmd.AddParameter("--key");
+    bootconfig_hash_footer_cmd.AddParameter(
+        DefaultHostArtifactsPath("etc/cvd_avb_testkey.pem"));
+    bootconfig_hash_footer_cmd.AddParameter("--algorithm");
+    bootconfig_hash_footer_cmd.AddParameter("SHA256_RSA4096");
+    int success = bootconfig_hash_footer_cmd.Start().Wait();
+    if (success != 0) {
+      LOG(ERROR) << "Unable to run append hash footer. Exited with status "
+                 << success;
+      return false;
+    }
+
+    Command vbmeta_cmd(avbtool_path);
+    vbmeta_cmd.AddParameter("make_vbmeta_image");
+    vbmeta_cmd.AddParameter("--output");
+    vbmeta_cmd.AddParameter(instance_.vbmeta_path());
+    vbmeta_cmd.AddParameter("--algorithm");
+    vbmeta_cmd.AddParameter("SHA256_RSA4096");
+    vbmeta_cmd.AddParameter("--key");
+    vbmeta_cmd.AddParameter(
+        DefaultHostArtifactsPath("etc/cvd_avb_testkey.pem"));
+    vbmeta_cmd.AddParameter("--chain_partition");
+    vbmeta_cmd.AddParameter("bootconfig:1:" +
+                            DefaultHostArtifactsPath("etc/cvd.avbpubkey"));
+
+    success = vbmeta_cmd.Start().Wait();
+    if (success != 0) {
+      LOG(ERROR) << "Unable to create persistent vbmeta. Exited with status "
+                 << success;
+      return false;
+    }
+
+    if (FileSize(instance_.vbmeta_path()) > VBMETA_MAX_SIZE) {
+      LOG(ERROR) << "Generated vbmeta - " << instance_.vbmeta_path()
+                 << " is larger than the expected " << VBMETA_MAX_SIZE
+                 << ". Stopping.";
+      return false;
+    }
+    if (FileSize(instance_.vbmeta_path()) != VBMETA_MAX_SIZE) {
+      auto fd = SharedFD::Open(instance_.vbmeta_path(), O_RDWR);
+      if (!fd->IsOpen() || fd->Truncate(VBMETA_MAX_SIZE) != 0) {
+        LOG(ERROR) << "`truncate --size=" << VBMETA_MAX_SIZE << " "
+                   << instance_.vbmeta_path() << "` "
+                   << "failed: " << fd->StrError();
+        return false;
+      }
     }
     return true;
   }
@@ -602,6 +672,37 @@ class InitializeAccessKregistryImage : public Feature {
     if (!success) {
       LOG(ERROR) << "Failed to create access_kregistry_path \""
                  << instance_.access_kregistry_path() << "\"";
+      return false;
+    }
+    return true;
+  }
+
+  const CuttlefishConfig& config_;
+  const CuttlefishConfig::InstanceSpecific& instance_;
+};
+
+class InitializeHwcomposerPmemImage : public Feature {
+ public:
+  INJECT(InitializeHwcomposerPmemImage(
+      const CuttlefishConfig& config,
+      const CuttlefishConfig::InstanceSpecific& instance))
+      : config_(config), instance_(instance) {}
+
+  // Feature
+  std::string Name() const override { return "InitializeHwcomposerPmemImage"; }
+  bool Enabled() const override { return !config_.protected_vm(); }
+
+ private:
+  std::unordered_set<Feature*> Dependencies() const override { return {}; }
+  bool Setup() {
+    if (FileExists(instance_.hwcomposer_pmem_path())) {
+      return true;
+    }
+    bool success =
+        CreateBlankImage(instance_.hwcomposer_pmem_path(), 2 /* mb */, "none");
+    if (!success) {
+      LOG(ERROR) << "Failed to create hwcomposer pmem image \""
+                 << instance_.hwcomposer_pmem_path() << "\"";
       return false;
     }
     return true;
@@ -704,6 +805,105 @@ class InitializeFactoryResetProtected : public Feature {
   const CuttlefishConfig::InstanceSpecific& instance_;
 };
 
+class InitializeInstanceCompositeDisk : public Feature {
+ public:
+  INJECT(InitializeInstanceCompositeDisk(
+      const CuttlefishConfig& config,
+      const CuttlefishConfig::InstanceSpecific& instance,
+      InitializeFactoryResetProtected& frp,
+      InitBootloaderEnvPartition& bootloader_env,
+      GeneratePersistentBootconfigAndVbmeta& bootconfig))
+      : config_(config),
+        instance_(instance),
+        frp_(frp),
+        bootloader_env_(bootloader_env),
+        bootconfig_(bootconfig) {}
+
+  std::string Name() const override {
+    return "InitializeInstanceCompositeDisk";
+  }
+  bool Enabled() const override { return true; }
+
+ private:
+  std::unordered_set<Feature*> Dependencies() const override {
+    return {
+        static_cast<Feature*>(&frp_),
+        static_cast<Feature*>(&bootloader_env_),
+        static_cast<Feature*>(&bootconfig_),
+    };
+  }
+  bool Setup() override {
+    bool compositeMatchesDiskConfig = DoesCompositeMatchCurrentDiskConfig(
+        instance_.PerInstancePath("persistent_composite_disk_config.txt"),
+        persistent_composite_disk_config(config_, instance_));
+    bool oldCompositeDisk =
+        ShouldCreateCompositeDisk(instance_.persistent_composite_disk_path(),
+                                  persistent_composite_disk_config(config_, instance_));
+
+    if (!compositeMatchesDiskConfig || oldCompositeDisk) {
+      bool success = CreatePersistentCompositeDisk(config_, instance_);
+      if (!success) {
+        LOG(ERROR) << "Failed to create persistent composite disk";
+        return false;
+      }
+    }
+    return true;
+  }
+
+  const CuttlefishConfig& config_;
+  const CuttlefishConfig::InstanceSpecific& instance_;
+  InitializeFactoryResetProtected& frp_;
+  InitBootloaderEnvPartition& bootloader_env_;
+  GeneratePersistentBootconfigAndVbmeta& bootconfig_;
+};
+
+class VbmetaEnforceMinimumSize : public Feature {
+ public:
+  INJECT(VbmetaEnforceMinimumSize()) {}
+
+  std::string Name() const override { return "VbmetaEnforceMinimumSize"; }
+  bool Enabled() const override { return true; }
+
+ private:
+  std::unordered_set<Feature*> Dependencies() const override { return {}; }
+  bool Setup() override {
+    // libavb expects to be able to read the maximum vbmeta size, so we must
+    // provide a partition which matches this or the read will fail
+    for (const auto& vbmeta_image :
+         {FLAGS_vbmeta_image, FLAGS_vbmeta_system_image}) {
+      if (FileSize(vbmeta_image) != VBMETA_MAX_SIZE) {
+        auto fd = SharedFD::Open(vbmeta_image, O_RDWR);
+        bool success = fd->Truncate(VBMETA_MAX_SIZE) == 0;
+        if (!success) {
+          LOG(ERROR) << "`truncate --size=" << VBMETA_MAX_SIZE << " "
+                     << vbmeta_image << "` "
+                     << "failed: " << fd->StrError();
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+};
+
+class BootloaderPresentCheck : public Feature {
+ public:
+  INJECT(BootloaderPresentCheck()) {}
+
+  std::string Name() const override { return "BootloaderPresentCheck"; }
+  bool Enabled() const override { return true; }
+
+ private:
+  std::unordered_set<Feature*> Dependencies() const override { return {}; }
+  bool Setup() override {
+    if (!FileHasContent(FLAGS_bootloader)) {
+      LOG(ERROR) << "File not found: " << FLAGS_bootloader;
+      return false;
+    }
+    return true;
+  }
+};
+
 static fruit::Component<> DiskChangesComponent(const FetcherConfig* fetcher,
                                                const CuttlefishConfig* config) {
   return fruit::createComponent()
@@ -711,6 +911,8 @@ static fruit::Component<> DiskChangesComponent(const FetcherConfig* fetcher,
       .bindInstance(*config)
       .addMultibinding<Feature, InitializeMetadataImage>()
       .addMultibinding<Feature, BootImageRepacker>()
+      .addMultibinding<Feature, VbmetaEnforceMinimumSize>()
+      .addMultibinding<Feature, BootloaderPresentCheck>()
       .install(FixedMiscImagePathComponent, &FLAGS_misc_image)
       .install(InitializeMiscImageComponent)
       .install(FixedDataImagePathComponent, &FLAGS_data_image)
@@ -718,7 +920,8 @@ static fruit::Component<> DiskChangesComponent(const FetcherConfig* fetcher,
       // Create esp if necessary
       .install(InitializeEspImageComponent, &FLAGS_otheros_esp_image,
                &FLAGS_otheros_kernel_path, &FLAGS_otheros_initramfs_path,
-               &FLAGS_otheros_root_image);
+               &FLAGS_otheros_root_image)
+      .install(SuperImageRebuilderComponent, &FLAGS_super_image);
 }
 
 static fruit::Component<> DiskChangesPerInstanceComponent(
@@ -729,10 +932,12 @@ static fruit::Component<> DiskChangesPerInstanceComponent(
       .bindInstance(*config)
       .bindInstance(*instance)
       .addMultibinding<Feature, InitializeAccessKregistryImage>()
+      .addMultibinding<Feature, InitializeHwcomposerPmemImage>()
       .addMultibinding<Feature, InitializePstore>()
       .addMultibinding<Feature, InitializeSdCard>()
       .addMultibinding<Feature, InitializeFactoryResetProtected>()
-      .addMultibinding<Feature, GeneratePersistentBootconfig>()
+      .addMultibinding<Feature, GeneratePersistentBootconfigAndVbmeta>()
+      .addMultibinding<Feature, InitializeInstanceCompositeDisk>()
       .install(InitBootloaderEnvPartitionComponent);
 }
 
@@ -754,39 +959,6 @@ void CreateDynamicDiskFiles(const FetcherConfig& fetcher_config,
         << "Failed to run instance feature setup.";
   }
 
-  for (const auto& instance : config.Instances()) {
-    bool compositeMatchesDiskConfig = DoesCompositeMatchCurrentDiskConfig(
-        instance.PerInstancePath("persistent_composite_disk_config.txt"),
-        persistent_composite_disk_config(instance));
-    bool oldCompositeDisk =
-        ShouldCreateCompositeDisk(instance.persistent_composite_disk_path(),
-                                  persistent_composite_disk_config(instance));
-
-    if (!compositeMatchesDiskConfig || oldCompositeDisk) {
-      CHECK(CreatePersistentCompositeDisk(config, instance))
-          << "Failed to create persistent composite disk";
-    }
-  }
-
-  // libavb expects to be able to read the maximum vbmeta size, so we must
-  // provide a partition which matches this or the read will fail
-  for (const auto& vbmeta_image : { FLAGS_vbmeta_image, FLAGS_vbmeta_system_image }) {
-    if (FileSize(vbmeta_image) != VBMETA_MAX_SIZE) {
-      auto fd = SharedFD::Open(vbmeta_image, O_RDWR);
-      CHECK(fd->Truncate(VBMETA_MAX_SIZE) == 0)
-        << "`truncate --size=" << VBMETA_MAX_SIZE << " " << vbmeta_image << "` "
-        << "failed: " << fd->StrError();
-    }
-  }
-
-  CHECK(FileHasContent(FLAGS_bootloader))
-      << "File not found: " << FLAGS_bootloader;
-
-  if (SuperImageNeedsRebuilding(fetcher_config, config)) {
-    bool success = RebuildSuperImage(fetcher_config, config, FLAGS_super_image);
-    CHECK(success) << "Super image rebuilding requested but could not be completed.";
-  }
-
   bool oldOsCompositeDisk = ShouldCreateOsCompositeDisk(config);
   bool osCompositeMatchesDiskConfig = DoesCompositeMatchCurrentDiskConfig(
       config.AssemblyPath("os_composite_disk_config.txt"),
@@ -804,6 +976,9 @@ void CreateDynamicDiskFiles(const FetcherConfig& fetcher_config,
       }
       if (FileExists(instance.access_kregistry_path())) {
         CreateBlankImage(instance.access_kregistry_path(), 2 /* mb */, "none");
+      }
+      if (FileExists(instance.hwcomposer_pmem_path())) {
+        CreateBlankImage(instance.hwcomposer_pmem_path(), 2 /* mb */, "none");
       }
       if (FileExists(instance.pstore_path())) {
         CreateBlankImage(instance.pstore_path(), 2 /* mb */, "none");
