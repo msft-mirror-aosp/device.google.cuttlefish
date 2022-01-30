@@ -94,6 +94,14 @@ PRODUCT_PRODUCT_PROPERTIES += \
     ro.com.google.locationfeatures=1 \
     persist.sys.fuse.passthrough.enable=true \
 
+# Until we support adb keys on user builds, and fix logcat over serial,
+# spawn adbd by default without authorization for "adb logcat"
+ifeq ($(TARGET_BUILD_VARIANT),user)
+PRODUCT_PRODUCT_PROPERTIES += \
+    ro.adb.secure=0 \
+    ro.debuggable=1
+endif
+
 # Explanation of specific properties:
 #   debug.hwui.swap_with_damage avoids boot failure on M http://b/25152138
 #   ro.hardware.keystore_desede=true needed for CtsKeystoreTestCases
@@ -110,6 +118,7 @@ PRODUCT_VENDOR_PROPERTIES += \
     persist.sys.zram_enabled=1 \
     ro.hardware.keystore_desede=true \
     ro.rebootescrow.device=/dev/block/pmem0 \
+    ro.vendor.hwcomposer.pmem=/dev/block/pmem1 \
     ro.incremental.enable=1 \
     debug.c2.use_dmabufheaps=1 \
     ro.camerax.extensions.enabled=true \
@@ -181,9 +190,8 @@ PRODUCT_PACKAGES += \
     tombstone_producer \
     suspend_blocker \
     vsoc_input_service \
-    vtpm_manager \
 
-$(call soong_config_append, cvd, launch_configs, cvd_config_auto.json cvd_config_phone.json cvd_config_tablet.json cvd_config_tv.json)
+$(call soong_config_append, cvd, launch_configs, cvd_config_auto.json cvd_config_foldable.json cvd_config_phone.json cvd_config_tablet.json cvd_config_tv.json)
 $(call soong_config_append, cvd, grub_config, grub.cfg)
 
 #
@@ -390,8 +398,6 @@ PRODUCT_PACKAGES += \
 #
 PRODUCT_PACKAGES += \
     hwcomposer.drm \
-    hwcomposer.cutf \
-    hwcomposer-stats \
     android.hardware.graphics.composer@2.4-service
 
 #
@@ -578,8 +584,11 @@ PRODUCT_PACKAGES += \
 #
 # Thermal (mock)
 #
-PRODUCT_PACKAGES += \
-    android.hardware.thermal@2.0-service.mock
+ifeq ($(LOCAL_PREFER_VENDOR_APEX),true)
+PRODUCT_PACKAGES += com.android.hardware.thermal.mock
+else
+PRODUCT_PACKAGES += android.hardware.thermal@2.0-service.mock
+endif
 
 #
 # Lights
@@ -622,15 +631,9 @@ endif
 #
 PRODUCT_PACKAGES += \
     android.hardware.neuralnetworks@1.3-service-sample-all \
-    android.hardware.neuralnetworks@1.3-service-sample-float-fast \
-    android.hardware.neuralnetworks@1.3-service-sample-float-slow \
-    android.hardware.neuralnetworks@1.3-service-sample-minimal \
-    android.hardware.neuralnetworks@1.3-service-sample-quant \
+    android.hardware.neuralnetworks@1.3-service-sample-limited \
     android.hardware.neuralnetworks-service-sample-all \
-    android.hardware.neuralnetworks-service-sample-float-fast \
-    android.hardware.neuralnetworks-service-sample-float-slow \
-    android.hardware.neuralnetworks-service-sample-minimal \
-    android.hardware.neuralnetworks-service-sample-quant \
+    android.hardware.neuralnetworks-service-sample-limited \
     android.hardware.neuralnetworks-shim-service-sample
 
 #

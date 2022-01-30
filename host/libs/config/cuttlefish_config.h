@@ -150,9 +150,6 @@ class CuttlefishConfig {
   void set_crosvm_binary(const std::string& crosvm_binary);
   std::string crosvm_binary() const;
 
-  void set_tpm_device(const std::string& tpm_device);
-  std::string tpm_device() const;
-
   void set_enable_sandbox(const bool enable_sandbox);
   bool enable_sandbox() const;
 
@@ -442,6 +439,8 @@ class CuttlefishConfig {
     int confui_host_vsock_port() const;
 
     std::string access_kregistry_path() const;
+
+    std::string hwcomposer_pmem_path() const;
 
     std::string pstore_path() const;
 
