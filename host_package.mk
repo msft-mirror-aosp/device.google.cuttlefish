@@ -126,6 +126,7 @@ cvd_host_shared_libraries := \
     tpm2-tss2-util.so \
     libgatekeeper.so \
     ms-tpm-20-ref-lib.so \
+    libpuresoftkeymasterdevice_host.so
 
 webrtc_assets := \
     index.html \
