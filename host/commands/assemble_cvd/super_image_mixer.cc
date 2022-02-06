@@ -55,9 +55,10 @@ std::string TargetFilesZip(const FetcherConfig& fetcher_config,
 
 const std::string kMiscInfoPath = "META/misc_info.txt";
 const std::set<std::string> kDefaultTargetImages = {
-    "IMAGES/boot.img",     "IMAGES/init_boot.img", "IMAGES/odm.img",
-    "IMAGES/odm_dlkm.img", "IMAGES/recovery.img",  "IMAGES/userdata.img",
-    "IMAGES/vbmeta.img",   "IMAGES/vendor.img",    "IMAGES/vendor_dlkm.img",
+    "IMAGES/boot.img",        "IMAGES/init_boot.img", "IMAGES/odm.img",
+    "IMAGES/odm_dlkm.img",    "IMAGES/recovery.img",  "IMAGES/userdata.img",
+    "IMAGES/vbmeta.img",      "IMAGES/vendor.img",    "IMAGES/vendor_dlkm.img",
+    "IMAGES/system_dlkm.img",
 };
 const std::set<std::string> kDefaultTargetBuildProp = {
   "ODM/build.prop",
@@ -128,7 +129,8 @@ bool CombineTargetZipFiles(const std::string& default_target_zip,
   auto output_misc = default_misc;
   auto system_super_partitions = SuperPartitionComponents(system_misc);
   // Ensure specific skipped partitions end up in the misc_info.txt
-  for (auto partition : {"odm", "odm_dlkm", "vendor", "vendor_dlkm"}) {
+  for (auto partition :
+       {"odm", "odm_dlkm", "vendor", "vendor_dlkm", "system_dlkm"}) {
     if (std::find(system_super_partitions.begin(), system_super_partitions.end(),
                   partition) == system_super_partitions.end()) {
       system_super_partitions.push_back(partition);
