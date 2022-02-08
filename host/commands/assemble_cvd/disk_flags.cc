@@ -95,11 +95,9 @@ namespace cuttlefish {
 
 using vm_manager::CrosvmManager;
 
-bool ResolveInstanceFiles() {
-  if (FLAGS_system_image_dir.empty()) {
-    LOG(ERROR) << "--system_image_dir must be specified.";
-    return false;
-  }
+Result<void> ResolveInstanceFiles() {
+  CF_EXPECT(!FLAGS_system_image_dir.empty(),
+            "--system_image_dir must be specified.");
 
   // If user did not specify location of either of these files, expect them to
   // be placed in --system_image_dir location.
@@ -140,7 +138,7 @@ bool ResolveInstanceFiles() {
                                default_vbmeta_system_image.c_str(),
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
 
-  return true;
+  return {};
 }
 void create_overlay_image(const CuttlefishConfig& config,
                           std::string overlay_path) {
@@ -259,6 +257,10 @@ std::vector<ImagePartition> persistent_composite_disk_config(
       .label = "uboot_env",
       .image_file_path = instance.uboot_env_image_path(),
   });
+  partitions.push_back(ImagePartition{
+      .label = "vbmeta",
+      .image_file_path = instance.vbmeta_path(),
+  });
   if (!FLAGS_protected_vm) {
     partitions.push_back(ImagePartition{
         .label = "frp",
@@ -269,10 +271,6 @@ std::vector<ImagePartition> persistent_composite_disk_config(
     partitions.push_back(ImagePartition{
         .label = "bootconfig",
         .image_file_path = instance.persistent_bootconfig_path(),
-    });
-    partitions.push_back(ImagePartition{
-        .label = "vbmeta",
-        .image_file_path = instance.vbmeta_path(),
     });
   }
   return partitions;
