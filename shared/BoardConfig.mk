@@ -68,6 +68,11 @@ BOARD_USES_ODM_DLKMIMAGE := true
 BOARD_ODM_DLKMIMAGE_FILE_SYSTEM_TYPE := $(TARGET_RO_FILE_SYSTEM_TYPE)
 TARGET_COPY_OUT_ODM_DLKM := odm_dlkm
 
+# Build a separate system_dlkm partition
+BOARD_USES_SYSTEM_DLKMIMAGE := true
+BOARD_SYSTEM_DLKMIMAGE_FILE_SYSTEM_TYPE := $(TARGET_RO_FILE_SYSTEM_TYPE)
+TARGET_COPY_OUT_SYSTEM_DLKM := system_dlkm
+
 # Enable AVB
 BOARD_AVB_ENABLE := true
 BOARD_AVB_ALGORITHM := SHA256_RSA4096
@@ -110,9 +115,10 @@ BOARD_AVB_PRODUCT_ADD_HASHTREE_FOOTER_ARGS += --hash_algorithm $(TARGET_AVB_PROD
 BOARD_AVB_VENDOR_ADD_HASHTREE_FOOTER_ARGS += --hash_algorithm sha256
 BOARD_AVB_ODM_ADD_HASHTREE_FOOTER_ARGS += --hash_algorithm sha256
 
-# vendor_dlkm and odm_dlkm.
+# vendor_dlkm, odm_dlkm, and system_dlkm.
 BOARD_AVB_VENDOR_DLKM_ADD_HASHTREE_FOOTER_ARGS += --hash_algorithm sha256
 BOARD_AVB_ODM_DLKM_ADD_HASHTREE_FOOTER_ARGS += --hash_algorithm sha256
+BOARD_AVB_SYSTEM_DLKM_ADD_HASHTREE_FOOTER_ARGS += --hash_algorithm sha256
 
 BOARD_USES_GENERIC_AUDIO := false
 USE_CAMERA_STUB := true
@@ -206,7 +212,7 @@ TARGET_RECOVERY_FSTAB ?= device/google/cuttlefish/shared/config/fstab.f2fs
 
 BOARD_SUPER_PARTITION_SIZE := 7516192768  # 7GiB
 BOARD_SUPER_PARTITION_GROUPS := google_system_dynamic_partitions google_vendor_dynamic_partitions
-BOARD_GOOGLE_SYSTEM_DYNAMIC_PARTITIONS_PARTITION_LIST := product system system_ext
+BOARD_GOOGLE_SYSTEM_DYNAMIC_PARTITIONS_PARTITION_LIST := product system system_ext system_dlkm
 BOARD_GOOGLE_SYSTEM_DYNAMIC_PARTITIONS_SIZE := 5771362304  # 5.375GiB
 BOARD_GOOGLE_VENDOR_DYNAMIC_PARTITIONS_PARTITION_LIST := odm vendor vendor_dlkm odm_dlkm
 # 1404MiB, reserve 4MiB for dynamic partition metadata
@@ -224,12 +230,27 @@ BOARD_RAMDISK_USE_LZ4 := true
 # To see full logs from init, disable ratelimiting.
 # The default is 5 messages per second amortized, with a burst of up to 10.
 BOARD_KERNEL_CMDLINE += printk.devkmsg=on
+
+# Print audit messages for all security check failures
+BOARD_KERNEL_CMDLINE += audit=1
+
+# Reboot immediately on panic
+BOARD_KERNEL_CMDLINE += panic=-1
+
+# Always (solely or additionally) print kernel logs to hvc0
+BOARD_KERNEL_CMDLINE += console=hvc0
+
+# Cuttlefish doesn't use CMA, so don't reserve RAM for it
+BOARD_KERNEL_CMDLINE += cma=0
+
+# Default firmware load path
 BOARD_KERNEL_CMDLINE += firmware_class.path=/vendor/etc/
 
-BOARD_KERNEL_CMDLINE += init=/init
-BOARD_BOOTCONFIG += androidboot.hardware=cutf_cvm
-
+# Needed to boot Android
 BOARD_KERNEL_CMDLINE += loop.max_part=7
+BOARD_KERNEL_CMDLINE += init=/init
+
+BOARD_BOOTCONFIG += androidboot.hardware=cutf_cvm
 
 # TODO(b/182417593): Move all of these module options to modules.options
 # TODO(b/176860479): Remove once goldfish and cuttlefish share a wifi implementation

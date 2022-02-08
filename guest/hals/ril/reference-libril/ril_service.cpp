@@ -16,6 +16,7 @@
 
 #define LOG_TAG "RILC"
 
+#include <android-base/logging.h>
 #include <android/hardware/radio/1.6/IRadio.h>
 #include <android/hardware/radio/1.6/IRadioIndication.h>
 #include <android/hardware/radio/1.6/IRadioResponse.h>
@@ -973,11 +974,11 @@ void checkReturnStatus(int32_t slotId, Return<void>& ret, bool isRadioService) {
         int counter = isRadioService ? mCounterRadio[slotId] : mCounterOemHook[slotId];
         pthread_rwlock_t *radioServiceRwlockPtr = radio_1_6::getRadioServiceRwlock(slotId);
         int ret = pthread_rwlock_unlock(radioServiceRwlockPtr);
-        assert(ret == 0);
+        CHECK_EQ(ret, 0);
 
         // acquire wrlock
         ret = pthread_rwlock_wrlock(radioServiceRwlockPtr);
-        assert(ret == 0);
+        CHECK_EQ(ret, 0);
 
         // make sure the counter value has not changed
         if (counter == (isRadioService ? mCounterRadio[slotId] : mCounterOemHook[slotId])) {
@@ -1006,11 +1007,11 @@ void checkReturnStatus(int32_t slotId, Return<void>& ret, bool isRadioService) {
 
         // release wrlock
         ret = pthread_rwlock_unlock(radioServiceRwlockPtr);
-        assert(ret == 0);
+        CHECK_EQ(ret, 0);
 
         // Reacquire rdlock
         ret = pthread_rwlock_rdlock(radioServiceRwlockPtr);
-        assert(ret == 0);
+        CHECK_EQ(ret, 0);
     }
 }
 
@@ -1025,7 +1026,7 @@ Return<void> RadioImpl_1_6::setResponseFunctions(
 
     pthread_rwlock_t *radioServiceRwlockPtr = radio_1_6::getRadioServiceRwlock(mSlotId);
     int ret = pthread_rwlock_wrlock(radioServiceRwlockPtr);
-    assert(ret == 0);
+    CHECK_EQ(ret, 0);
 
     mRadioResponse = radioResponseParam;
     mRadioIndication = radioIndicationParam;
@@ -1075,7 +1076,7 @@ Return<void> RadioImpl_1_6::setResponseFunctions(
     mCounterRadio[mSlotId]++;
 
     ret = pthread_rwlock_unlock(radioServiceRwlockPtr);
-    assert(ret == 0);
+    CHECK_EQ(ret, 0);
 
     // client is connected. Send initial indications.
     android::onNewCommandConnect((RIL_SOCKET_ID) mSlotId);
@@ -4527,12 +4528,13 @@ Return<void> RadioImpl_1_6::setDataProfile_1_5(int32_t  serial ,
     return Void();
 }
 
-Return<void> RadioImpl_1_6::setIndicationFilter_1_5(int32_t /* serial */,
-        hidl_bitfield<::android::hardware::radio::V1_5::IndicationFilter> /* indicationFilter */) {
-    // TODO implement
+Return<void> RadioImpl_1_6::setIndicationFilter_1_5(
+        int32_t serial,
+        hidl_bitfield<::android::hardware::radio::V1_5::IndicationFilter> indicationFilter) {
 #if VDBG
-    RLOGE("setIndicationFilter_1_5: Method is not implemented");
+    RLOGE("setIndicationFilter_1_5: serial %d");
 #endif
+    dispatchInts(serial, mSlotId, RIL_REQUEST_SET_UNSOLICITED_RESPONSE_FILTER, 1, indicationFilter);
     return Void();
 }
 
@@ -4762,14 +4764,14 @@ Return<void> OemHookImpl::setResponseFunctions(
 
     pthread_rwlock_t *radioServiceRwlockPtr = radio_1_6::getRadioServiceRwlock(mSlotId);
     int ret = pthread_rwlock_wrlock(radioServiceRwlockPtr);
-    assert(ret == 0);
+    CHECK_EQ(ret, 0);
 
     mOemHookResponse = oemHookResponseParam;
     mOemHookIndication = oemHookIndicationParam;
     mCounterOemHook[mSlotId]++;
 
     ret = pthread_rwlock_unlock(radioServiceRwlockPtr);
-    assert(ret == 0);
+    CHECK_EQ(ret, 0);
 
     return Void();
 }
@@ -10486,7 +10488,7 @@ int radio_1_6::getSlicingConfigResponse(int slotId, int responseType, int serial
     RLOGD("getSlicingConfigResponse: serial %d", serial);
 #endif
 
-    if (radioService[slotId]->mRadioResponse != NULL) {
+    if (radioService[slotId]->mRadioResponseV1_6 != NULL) {
         V1_6::RadioResponseInfo responseInfo = {};
         populateResponseInfo_1_6(responseInfo, serial, responseType, e);
 
@@ -10506,22 +10508,64 @@ int radio_1_6::getSimPhonebookRecordsResponse(int slotId, int responseType, int 
 #if VDBG
     RLOGD("getSimPhonebookRecordsResponse: serial %d", serial);
 #endif
+
+    if (radioService[slotId]->mRadioResponseV1_6 != NULL) {
+        V1_6::RadioResponseInfo responseInfo = {};
+        populateResponseInfo_1_6(responseInfo, serial, responseType, e);
+
+        Return<void> retStatus =
+                radioService[slotId]->mRadioResponseV1_6->getSimPhonebookRecordsResponse(
+                        responseInfo);
+        radioService[slotId]->checkReturnStatus(retStatus);
+    } else {
+        RLOGE("getSimPhonebookRecordsResponse: radioService[%d]->mRadioResponse == NULL", slotId);
+    }
+
     return 0;
 }
 
 int radio_1_6::getSimPhonebookCapacityResponse(int slotId, int responseType, int serial,
                              RIL_Errno e, void *response, size_t responseLen) {
 #if VDBG
-    RLOGD("getSimPhonebookRecordsResponse: serial %d", serial);
+    RLOGD("getSimPhonebookCapacityResponse: serial %d", serial);
 #endif
+
+    if (radioService[slotId]->mRadioResponseV1_6 != NULL) {
+        V1_6::RadioResponseInfo responseInfo = {};
+        populateResponseInfo_1_6(responseInfo, serial, responseType, e);
+
+        V1_6::PhonebookCapacity phonebookCapacity = {};
+        Return<void> retStatus =
+                radioService[slotId]->mRadioResponseV1_6->getSimPhonebookCapacityResponse(
+                        responseInfo, phonebookCapacity);
+        radioService[slotId]->checkReturnStatus(retStatus);
+    } else {
+        RLOGE("getSimPhonebookCapacityResponse: radioService[%d]->mRadioResponse == NULL", slotId);
+    }
+
     return 0;
 }
 
 int radio_1_6::updateSimPhonebookRecordsResponse(int slotId, int responseType, int serial,
                              RIL_Errno e, void *response, size_t responseLen) {
 #if VDBG
-    RLOGD("getSimPhonebookRecordsResponse: serial %d", serial);
+    RLOGD("updateSimPhonebookRecordsResponse: serial %d", serial);
 #endif
+
+    if (radioService[slotId]->mRadioResponseV1_6 != NULL) {
+        V1_6::RadioResponseInfo responseInfo = {};
+        populateResponseInfo_1_6(responseInfo, serial, responseType, e);
+
+        int32_t updatedRecordIndex = 0;
+        Return<void> retStatus =
+                radioService[slotId]->mRadioResponseV1_6->updateSimPhonebookRecordsResponse(
+                        responseInfo, updatedRecordIndex);
+        radioService[slotId]->checkReturnStatus(retStatus);
+    } else {
+        RLOGE("updateSimPhonebookRecordsResponse: radioService[%d]->mRadioResponse == NULL",
+              slotId);
+    }
+
     return 0;
 }
 
@@ -10884,8 +10928,8 @@ int radio_1_6::currentSignalStrengthInd(int slotId, int indicationType, int toke
                                         void* response, size_t responseLen) {
     if (radioService[slotId] != NULL && (radioService[slotId]->mRadioIndication != NULL ||
                                          radioService[slotId]->mRadioIndicationV1_2 != NULL ||
-                                         radioService[slotId]->mRadioIndicationV1_4 != NULL) ||
-        radioService[slotId]->mRadioIndicationV1_6 != NULL) {
+                                         radioService[slotId]->mRadioIndicationV1_4 != NULL ||
+                                         radioService[slotId]->mRadioIndicationV1_6 != NULL)) {
         if (response == NULL || responseLen != sizeof(RIL_SignalStrength_v12)) {
             RLOGE("currentSignalStrengthInd: invalid response");
             return 0;
@@ -11047,7 +11091,16 @@ void convertRilDataCallToHal(RIL_Data_Call_Response_v12 *dcResponse,
     ::android::hardware::radio::V1_6::TrafficDescriptor trafficDescriptor;
     ::android::hardware::radio::V1_6::OsAppId osAppId;
 
-    osAppId.osAppId = 1;
+    std::vector<uint8_t> osAppIdVec;
+    osAppIdVec.push_back('o');
+    osAppIdVec.push_back('s');
+    osAppIdVec.push_back('A');
+    osAppIdVec.push_back('p');
+    osAppIdVec.push_back('p');
+    osAppIdVec.push_back('I');
+    osAppIdVec.push_back('d');
+
+    osAppId.osAppId = osAppIdVec;
     trafficDescriptor.osAppId.value(osAppId);
     trafficDescriptors.push_back(trafficDescriptor);
     dcResult.trafficDescriptors = trafficDescriptors;
@@ -13301,7 +13354,7 @@ void radio_1_6::registerService(RIL_RadioFunctions *callbacks, CommandInfo *comm
     for (int i = 0; i < simCount; i++) {
         pthread_rwlock_t *radioServiceRwlockPtr = getRadioServiceRwlock(i);
         int ret = pthread_rwlock_wrlock(radioServiceRwlockPtr);
-        assert(ret == 0);
+        CHECK_EQ(ret, 0);
 
         RLOGD("sim i = %d registering ...", i);
 
@@ -13322,7 +13375,7 @@ void radio_1_6::registerService(RIL_RadioFunctions *callbacks, CommandInfo *comm
         }
 
         ret = pthread_rwlock_unlock(radioServiceRwlockPtr);
-        assert(ret == 0);
+        CHECK_EQ(ret, 0);
     }
 }
 

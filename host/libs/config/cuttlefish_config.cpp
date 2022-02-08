@@ -312,14 +312,6 @@ void CuttlefishConfig::set_crosvm_binary(const std::string& crosvm_binary) {
   (*dictionary_)[kCrosvmBinary] = crosvm_binary;
 }
 
-static constexpr char kTpmDevice[] = "tpm_device";
-std::string CuttlefishConfig::tpm_device() const {
-  return (*dictionary_)[kTpmDevice].asString();
-}
-void CuttlefishConfig::set_tpm_device(const std::string& tpm_device) {
-  (*dictionary_)[kTpmDevice] = tpm_device;
-}
-
 static constexpr char kEnableGnssGrpcProxy[] = "enable_gnss_grpc_proxy";
 void CuttlefishConfig::set_enable_gnss_grpc_proxy(const bool enable_gnss_grpc_proxy) {
   (*dictionary_)[kEnableGnssGrpcProxy] = enable_gnss_grpc_proxy;
@@ -570,14 +562,6 @@ void CuttlefishConfig::set_guest_enforce_security(bool guest_enforce_security) {
 }
 bool CuttlefishConfig::guest_enforce_security() const {
   return (*dictionary_)[kGuestEnforceSecurity].asBool();
-}
-
-const char* kGuestAuditSecurity = "guest_audit_security";
-void CuttlefishConfig::set_guest_audit_security(bool guest_audit_security) {
-  (*dictionary_)[kGuestAuditSecurity] = guest_audit_security;
-}
-bool CuttlefishConfig::guest_audit_security() const {
-  return (*dictionary_)[kGuestAuditSecurity].asBool();
 }
 
 static constexpr char kenableHostBluetooth[] = "enable_host_bluetooth";

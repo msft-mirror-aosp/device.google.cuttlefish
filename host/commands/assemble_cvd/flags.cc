@@ -88,8 +88,6 @@ DEFINE_string(extra_bootconfig_args, "",
               "requires ':=' instead of '='.");
 DEFINE_bool(guest_enforce_security, true,
             "Whether to run in enforcing mode (non permissive).");
-DEFINE_bool(guest_audit_security, true,
-            "Whether to log security audits.");
 DEFINE_int32(memory_mb, 0, "Total amount of memory available for guest, MB.");
 DEFINE_string(serial_number, cuttlefish::ForCurrentInstance("CUTTLEFISHCVD"),
               "Serial number to use for the device");
@@ -248,7 +246,6 @@ DEFINE_string(qemu_binary_dir, "/usr/bin",
               "Path to the directory containing the qemu binary to use");
 DEFINE_string(crosvm_binary, HostBinaryPath("crosvm"),
               "The Crosvm binary to use");
-DEFINE_string(tpm_device, "", "A host TPM device to pass through commands to.");
 DEFINE_bool(restart_subprocesses, true, "Restart any crashed host process");
 DEFINE_bool(enable_vehicle_hal_grpc_server, true, "Enables the vehicle HAL "
             "emulation gRPC server on the host");
@@ -624,7 +621,6 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
   tmp_config_obj.set_gdb_port(FLAGS_gdb_port);
 
   tmp_config_obj.set_guest_enforce_security(FLAGS_guest_enforce_security);
-  tmp_config_obj.set_guest_audit_security(FLAGS_guest_audit_security);
   tmp_config_obj.set_extra_kernel_cmdline(FLAGS_extra_kernel_cmdline);
   tmp_config_obj.set_extra_bootconfig_args(FLAGS_extra_bootconfig_args);
 
@@ -641,7 +637,6 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
 
   tmp_config_obj.set_qemu_binary_dir(FLAGS_qemu_binary_dir);
   tmp_config_obj.set_crosvm_binary(FLAGS_crosvm_binary);
-  tmp_config_obj.set_tpm_device(FLAGS_tpm_device);
 
   tmp_config_obj.set_seccomp_policy_dir(FLAGS_seccomp_policy_dir);
 
@@ -937,7 +932,7 @@ void SetDefaultFlagsForCrosvm() {
   std::set<Arch> supported_archs{Arch::X86_64};
   bool default_enable_sandbox =
       supported_archs.find(HostArch()) != supported_archs.end() &&
-      EnsureDirectoryExists(kCrosvmVarEmptyDir) &&
+      EnsureDirectoryExists(kCrosvmVarEmptyDir).ok() &&
       IsDirectoryEmpty(kCrosvmVarEmptyDir) && !IsRunningInContainer();
   SetCommandLineOptionWithMode("enable_sandbox",
                                (default_enable_sandbox ? "true" : "false"),
