@@ -448,7 +448,7 @@ endif
 #
 LOCAL_AUDIO_PRODUCT_PACKAGE ?= \
     android.hardware.audio.service \
-    android.hardware.audio@7.0-impl.ranchu \
+    android.hardware.audio@7.1-impl.ranchu \
     android.hardware.audio.effect@7.0-impl \
 
 LOCAL_AUDIO_PRODUCT_COPY_FILES ?= \
@@ -549,8 +549,10 @@ PRODUCT_PACKAGES += \
 #
 # GPS
 #
-PRODUCT_PACKAGES += \
+LOCAL_GNSS_PRODUCT_PACKAGE ?= \
     android.hardware.gnss-service.example
+
+PRODUCT_PACKAGES += $(LOCAL_GNSS_PRODUCT_PACKAGE)
 
 # Health
 ifeq ($(LOCAL_HEALTH_PRODUCT_PACKAGE),)
@@ -753,17 +755,20 @@ PRODUCT_VENDOR_PROPERTIES += ro.vendor.wifi_impl=mac8011_hwsim_virtio
 
 $(call soong_config_append,cvdhost,enforce_mac80211_hwsim,true)
 
-# Wifi Runtime Resource Overlay
-PRODUCT_PACKAGES += \
-    CuttlefishTetheringOverlay \
-    CuttlefishWifiOverlay
-
 else
 PRODUCT_PACKAGES += setup_wifi
 PRODUCT_VENDOR_PROPERTIES += ro.vendor.wifi_impl=virt_wifi
 endif
 
 endif
+
+ifeq ($(PRODUCT_ENFORCE_MAC80211_HWSIM),true)
+# Wifi Runtime Resource Overlay
+PRODUCT_PACKAGES += \
+    CuttlefishTetheringOverlay \
+    CuttlefishWifiOverlay
+endif
+
 
 # Host packages to install
 PRODUCT_HOST_PACKAGES += socket_vsock_proxy
