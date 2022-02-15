@@ -149,22 +149,14 @@ static const std::set<VersionedAidlPackage> kKnownMissingAidl = {
     {"android.frameworks.automotive.powerpolicy.", 1},
     {"android.frameworks.automotive.telemetry.", 1},
     {"android.hardware.automotive.audiocontrol.", 1},
+    {"android.hardware.automotive.audiocontrol.", 2},
     {"android.hardware.automotive.occupant_awareness.", 1},
 
     // No implementation in AOSP for supplicant aidl hal (b/210166896)
     {"android.hardware.wifi.supplicant.", 1},
 
-    // These versions need to be implemented (b/198331776)
+    // types-only packages, which never expect a default implementation
     {"android.hardware.radio.", 1},
-    {"android.hardware.radio.data.", 1},
-    {"android.hardware.radio.messaging.", 1},
-    {"android.hardware.radio.modem.", 1},
-    {"android.hardware.radio.network.", 1},
-    {"android.hardware.radio.sim.", 1},
-    {"android.hardware.radio.voice.", 1},
-
-    // This version needs to be implemented (b/198331886)
-    {"android.hardware.radio.config.", 1},
 
     // These versions need to be implemented (b/203490261)
     {"android.hardware.bluetooth.audio.", 1},

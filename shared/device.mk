@@ -448,7 +448,7 @@ endif
 #
 LOCAL_AUDIO_PRODUCT_PACKAGE ?= \
     android.hardware.audio.service \
-    android.hardware.audio@7.0-impl.ranchu \
+    android.hardware.audio@7.1-impl.ranchu \
     android.hardware.audio.effect@7.0-impl \
 
 LOCAL_AUDIO_PRODUCT_COPY_FILES ?= \
@@ -549,8 +549,10 @@ PRODUCT_PACKAGES += \
 #
 # GPS
 #
-PRODUCT_PACKAGES += \
+LOCAL_GNSS_PRODUCT_PACKAGE ?= \
     android.hardware.gnss-service.example
+
+PRODUCT_PACKAGES += $(LOCAL_GNSS_PRODUCT_PACKAGE)
 
 # Health
 ifeq ($(LOCAL_HEALTH_PRODUCT_PACKAGE),)
@@ -806,3 +808,6 @@ PRODUCT_PACKAGES += \
 # NFC AIDL HAL
 PRODUCT_PACKAGES += \
     android.hardware.nfc-service.cuttlefish
+
+PRODUCT_COPY_FILES += \
+    device/google/cuttlefish/shared/config/pci.ids:$(TARGET_COPY_OUT_VENDOR)/pci.ids

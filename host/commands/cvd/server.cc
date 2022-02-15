@@ -14,8 +14,6 @@
  * limitations under the License.
  */
 
-#include "host/commands/cvd/server.h"
-
 #include <future>
 #include <map>
 #include <optional>
@@ -36,6 +34,7 @@
 #include "common/libs/utils/shared_fd_flag.h"
 #include "common/libs/utils/subprocess.h"
 #include "common/libs/utils/unix_sockets.h"
+#include "host/commands/cvd/server_constants.h"
 #include "host/libs/config/cuttlefish_config.h"
 #include "host/libs/config/known_paths.h"
 
@@ -48,6 +47,7 @@ constexpr char kHostBugreportBin[] = "cvd_internal_host_bugreport";
 constexpr char kStartBin[] = "cvd_internal_start";
 constexpr char kStatusBin[] = "cvd_internal_status";
 constexpr char kStopBin[] = "cvd_internal_stop";
+constexpr char kSendSmsBin[] = "cvd_send_sms";
 
 constexpr char kClearBin[] = "clear_placeholder";  // Unused, runs CvdClear()
 constexpr char kFleetBin[] = "fleet_placeholder";  // Unused, runs CvdFleet()
@@ -66,6 +66,8 @@ Commands:
   kill-server         Kill the cvd_server background process.
   status              Check and print the state of a running instance.
   host_bugreport      Capture a host bugreport, including configs, logs, and tombstones.
+  send_sms            Send an SMS to a device.
+  cvd_send_sms        Send an SMS to a device.
 
 Args:
   <command args>      Each command has its own set of args. See cvd help <command>.
@@ -83,7 +85,16 @@ const std::map<std::string, std::string> CommandToBinaryMap = {
     {"stop", kStopBin},
     {"stop_cvd", kStopBin},
     {"clear", kClearBin},
-    {"fleet", kFleetBin}};
+    {"fleet", kFleetBin},
+    {"send_sms", kSendSmsBin},
+    {"cvd_send_sms", kSendSmsBin},
+};
+
+struct RequestWithStdio {
+  cvd::Request request;
+  SharedFD in, out, err;
+  std::optional<SharedFD> extra;
+};
 
 class CvdServer {
  public:
@@ -97,44 +108,39 @@ class CvdServer {
       } else if (read_set.IsSet(server)) {
         auto client = SharedFD::Accept(*server);
         while (true) {
-          Result<void> result = {};
-          auto request_with_stdio = GetRequest(client);
-          if (!request_with_stdio.ok()) {
+          auto request = GetRequest(client);
+          if (!request.ok()) {
             client->Close();
             break;
           }
-          auto request = request_with_stdio->request;
-          auto in = request_with_stdio->in;
-          auto out = request_with_stdio->out;
-          auto err = request_with_stdio->err;
-          auto extra = request_with_stdio->extra;
-          switch (request.contents_case()) {
+          Result<cvd::Response> response;
+          switch (request->request.contents_case()) {
             case cvd::Request::ContentsCase::CONTENTS_NOT_SET:
               // No more messages from this client.
               client->Close();
               break;
             case cvd::Request::ContentsCase::kVersionRequest:
-              result = GetVersion(client);
+              response = GetVersion(*request);
               break;
             case cvd::Request::ContentsCase::kShutdownRequest:
-              if (!extra) {
-                result =
-                    CF_ERR("Missing extra ShareFD for shutdown write_pipe");
-              } else {
-                result = Shutdown(client, request.shutdown_request(), out, err,
-                                  *extra);
-              }
+              response = Shutdown(*request);
               break;
             case cvd::Request::ContentsCase::kCommandRequest:
-              result = HandleCommand(client, request.command_request(), in, out,
-                                     err);
+              response = HandleCommand(*request);
               break;
             default:
-              result = CF_ERR("Unknown request in cvd_server.");
+              response = CF_ERR("Unknown request in cvd_server.");
               break;
           }
-          if (!result.ok()) {
-            LOG(ERROR) << result.error();
+          if (response.ok()) {
+            SendResponse(client, *response);
+          } else {
+            LOG(ERROR) << response.error();
+            cvd::Response error_response;
+            error_response.mutable_status()->set_code(cvd::Status::INTERNAL);
+            *error_response.mutable_status()->mutable_message() =
+                response.error().message();
+            SendResponse(client, error_response);
             client->Close();
           }
         }
@@ -142,7 +148,9 @@ class CvdServer {
     }
   }
 
-  Result<void> GetVersion(const SharedFD& client) const {
+  Result<cvd::Response> GetVersion(const RequestWithStdio& request) const {
+    CF_EXPECT(request.request.contents_case() ==
+              cvd::Request::ContentsCase::kVersionRequest);
     cvd::Response response;
     response.mutable_version_response()->mutable_version()->set_major(
         cvd::kVersionMajor);
@@ -151,21 +159,25 @@ class CvdServer {
     response.mutable_version_response()->mutable_version()->set_build(
         android::build::GetBuildNumber());
     response.mutable_status()->set_code(cvd::Status::OK);
-    return SendResponse(client, response);
+    return response;
   }
 
-  Result<void> Shutdown(const SharedFD& client,
-                        const cvd::ShutdownRequest& request,
-                        const SharedFD& out, const SharedFD& err,
-                        const SharedFD& write_pipe) {
+  Result<cvd::Response> Shutdown(const RequestWithStdio& request) {
+    CF_EXPECT(request.request.contents_case() ==
+              cvd::Request::ContentsCase::kShutdownRequest);
     cvd::Response response;
     response.mutable_shutdown_response();
 
-    if (request.clear()) {
-      *response.mutable_status() = CvdClear(out, err);
-      if (response.status().code() != cvd::Status::OK) {
-        return SendResponse(client, response);
-      }
+    if (!request.extra) {
+      response.mutable_status()->set_code(cvd::Status::FAILED_PRECONDITION);
+      response.mutable_status()->set_message(
+          "Missing extra SharedFD for shutdown");
+      return response;
+    }
+
+    if (request.request.shutdown_request().clear()) {
+      *response.mutable_status() = CvdClear(request.out, request.err);
+      return response;
     }
 
     if (!assemblies_.empty()) {
@@ -173,37 +185,37 @@ class CvdServer {
       response.mutable_status()->set_message(
           "Cannot shut down cvd_server while devices are being tracked. "
           "Try `cvd kill-server`.");
-      return SendResponse(client, response);
+      return response;
     }
 
-    // Intentionally leak the write_pipe fd so that it only closes
+    // Intentionally leak the extra fd so that it only closes
     // when this process fully exits.
-    write_pipe->UNMANAGED_Dup();
+    (*request.extra)->UNMANAGED_Dup();
 
-    WriteAll(out, "Stopping the cvd_server.\n");
+    WriteAll(request.out, "Stopping the cvd_server.\n");
     running_ = false;
+
     response.mutable_status()->set_code(cvd::Status::OK);
-    return SendResponse(client, response);
+    return response;
   }
 
-  Result<void> HandleCommand(const SharedFD& client,
-                             const cvd::CommandRequest& request,
-                             const SharedFD& in, const SharedFD& out,
-                             const SharedFD& err) {
+  Result<cvd::Response> HandleCommand(const RequestWithStdio& request) {
+    CF_EXPECT(request.request.contents_case() ==
+              cvd::Request::ContentsCase::kCommandRequest);
     cvd::Response response;
     response.mutable_command_response();
 
-    if (request.args_size() == 0) {
+    if (request.request.command_request().args_size() == 0) {
       // No command to handle
       response.mutable_status()->set_code(cvd::Status::FAILED_PRECONDITION);
       response.mutable_status()->set_message("No args passed to HandleCommand");
-      return SendResponse(client, response);
+      return response;
     }
 
     std::vector<Flag> flags;
 
     std::vector<std::string> args;
-    for (const std::string& arg : request.args()) {
+    for (const std::string& arg : request.request.command_request().args()) {
       args.push_back(arg);
     }
 
@@ -244,20 +256,21 @@ class CvdServer {
 
     CHECK(ParseFlags(flags, args));
 
-    auto host_artifacts_path = request.env().find("ANDROID_HOST_OUT");
-    if (host_artifacts_path == request.env().end()) {
+    auto host_artifacts_path =
+        request.request.command_request().env().find("ANDROID_HOST_OUT");
+    if (host_artifacts_path == request.request.command_request().env().end()) {
       response.mutable_status()->set_code(cvd::Status::FAILED_PRECONDITION);
       response.mutable_status()->set_message(
           "Missing ANDROID_HOST_OUT in client environment.");
-      return SendResponse(client, response);
+      return response;
     }
 
     if (bin == kHelpBin) {
       // Handle `cvd help`
       if (args.empty()) {
-        WriteAll(out, kHelpMessage);
+        WriteAll(request.out, kHelpMessage);
         response.mutable_status()->set_code(cvd::Status::OK);
-        return SendResponse(client, response);
+        return response;
       }
 
       // Certain commands have no detailed help text.
@@ -265,20 +278,20 @@ class CvdServer {
       auto it = CommandToBinaryMap.find(args[0]);
       if (it == CommandToBinaryMap.end() ||
           builtins.find(args[0]) != builtins.end()) {
-        WriteAll(out, kHelpMessage);
+        WriteAll(request.out, kHelpMessage);
         response.mutable_status()->set_code(cvd::Status::OK);
-        return SendResponse(client, response);
+        return response;
       }
 
       // Handle `cvd help <subcommand>` by calling the subcommand with --help.
       bin = it->second;
       args_copy.push_back("--help");
     } else if (bin == kClearBin) {
-      *response.mutable_status() = CvdClear(out, err);
-      return SendResponse(client, response);
+      *response.mutable_status() = CvdClear(request.out, request.err);
+      return response;
     } else if (bin == kFleetBin) {
-      *response.mutable_status() = CvdFleet(out);
-      return SendResponse(client, response);
+      *response.mutable_status() = CvdFleet(request.out);
+      return response;
     } else if (bin == kStartBin) {
       // Track this assembly_dir in the fleet.
       AssemblyInfo info;
@@ -293,27 +306,28 @@ class CvdServer {
 
     // Set CuttlefishConfig path based on assembly dir,
     // used by subcommands when locating the CuttlefishConfig.
-    if (request.env().count(kCuttlefishConfigEnvVarName) == 0) {
+    if (request.request.command_request().env().count(
+            kCuttlefishConfigEnvVarName) == 0) {
       auto config_path = GetCuttlefishConfigPath(assembly_dir);
       if (config_path) {
         command.AddEnvironmentVariable(kCuttlefishConfigEnvVarName,
                                        *config_path);
       }
     }
-    for (auto& it : request.env()) {
+    for (auto& it : request.request.command_request().env()) {
       command.AddEnvironmentVariable(it.first, it.second);
     }
 
     // Redirect stdin, stdout, stderr back to the cvd client
-    command.RedirectStdIO(Subprocess::StdIOChannel::kStdIn, in);
-    command.RedirectStdIO(Subprocess::StdIOChannel::kStdOut, out);
-    command.RedirectStdIO(Subprocess::StdIOChannel::kStdErr, err);
+    command.RedirectStdIO(Subprocess::StdIOChannel::kStdIn, request.in);
+    command.RedirectStdIO(Subprocess::StdIOChannel::kStdOut, request.out);
+    command.RedirectStdIO(Subprocess::StdIOChannel::kStdErr, request.err);
     SubprocessOptions options;
     options.ExitWithParent(false);
     command.Start(options);
 
     response.mutable_status()->set_code(cvd::Status::OK);
-    return SendResponse(client, response);
+    return response;
   }
 
  private:
@@ -323,12 +337,6 @@ class CvdServer {
   };
   std::map<AssemblyDir, AssemblyInfo> assemblies_;
   bool running_ = true;
-
-  struct RequestWithStdio {
-    cvd::Request request;
-    SharedFD in, out, err;
-    std::optional<SharedFD> extra;
-  };
 
   std::optional<std::string> GetCuttlefishConfigPath(
       const std::string& assembly_dir) const {
@@ -456,7 +464,8 @@ class CvdServer {
       auto config_path = GetCuttlefishConfigPath(assembly_dir);
       if (config_path) {
         // Reads CuttlefishConfig::instance_names(), which must remain stable
-        // across changes to config file format (within server.h major version).
+        // across changes to config file format (within server_constants.h major
+        // version).
         auto config = CuttlefishConfig::GetFromFile(*config_path);
         if (config) {
           for (const std::string& instance_name : config->instance_names()) {
