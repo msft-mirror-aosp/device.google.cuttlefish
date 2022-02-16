@@ -19,8 +19,6 @@
 
 struct ESYS_CONTEXT;
 
-namespace cuttlefish {
-
 /**
  * Secure random number generator, pulling data from a TPM.
  *
@@ -38,5 +36,3 @@ public:
 private:
   ESYS_CONTEXT* esys_;
 };
-
-}  // namespace cuttlefish
