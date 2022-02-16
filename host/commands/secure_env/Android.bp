@@ -17,48 +17,10 @@ package {
     default_applicable_licenses: ["Android-Apache-2.0"],
 }
 
-cc_defaults {
-    name: "secure_env_defaults",
-    shared_libs: [
-        "libext2_blkid",
-        "libbase",
-        "libcppbor_external",
-        "libcppcose_rkp",
-        "libcuttlefish_fs",
-        "libcuttlefish_kernel_log_monitor_utils",
-        "libcuttlefish_security",
-        "libcuttlefish_utils",
-        "libfruit",
-        "libgatekeeper",
-        "libjsoncpp",
-        "libkeymaster_portable",
-        "libkeymaster_messages",
-        "libsoft_attestation_cert",
-        "liblog",
-        "libcrypto",
-        "libcutils",
-        "libpuresoftkeymasterdevice_host",
-        "ms-tpm-20-ref-lib",
-        "tpm2-tss2-esys",
-        "tpm2-tss2-mu",
-        "tpm2-tss2-rc",
-        "tpm2-tss2-tcti",
-    ],
-    static_libs: [
-        "libcuttlefish_host_config",
-        "libgflags",
-        "libscrypt_static",
-    ],
-    cflags: [
-        "-fno-rtti", // Required for libkeymaster_portable
-    ],
-}
-
-cc_library_host_static {
-    name: "libsecure_env",
+cc_binary_host {
+    name: "secure_env",
     srcs: [
         "composite_serialization.cpp",
-        "confui_sign_server.cpp",
         "device_tpm.cpp",
         "encrypted_serializable.cpp",
         "fragile_tpm_storage.cpp",
@@ -80,35 +42,36 @@ cc_library_host_static {
         "tpm_keymaster_context.cpp",
         "tpm_keymaster_enforcement.cpp",
         "tpm_random_source.cpp",
-        "tpm_remote_provisioning_context.cpp",
         "tpm_resource_manager.cpp",
         "tpm_serialize.cpp",
     ],
-    defaults: ["cuttlefish_buildhost_only", "secure_env_defaults"],
-}
-
-cc_binary_host {
-    name: "secure_env",
-    srcs: [
-        "secure_env.cpp",
+    shared_libs: [
+        "libbase",
+        "libcuttlefish_fs",
+        "libcuttlefish_security",
+        "libcuttlefish_utils",
+        "libgatekeeper",
+        "libjsoncpp",
+        "libkeymaster_portable",
+        "libkeymaster_messages",
+        "libsoft_attestation_cert",
+        "liblog",
+        "libcrypto",
+        "libcutils",
+        "libpuresoftkeymasterdevice_host",
+        "ms-tpm-20-ref-lib",
+        "tpm2-tss2-esys",
+        "tpm2-tss2-mu",
+        "tpm2-tss2-rc",
+        "tpm2-tss2-tcti",
     ],
     static_libs: [
-        "libsecure_env",
+        "libcuttlefish_host_config",
+        "libgflags",
+        "libscrypt_static",
     ],
-    defaults: ["cuttlefish_buildhost_only", "secure_env_defaults"],
-}
-
-cc_test_host {
-    name: "libsecure_env_test",
-    srcs: [
-        "test_tpm.cpp",
-        "encrypted_serializable_test.cpp",
+    defaults: ["cuttlefish_buildhost_only"],
+    cflags: [
+        "-fno-rtti", // Required for libkeymaster_portable
     ],
-    static_libs: [
-        "libsecure_env",
-    ],
-    defaults: ["cuttlefish_buildhost_only", "secure_env_defaults"],
-    test_options: {
-        unit_test: true,
-    },
 }
