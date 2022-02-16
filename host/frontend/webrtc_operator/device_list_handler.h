@@ -25,15 +25,24 @@
 
 namespace cuttlefish {
 
-class DeviceListHandler : public DynHandler {
+class DeviceListHandler : public WebSocketHandler {
  public:
-  DeviceListHandler(struct lws* wsi, DeviceRegistry& registry);
+  DeviceListHandler(struct lws* wsi, const DeviceRegistry& registry);
 
-  HttpStatusCode DoGet() override;
-  HttpStatusCode DoPost() override;
+  void OnReceive(const uint8_t* msg, size_t len, bool binary) override;
+  void OnConnected() override;
+  void OnClosed() override;
 
  private:
-  DeviceRegistry& registry_;
+  const DeviceRegistry& registry_;
 };
 
+class DeviceListHandlerFactory : public WebSocketHandlerFactory {
+ public:
+  DeviceListHandlerFactory(const DeviceRegistry& registry);
+  std::shared_ptr<WebSocketHandler> Build(struct lws* wsi) override;
+
+ private:
+  const DeviceRegistry& registry_;
+};
 }  // namespace cuttlefish
