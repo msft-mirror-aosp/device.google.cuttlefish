@@ -128,6 +128,7 @@ int main(int argc, char** argv) {
         send(vhci_fd, HCI_ISODATA_PKT, raw_iso.data(), raw_iso.size());
       },
       []() { LOG(INFO) << "HCI socket device disconnected"; });
+
   while (true) {
     int ret = TEMP_FAILURE_RETRY(poll(fds, 2, -1));
     if (ret < 0) {
@@ -142,6 +143,7 @@ int main(int argc, char** argv) {
         PLOG(ERROR) << "vhci to virtio-console failed";
       }
     }
+
     if (fds[1].revents & (POLLIN | POLLERR)) {
       // 'virtio-console to vhci' depends on H4Packetizer because vhci expects
       // full packet, but the data from virtio-console could be partial.
