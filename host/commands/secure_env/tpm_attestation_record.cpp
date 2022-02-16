@@ -16,63 +16,56 @@
 #include "host/commands/secure_env/tpm_attestation_record.h"
 
 #include <keymaster/contexts/soft_attestation_cert.h>
-#include <keymaster/km_openssl/attestation_record.h>
-
-#include <openssl/rand.h>
 
 #include <android-base/logging.h>
 
-namespace cuttlefish {
-
-namespace {
-using VerifiedBootParams = keymaster::AttestationContext::VerifiedBootParams;
 using keymaster::AuthorizationSet;
-
-VerifiedBootParams MakeVbParams() {
-  // Cuttlefish is hard-coded to verifiedbootstate=orange
-  // See device/google/cuttlefish/host/libs/config/bootconfig_args.cpp
-  VerifiedBootParams vb_params;
-  static uint8_t empty_vb_key[32] = {};
-  vb_params.verified_boot_key = {empty_vb_key, sizeof(empty_vb_key)};
-  vb_params.verified_boot_hash = {empty_vb_key, sizeof(empty_vb_key)};
-  vb_params.verified_boot_state = KM_VERIFIED_BOOT_UNVERIFIED;
-  vb_params.device_locked = false;
-  return vb_params;
-}
-
-}  // namespace
-
-TpmAttestationRecordContext::TpmAttestationRecordContext()
-    : keymaster::AttestationContext(::keymaster::KmVersion::KEYMINT_2),
-      vb_params_(MakeVbParams()),
-      unique_id_hbk_(16) {
-  RAND_bytes(unique_id_hbk_.data(), unique_id_hbk_.size());
-}
 
 keymaster_security_level_t TpmAttestationRecordContext::GetSecurityLevel() const {
   return KM_SECURITY_LEVEL_TRUSTED_ENVIRONMENT;
 }
 
 keymaster_error_t TpmAttestationRecordContext::VerifyAndCopyDeviceIds(
-    const AuthorizationSet& /*attestation_params*/,
-    AuthorizationSet* /*attestation*/) const {
+    const AuthorizationSet& attestation_params,
+    AuthorizationSet* attestation) const {
   LOG(DEBUG) << "TODO(schuffelen): Implement VerifyAndCopyDeviceIds";
-  return KM_ERROR_UNIMPLEMENTED;
+  attestation->Difference(attestation_params);
+  attestation->Union(attestation_params);
+  if (int index = attestation->find(keymaster::TAG_ATTESTATION_APPLICATION_ID)) {
+    attestation->erase(index);
+  }
+  return KM_ERROR_OK;
 }
 
 keymaster::Buffer TpmAttestationRecordContext::GenerateUniqueId(
-    uint64_t creation_date_time, const keymaster_blob_t& application_id,
-    bool reset_since_rotation, keymaster_error_t* error) const {
-  *error = KM_ERROR_OK;
-  return keymaster::generate_unique_id(unique_id_hbk_, creation_date_time,
-                                       application_id, reset_since_rotation);
+    uint64_t, const keymaster_blob_t&, bool, keymaster_error_t* error) const {
+  LOG(ERROR) << "TODO(schuffelen): Implement GenerateUniqueId";
+  *error = KM_ERROR_UNIMPLEMENTED;
+  return {};
 }
 
-const VerifiedBootParams* TpmAttestationRecordContext::GetVerifiedBootParams(
-    keymaster_error_t* error) const {
-  static VerifiedBootParams vb_params = MakeVbParams();
+const keymaster::AttestationContext::VerifiedBootParams*
+TpmAttestationRecordContext::GetVerifiedBootParams(keymaster_error_t* error) const {
+  LOG(DEBUG) << "TODO(schuffelen): Implement GetVerifiedBootParams";
+  if (!vb_params_) {
+      vb_params_.reset(new VerifiedBootParams{});
+
+      // TODO(schuffelen): Get this data out of vbmeta
+      static uint8_t fake_vb_key[32];
+      static bool fake_vb_key_initialized = false;
+      if (!fake_vb_key_initialized) {
+        for (int i = 0; i < sizeof(fake_vb_key); i++) {
+          fake_vb_key[i] = rand();
+        }
+        fake_vb_key_initialized = true;
+      }
+      vb_params_->verified_boot_key = {fake_vb_key, sizeof(fake_vb_key)};
+      vb_params_->verified_boot_hash = {fake_vb_key, sizeof(fake_vb_key)};
+      vb_params_->verified_boot_state = KM_VERIFIED_BOOT_VERIFIED;
+      vb_params_->device_locked = true;
+  }
   *error = KM_ERROR_OK;
-  return &vb_params;
+  return vb_params_.get();
 }
 
 keymaster::KeymasterKeyBlob
@@ -86,5 +79,3 @@ TpmAttestationRecordContext::GetAttestationChain(keymaster_algorithm_t algorithm
                                                  keymaster_error_t* error) const {
   return keymaster::getAttestationChain(algorithm, error);
 }
-
-}  // namespace cuttlefish
