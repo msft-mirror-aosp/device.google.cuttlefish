@@ -23,8 +23,6 @@
 
 #include "host/commands/secure_env/tpm.h"
 
-namespace cuttlefish {
-
 /*
  * Exposes a TSS2_TCTI_CONTEXT for interacting with an in-process TPM simulator.
  *
@@ -43,9 +41,7 @@ public:
 
   TSS2_TCTI_CONTEXT* TctiContext() override;
 private:
- class Impl;
+  struct Impl;
 
- std::unique_ptr<Impl> impl_;
+  std::unique_ptr<Impl> impl_;
 };
-
-}  // namespace cuttlefish

@@ -1,5 +1,4 @@
 boot.img
-init_boot.img
 bootloader
 super.img
 userdata.img
