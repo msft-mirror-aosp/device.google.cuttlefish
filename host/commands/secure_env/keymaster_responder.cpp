@@ -18,8 +18,6 @@
 #include <android-base/logging.h>
 #include <keymaster/android_keymaster_messages.h>
 
-namespace cuttlefish {
-
 KeymasterResponder::KeymasterResponder(
     cuttlefish::KeymasterChannel& channel, keymaster::AndroidKeymaster& keymaster)
     : channel_(channel), keymaster_(keymaster) {
@@ -67,8 +65,6 @@ bool KeymasterResponder::ProcessMessage() {
     HANDLE_MESSAGE(DELETE_KEY, DeleteKey)
     HANDLE_MESSAGE(DELETE_ALL_KEYS, DeleteAllKeys)
     HANDLE_MESSAGE(IMPORT_WRAPPED_KEY, ImportWrappedKey)
-    HANDLE_MESSAGE(GENERATE_RKP_KEY, GenerateRkpKey)
-    HANDLE_MESSAGE(GENERATE_CSR, GenerateCsr)
     HANDLE_MESSAGE(GENERATE_TIMESTAMP_TOKEN, GenerateTimestampToken)
 #undef HANDLE_MESSAGE
 #define HANDLE_MESSAGE_W_RETURN(ENUM_NAME, METHOD_NAME) \
@@ -85,10 +81,7 @@ bool KeymasterResponder::ProcessMessage() {
     HANDLE_MESSAGE_W_RETURN(VERIFY_AUTHORIZATION, VerifyAuthorization)
     HANDLE_MESSAGE_W_RETURN(DEVICE_LOCKED, DeviceLocked)
     HANDLE_MESSAGE_W_RETURN(GET_VERSION_2, GetVersion2)
-    HANDLE_MESSAGE_W_RETURN(CONFIGURE_VENDOR_PATCHLEVEL,
-                            ConfigureVendorPatchlevel)
-    HANDLE_MESSAGE_W_RETURN(CONFIGURE_BOOT_PATCHLEVEL, ConfigureBootPatchlevel)
-#undef HANDLE_MESSAGE_W_RETURN
+#undef HANDLE_MESSAGE
 #define HANDLE_MESSAGE_W_RETURN_NO_ARG(ENUM_NAME, METHOD_NAME) \
     case ENUM_NAME: {\
       auto response = keymaster_.METHOD_NAME(); \
@@ -96,7 +89,7 @@ bool KeymasterResponder::ProcessMessage() {
     }
     HANDLE_MESSAGE_W_RETURN_NO_ARG(GET_HMAC_SHARING_PARAMETERS, GetHmacSharingParameters)
     HANDLE_MESSAGE_W_RETURN_NO_ARG(EARLY_BOOT_ENDED, EarlyBootEnded)
-#undef HANDLE_MESSAGE_W_RETURN_NO_ARG
+#undef HANDLE_MESSAGE
     case ADD_RNG_ENTROPY: {
       AddEntropyRequest request(keymaster_.message_version());
       if (!request.Deserialize(&buffer, end)) {
@@ -114,5 +107,3 @@ bool KeymasterResponder::ProcessMessage() {
       return false;
   }
 }
-
-}  // namespace cuttlefish

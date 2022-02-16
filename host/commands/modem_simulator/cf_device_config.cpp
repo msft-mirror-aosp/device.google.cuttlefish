@@ -22,13 +22,14 @@
 namespace cuttlefish {
 namespace modem {
 
-int DeviceConfig::host_id() {
+int DeviceConfig::host_port() {
   if (!cuttlefish::CuttlefishConfig::Get()) {
-    return 1000;
+      return 6500;
   }
   auto config = cuttlefish::CuttlefishConfig::Get();
   auto instance = config->ForDefaultInstance();
-  return instance.modem_simulator_host_id();
+  auto host_port = instance.host_port();
+  return host_port;
 }
 
 std::string DeviceConfig::PerInstancePath(const char* file_name) {
