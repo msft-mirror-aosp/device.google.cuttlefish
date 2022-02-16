@@ -19,7 +19,6 @@
 
 #include <stdint.h>
 #include <mutex>
-#include <optional>
 
 #include <wayland-server-core.h>
 
@@ -30,7 +29,7 @@ class Surfaces;
 // Tracks the buffer associated with a Wayland surface.
 class Surface {
  public:
-  Surface(Surfaces& surfaces);
+  Surface(std::uint32_t display_number, Surfaces& surfaces);
   virtual ~Surface() = default;
 
   Surface(const Surface& rhs) = delete;
@@ -54,14 +53,9 @@ class Surface {
   // Commits the pending frame state.
   void Commit();
 
-  void SetVirtioGpuScanoutId(uint32_t scanout);
-
  private:
+  std::uint32_t display_number_;
   Surfaces& surfaces_;
-
-  struct VirtioGpuMetadata {
-    std::optional<uint32_t> scanout_id;
-  };
 
   struct State {
     uint32_t current_frame_number = 0;
@@ -74,8 +68,6 @@ class Surface {
 
     // The buffers expected dimensions.
     Region region;
-
-    VirtioGpuMetadata virtio_gpu_metadata_;
   };
 
   std::mutex state_mutex_;
