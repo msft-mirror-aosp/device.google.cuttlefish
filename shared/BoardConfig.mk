@@ -27,7 +27,7 @@ TARGET_BOOTLOADER_BOARD_NAME := cutf
 
 BOARD_SYSTEMIMAGE_FILE_SYSTEM_TYPE := $(TARGET_RO_FILE_SYSTEM_TYPE)
 
-# Boot partition size: 32M
+# Boot partition size: 64M
 # This is only used for OTA update packages. The image size on disk
 # will not change (as is it not a filesystem.)
 BOARD_BOOTIMAGE_PARTITION_SIZE := 67108864
@@ -35,6 +35,8 @@ ifdef TARGET_DEDICATED_RECOVERY
 BOARD_RECOVERYIMAGE_PARTITION_SIZE := 67108864
 endif
 BOARD_VENDOR_BOOTIMAGE_PARTITION_SIZE := 67108864
+
+BOARD_INIT_BOOT_IMAGE_PARTITION_SIZE := 8388608
 
 # Build a separate vendor.img partition
 BOARD_USES_VENDORIMAGE := true
@@ -58,29 +60,42 @@ TARGET_COPY_OUT_ODM := odm
 
 # Build a separate vendor_dlkm partition
 BOARD_USES_VENDOR_DLKMIMAGE := true
-BOARD_VENDOR_DLKMIMAGE_FILE_SYSTEM_TYPE := ext4
+BOARD_VENDOR_DLKMIMAGE_FILE_SYSTEM_TYPE := $(TARGET_RO_FILE_SYSTEM_TYPE)
 TARGET_COPY_OUT_VENDOR_DLKM := vendor_dlkm
 
 # Build a separate odm_dlkm partition
 BOARD_USES_ODM_DLKMIMAGE := true
-BOARD_ODM_DLKMIMAGE_FILE_SYSTEM_TYPE := ext4
+BOARD_ODM_DLKMIMAGE_FILE_SYSTEM_TYPE := $(TARGET_RO_FILE_SYSTEM_TYPE)
 TARGET_COPY_OUT_ODM_DLKM := odm_dlkm
 
-# FIXME: Remove this once we generate the vbmeta digest correctly
-BOARD_AVB_MAKE_VBMETA_IMAGE_ARGS += --flag 2
+# Build a separate system_dlkm partition
+BOARD_USES_SYSTEM_DLKMIMAGE := true
+BOARD_SYSTEM_DLKMIMAGE_FILE_SYSTEM_TYPE := $(TARGET_RO_FILE_SYSTEM_TYPE)
+TARGET_COPY_OUT_SYSTEM_DLKM := system_dlkm
+
+# Enable AVB
+BOARD_AVB_ENABLE := true
+BOARD_AVB_ALGORITHM := SHA256_RSA4096
+BOARD_AVB_KEY_PATH := external/avb/test/data/testkey_rsa4096.pem
 
 # Enable chained vbmeta for system image mixing
 BOARD_AVB_VBMETA_SYSTEM := product system system_ext
-BOARD_AVB_VBMETA_SYSTEM_KEY_PATH := external/avb/test/data/testkey_rsa2048.pem
-BOARD_AVB_VBMETA_SYSTEM_ALGORITHM := SHA256_RSA2048
+BOARD_AVB_VBMETA_SYSTEM_KEY_PATH := external/avb/test/data/testkey_rsa4096.pem
+BOARD_AVB_VBMETA_SYSTEM_ALGORITHM := SHA256_RSA4096
 BOARD_AVB_VBMETA_SYSTEM_ROLLBACK_INDEX := $(PLATFORM_SECURITY_PATCH_TIMESTAMP)
 BOARD_AVB_VBMETA_SYSTEM_ROLLBACK_INDEX_LOCATION := 1
 
 # Enable chained vbmeta for boot images
-BOARD_AVB_BOOT_KEY_PATH := external/avb/test/data/testkey_rsa2048.pem
-BOARD_AVB_BOOT_ALGORITHM := SHA256_RSA2048
+BOARD_AVB_BOOT_KEY_PATH := external/avb/test/data/testkey_rsa4096.pem
+BOARD_AVB_BOOT_ALGORITHM := SHA256_RSA4096
 BOARD_AVB_BOOT_ROLLBACK_INDEX := $(PLATFORM_SECURITY_PATCH_TIMESTAMP)
 BOARD_AVB_BOOT_ROLLBACK_INDEX_LOCATION := 2
+
+# Enable chained vbmeta for init_boot images
+BOARD_AVB_INIT_BOOT_KEY_PATH := external/avb/test/data/testkey_rsa4096.pem
+BOARD_AVB_INIT_BOOT_ALGORITHM := SHA256_RSA4096
+BOARD_AVB_INIT_BOOT_ROLLBACK_INDEX := $(PLATFORM_SECURITY_PATCH_TIMESTAMP)
+BOARD_AVB_INIT_BOOT_ROLLBACK_INDEX_LOCATION := 3
 
 # Using sha256 for dm-verity partitions. b/178983355
 # system, system_other, product.
@@ -100,9 +115,10 @@ BOARD_AVB_PRODUCT_ADD_HASHTREE_FOOTER_ARGS += --hash_algorithm $(TARGET_AVB_PROD
 BOARD_AVB_VENDOR_ADD_HASHTREE_FOOTER_ARGS += --hash_algorithm sha256
 BOARD_AVB_ODM_ADD_HASHTREE_FOOTER_ARGS += --hash_algorithm sha256
 
-# vendor_dlkm and odm_dlkm.
+# vendor_dlkm, odm_dlkm, and system_dlkm.
 BOARD_AVB_VENDOR_DLKM_ADD_HASHTREE_FOOTER_ARGS += --hash_algorithm sha256
 BOARD_AVB_ODM_DLKM_ADD_HASHTREE_FOOTER_ARGS += --hash_algorithm sha256
+BOARD_AVB_SYSTEM_DLKM_ADD_HASHTREE_FOOTER_ARGS += --hash_algorithm sha256
 
 BOARD_USES_GENERIC_AUDIO := false
 USE_CAMERA_STUB := true
@@ -144,7 +160,14 @@ BOARD_FLASH_BLOCK_SIZE := 512
 USE_OPENGL_RENDERER := true
 
 # Wifi.
+ifeq ($(PRODUCT_ENFORCE_MAC80211_HWSIM),true)
+BOARD_WLAN_DEVICE           := emulator
+BOARD_HOSTAPD_PRIVATE_LIB   := lib_driver_cmd_simulated_cf
+WIFI_HIDL_FEATURE_DUAL_INTERFACE := true
+WIFI_HAL_INTERFACE_COMBINATIONS := {{{STA}, 1}, {{AP}, 1}, {{P2P}, 1}}
+else
 BOARD_WLAN_DEVICE           := wlan0
+endif
 BOARD_HOSTAPD_DRIVER        := NL80211
 BOARD_WPA_SUPPLICANT_DRIVER := NL80211
 BOARD_WPA_SUPPLICANT_PRIVATE_LIB := lib_driver_cmd_simulated_cf
@@ -158,13 +181,6 @@ BOARD_VENDOR_SEPOLICY_DIRS += device/google/cuttlefish/shared/sepolicy/vendor
 BOARD_VENDOR_SEPOLICY_DIRS += device/google/cuttlefish/shared/sepolicy/vendor/google
 
 BOARD_SEPOLICY_DIRS += system/bt/vendor_libs/linux/sepolicy
-
-# Avoid multiple includes of sepolicy already included by Pixel experience.
-ifneq ($(filter aosp_% %_auto %_go_phone trout_% %_tv,$(PRODUCT_NAME)),)
-
-SYSTEM_EXT_PRIVATE_SEPOLICY_DIRS += hardware/google/pixel-sepolicy/flipendo
-
-endif
 
 # product sepolicy, allow other layers to append
 PRODUCT_PRIVATE_SEPOLICY_DIRS += device/google/cuttlefish/shared/sepolicy/product/private
@@ -189,7 +205,7 @@ TARGET_RECOVERY_FSTAB ?= device/google/cuttlefish/shared/config/fstab.f2fs
 
 BOARD_SUPER_PARTITION_SIZE := 7516192768  # 7GiB
 BOARD_SUPER_PARTITION_GROUPS := google_system_dynamic_partitions google_vendor_dynamic_partitions
-BOARD_GOOGLE_SYSTEM_DYNAMIC_PARTITIONS_PARTITION_LIST := product system system_ext
+BOARD_GOOGLE_SYSTEM_DYNAMIC_PARTITIONS_PARTITION_LIST := product system system_ext system_dlkm
 BOARD_GOOGLE_SYSTEM_DYNAMIC_PARTITIONS_SIZE := 5771362304  # 5.375GiB
 BOARD_GOOGLE_VENDOR_DYNAMIC_PARTITIONS_PARTITION_LIST := odm vendor vendor_dlkm odm_dlkm
 # 1404MiB, reserve 4MiB for dynamic partition metadata
@@ -207,36 +223,45 @@ BOARD_RAMDISK_USE_LZ4 := true
 # To see full logs from init, disable ratelimiting.
 # The default is 5 messages per second amortized, with a burst of up to 10.
 BOARD_KERNEL_CMDLINE += printk.devkmsg=on
+
+# Print audit messages for all security check failures
+BOARD_KERNEL_CMDLINE += audit=1
+
+# Reboot immediately on panic
+BOARD_KERNEL_CMDLINE += panic=-1
+
+# Always (solely or additionally) print kernel logs to hvc0
+BOARD_KERNEL_CMDLINE += console=hvc0
+
+# Cuttlefish doesn't use CMA, so don't reserve RAM for it
+BOARD_KERNEL_CMDLINE += cma=0
+
+# Default firmware load path
 BOARD_KERNEL_CMDLINE += firmware_class.path=/vendor/etc/
 
-BOARD_KERNEL_CMDLINE += init=/init
-BOARD_BOOTCONFIG += androidboot.hardware=cutf_cvm
-
-# TODO(b/179489292): Remove once kfence is enabled everywhere
-BOARD_KERNEL_CMDLINE += kfence.sample_interval=500
-
+# Needed to boot Android
 BOARD_KERNEL_CMDLINE += loop.max_part=7
+BOARD_KERNEL_CMDLINE += init=/init
+
+BOARD_BOOTCONFIG += androidboot.hardware=cutf_cvm
 
 # TODO(b/182417593): Move all of these module options to modules.options
 # TODO(b/176860479): Remove once goldfish and cuttlefish share a wifi implementation
 BOARD_BOOTCONFIG += kernel.mac80211_hwsim.radios=0
-# TODO(b/175151042): Remove once we are using virtio-snd on cuttlefish
-BOARD_BOOTCONFIG += kernel.snd-hda-intel.enable=0
 # Reduce slab size usage from virtio vsock to reduce slab fragmentation
 BOARD_BOOTCONFIG += \
     kernel.vmw_vsock_virtio_transport_common.virtio_transport_max_vsock_pkt_buf_size=16384
 
-ifeq ($(TARGET_USERDATAIMAGE_FILE_SYSTEM_TYPE),f2fs)
-BOARD_BOOTCONFIG += androidboot.fstab_suffix=f2fs
-endif
-
-ifeq ($(TARGET_USERDATAIMAGE_FILE_SYSTEM_TYPE),ext4)
-BOARD_BOOTCONFIG += androidboot.fstab_suffix=ext4
-endif
+BOARD_BOOTCONFIG += \
+    androidboot.vendor.apex.com.android.wifi.hal=com.google.cf.wifi_hwsim
 
 BOARD_INCLUDE_DTB_IN_BOOTIMG := true
+ifndef BOARD_BOOT_HEADER_VERSION
 BOARD_BOOT_HEADER_VERSION := 4
+endif
 BOARD_MKBOOTIMG_ARGS += --header_version $(BOARD_BOOT_HEADER_VERSION)
+BOARD_INIT_BOOT_HEADER_VERSION := 4
+BOARD_MKBOOTIMG_INIT_ARGS += --header_version $(BOARD_INIT_BOOT_HEADER_VERSION)
 PRODUCT_COPY_FILES += \
     device/google/cuttlefish/dtb.img:dtb.img \
     device/google/cuttlefish/required_images:required_images \
@@ -254,16 +279,6 @@ else
   BOARD_MOVE_RECOVERY_RESOURCES_TO_VENDOR_BOOT := true
 endif
 BOARD_MOVE_GSI_AVB_KEYS_TO_VENDOR_BOOT := true
-
-# TARGET_KERNEL_USE is defined in kernel.mk, if not defined in the environment variable.
-# Keep in sync with GKI APEX in device.mk
-ifneq (,$(TARGET_KERNEL_USE))
-  ifneq (,$(filter 5.4, $(TARGET_KERNEL_USE)))
-    BOARD_KERNEL_MODULE_INTERFACE_VERSIONS := 5.4-android12-0
-  else
-    BOARD_KERNEL_MODULE_INTERFACE_VERSIONS := $(TARGET_KERNEL_USE)-android12-unstable
-  endif
-endif
 
 BOARD_GENERIC_RAMDISK_KERNEL_MODULES_LOAD := dm-user.ko
 
