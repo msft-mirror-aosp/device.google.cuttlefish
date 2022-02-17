@@ -118,7 +118,7 @@ bool ProcessMonitor::StartAndMonitorProcesses() {
 }
 
 static void LogSubprocessExit(const std::string& name, pid_t pid, int wstatus) {
-  LOG(INFO) << "Detected exit of monitored subprocess " << name;
+  LOG(INFO) << "Detected unexpected exit of monitored subprocess " << name;
   if (WIFEXITED(wstatus)) {
     LOG(INFO) << "Subprocess " << name << " (" << pid
               << ") has exited with exit code " << WEXITSTATUS(wstatus);
@@ -139,8 +139,7 @@ bool ProcessMonitor::MonitorRoutine() {
 
   LOG(DEBUG) << "Starting monitoring subprocesses";
   for (auto& monitored : monitored_processes_) {
-    cuttlefish::SubprocessOptions options;
-    options.InGroup(true);
+    auto options = SubprocessOptions().InGroup(true);
     monitored.proc.reset(new Subprocess(monitored.cmd->Start(options)));
     CHECK(monitored.proc->Started()) << "Failed to start process";
   }
@@ -185,8 +184,7 @@ bool ProcessMonitor::MonitorRoutine() {
     } else {
       LogSubprocessExit(it->cmd->GetShortName(), it->proc->pid(), wstatus);
       if (restart_subprocesses_) {
-        cuttlefish::SubprocessOptions options;
-        options.InGroup(true);
+        auto options = SubprocessOptions().InGroup(true);
         it->proc.reset(new Subprocess(it->cmd->Start(options)));
       } else {
         monitored_processes_.erase(it);
@@ -195,21 +193,25 @@ bool ProcessMonitor::MonitorRoutine() {
   }
 
   parent_comms_thread.join(); // Should have exited if `running` is false
-  // Processes were started in the order they appear in the vector, stop them in
-  // reverse order for symmetry.
   auto stop = [](const auto& it) {
-    if (!it.proc->Stop()) {
+    auto stop_result = it.proc->Stop();
+    if (stop_result == StopperResult::kStopFailure) {
       LOG(WARNING) << "Error in stopping \"" << it.cmd->GetShortName() << "\"";
       return false;
     }
     int wstatus = 0;
-    auto ret = it.proc->Wait(&wstatus, 0);
-    if (ret < 0) {
+    auto pid = it.proc->Wait(&wstatus, 0);
+    if (pid < 0) {
       LOG(WARNING) << "Failed to wait for process " << it.cmd->GetShortName();
       return false;
     }
+    if (stop_result == StopperResult::kStopCrash) {
+      LogSubprocessExit(it.cmd->GetShortName(), pid, wstatus);
+    }
     return true;
   };
+  // Processes were started in the order they appear in the vector, stop them in
+  // reverse order for symmetry.
   size_t stopped = std::count_if(monitored.rbegin(), monitored.rend(), stop);
   LOG(DEBUG) << "Done monitoring subprocesses";
   return stopped == monitored.size();
