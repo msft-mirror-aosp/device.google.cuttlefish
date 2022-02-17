@@ -28,22 +28,45 @@
 #include <keymaster/km_openssl/triple_des_key.h>
 
 #include "host/commands/secure_env/tpm_attestation_record.h"
-#include "host/commands/secure_env/tpm_random_source.h"
 #include "host/commands/secure_env/tpm_key_blob_maker.h"
+#include "host/commands/secure_env/tpm_random_source.h"
+#include "host/commands/secure_env/tpm_remote_provisioning_context.h"
 
+namespace cuttlefish {
+
+namespace {
 using keymaster::AuthorizationSet;
 using keymaster::KeymasterKeyBlob;
 using keymaster::KeyFactory;
 using keymaster::OperationFactory;
 
+keymaster::AuthorizationSet GetHiddenTags(
+    const AuthorizationSet& authorizations) {
+  keymaster::AuthorizationSet output;
+  keymaster_blob_t entry;
+  if (authorizations.GetTagValue(keymaster::TAG_APPLICATION_ID, &entry)) {
+    output.push_back(keymaster::TAG_APPLICATION_ID, entry.data,
+                     entry.data_length);
+  }
+  if (authorizations.GetTagValue(keymaster::TAG_APPLICATION_DATA, &entry)) {
+    output.push_back(keymaster::TAG_APPLICATION_DATA, entry.data,
+                     entry.data_length);
+  }
+  return output;
+}
+
+}  // namespace
+
 TpmKeymasterContext::TpmKeymasterContext(
     TpmResourceManager& resource_manager,
     keymaster::KeymasterEnforcement& enforcement)
-    : resource_manager_(resource_manager)
-    , enforcement_(enforcement)
-    , key_blob_maker_(new TpmKeyBlobMaker(resource_manager_))
-    , random_source_(new TpmRandomSource(resource_manager_.Esys()))
-    , attestation_context_(new TpmAttestationRecordContext()) {
+    : resource_manager_(resource_manager),
+      enforcement_(enforcement),
+      key_blob_maker_(new TpmKeyBlobMaker(resource_manager_)),
+      random_source_(new TpmRandomSource(resource_manager_.Esys())),
+      attestation_context_(new TpmAttestationRecordContext()),
+      remote_provisioning_context_(
+          new TpmRemoteProvisioningContext(resource_manager_)) {
   key_factories_.emplace(
       KM_ALGORITHM_RSA, new keymaster::RsaKeyFactory(*key_blob_maker_, *this));
   key_factories_.emplace(
@@ -187,7 +210,7 @@ keymaster_error_t TpmKeymasterContext::UpgradeKeyBlob(
 
   return key_blob_maker_->UnvalidatedCreateKeyBlob(
       key->key_material(), key->hw_enforced(), key->sw_enforced(),
-      upgraded_key);
+      GetHiddenTags(upgrade_params), upgraded_key);
 }
 
 keymaster_error_t TpmKeymasterContext::ParseKeyBlob(
@@ -198,12 +221,10 @@ keymaster_error_t TpmKeymasterContext::ParseKeyBlob(
   keymaster::AuthorizationSet sw_enforced;
   keymaster::KeymasterKeyBlob key_material;
 
-  auto rc =
-      key_blob_maker_->UnwrapKeyBlob(
-          blob,
-          &hw_enforced,
-          &sw_enforced,
-          &key_material);
+  keymaster::AuthorizationSet hidden = GetHiddenTags(additional_params);
+
+  auto rc = key_blob_maker_->UnwrapKeyBlob(blob, &hw_enforced, &sw_enforced,
+                                           hidden, &key_material);
   if (rc != KM_ERROR_OK) {
     LOG(ERROR) << "Failed to unwrap key: " << rc;
     return rc;
@@ -247,18 +268,20 @@ keymaster::KeymasterEnforcement* TpmKeymasterContext::enforcement_policy() {
 
 keymaster::CertificateChain TpmKeymasterContext::GenerateAttestation(
     const keymaster::Key& key, const keymaster::AuthorizationSet& attest_params,
-    keymaster::UniquePtr<keymaster::Key> /* attest_key */,
-    const keymaster::KeymasterBlob& /* issuer_subject */,
+    keymaster::UniquePtr<keymaster::Key> attest_key,
+    const keymaster::KeymasterBlob& issuer_subject,
     keymaster_error_t* error) const {
   LOG(INFO) << "TODO(b/155697200): Link attestation back to the TPM";
   keymaster_algorithm_t key_algorithm;
   if (!key.authorizations().GetTagValue(keymaster::TAG_ALGORITHM,
                                         &key_algorithm)) {
+    LOG(ERROR) << "Cannot find key algorithm (TAG_ALGORITHM)";
     *error = KM_ERROR_UNKNOWN_ERROR;
     return {};
   }
 
   if ((key_algorithm != KM_ALGORITHM_RSA && key_algorithm != KM_ALGORITHM_EC)) {
+    LOG(ERROR) << "Invalid algorithm: " << key_algorithm;
     *error = KM_ERROR_INCOMPATIBLE_ALGORITHM;
     return {};
   }
@@ -277,12 +300,20 @@ keymaster::CertificateChain TpmKeymasterContext::GenerateAttestation(
   // hardware/interfaces/keymaster/4.1/vts/functional/DeviceUniqueAttestationTest.cpp:203
   // at commit 36dcf1a404a9cf07ca5a2a6ad92371507194fe1b .
   if (attest_params.find(keymaster::TAG_DEVICE_UNIQUE_ATTESTATION) != -1) {
+    LOG(ERROR) << "TAG_DEVICE_UNIQUE_ATTESTATION not supported";
     *error = KM_ERROR_UNIMPLEMENTED;
     return {};
   }
 
+  keymaster::AttestKeyInfo attest_key_info(attest_key, &issuer_subject, error);
+  if (*error != KM_ERROR_OK) {
+    LOG(ERROR)
+        << "Error creating attestation key info from given key and subject";
+    return {};
+  }
+
   return keymaster::generate_attestation(asymmetric_key, attest_params,
-                                         {} /* attest_key */,
+                                         std::move(attest_key_info),
                                          *attestation_context_, error);
 }
 
@@ -319,3 +350,40 @@ keymaster_error_t TpmKeymasterContext::UnwrapKey(
   LOG(ERROR) << "TODO(b/155697375): Implement UnwrapKey";
   return KM_ERROR_UNIMPLEMENTED;
 }
+
+keymaster::RemoteProvisioningContext*
+TpmKeymasterContext::GetRemoteProvisioningContext() const {
+  return remote_provisioning_context_.get();
+}
+
+keymaster_error_t TpmKeymasterContext::SetVendorPatchlevel(
+    uint32_t vendor_patchlevel) {
+  if (vendor_patchlevel_.has_value() &&
+      vendor_patchlevel != vendor_patchlevel_.value()) {
+    // Can't set patchlevel to a different value.
+    return KM_ERROR_INVALID_ARGUMENT;
+  }
+  vendor_patchlevel_ = vendor_patchlevel;
+  return key_blob_maker_->SetVendorPatchlevel(*vendor_patchlevel_);
+}
+
+keymaster_error_t TpmKeymasterContext::SetBootPatchlevel(
+    uint32_t boot_patchlevel) {
+  if (boot_patchlevel_.has_value() &&
+      boot_patchlevel != boot_patchlevel_.value()) {
+    // Can't set patchlevel to a different value.
+    return KM_ERROR_INVALID_ARGUMENT;
+  }
+  boot_patchlevel_ = boot_patchlevel;
+  return key_blob_maker_->SetBootPatchlevel(*boot_patchlevel_);
+}
+
+std::optional<uint32_t> TpmKeymasterContext::GetVendorPatchlevel() const {
+  return vendor_patchlevel_;
+}
+
+std::optional<uint32_t> TpmKeymasterContext::GetBootPatchlevel() const {
+  return boot_patchlevel_;
+}
+
+}  // namespace cuttlefish
