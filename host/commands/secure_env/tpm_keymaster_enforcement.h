@@ -20,6 +20,8 @@
 #include "host/commands/secure_env/tpm_gatekeeper.h"
 #include "host/commands/secure_env/tpm_resource_manager.h"
 
+namespace cuttlefish {
+
 /**
  * Implementation of keymaster::KeymasterEnforcement that depends on having a
  * TPM available. See the definitions in
@@ -49,6 +51,9 @@ public:
   keymaster::VerifyAuthorizationResponse VerifyAuthorization(
       const keymaster::VerifyAuthorizationRequest& request) override;
 
+  keymaster_error_t GenerateTimestampToken(
+      keymaster::TimestampToken* token) override;
+
   bool CreateKeyId(
       const keymaster_key_blob_t& key_blob,
       keymaster::km_id_t* keyid) const override;
@@ -59,3 +64,5 @@ private:
   bool have_saved_params_ = false;
   keymaster::HmacSharingParameters saved_params_;
 };
+
+}  // namespace cuttlefish

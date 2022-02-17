@@ -51,6 +51,9 @@ PRODUCT_ARTIFACT_PATH_REQUIREMENT_ALLOWED_LIST += \
 #
 $(call inherit-product, device/google/cuttlefish/shared/phone/device_vendor.mk)
 
+# TODO(b/205788876) remove this when openwrt has an image for arm.
+PRODUCT_ENFORCE_MAC80211_HWSIM := false
+
 #
 # Special settings for the target
 #
@@ -67,5 +70,10 @@ PRODUCT_MANUFACTURER := Google
 PRODUCT_MODEL := Cuttlefish arm phone 32-bit only
 
 PRODUCT_VENDOR_PROPERTIES += \
+    ro.config.low_ram=true \
     ro.soc.manufacturer=$(PRODUCT_MANUFACTURER) \
     ro.soc.model=$(PRODUCT_DEVICE)
+
+TARGET_SYSTEM_PROP += \
+    build/make/target/board/go_defaults_512.prop \
+    build/make/target/board/go_defaults_common.prop
