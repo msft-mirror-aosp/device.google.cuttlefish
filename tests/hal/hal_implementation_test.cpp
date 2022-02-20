@@ -76,6 +76,8 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hardware.oemlock@1.0",
     "android.hardware.power@1.3",
     "android.hardware.power.stats@1.0",
+    "android.hardware.radio@1.6", // converted to AIDL
+    "android.hardware.radio.config@1.3", // converted to AIDL
     "android.hardware.radio.deprecated@1.0",
     "android.hardware.renderscript@1.0",
     "android.hardware.soundtrigger@2.3",
@@ -157,9 +159,6 @@ static const std::set<VersionedAidlPackage> kKnownMissingAidl = {
 
     // types-only packages, which never expect a default implementation
     {"android.hardware.radio.", 1},
-
-    // These versions need to be implemented (b/203490261)
-    {"android.hardware.bluetooth.audio.", 1},
 };
 
 static const std::set<VersionedAidlPackage> kComingSoonAidl = {
