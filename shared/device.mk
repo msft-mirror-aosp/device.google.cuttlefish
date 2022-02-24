@@ -66,6 +66,7 @@ PRODUCT_REQUIRES_INSECURE_EXECMEM_FOR_SWIFTSHADER := true
 AB_OTA_UPDATER := true
 AB_OTA_PARTITIONS += \
     boot \
+    init_boot \
     odm \
     odm_dlkm \
     product \
@@ -442,6 +443,12 @@ PRODUCT_COPY_FILES += \
 else
 PRODUCT_PACKAGES += com.google.cf.bt android.hardware.bluetooth.audio@2.1-impl
 endif
+
+#
+# Bluetooth Audio AIDL HAL
+#
+PRODUCT_PACKAGES += \
+    android.hardware.bluetooth.audio-impl \
 
 #
 # Audio HAL
