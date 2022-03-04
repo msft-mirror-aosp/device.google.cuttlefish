@@ -66,6 +66,7 @@ PRODUCT_REQUIRES_INSECURE_EXECMEM_FOR_SWIFTSHADER := true
 AB_OTA_UPDATER := true
 AB_OTA_PARTITIONS += \
     boot \
+    init_boot \
     odm \
     odm_dlkm \
     product \
@@ -192,7 +193,7 @@ PRODUCT_PACKAGES += \
     suspend_blocker \
     vsoc_input_service \
 
-$(call soong_config_append, cvd, launch_configs, cvd_config_auto.json cvd_config_foldable.json cvd_config_go.json cvd_config_phone.json cvd_config_tablet.json cvd_config_tv.json cvd_config_wear.json)
+$(call soong_config_append, cvd, launch_configs, cvd_config_auto.json cvd_config_foldable.json cvd_config_go.json cvd_config_phone.json cvd_config_slim.json cvd_config_tablet.json cvd_config_tv.json cvd_config_wear.json)
 $(call soong_config_append, cvd, grub_config, grub.cfg)
 
 #
@@ -444,6 +445,12 @@ PRODUCT_PACKAGES += com.google.cf.bt android.hardware.bluetooth.audio@2.1-impl
 endif
 
 #
+# Bluetooth Audio AIDL HAL
+#
+PRODUCT_PACKAGES += \
+    android.hardware.bluetooth.audio-impl \
+
+#
 # Audio HAL
 #
 LOCAL_AUDIO_PRODUCT_PACKAGE ?= \
@@ -530,6 +537,7 @@ DEVICE_MANIFEST_FILE += \
 else
 ifeq ($(LOCAL_PREFER_VENDOR_APEX),true)
 PRODUCT_PACKAGES += com.google.emulated.camera.provider.hal
+PRODUCT_PACKAGES += com.google.emulated.camera.provider.hal.fastscenecycle
 endif
 PRODUCT_PACKAGES += \
     android.hardware.camera.provider@2.7-service-google \
@@ -808,3 +816,6 @@ PRODUCT_PACKAGES += \
 # NFC AIDL HAL
 PRODUCT_PACKAGES += \
     android.hardware.nfc-service.cuttlefish
+
+PRODUCT_COPY_FILES += \
+    device/google/cuttlefish/shared/config/pci.ids:$(TARGET_COPY_OUT_VENDOR)/pci.ids
