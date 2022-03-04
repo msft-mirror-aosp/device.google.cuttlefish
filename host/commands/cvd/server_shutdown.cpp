@@ -50,10 +50,12 @@ class CvdShutdownHandler : public CvdServerHandler {
 
     if (request.request.shutdown_request().clear()) {
       *response.mutable_status() = server_.CvdClear(request.out, request.err);
-      return response;
+      if (response.status().code() != cvd::Status::OK) {
+        return response;
+      }
     }
 
-    if (!server_.Assemblies().empty()) {
+    if (server_.HasAssemblies()) {
       response.mutable_status()->set_code(cvd::Status::FAILED_PRECONDITION);
       response.mutable_status()->set_message(
           "Cannot shut down cvd_server while devices are being tracked. "
@@ -71,6 +73,8 @@ class CvdShutdownHandler : public CvdServerHandler {
     response.mutable_status()->set_code(cvd::Status::OK);
     return response;
   }
+
+  Result<void> Interrupt() override { return CF_ERR("Can't interrupt"); }
 
  private:
   CvdServer& server_;
