@@ -81,17 +81,18 @@ class CvdCommandHandler : public CvdServerHandler {
   INJECT(CvdCommandHandler(CvdServer& server)) : server_(server) {}
 
   Result<bool> CanHandle(const RequestWithStdio& request) const {
-    auto invocation = ParseInvocation(request.request);
+    auto invocation = ParseInvocation(request.Message());
     return CommandToBinaryMap.find(invocation.command) !=
            CommandToBinaryMap.end();
   }
 
   Result<cvd::Response> Handle(const RequestWithStdio& request) {
+    std::unique_lock interrupt_lock(interruptible_);
     CF_EXPECT(CanHandle(request));
     cvd::Response response;
     response.mutable_command_response();
 
-    auto invocation = ParseInvocation(request.request);
+    auto invocation = ParseInvocation(request.Message());
 
     auto subcommand_bin = CommandToBinaryMap.find(invocation.command);
     CF_EXPECT(subcommand_bin != CommandToBinaryMap.end());
@@ -111,8 +112,9 @@ class CvdCommandHandler : public CvdServerHandler {
     CHECK(ParseFlags(flags, invocation.arguments));
 
     auto host_artifacts_path =
-        request.request.command_request().env().find("ANDROID_HOST_OUT");
-    if (host_artifacts_path == request.request.command_request().env().end()) {
+        request.Message().command_request().env().find("ANDROID_HOST_OUT");
+    if (host_artifacts_path ==
+        request.Message().command_request().env().end()) {
       response.mutable_status()->set_code(cvd::Status::FAILED_PRECONDITION);
       response.mutable_status()->set_message(
           "Missing ANDROID_HOST_OUT in client environment.");
@@ -122,7 +124,7 @@ class CvdCommandHandler : public CvdServerHandler {
     if (bin == kHelpBin) {
       // Handle `cvd help`
       if (args.empty()) {
-        WriteAll(request.out, kHelpMessage);
+        WriteAll(request.Out(), kHelpMessage);
         response.mutable_status()->set_code(cvd::Status::OK);
         return response;
       }
@@ -132,7 +134,7 @@ class CvdCommandHandler : public CvdServerHandler {
       auto it = CommandToBinaryMap.find(args[0]);
       if (it == CommandToBinaryMap.end() ||
           builtins.find(args[0]) != builtins.end()) {
-        WriteAll(request.out, kHelpMessage);
+        WriteAll(request.Out(), kHelpMessage);
         response.mutable_status()->set_code(cvd::Status::OK);
         return response;
       }
@@ -141,16 +143,17 @@ class CvdCommandHandler : public CvdServerHandler {
       bin = it->second;
       args_copy.push_back("--help");
     } else if (bin == kClearBin) {
-      *response.mutable_status() = server_.CvdClear(request.out, request.err);
+      *response.mutable_status() =
+          server_.CvdClear(request.Out(), request.Err());
       return response;
     } else if (bin == kFleetBin) {
-      auto env_config = request.request.command_request().env().find(
+      auto env_config = request.Message().command_request().env().find(
           kCuttlefishConfigEnvVarName);
       std::string config_path;
-      if (env_config != request.request.command_request().env().end()) {
+      if (env_config != request.Message().command_request().env().end()) {
         config_path = env_config->second;
       }
-      *response.mutable_status() = server_.CvdFleet(request.out, config_path);
+      *response.mutable_status() = server_.CvdFleet(request.Out(), config_path);
       return response;
     } else if (bin == kStartBin) {
       // Track this assembly_dir in the fleet.
@@ -167,7 +170,7 @@ class CvdCommandHandler : public CvdServerHandler {
 
     // Set CuttlefishConfig path based on assembly dir,
     // used by subcommands when locating the CuttlefishConfig.
-    if (request.request.command_request().env().count(
+    if (request.Message().command_request().env().count(
             kCuttlefishConfigEnvVarName) == 0) {
       auto config_path = GetCuttlefishConfigPath(assembly_dir);
       if (config_path) {
@@ -175,24 +178,86 @@ class CvdCommandHandler : public CvdServerHandler {
                                        *config_path);
       }
     }
-    for (auto& it : request.request.command_request().env()) {
+    for (auto& it : request.Message().command_request().env()) {
       command.AddEnvironmentVariable(it.first, it.second);
     }
 
     // Redirect stdin, stdout, stderr back to the cvd client
-    command.RedirectStdIO(Subprocess::StdIOChannel::kStdIn, request.in);
-    command.RedirectStdIO(Subprocess::StdIOChannel::kStdOut, request.out);
-    command.RedirectStdIO(Subprocess::StdIOChannel::kStdErr, request.err);
+    command.RedirectStdIO(Subprocess::StdIOChannel::kStdIn, request.In());
+    command.RedirectStdIO(Subprocess::StdIOChannel::kStdOut, request.Out());
+    command.RedirectStdIO(Subprocess::StdIOChannel::kStdErr, request.Err());
     SubprocessOptions options;
-    options.ExitWithParent(false);
-    command.Start(options);
 
-    response.mutable_status()->set_code(cvd::Status::OK);
+    if (request.Message().command_request().wait_behavior() ==
+        cvd::WAIT_BEHAVIOR_START) {
+      options.ExitWithParent(false);
+    }
+    subprocess_ = command.Start(options);
+
+    if (request.Message().command_request().wait_behavior() ==
+        cvd::WAIT_BEHAVIOR_START) {
+      response.mutable_status()->set_code(cvd::Status::OK);
+      return response;
+    }
+    interrupt_lock.unlock();
+
+    siginfo_t infop{};
+
+    // This blocks until the process exits, but doesn't reap it.
+    auto result = subprocess_->Wait(&infop, WEXITED | WNOWAIT);
+    CF_EXPECT(result != -1, "Lost track of subprocess pid");
+    interrupt_lock.lock();
+    // Perform a reaping wait on the process (which should already have exited).
+    result = subprocess_->Wait(&infop, WEXITED);
+    CF_EXPECT(result != -1, "Lost track of subprocess pid");
+    // The double wait avoids a race around the kernel reusing pids. Waiting
+    // with WNOWAIT won't cause the child process to be reaped, so the kernel
+    // won't reuse the pid until the Wait call below, and any kill signals won't
+    // reach unexpected processes.
+
+    subprocess_ = {};
+
+    if (infop.si_code == CLD_EXITED && infop.si_status == 0) {
+      response.mutable_status()->set_code(cvd::Status::OK);
+      return response;
+    }
+
+    response.mutable_status()->set_code(cvd::Status::INTERNAL);
+    if (infop.si_code == CLD_EXITED) {
+      response.mutable_status()->set_message("Exited with code " +
+                                             std::to_string(infop.si_status));
+    } else if (infop.si_code == CLD_KILLED) {
+      response.mutable_status()->set_message("Exited with signal " +
+                                             std::to_string(infop.si_status));
+    } else {
+      response.mutable_status()->set_message("Quit with code " +
+                                             std::to_string(infop.si_status));
+    }
     return response;
+  }
+
+  Result<void> Interrupt() override {
+    std::scoped_lock interrupt_lock(interruptible_);
+    if (subprocess_) {
+      auto stop_result = subprocess_->Stop();
+      switch (stop_result) {
+        case StopperResult::kStopFailure:
+          return CF_ERR("Failed to stop subprocess");
+        case StopperResult::kStopCrash:
+          return CF_ERR("Stopper caused process to crash");
+        case StopperResult::kStopSuccess:
+          return {};
+        default:
+          return CF_ERR("Unknown stop result: " << (uint64_t)stop_result);
+      }
+    }
+    return {};
   }
 
  private:
   CvdServer& server_;
+  std::optional<Subprocess> subprocess_;
+  std::mutex interruptible_;
 };
 
 }  // namespace
@@ -226,7 +291,7 @@ CommandInvocation ParseInvocation(const cvd::Request& request) {
   return invocation;
 }
 
-fruit::Component<> cvdCommandComponent() {
+fruit::Component<fruit::Required<CvdServer>> cvdCommandComponent() {
   return fruit::createComponent()
       .addMultibinding<CvdServerHandler, CvdCommandHandler>();
 }

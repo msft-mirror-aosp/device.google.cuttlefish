@@ -95,7 +95,7 @@ PRODUCT_PRODUCT_PROPERTIES += \
     persist.adb.tcp.port=5555 \
     ro.com.google.locationfeatures=1 \
     persist.sys.fuse.passthrough.enable=true \
-    persist.sys.fuse.bpf.enable=true \
+    persist.sys.fuse.bpf.enable=false \
 
 # Until we support adb keys on user builds, and fix logcat over serial,
 # spawn adbd by default without authorization for "adb logcat"
@@ -539,6 +539,7 @@ DEVICE_MANIFEST_FILE += \
 else
 ifeq ($(LOCAL_PREFER_VENDOR_APEX),true)
 PRODUCT_PACKAGES += com.google.emulated.camera.provider.hal
+PRODUCT_PACKAGES += com.google.emulated.camera.provider.hal.fastscenecycle
 endif
 PRODUCT_PACKAGES += \
     android.hardware.camera.provider@2.7-service-google \
