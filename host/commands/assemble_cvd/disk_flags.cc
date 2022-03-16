@@ -47,6 +47,9 @@ DEFINE_string(system_image_dir, cuttlefish::DefaultGuestImagePath(""),
 DEFINE_string(boot_image, "",
               "Location of cuttlefish boot image. If empty it is assumed to be "
               "boot.img in the directory specified by -system_image_dir.");
+DEFINE_string(init_boot_image, "",
+              "Location of cuttlefish init boot image. If empty it is assumed to "
+              "be init_boot.img in the directory specified by -system_image_dir.");
 DEFINE_string(data_image, "", "Location of the data partition image.");
 DEFINE_string(super_image, "", "Location of the super partition image.");
 DEFINE_string(misc_image, "",
@@ -91,6 +94,9 @@ bool ResolveInstanceFiles() {
   // be placed in --system_image_dir location.
   std::string default_boot_image = FLAGS_system_image_dir + "/boot.img";
   SetCommandLineOptionWithMode("boot_image", default_boot_image.c_str(),
+                               google::FlagSettingMode::SET_FLAGS_DEFAULT);
+  std::string default_init_boot_image = FLAGS_system_image_dir + "/init_boot.img";
+  SetCommandLineOptionWithMode("init_boot_image", default_init_boot_image.c_str(),
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
   std::string default_data_image = FLAGS_system_image_dir + "/userdata.img";
   SetCommandLineOptionWithMode("data_image", default_data_image.c_str(),
@@ -142,6 +148,14 @@ std::vector<ImagePartition> os_composite_disk_config(
   partitions.push_back(ImagePartition {
     .label = "boot_b",
     .image_file_path = FLAGS_boot_image,
+  });
+  partitions.push_back(ImagePartition {
+    .label = "init_boot_a",
+    .image_file_path = FLAGS_init_boot_image,
+  });
+  partitions.push_back(ImagePartition {
+    .label = "init_boot_b",
+    .image_file_path = FLAGS_init_boot_image,
   });
   // Boot image repacking is not supported on protected VMs. Repacking requires
   // resigning the image and keys on android hosts aren't trusted.
@@ -384,6 +398,15 @@ bool CreatePersistentCompositeDisk(
 static void RepackAllBootImages(const CuttlefishConfig* config) {
   CHECK(FileHasContent(FLAGS_boot_image))
       << "File not found: " << FLAGS_boot_image;
+
+  // The init_boot partition is an empty image on android12
+  const std::string new_init_boot_image_path =
+      config->AssemblyPath("init_boot.img");
+  SetCommandLineOptionWithMode("init_boot_image", new_init_boot_image_path.c_str(),
+                               google::FlagSettingMode::SET_FLAGS_DEFAULT);
+  if (!FileHasContent(FLAGS_init_boot_image)) {
+    CreateBlankImage(new_init_boot_image_path, 1 /* mb */, "none");
+  }
 
   CHECK(FileHasContent(FLAGS_vendor_boot_image))
       << "File not found: " << FLAGS_vendor_boot_image;
