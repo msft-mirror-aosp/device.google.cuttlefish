@@ -124,11 +124,13 @@ void convertRilDataCallToHal(RIL_Data_Call_Response_v11 *dcResponse,
 void convertRilSignalStrengthToHal_1_4(void *response, size_t responseLen,
         V1_4::SignalStrength& signalStrength);
 
-void convertRilDataCallToHal(RIL_Data_Call_Response_v11 *dcResponse,
-        ::android::hardware::radio::V1_4::SetupDataCallResult& dcResult);
+void convertRilDataCallToHal(RIL_Data_Call_Response_v11* dcResponse, SetupDataCallResult& dcResult);
 
-void convertRilDataCallToHal(RIL_Data_Call_Response_v12 *dcResponse,
-        ::android::hardware::radio::V1_5::SetupDataCallResult& dcResult);
+void convertRilDataCallToHal(RIL_Data_Call_Response_v11* dcResponse,
+                             V1_4::SetupDataCallResult& dcResult);
+
+void convertRilDataCallToHal(RIL_Data_Call_Response_v11* dcResponse,
+                             V1_5::SetupDataCallResult& dcResult);
 
 void convertRilDataCallListToHal(void *response, size_t responseLen,
         hidl_vec<SetupDataCallResult>& dcResultList);
@@ -6158,7 +6160,7 @@ int radio_1_5::setupDataCallResponse(int slotId,
             result.gateways = hidl_vec<hidl_string>();
             result.pcscf = hidl_vec<hidl_string>();
         } else {
-            convertRilDataCallToHal((RIL_Data_Call_Response_v12 *) response, result);
+            convertRilDataCallToHal((RIL_Data_Call_Response_v11*)response, result);
         }
 
         Return<void> retStatus = radioService[slotId]->mRadioResponseV1_5->setupDataCallResponse_1_5(
@@ -9739,8 +9741,8 @@ void convertRilDataCallToHal(RIL_Data_Call_Response_v11 *dcResponse,
     dcResult.mtu = dcResponse->mtu;
 }
 
-void convertRilDataCallToHal(RIL_Data_Call_Response_v12 *dcResponse,
-        ::android::hardware::radio::V1_5::SetupDataCallResult& dcResult) {
+void convertRilDataCallToHal(RIL_Data_Call_Response_v11* dcResponse,
+                             ::android::hardware::radio::V1_5::SetupDataCallResult& dcResult) {
     dcResult.cause = (::android::hardware::radio::V1_4::DataCallFailCause) dcResponse->status;
     dcResult.suggestedRetryTime = dcResponse->suggestedRetryTime;
     dcResult.cid = dcResponse->cid;
@@ -9764,10 +9766,9 @@ void convertRilDataCallToHal(RIL_Data_Call_Response_v12 *dcResponse,
     dcResult.dnses = split(convertCharPtrToHidlString(dcResponse->dnses));
     dcResult.gateways = split(convertCharPtrToHidlString(dcResponse->gateways));
     dcResult.pcscf = split(convertCharPtrToHidlString(dcResponse->pcscf));
-    dcResult.mtuV4 = dcResponse->mtuV4;
-    dcResult.mtuV6 = dcResponse->mtuV6;
+    dcResult.mtuV4 = dcResponse->mtu;
+    dcResult.mtuV6 = dcResponse->mtu;
 }
-
 
 void convertRilDataCallListToHal(void *response, size_t responseLen,
         hidl_vec<SetupDataCallResult>& dcResultList) {
@@ -9780,22 +9781,59 @@ void convertRilDataCallListToHal(void *response, size_t responseLen,
     }
 }
 
+void convertRilDataCallListToHal_1_4(void* response, size_t responseLen,
+                                     hidl_vec<V1_4::SetupDataCallResult>& dcResultList) {
+    int num = responseLen / sizeof(RIL_Data_Call_Response_v11);
+
+    RIL_Data_Call_Response_v11* dcResponse = (RIL_Data_Call_Response_v11*)response;
+    dcResultList.resize(num);
+    for (int i = 0; i < num; i++) {
+        convertRilDataCallToHal(&dcResponse[i], dcResultList[i]);
+    }
+}
+
+void convertRilDataCallListToHal_1_5(void* response, size_t responseLen,
+                                     hidl_vec<V1_5::SetupDataCallResult>& dcResultList) {
+    int num = responseLen / sizeof(RIL_Data_Call_Response_v11);
+
+    RIL_Data_Call_Response_v11* dcResponse = (RIL_Data_Call_Response_v11*)response;
+    dcResultList.resize(num);
+    for (int i = 0; i < num; i++) {
+        convertRilDataCallToHal(&dcResponse[i], dcResultList[i]);
+    }
+}
+
 int radio_1_5::dataCallListChangedInd(int slotId,
                                   int indicationType, int token, RIL_Errno e, void *response,
                                   size_t responseLen) {
-    if (radioService[slotId] != NULL && radioService[slotId]->mRadioIndication != NULL) {
+    if (radioService[slotId] != NULL && (radioService[slotId]->mRadioIndication != NULL ||
+                                         radioService[slotId]->mRadioIndicationV1_4 != NULL ||
+                                         radioService[slotId]->mRadioIndicationV1_5 != NULL)) {
         if ((response == NULL && responseLen != 0)
                 || responseLen % sizeof(RIL_Data_Call_Response_v11) != 0) {
             RLOGE("dataCallListChangedInd: invalid response");
             return 0;
         }
-        hidl_vec<SetupDataCallResult> dcList;
-        convertRilDataCallListToHal(response, responseLen, dcList);
 #if VDBG
         RLOGD("dataCallListChangedInd");
 #endif
-        Return<void> retStatus = radioService[slotId]->mRadioIndication->dataCallListChanged(
-                convertIntToRadioIndicationType(indicationType), dcList);
+        Return<void> retStatus;
+        if (radioService[slotId]->mRadioIndicationV1_5 != NULL) {
+            hidl_vec<V1_5::SetupDataCallResult> dcList;
+            convertRilDataCallListToHal_1_5(response, responseLen, dcList);
+            retStatus = radioService[slotId]->mRadioIndicationV1_5->dataCallListChanged_1_5(
+                    convertIntToRadioIndicationType(indicationType), dcList);
+        } else if (radioService[slotId]->mRadioIndicationV1_4 != NULL) {
+            hidl_vec<V1_4::SetupDataCallResult> dcList;
+            convertRilDataCallListToHal_1_4(response, responseLen, dcList);
+            retStatus = radioService[slotId]->mRadioIndicationV1_4->dataCallListChanged_1_4(
+                    convertIntToRadioIndicationType(indicationType), dcList);
+        } else {
+            hidl_vec<SetupDataCallResult> dcList;
+            convertRilDataCallListToHal(response, responseLen, dcList);
+            retStatus = radioService[slotId]->mRadioIndication->dataCallListChanged(
+                    convertIntToRadioIndicationType(indicationType), dcList);
+        }
         radioService[slotId]->checkReturnStatus(retStatus);
     } else {
         RLOGE("dataCallListChangedInd: radioService[%d]->mRadioIndication == NULL", slotId);
