@@ -71,8 +71,8 @@ ConverterFunction GetConverterForDrmFormat(uint32_t drm_format) {
     case DRM_FORMAT_YVU420:
       return &ConvertFromYV12;
   }
-  ALOGW("Unsupported format: %d(%s), returning null converter",
-        drm_format, GetDrmFormatString(drm_format));
+  //ALOGW("Unsupported format: %d(%s), returning null converter",
+  //      drm_format, GetDrmFormatString(drm_format));
   return nullptr;
 }
 
@@ -392,8 +392,8 @@ bool CpuComposer::CanCompositeLayer(const hwc_layer_1_t& layer) {
   uint32_t buffer_format = *buffer_format_opt;
 
   if (!IsDrmFormatSupported(buffer_format)) {
-    ALOGD("Unsupported pixel format: 0x%x, doing software composition instead",
-          buffer_format);
+    //ALOGD("Unsupported pixel format: 0x%x, doing software composition instead",
+    //      buffer_format);
     return false;
   }
   return true;
