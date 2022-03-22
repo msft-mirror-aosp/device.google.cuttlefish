@@ -12,3 +12,5 @@ get_prop(vendor_init, vendor_ser_prop)
 get_prop(vendor_init, vendor_graphics_config_prop)
 
 get_prop(vendor_init, vendor_fstab_name_prop)
+
+set_prop(vendor_init, vendor_hwcomposer_prop)
