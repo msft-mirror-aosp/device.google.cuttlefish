@@ -86,12 +86,6 @@ void KernelLogEventsHandler::ReadLoop() {
         message["metadata"] = read_result->metadata;
         DeliverEvent(message);
       }
-      if (read_result->event == monitor::Event::DisplayPowerModeChanged) {
-        Json::Value message;
-        message["event"] = kDisplayPowerModeChangedMessage;
-        message["metadata"] = read_result->metadata;
-        DeliverEvent(message);
-      }
     }
   }
 }

@@ -194,7 +194,7 @@ void CallService::HandleDial(const Client& client, const std::string& command) {
       client.SendCommandResponse(kCmeErrorNoNetworkService);
       return;
     }
-    auto local_host_port = GetHostId();
+    auto local_host_port = GetHostPort();
     if (local_host_port == remote_port) {
       client.SendCommandResponse(kCmeErrorOperationNotAllowed);
       return;
@@ -219,13 +219,11 @@ void CallService::HandleDial(const Client& client, const std::string& command) {
     int index = last_active_call_index_++;
 
     auto call_token = std::make_pair(index, call_status.number);
-    call_status.timeout_serial = thread_looper_->Post(
-        makeSafeCallback<CallService>(this,
-                                      [call_token](CallService* me) {
-                                        me->TimerWaitingRemoteCallResponse(
-                                            call_token);
-                                      }),
-        std::chrono::minutes(1));
+    call_status.timeout_serial = thread_looper_->PostWithDelay(
+        std::chrono::minutes(1),
+        makeSafeCallback<CallService>(this, [call_token](CallService* me) {
+          me->TimerWaitingRemoteCallResponse(call_token);
+        }));
 
     active_calls_[index] = call_status;
   } else {
@@ -239,9 +237,8 @@ void CallService::HandleDial(const Client& client, const std::string& command) {
       in_emergency_mode_ = true;
       SendUnsolicitedCommand("+WSOS: 1");
     }
-    thread_looper_->Post(
-        makeSafeCallback(this, &CallService::SimulatePendingCallsAnswered),
-        std::chrono::seconds(1));
+    thread_looper_->PostWithDelay(std::chrono::seconds(1),
+        makeSafeCallback(this, &CallService::SimulatePendingCallsAnswered));
   }
 
   client.SendCommandResponse("OK");
@@ -252,9 +249,11 @@ void CallService::SendCallStatusToRemote(CallStatus& call,
                                          CallStatus::CallState state) {
   if (call.is_remote_call && call.remote_client != std::nullopt) {
     std::stringstream ss;
-    ss << "AT+REMOTECALL=" << state << "," << call.is_voice_mode << ","
-       << call.is_multi_party << ",\"" << GetHostId() << "\","
-       << call.is_international;
+    ss << "AT+REMOTECALL=" << state << ","
+                           << call.is_voice_mode << ","
+                           << call.is_multi_party << ",\""
+                           << GetHostPort() << "\","
+                           << call.is_international;
 
     SendCommandToRemote(*(call.remote_client), ss.str());
     if (state == CallStatus::CALL_STATE_HANGUP) {

@@ -16,8 +16,7 @@
 
 #include "host/commands/kernel_log_monitor/kernel_log_server.h"
 
-#include <string>
-#include <tuple>
+#include <map>
 #include <utility>
 
 #include <android-base/logging.h>
@@ -26,45 +25,26 @@
 #include "common/libs/fs/shared_select.h"
 #include "host/libs/config/cuttlefish_config.h"
 
-namespace {
-
 using cuttlefish::SharedFD;
-using monitor::Event;
 
-constexpr struct {
-  std::string_view match;   // Substring to match in the kernel logs
-  std::string_view prefix;  // Prefix value to output, describing the entry
-} kInformationalPatterns[] = {
+namespace {
+static const std::map<std::string, std::string> kInformationalPatterns = {
     {"U-Boot ", "GUEST_UBOOT_VERSION: "},
     {"] Linux version ", "GUEST_KERNEL_VERSION: "},
     {"GUEST_BUILD_FINGERPRINT: ", "GUEST_BUILD_FINGERPRINT: "},
 };
 
-enum EventFormat {
-  kBare,          // Just an event, no extra data
-  kKeyValuePair,  // <stage> <key>=<value>
-};
-
-constexpr struct {
-  std::string_view stage;  // substring in the log identifying the stage
-  Event event;             // emitted when the stage is encountered
-  EventFormat format;      // how the log message is formatted
-} kStageTable[] = {
-    {cuttlefish::kBootStartedMessage, Event::BootStarted, kBare},
-    {cuttlefish::kBootCompletedMessage, Event::BootCompleted, kBare},
-    {cuttlefish::kBootFailedMessage, Event::BootFailed, kKeyValuePair},
-    {cuttlefish::kMobileNetworkConnectedMessage, Event::MobileNetworkConnected,
-     kBare},
-    {cuttlefish::kWifiConnectedMessage, Event::WifiNetworkConnected, kBare},
-    {cuttlefish::kEthernetConnectedMessage, Event::EthernetNetworkConnected,
-     kBare},
+static const std::map<std::string, monitor::Event> kStageToEventMap = {
+    {cuttlefish::kBootStartedMessage, monitor::Event::BootStarted},
+    {cuttlefish::kBootCompletedMessage, monitor::Event::BootCompleted},
+    {cuttlefish::kBootFailedMessage, monitor::Event::BootFailed},
+    {cuttlefish::kMobileNetworkConnectedMessage,
+     monitor::Event::MobileNetworkConnected},
+    {cuttlefish::kWifiConnectedMessage, monitor::Event::WifiNetworkConnected},
+    {cuttlefish::kEthernetConnectedMessage, monitor::Event::EthernetNetworkConnected},
     // TODO(b/131864854): Replace this with a string less likely to change
-    {"init: starting service 'adbd'...", Event::AdbdStarted, kBare},
-    {cuttlefish::kScreenChangedMessage, Event::ScreenChanged, kKeyValuePair},
-    {cuttlefish::kBootloaderLoadedMessage, Event::BootloaderLoaded, kBare},
-    {cuttlefish::kKernelLoadedMessage, Event::KernelLoaded, kBare},
-    {cuttlefish::kDisplayPowerModeChangedMessage,
-     monitor::Event::DisplayPowerModeChanged, kKeyValuePair},
+    {"init: starting service 'adbd'...", monitor::Event::AdbdStarted},
+    {cuttlefish::kScreenChangedMessage, monitor::Event::ScreenChanged},
 };
 
 void ProcessSubscriptions(
@@ -129,13 +109,17 @@ bool KernelLogServer::HandleIncomingMessage() {
   // Detect VIRTUAL_DEVICE_BOOT_*
   for (ssize_t i=0; i<ret; i++) {
     if ('\n' == buf[i]) {
-      for (auto& [match, prefix] : kInformationalPatterns) {
+      for (auto& info_kv : kInformationalPatterns) {
+        auto& match = info_kv.first;
+        auto& prefix = info_kv.second;
         auto pos = line_.find(match);
         if (std::string::npos != pos) {
           LOG(INFO) << prefix << line_.substr(pos + match.size());
         }
       }
-      for (const auto& [stage, event, format] : kStageTable) {
+      for (auto& stage_kv : kStageToEventMap) {
+        auto& stage = stage_kv.first;
+        auto event = stage_kv.second;
         auto pos = line_.find(stage);
         if (std::string::npos != pos) {
           // Log the stage
@@ -144,26 +128,23 @@ bool KernelLogServer::HandleIncomingMessage() {
           Json::Value message;
           message["event"] = event;
           Json::Value metadata;
-
-          if (format == kKeyValuePair) {
-            // Expect space-separated key=value pairs in the log message.
-            const auto& fields =
-                android::base::Split(line_.substr(pos + stage.size()), " ");
-            for (std::string field : fields) {
-              field = android::base::Trim(field);
-              if (field.empty()) {
-                // Expected; android::base::Split() always returns at least
-                // one (possibly empty) string.
-                LOG(DEBUG) << "Empty field for line: " << line_;
-                continue;
-              }
-              const auto& keyvalue = android::base::Split(field, "=");
-              if (keyvalue.size() != 2) {
-                LOG(WARNING) << "Field is not in key=value format: " << field;
-                continue;
-              }
-              metadata[keyvalue[0]] = keyvalue[1];
+          // Expect space-separated key=value pairs in the log message.
+          const auto& fields = android::base::Split(
+              line_.substr(pos + stage.size()), " ");
+          for (std::string field : fields) {
+            field = android::base::Trim(field);
+            if (field.empty()) {
+              // Expected; android::base::Split() always returns at least
+              // one (possibly empty) string.
+              LOG(DEBUG) << "Empty field for line: " << line_;
+              continue;
             }
+            const auto& keyvalue = android::base::Split(field, "=");
+            if (keyvalue.size() != 2) {
+              LOG(WARNING) << "Field is not in key=value format: " << field;
+              continue;
+            }
+            metadata[keyvalue[0]] = keyvalue[1];
           }
           message["metadata"] = metadata;
           ProcessSubscriptions(message, &subscribers_);
@@ -173,7 +154,7 @@ bool KernelLogServer::HandleIncomingMessage() {
           if (deprecated_boot_completed_) {
             // Write to host kernel log
             FILE* log = popen("/usr/bin/sudo /usr/bin/tee /dev/kmsg", "w");
-            fprintf(log, "%s\n", std::string(stage).c_str());
+            fprintf(log, "%s\n", stage.c_str());
             fclose(log);
           }
         }
