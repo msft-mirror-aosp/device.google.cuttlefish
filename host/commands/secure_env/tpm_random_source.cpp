@@ -19,8 +19,6 @@
 #include "tss2/tss2_esys.h"
 #include "tss2/tss2_rc.h"
 
-namespace cuttlefish {
-
 TpmRandomSource::TpmRandomSource(ESYS_CONTEXT* esys) : esys_(esys) {
 }
 
@@ -64,11 +62,6 @@ static int MAX_STIR_RANDOM_BUFFER_SIZE = 128;
 
 keymaster_error_t TpmRandomSource::AddRngEntropy(
     const uint8_t* buffer, size_t size) const {
-  if (size > 2048) {
-    // IKeyMintDevice.aidl specifies that there's an upper limit of 2KiB.
-    return KM_ERROR_INVALID_INPUT_LENGTH;
-  }
-
   TPM2B_SENSITIVE_DATA in_data;
   while (size > MAX_STIR_RANDOM_BUFFER_SIZE) {
     memcpy(in_data.buffer, buffer, MAX_STIR_RANDOM_BUFFER_SIZE);
@@ -104,5 +97,3 @@ keymaster_error_t TpmRandomSource::AddRngEntropy(
   }
   return KM_ERROR_OK;
 }
-
-}  // namespace cuttlefish

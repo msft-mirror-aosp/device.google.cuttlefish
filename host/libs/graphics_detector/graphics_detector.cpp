@@ -21,7 +21,6 @@
 
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
-#include <GLES2/gl2.h>
 #include <android-base/logging.h>
 #include <android-base/strings.h>
 #include <dlfcn.h>
@@ -58,50 +57,50 @@ using ManagedLibrary = std::unique_ptr<void, LibraryCloser>;
 void PopulateGlAvailability(GraphicsAvailability* availability) {
   ManagedLibrary gl_lib(dlopen(kGlLib, RTLD_NOW | RTLD_LOCAL));
   if (!gl_lib) {
-    LOG(DEBUG) << "Failed to dlopen " << kGlLib << ".";
+    LOG(VERBOSE) << "Failed to dlopen " << kGlLib << ".";
     return;
   }
-  LOG(DEBUG) << "Loaded " << kGlLib << ".";
+  LOG(VERBOSE) << "Loaded " << kGlLib << ".";
   availability->has_gl = true;
 }
 
 void PopulateGles1Availability(GraphicsAvailability* availability) {
   ManagedLibrary gles1_lib(dlopen(kGles1Lib, RTLD_NOW | RTLD_LOCAL));
   if (!gles1_lib) {
-    LOG(DEBUG) << "Failed to dlopen " << kGles1Lib << ".";
+    LOG(VERBOSE) << "Failed to dlopen " << kGles1Lib << ".";
     return;
   }
-  LOG(DEBUG) << "Loaded " << kGles1Lib << ".";
+  LOG(VERBOSE) << "Loaded " << kGles1Lib << ".";
   availability->has_gles1 = true;
 }
 
 void PopulateGles2Availability(GraphicsAvailability* availability) {
   ManagedLibrary gles2_lib(dlopen(kGles2Lib, RTLD_NOW | RTLD_LOCAL));
   if (!gles2_lib) {
-    LOG(DEBUG) << "Failed to dlopen " << kGles2Lib << ".";
+    LOG(VERBOSE) << "Failed to dlopen " << kGles2Lib << ".";
     return;
   }
-  LOG(DEBUG) << "Loaded " << kGles2Lib << ".";
+  LOG(VERBOSE) << "Loaded " << kGles2Lib << ".";
   availability->has_gles2 = true;
 }
 
 void PopulateEglAvailability(GraphicsAvailability* availability) {
   ManagedLibrary egllib(dlopen(kEglLib, RTLD_NOW | RTLD_LOCAL));
   if (!egllib) {
-    LOG(DEBUG) << "Failed to dlopen " << kEglLib << ".";
+    LOG(VERBOSE) << "Failed to dlopen " << kEglLib << ".";
     return;
   }
-  LOG(DEBUG) << "Loaded " << kEglLib << ".";
+  LOG(VERBOSE) << "Loaded " << kEglLib << ".";
   availability->has_egl = true;
 
   PFNEGLGETPROCADDRESSPROC eglGetProcAddress =
       reinterpret_cast<PFNEGLGETPROCADDRESSPROC>(
           dlsym(egllib.get(), "eglGetProcAddress"));
   if (eglGetProcAddress == nullptr) {
-    LOG(DEBUG) << "Failed to find function eglGetProcAddress.";
+    LOG(VERBOSE) << "Failed to find function eglGetProcAddress.";
     return;
   }
-  LOG(DEBUG) << "Loaded eglGetProcAddress.";
+  LOG(VERBOSE) << "Loaded eglGetProcAddress.";
 
   // Some implementations have it so that eglGetProcAddress is only for
   // loading EXT functions.
@@ -116,127 +115,155 @@ void PopulateEglAvailability(GraphicsAvailability* availability) {
   PFNEGLGETERRORPROC eglGetError =
     reinterpret_cast<PFNEGLGETERRORPROC>(EglLoadFunction("eglGetError"));
   if (eglGetError == nullptr) {
-    LOG(DEBUG) << "Failed to find function eglGetError.";
+    LOG(VERBOSE) << "Failed to find function eglGetError.";
     return;
   }
-  LOG(DEBUG) << "Loaded eglGetError.";
+  LOG(VERBOSE) << "Loaded eglGetError.";
 
   PFNEGLGETDISPLAYPROC eglGetDisplay =
     reinterpret_cast<PFNEGLGETDISPLAYPROC>(EglLoadFunction("eglGetDisplay"));
   if (eglGetDisplay == nullptr) {
-    LOG(DEBUG) << "Failed to find function eglGetDisplay.";
+    LOG(VERBOSE) << "Failed to find function eglGetDisplay.";
     return;
   }
-  LOG(DEBUG) << "Loaded eglGetDisplay.";
+  LOG(VERBOSE) << "Loaded eglGetDisplay.";
 
-  PFNEGLQUERYSTRINGPROC eglQueryString =
-    reinterpret_cast<PFNEGLQUERYSTRINGPROC>(EglLoadFunction("eglQueryString"));
-  if (eglQueryString == nullptr) {
-    LOG(DEBUG) << "Failed to find function eglQueryString";
+  EGLDisplay default_display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+  if (default_display == EGL_NO_DISPLAY) {
+    LOG(VERBOSE) << "Failed to get default display. " << eglGetError();
     return;
   }
-  LOG(DEBUG) << "Loaded eglQueryString.";
-
-  EGLDisplay display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
-  if (display != EGL_NO_DISPLAY) {
-    LOG(DEBUG) << "Found default display.";
-  } else {
-    LOG(DEBUG) << "Failed to get default display. " << eglGetError()
-                 << ". Attempting to get surfaceless display via "
-                 << "eglGetPlatformDisplayEXT(EGL_PLATFORM_SURFACELESS_MESA)";
-
-    PFNEGLGETPLATFORMDISPLAYEXTPROC eglGetPlatformDisplayEXT =
-      reinterpret_cast<PFNEGLGETPLATFORMDISPLAYEXTPROC>(
-        EglLoadFunction("eglGetPlatformDisplayEXT"));
-    if (eglGetPlatformDisplayEXT == nullptr) {
-      LOG(DEBUG) << "Failed to find function eglGetPlatformDisplayEXT";
-    } else {
-      display = eglGetPlatformDisplayEXT(EGL_PLATFORM_SURFACELESS_MESA,
-                                         EGL_DEFAULT_DISPLAY, NULL);
-    }
-  }
-
-  if (display == EGL_NO_DISPLAY) {
-    LOG(DEBUG) << "Failed to find display.";
-    return;
-  }
+  LOG(VERBOSE) << "Found default display.";
+  availability->has_egl_default_display = true;
 
   PFNEGLINITIALIZEPROC eglInitialize =
-      reinterpret_cast<PFNEGLINITIALIZEPROC>(EglLoadFunction("eglInitialize"));
+    reinterpret_cast<PFNEGLINITIALIZEPROC>(EglLoadFunction("eglInitialize"));
   if (eglInitialize == nullptr) {
-    LOG(DEBUG) << "Failed to find function eglQueryString";
+    LOG(VERBOSE) << "Failed to find function eglQueryString";
     return;
   }
 
   EGLint client_version_major = 0;
   EGLint client_version_minor = 0;
+  if (eglInitialize(default_display,
+                    &client_version_major,
+                    &client_version_minor) != EGL_TRUE) {
+    LOG(VERBOSE) << "Failed to initialize default display.";
+    return;
+  }
+  LOG(VERBOSE) << "Initialized default display.";
+
+  PFNEGLQUERYSTRINGPROC eglQueryString =
+    reinterpret_cast<PFNEGLQUERYSTRINGPROC>(EglLoadFunction("eglQueryString"));
+  if (eglQueryString == nullptr) {
+    LOG(VERBOSE) << "Failed to find function eglQueryString";
+    return;
+  }
+  LOG(VERBOSE) << "Loaded eglQueryString.";
+
+  std::string client_extensions;
+  if (client_version_major >= 1 && client_version_minor >= 5) {
+    client_extensions = eglQueryString(EGL_NO_DISPLAY, EGL_EXTENSIONS);
+  }
+  availability->egl_client_extensions = client_extensions;
+
+  EGLDisplay display = EGL_NO_DISPLAY;
+
+  if (client_extensions.find("EGL_EXT_platform_base") != std::string::npos) {
+    LOG(VERBOSE) << "Client extension EGL_EXT_platform_base is supported.";
+
+    PFNEGLGETPLATFORMDISPLAYEXTPROC eglGetPlatformDisplayEXT =
+      reinterpret_cast<PFNEGLGETPLATFORMDISPLAYEXTPROC>(
+        EglLoadFunction("eglGetPlatformDisplayEXT"));
+    if (eglGetPlatformDisplayEXT == nullptr) {
+      LOG(VERBOSE) << "Failed to find function eglGetPlatformDisplayEXT";
+      return;
+    }
+
+    display =
+      eglGetPlatformDisplayEXT(EGL_PLATFORM_SURFACELESS_MESA,
+                               EGL_DEFAULT_DISPLAY,
+                               NULL);
+  } else {
+    LOG(VERBOSE) << "Failed to find client extension EGL_EXT_platform_base.";
+  }
+  if (display == EGL_NO_DISPLAY) {
+    LOG(VERBOSE) << "Failed to get EGL_PLATFORM_SURFACELESS_MESA display..."
+                 << "failing back to EGL_DEFAULT_DISPLAY display.";
+    display = default_display;
+  }
+  if (display == EGL_NO_DISPLAY) {
+    LOG(VERBOSE) << "Failed to find display.";
+    return;
+  }
+
   if (eglInitialize(display,
                     &client_version_major,
                     &client_version_minor) != EGL_TRUE) {
-    LOG(DEBUG) << "Failed to initialize display.";
+    LOG(VERBOSE) << "Failed to initialize surfaceless display.";
     return;
   }
-  LOG(DEBUG) << "Initialized display.";
+  LOG(VERBOSE) << "Initialized surfaceless display.";
 
   const std::string version_string = eglQueryString(display, EGL_VERSION);
   if (version_string.empty()) {
-    LOG(DEBUG) << "Failed to query client version.";
+    LOG(VERBOSE) << "Failed to query client version.";
     return;
   }
-  LOG(DEBUG) << "Found version: " << version_string;
+  LOG(VERBOSE) << "Found version: " << version_string;
   availability->egl_version = version_string;
 
   const std::string vendor_string = eglQueryString(display, EGL_VENDOR);
   if (vendor_string.empty()) {
-    LOG(DEBUG) << "Failed to query vendor.";
+    LOG(VERBOSE) << "Failed to query vendor.";
     return;
   }
-  LOG(DEBUG) << "Found vendor: " << vendor_string;
+  LOG(VERBOSE) << "Found vendor: " << vendor_string;
   availability->egl_vendor = vendor_string;
 
   const std::string extensions_string = eglQueryString(display, EGL_EXTENSIONS);
   if (extensions_string.empty()) {
-    LOG(DEBUG) << "Failed to query extensions.";
+    LOG(VERBOSE) << "Failed to query extensions.";
     return;
   }
-  LOG(DEBUG) << "Found extensions: " << extensions_string;
+  LOG(VERBOSE) << "Found extensions: " << extensions_string;
   availability->egl_extensions = extensions_string;
 
   if (extensions_string.find(kSurfacelessContextExt) == std::string::npos) {
-    LOG(DEBUG) << "Failed to find extension EGL_KHR_surfaceless_context.";
+    LOG(VERBOSE) << "Failed to find extension EGL_KHR_surfaceless_context.";
     return;
   }
 
   const std::string display_apis_string = eglQueryString(display,
                                                          EGL_CLIENT_APIS);
   if (display_apis_string.empty()) {
-    LOG(DEBUG) << "Failed to query display apis.";
+    LOG(VERBOSE) << "Failed to query display apis.";
     return;
   }
-  LOG(DEBUG) << "Found display apis: " << display_apis_string;
+  LOG(VERBOSE) << "Found display apis: " << display_apis_string;
 
   PFNEGLBINDAPIPROC eglBindAPI =
     reinterpret_cast<PFNEGLBINDAPIPROC>(EglLoadFunction("eglBindAPI"));
   if (eglBindAPI == nullptr) {
-    LOG(DEBUG) << "Failed to find function eglBindAPI";
+    LOG(VERBOSE) << "Failed to find function eglBindAPI";
     return;
   }
-  LOG(DEBUG) << "Loaded eglBindAPI.";
+  LOG(VERBOSE) << "Loaded eglBindAPI.";
 
   if (eglBindAPI(EGL_OPENGL_ES_API) == EGL_FALSE) {
-    LOG(DEBUG) << "Failed to bind GLES API.";
+    LOG(VERBOSE) << "Failed to bind GLES API.";
     return;
   }
-  LOG(DEBUG) << "Bound GLES API.";
+  LOG(VERBOSE) << "Bound GLES API.";
 
   PFNEGLCHOOSECONFIGPROC eglChooseConfig =
     reinterpret_cast<PFNEGLCHOOSECONFIGPROC>(
       EglLoadFunction("eglChooseConfig"));
   if (eglChooseConfig == nullptr) {
-    LOG(DEBUG) << "Failed to find function eglChooseConfig";
+    LOG(VERBOSE) << "Failed to find function eglChooseConfig";
     return;
   }
-  LOG(DEBUG) << "Loaded eglChooseConfig.";
+  LOG(VERBOSE) << "Loaded eglChooseConfig.";
 
   const EGLint framebuffer_config_attributes[] = {
     EGL_SURFACE_TYPE, EGL_PBUFFER_BIT,
@@ -255,28 +282,28 @@ void PopulateEglAvailability(GraphicsAvailability* availability) {
                       &framebuffer_config,
                       1,
                       &num_framebuffer_configs) != EGL_TRUE) {
-    LOG(DEBUG) << "Failed to find matching framebuffer config.";
+    LOG(VERBOSE) << "Failed to find matching framebuffer config.";
     return;
   }
-  LOG(DEBUG) << "Found matching framebuffer config.";
+  LOG(VERBOSE) << "Found matching framebuffer config.";
 
   PFNEGLCREATECONTEXTPROC eglCreateContext =
     reinterpret_cast<PFNEGLCREATECONTEXTPROC>(
       EglLoadFunction("eglCreateContext"));
   if (eglCreateContext == nullptr) {
-    LOG(DEBUG) << "Failed to find function eglCreateContext";
+    LOG(VERBOSE) << "Failed to find function eglCreateContext";
     return;
   }
-  LOG(DEBUG) << "Loaded eglCreateContext.";
+  LOG(VERBOSE) << "Loaded eglCreateContext.";
 
   PFNEGLDESTROYCONTEXTPROC eglDestroyContext =
     reinterpret_cast<PFNEGLDESTROYCONTEXTPROC>(
       EglLoadFunction("eglDestroyContext"));
   if (eglDestroyContext == nullptr) {
-    LOG(DEBUG) << "Failed to find function eglDestroyContext";
+    LOG(VERBOSE) << "Failed to find function eglDestroyContext";
     return;
   }
-  LOG(DEBUG) << "Loaded eglDestroyContext.";
+  LOG(VERBOSE) << "Loaded eglDestroyContext.";
 
   const EGLint context_attributes[] = {
     EGL_CONTEXT_CLIENT_VERSION, 2,
@@ -288,77 +315,38 @@ void PopulateEglAvailability(GraphicsAvailability* availability) {
                                         EGL_NO_CONTEXT,
                                         context_attributes);
   if (context == EGL_NO_CONTEXT) {
-    LOG(DEBUG) << "Failed to create EGL context.";
+    LOG(VERBOSE) << "Failed to create EGL context.";
     return;
   }
-  LOG(DEBUG) << "Created EGL context.";
+  LOG(VERBOSE) << "Created EGL context.";
   Closer context_closer([&]() { eglDestroyContext(display, context); });
 
   PFNEGLMAKECURRENTPROC eglMakeCurrent =
     reinterpret_cast<PFNEGLMAKECURRENTPROC>(EglLoadFunction("eglMakeCurrent"));
   if (eglMakeCurrent == nullptr) {
-    LOG(DEBUG) << "Failed to find function eglMakeCurrent";
+    LOG(VERBOSE) << "Failed to find function eglMakeCurrent";
     return;
   }
-  LOG(DEBUG) << "Loaded eglMakeCurrent.";
+  LOG(VERBOSE) << "Loaded eglMakeCurrent.";
 
   if (eglMakeCurrent(display,
                      EGL_NO_SURFACE,
                      EGL_NO_SURFACE,
                      context) != EGL_TRUE) {
-    LOG(DEBUG) << "Failed to make EGL context current.";
+    LOG(VERBOSE) << "Failed to make EGL context current.";
     return;
   }
-  LOG(DEBUG) << "Make EGL context current.";
-  availability->can_init_gles2_on_egl_surfaceless = true;
-
-  PFNGLGETSTRINGPROC glGetString =
-      reinterpret_cast<PFNGLGETSTRINGPROC>(eglGetProcAddress("glGetString"));
-
-  const GLubyte* gles2_vendor = glGetString(GL_VENDOR);
-  if (gles2_vendor == nullptr) {
-    LOG(DEBUG) << "Failed to query GLES2 vendor.";
-    return;
-  }
-  const std::string gles2_vendor_string((const char*)gles2_vendor);
-  LOG(DEBUG) << "Found GLES2 vendor: " << gles2_vendor_string;
-  availability->gles2_vendor = gles2_vendor_string;
-
-  const GLubyte* gles2_version = glGetString(GL_VERSION);
-  if (gles2_version == nullptr) {
-    LOG(DEBUG) << "Failed to query GLES2 vendor.";
-    return;
-  }
-  const std::string gles2_version_string((const char*)gles2_version);
-  LOG(DEBUG) << "Found GLES2 version: " << gles2_version_string;
-  availability->gles2_version = gles2_version_string;
-
-  const GLubyte* gles2_renderer = glGetString(GL_RENDERER);
-  if (gles2_renderer == nullptr) {
-    LOG(DEBUG) << "Failed to query GLES2 renderer.";
-    return;
-  }
-  const std::string gles2_renderer_string((const char*)gles2_renderer);
-  LOG(DEBUG) << "Found GLES2 renderer: " << gles2_renderer_string;
-  availability->gles2_renderer = gles2_renderer_string;
-
-  const GLubyte* gles2_extensions = glGetString(GL_EXTENSIONS);
-  if (gles2_extensions == nullptr) {
-    LOG(DEBUG) << "Failed to query GLES2 extensions.";
-    return;
-  }
-  const std::string gles2_extensions_string((const char*)gles2_extensions);
-  LOG(DEBUG) << "Found GLES2 extensions: " << gles2_extensions_string;
-  availability->gles2_extensions = gles2_extensions_string;
+  LOG(VERBOSE) << "Make EGL context current.";
+  availability->has_egl_surfaceless_with_gles = true;
 }
 
 void PopulateVulkanAvailability(GraphicsAvailability* availability) {
   ManagedLibrary vklib(dlopen(kVulkanLib, RTLD_NOW | RTLD_LOCAL));
   if (!vklib) {
-    LOG(DEBUG) << "Failed to dlopen " << kVulkanLib << ".";
+    LOG(VERBOSE) << "Failed to dlopen " << kVulkanLib << ".";
     return;
   }
-  LOG(DEBUG) << "Loaded " << kVulkanLib << ".";
+  LOG(VERBOSE) << "Loaded " << kVulkanLib << ".";
   availability->has_vulkan = true;
 
   uint32_t instance_version = 0;
@@ -367,7 +355,7 @@ void PopulateVulkanAvailability(GraphicsAvailability* availability) {
       reinterpret_cast<PFN_vkGetInstanceProcAddr>(
           dlsym(vklib.get(), "vkGetInstanceProcAddr"));
   if (vkGetInstanceProcAddr == nullptr) {
-    LOG(DEBUG) << "Failed to find symbol vkGetInstanceProcAddr.";
+    LOG(VERBOSE) << "Failed to find symbol vkGetInstanceProcAddr.";
     return;
   }
 
@@ -383,7 +371,7 @@ void PopulateVulkanAvailability(GraphicsAvailability* availability) {
     reinterpret_cast<PFN_vkCreateInstance>(
       vkGetInstanceProcAddr(VK_NULL_HANDLE, "vkCreateInstance"));
   if (vkCreateInstance == nullptr) {
-    LOG(DEBUG) << "Failed to get function vkCreateInstance.";
+    LOG(VERBOSE) << "Failed to get function vkCreateInstance.";
     return;
   }
 
@@ -410,25 +398,25 @@ void PopulateVulkanAvailability(GraphicsAvailability* availability) {
   VkResult result = vkCreateInstance(&instance_create_info, nullptr, &instance);
   if (result != VK_SUCCESS) {
     if (result == VK_ERROR_OUT_OF_HOST_MEMORY) {
-      LOG(DEBUG) << "Failed to create Vulkan instance: "
+      LOG(VERBOSE) << "Failed to create Vulkan instance: "
                    << "VK_ERROR_OUT_OF_HOST_MEMORY.";
     } else if (result == VK_ERROR_OUT_OF_DEVICE_MEMORY) {
-      LOG(DEBUG) << "Failed to create Vulkan instance: "
+      LOG(VERBOSE) << "Failed to create Vulkan instance: "
                    << "VK_ERROR_OUT_OF_DEVICE_MEMORY.";
     } else if (result == VK_ERROR_INITIALIZATION_FAILED) {
-      LOG(DEBUG) << "Failed to create Vulkan instance: "
+      LOG(VERBOSE) << "Failed to create Vulkan instance: "
                    << "VK_ERROR_INITIALIZATION_FAILED.";
     } else if (result == VK_ERROR_LAYER_NOT_PRESENT) {
-      LOG(DEBUG) << "Failed to create Vulkan instance: "
+      LOG(VERBOSE) << "Failed to create Vulkan instance: "
                    << "VK_ERROR_LAYER_NOT_PRESENT.";
     } else if (result == VK_ERROR_EXTENSION_NOT_PRESENT) {
-      LOG(DEBUG) << "Failed to create Vulkan instance: "
+      LOG(VERBOSE) << "Failed to create Vulkan instance: "
                    << "VK_ERROR_EXTENSION_NOT_PRESENT.";
     } else if (result == VK_ERROR_INCOMPATIBLE_DRIVER) {
-      LOG(DEBUG) << "Failed to create Vulkan instance: "
+      LOG(VERBOSE) << "Failed to create Vulkan instance: "
                    << "VK_ERROR_INCOMPATIBLE_DRIVER.";
     } else {
-      LOG(DEBUG) << "Failed to create Vulkan instance.";
+      LOG(VERBOSE) << "Failed to create Vulkan instance.";
     }
     return;
   }
@@ -437,7 +425,7 @@ void PopulateVulkanAvailability(GraphicsAvailability* availability) {
     reinterpret_cast<PFN_vkDestroyInstance>(
       vkGetInstanceProcAddr(instance, "vkDestroyInstance"));
   if (vkDestroyInstance == nullptr) {
-    LOG(DEBUG) << "Failed to get function vkDestroyInstance.";
+    LOG(VERBOSE) << "Failed to get function vkDestroyInstance.";
     return;
   }
 
@@ -447,7 +435,7 @@ void PopulateVulkanAvailability(GraphicsAvailability* availability) {
     reinterpret_cast<PFN_vkEnumeratePhysicalDevices>(
       vkGetInstanceProcAddr(instance, "vkEnumeratePhysicalDevices"));
   if (vkEnumeratePhysicalDevices == nullptr) {
-    LOG(DEBUG) << "Failed to "
+    LOG(VERBOSE) << "Failed to "
                  << "vkGetInstanceProcAddr(vkEnumeratePhysicalDevices).";
     return;
   }
@@ -456,7 +444,7 @@ void PopulateVulkanAvailability(GraphicsAvailability* availability) {
     reinterpret_cast<PFN_vkGetPhysicalDeviceProperties>(
       vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceProperties"));
   if (vkGetPhysicalDeviceProperties == nullptr) {
-    LOG(DEBUG) << "Failed to "
+    LOG(VERBOSE) << "Failed to "
                  << "vkGetInstanceProcAddr(vkGetPhysicalDeviceProperties).";
     return;
   }
@@ -465,7 +453,7 @@ void PopulateVulkanAvailability(GraphicsAvailability* availability) {
     reinterpret_cast<PFN_vkEnumerateDeviceExtensionProperties>(
       vkGetInstanceProcAddr(instance, "vkEnumerateDeviceExtensionProperties"));
   if (vkEnumerateDeviceExtensionProperties == nullptr) {
-    LOG(DEBUG) << "Failed to "
+    LOG(VERBOSE) << "Failed to "
                  << "vkGetInstanceProcAddr("
                  << "vkEnumerateDeviceExtensionProperties"
                  << ").";
@@ -476,40 +464,38 @@ void PopulateVulkanAvailability(GraphicsAvailability* availability) {
   result = vkEnumeratePhysicalDevices(instance, &device_count, nullptr);
   if (result != VK_SUCCESS) {
     if (result == VK_INCOMPLETE) {
-      LOG(DEBUG) << "Failed to enumerate physical device count: "
+      LOG(VERBOSE) << "Failed to enumerate physical device count: "
                    << "VK_INCOMPLETE";
     } else if (result == VK_ERROR_OUT_OF_HOST_MEMORY) {
-      LOG(DEBUG) << "Failed to enumerate physical device count: "
+      LOG(VERBOSE) << "Failed to enumerate physical device count: "
                    << "VK_ERROR_OUT_OF_HOST_MEMORY";
     } else if (result == VK_ERROR_OUT_OF_DEVICE_MEMORY) {
-      LOG(DEBUG) << "Failed to enumerate physical device count: "
+      LOG(VERBOSE) << "Failed to enumerate physical device count: "
                    << "VK_ERROR_OUT_OF_DEVICE_MEMORY";
     } else if (result == VK_ERROR_INITIALIZATION_FAILED) {
-      LOG(DEBUG) << "Failed to enumerate physical device count: "
+      LOG(VERBOSE) << "Failed to enumerate physical device count: "
                    << "VK_ERROR_INITIALIZATION_FAILED";
     } else {
-      LOG(DEBUG) << "Failed to enumerate physical device count.";
+      LOG(VERBOSE) << "Failed to enumerate physical device count.";
     }
     return;
   }
 
   if (device_count == 0) {
-    LOG(DEBUG) << "No physical devices present.";
+    LOG(VERBOSE) << "No physical devices present.";
     return;
   }
 
   std::vector<VkPhysicalDevice> devices(device_count, VK_NULL_HANDLE);
   result = vkEnumeratePhysicalDevices(instance, &device_count, devices.data());
   if (result != VK_SUCCESS) {
-    LOG(DEBUG) << "Failed to enumerate physical devices.";
+    LOG(VERBOSE) << "Failed to enumerate physical devices.";
     return;
   }
 
   for (VkPhysicalDevice device : devices) {
     VkPhysicalDeviceProperties device_properties = {};
     vkGetPhysicalDeviceProperties(device, &device_properties);
-
-    LOG(DEBUG) << "Found physical device: " << device_properties.deviceName;
 
     uint32_t device_extensions_count = 0;
     vkEnumerateDeviceExtensionProperties(device,
@@ -533,9 +519,6 @@ void PopulateVulkanAvailability(GraphicsAvailability* availability) {
     std::string device_extensions_string =
       android::base::Join(device_extensions_strings, ' ');
 
-    LOG(DEBUG) << "Found physical device extensions: "
-                 << device_extensions_string;
-
     if (device_properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
       availability->has_discrete_gpu = true;
       availability->discrete_gpu_device_name = device_properties.deviceName;
@@ -543,18 +526,6 @@ void PopulateVulkanAvailability(GraphicsAvailability* availability) {
       break;
     }
   }
-}
-
-std::string ToLower(const std::string& v) {
-  std::string result = v;
-  std::transform(result.begin(), result.end(), result.begin(),
-                 [](unsigned char c) { return std::tolower(c); });
-  return result;
-}
-
-bool IsLikelySoftwareRenderer(const std::string& renderer) {
-  const std::string lower_renderer = ToLower(renderer);
-  return lower_renderer.find("llvmpipe") != std::string::npos;
 }
 
 GraphicsAvailability GetGraphicsAvailability() {
@@ -573,8 +544,7 @@ GraphicsAvailability GetGraphicsAvailability() {
 
 bool ShouldEnableAcceleratedRendering(
     const GraphicsAvailability& availability) {
-  return availability.can_init_gles2_on_egl_surfaceless &&
-         !IsLikelySoftwareRenderer(availability.gles2_renderer) &&
+  return availability.has_egl && availability.has_egl_surfaceless_with_gles &&
          availability.has_discrete_gpu;
 }
 
@@ -590,13 +560,13 @@ GraphicsAvailability GetGraphicsAvailabilityWithSubprocessCheck() {
   }
   int status;
   if (waitpid(pid, &status, 0) != pid) {
-    PLOG(DEBUG) << "Failed to wait for graphics check subprocess";
+    PLOG(ERROR) << "Failed to wait for graphics check subprocess";
     return GraphicsAvailability{};
   }
   if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
     return GetGraphicsAvailability();
   }
-  LOG(DEBUG) << "Subprocess for detect_graphics failed with " << status;
+  LOG(VERBOSE) << "Subprocess for detect_graphics failed with " << status;
   return GraphicsAvailability{};
 }
 
@@ -605,32 +575,20 @@ std::ostream& operator<<(std::ostream& stream,
   std::ios_base::fmtflags flags_backup(stream.flags());
   stream << std::boolalpha;
   stream << "Graphics Availability:\n";
-
-  stream << "\n";
-  stream << "OpenGL lib available: " << availability.has_gl << "\n";
-  stream << "OpenGL ES1 lib available: " << availability.has_gles1 << "\n";
-  stream << "OpenGL ES2 lib available: " << availability.has_gles2 << "\n";
-  stream << "EGL lib available: " << availability.has_egl << "\n";
-  stream << "Vulkan lib available: " << availability.has_vulkan << "\n";
-
-  stream << "\n";
+  stream << "OpenGL available: " << availability.has_gl << "\n";
+  stream << "OpenGL ES1 available: " << availability.has_gles1 << "\n";
+  stream << "OpenGL ES2 available: " << availability.has_gles2 << "\n";
+  stream << "EGL available: " << availability.has_egl << "\n";
   stream << "EGL client extensions: " << availability.egl_client_extensions
          << "\n";
-
-  stream << "\n";
+  stream << "EGL default display available: "
+         << availability.has_egl_default_display << "\n";
   stream << "EGL display vendor: " << availability.egl_vendor << "\n";
   stream << "EGL display version: " << availability.egl_version << "\n";
   stream << "EGL display extensions: " << availability.egl_extensions << "\n";
-
-  stream << "GLES2 can init on surfaceless display: "
-         << availability.can_init_gles2_on_egl_surfaceless << "\n";
-  stream << "\n";
-  stream << "GLES2 vendor: " << availability.gles2_vendor << "\n";
-  stream << "GLES2 version: " << availability.gles2_version << "\n";
-  stream << "GLES2 renderer: " << availability.gles2_renderer << "\n";
-  stream << "GLES2 extensions: " << availability.gles2_extensions << "\n";
-
-  stream << "\n";
+  stream << "EGL surfaceless display with GLES: "
+         << availability.has_egl_surfaceless_with_gles << "\n";
+  stream << "Vulkan available: " << availability.has_vulkan << "\n";
   stream << "Vulkan discrete GPU detected: " << availability.has_discrete_gpu
          << "\n";
   if (availability.has_discrete_gpu) {
@@ -639,11 +597,6 @@ std::ostream& operator<<(std::ostream& stream,
     stream << "Vulkan discrete GPU device extensions: "
            << availability.discrete_gpu_device_extensions << "\n";
   }
-
-  stream << "\n";
-  stream << "Accelerated rendering supported: "
-         << ShouldEnableAcceleratedRendering(availability);
-
   stream.flags(flags_backup);
   return stream;
 }
