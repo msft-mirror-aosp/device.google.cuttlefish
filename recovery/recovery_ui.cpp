@@ -25,5 +25,5 @@ class CuttlefishRecoveryUI : public EthernetRecoveryUI {
 };
 
 Device* make_device() {
-    return new EthernetDevice(new CuttlefishRecoveryUI, "eth1");
+    return new EthernetDevice(new CuttlefishRecoveryUI);
 }
