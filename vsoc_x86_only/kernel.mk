@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-TARGET_KERNEL_USE ?= 5.15
-TARGET_KERNEL_PATH ?= device/google/cuttlefish_prebuilts/kernel/$(TARGET_KERNEL_USE)-i686/kernel-$(TARGET_KERNEL_USE)
+TARGET_KERNEL_USE ?= 5.10
 
-PRODUCT_COPY_FILES +=$(TARGET_KERNEL_PATH):kernel
+PRODUCT_COPY_FILES += device/google/cuttlefish_prebuilts/kernel/$(TARGET_KERNEL_USE)-i686/kernel-$(TARGET_KERNEL_USE):kernel

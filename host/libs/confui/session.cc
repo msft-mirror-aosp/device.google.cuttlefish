@@ -16,46 +16,21 @@
 
 #include "host/libs/confui/session.h"
 
-#include <algorithm>
-
-#include "host/libs/confui/secure_input.h"
-
 namespace cuttlefish {
 namespace confui {
 
-Session::Session(const std::string& session_name,
-                 const std::uint32_t display_num, HostModeCtrl& host_mode_ctrl,
+Session::Session(const std::string& session_id, const std::uint32_t display_num,
+                 ConfUiRenderer& host_renderer, HostModeCtrl& host_mode_ctrl,
                  ScreenConnectorFrameRenderer& screen_connector,
                  const std::string& locale)
-    : session_id_{session_name},
+    : session_id_{session_id},
       display_num_{display_num},
+      renderer_{host_renderer},
       host_mode_ctrl_{host_mode_ctrl},
       screen_connector_{screen_connector},
       locale_{locale},
       state_{MainLoopState::kInit},
       saved_state_{MainLoopState::kInit} {}
-
-/** return grace period + alpha
- *
- * grace period is the gap between user seeing the dialog
- * and the UI starts to take the user inputs
- * Grace period should be at least 1s.
- * Session requests the Renderer to render the dialog,
- * but it might not be immediate. So, add alpha to 1s
- */
-static const std::chrono::milliseconds GetGracePeriod() {
-  using std::literals::chrono_literals::operator""ms;
-  return 1000ms + 100ms;
-}
-
-bool Session::IsReadyForUserInput() const {
-  using std::literals::chrono_literals::operator""ms;
-  if (!start_time_) {
-    return false;
-  }
-  const auto right_now = Clock::now();
-  return (right_now - *start_time_) >= GetGracePeriod();
-}
 
 bool Session::IsConfUiActive() const {
   if (state_ == MainLoopState::kInSession ||
@@ -65,241 +40,229 @@ bool Session::IsConfUiActive() const {
   return false;
 }
 
-template <typename C, typename T>
-static bool Contains(const C& c, T&& item) {
-  auto itr = std::find(c.begin(), c.end(), std::forward<T>(item));
-  return itr != c.end();
-}
-
-bool Session::IsInverted() const {
-  return Contains(ui_options_, teeui::UIOption::AccessibilityInverted);
-}
-
-bool Session::IsMagnified() const {
-  return Contains(ui_options_, teeui::UIOption::AccessibilityMagnified);
-}
-
-bool Session::RenderDialog() {
-  renderer_ = ConfUiRenderer::GenerateRenderer(
-      display_num_, prompt_text_, locale_, IsInverted(), IsMagnified());
-  if (!renderer_) {
+bool Session::RenderDialog(const std::string& msg, const std::string& locale) {
+  auto [teeui_frame, is_success] = renderer_.RenderRawFrame(msg, locale);
+  if (!is_success) {
     return false;
   }
-  auto teeui_frame = renderer_->RenderRawFrame();
-  if (!teeui_frame) {
-    return false;
-  }
-  ConfUiLog(VERBOSE) << "actually trying to render the frame"
-                     << thread::GetName();
-  auto frame_width = teeui_frame->Width();
-  auto frame_height = teeui_frame->Height();
-  auto frame_stride_bytes = teeui_frame->ScreenStrideBytes();
-  auto frame_bytes = reinterpret_cast<std::uint8_t*>(teeui_frame->data());
-  return screen_connector_.RenderConfirmationUi(
-      display_num_, frame_width, frame_height, frame_stride_bytes, frame_bytes);
+  prompt_ = msg;
+  locale_ = locale;
+
+  ConfUiLog(DEBUG) << "actually trying to render the frame"
+                   << thread::GetName();
+  auto raw_frame = reinterpret_cast<std::uint8_t*>(teeui_frame.data());
+  return screen_connector_.RenderConfirmationUi(display_num_, raw_frame);
 }
 
-MainLoopState Session::Transition(SharedFD& hal_cli, const FsmInput fsm_input,
-                                  const ConfUiMessage& conf_ui_message) {
-  bool should_keep_running = false;
-  bool already_terminated = false;
+bool Session::IsSuspended() const {
+  return (state_ == MainLoopState::kSuspended);
+}
+
+MainLoopState Session::Transition(const bool is_user_input, SharedFD& hal_cli,
+                                  const FsmInput fsm_input,
+                                  const std::string& additional_info) {
   switch (state_) {
     case MainLoopState::kInit: {
-      should_keep_running = HandleInit(hal_cli, fsm_input, conf_ui_message);
+      HandleInit(is_user_input, hal_cli, fsm_input, additional_info);
     } break;
     case MainLoopState::kInSession: {
-      should_keep_running =
-          HandleInSession(hal_cli, fsm_input, conf_ui_message);
+      HandleInSession(is_user_input, hal_cli, fsm_input);
     } break;
     case MainLoopState::kWaitStop: {
-      if (IsUserInput(fsm_input)) {
-        ConfUiLog(VERBOSE) << "User input ignored " << ToString(fsm_input)
-                           << " : " << ToString(conf_ui_message)
-                           << " at the state " << ToString(state_);
+      if (is_user_input) {
+        ConfUiLog(DEBUG) << "User input ignored" << ToString(fsm_input) << " : "
+                         << additional_info << "at state" << ToString(state_);
       }
-      should_keep_running = HandleWaitStop(hal_cli, fsm_input);
-    } break;
-    case MainLoopState::kTerminated: {
-      already_terminated = true;
+      HandleWaitStop(is_user_input, hal_cli, fsm_input);
     } break;
     default:
-      ConfUiLog(FATAL) << "Must not be in the state of " << ToString(state_);
+      // host service explicitly calls restore and suspend
+      ConfUiLog(FATAL) << "Must not be in the state of" << ToString(state_);
       break;
-  }
-  if (!should_keep_running && !already_terminated) {
-    ScheduleToTerminate();
   }
   return state_;
 };
+
+bool Session::Suspend(SharedFD hal_cli) {
+  if (state_ == MainLoopState::kInit) {
+    // HAL sent wrong command
+    ConfUiLog(FATAL)
+        << "HAL sent wrong command, suspend, when the session is in kIinit";
+    return false;
+  }
+  if (state_ == MainLoopState::kSuspended) {
+    ConfUiLog(DEBUG) << "Already kSuspended state";
+    return false;
+  }
+  saved_state_ = state_;
+  state_ = MainLoopState::kSuspended;
+  host_mode_ctrl_.SetMode(HostModeCtrl::ModeType::kAndroidMode);
+  if (!packet::SendAck(hal_cli, session_id_, /*is success*/ true,
+                       "suspended")) {
+    ConfUiLog(FATAL) << "I/O error";
+    return false;
+  }
+  return true;
+}
+
+bool Session::Restore(SharedFD hal_cli) {
+  if (state_ == MainLoopState::kInit) {
+    // HAL sent wrong command
+    ConfUiLog(FATAL)
+        << "HAL sent wrong command, restore, when the session is in kIinit";
+    return false;
+  }
+
+  if (state_ != MainLoopState::kSuspended) {
+    ConfUiLog(DEBUG) << "Already Restored to state " + ToString(state_);
+    return false;
+  }
+  host_mode_ctrl_.SetMode(HostModeCtrl::ModeType::kConfUI_Mode);
+  if (!RenderDialog(prompt_, locale_)) {
+    // the confirmation UI is driven by a user app, not running from the start
+    // automatically so that means webRTC/vnc should have been set up
+    ConfUiLog(ERROR) << "Dialog is not rendered. However, it should."
+                     << "No webRTC can't initiate any confirmation UI.";
+    if (!packet::SendAck(hal_cli, session_id_, false,
+                         "render failed in restore")) {
+      ConfUiLog(FATAL) << "Rendering failed in restore, and ack failed in I/O";
+    }
+    state_ = MainLoopState::kInit;
+    return false;
+  }
+  if (!packet::SendAck(hal_cli, session_id_, true, "restored")) {
+    ConfUiLog(FATAL) << "Ack to restore failed in I/O";
+  }
+  state_ = saved_state_;
+  saved_state_ = MainLoopState::kInit;
+  return true;
+}
+
+bool Session::Kill(SharedFD hal_cli, const std::string& response_msg) {
+  state_ = MainLoopState::kAwaitCleanup;
+  saved_state_ = MainLoopState::kInvalid;
+  if (!packet::SendAck(hal_cli, session_id_, true, response_msg)) {
+    ConfUiLog(FATAL) << "I/O error in ack to Abort";
+    return false;
+  }
+  return true;
+}
 
 void Session::CleanUp() {
   if (state_ != MainLoopState::kAwaitCleanup) {
     ConfUiLog(FATAL) << "Clean up a session only when in kAwaitCleanup";
   }
-  state_ = MainLoopState::kTerminated;
   // common action done when the state is back to init state
   host_mode_ctrl_.SetMode(HostModeCtrl::ModeType::kAndroidMode);
 }
 
-void Session::ScheduleToTerminate() {
+void Session::ReportErrorToHal(SharedFD hal_cli, const std::string& msg) {
+  // reset the session -- destroy it & recreate it with the same
+  // session id
   state_ = MainLoopState::kAwaitCleanup;
-  saved_state_ = MainLoopState::kInvalid;
-}
-
-bool Session::ReportErrorToHal(SharedFD hal_cli, const std::string& msg) {
-  ScheduleToTerminate();
-  if (!SendAck(hal_cli, session_id_, false, msg)) {
-    ConfUiLog(ERROR) << "I/O error in sending ack to report rendering failure";
-    return false;
+  if (!packet::SendAck(hal_cli, session_id_, false, msg)) {
+    ConfUiLog(FATAL) << "I/O error in sending ack to report rendering failure";
   }
-  return true;
-}
-
-void Session::Abort() {
-  ConfUiLog(VERBOSE) << "Abort is called";
-  ScheduleToTerminate();
   return;
 }
 
-void Session::UserAbort(SharedFD hal_cli) {
-  ConfUiLog(VERBOSE) << "it is a user abort input.";
-  SendAbortCmd(hal_cli, GetId());
-  Abort();
-  ScheduleToTerminate();
-}
+bool Session::Abort(SharedFD hal_cli) { return Kill(hal_cli, "aborted"); }
 
-bool Session::HandleInit(SharedFD hal_cli, const FsmInput fsm_input,
-                         const ConfUiMessage& conf_ui_message) {
-  if (IsUserInput(fsm_input)) {
+void Session::HandleInit(const bool is_user_input, SharedFD hal_cli,
+                         const FsmInput fsm_input,
+                         const std::string& additional_info) {
+  using namespace cuttlefish::confui::packet;
+  if (is_user_input) {
     // ignore user input
     state_ = MainLoopState::kInit;
-    return true;
+    return;
   }
 
-  ConfUiLog(VERBOSE) << ToString(fsm_input) << "is handled in HandleInit";
+  ConfUiLog(DEBUG) << ToString(fsm_input) << "is handled in HandleInit";
   if (fsm_input != FsmInput::kHalStart) {
     ConfUiLog(ERROR) << "invalid cmd for Init State:" << ToString(fsm_input);
-    // ReportErrorToHal returns true if error report was successful
-    // However, anyway we abort this session on the host
-    ReportErrorToHal(hal_cli, HostError::kSystemError);
-    return false;
+    // reset the session -- destroy it & recreate it with the same
+    // session id
+    ReportErrorToHal(hal_cli, "wrong hal command");
+    return;
   }
 
   // Start Session
-  ConfUiLog(VERBOSE) << "Sending ack to hal_cli: "
-                     << Enum2Base(ConfUiCmd::kCliAck);
+  ConfUiLog(DEBUG) << "Sending ack to hal_cli: "
+                   << Enum2Base(ConfUiCmd::kCliAck);
   host_mode_ctrl_.SetMode(HostModeCtrl::ModeType::kConfUI_Mode);
-
-  auto start_cmd_msg = static_cast<const ConfUiStartMessage&>(conf_ui_message);
-  prompt_text_ = start_cmd_msg.GetPromptText();
-  locale_ = start_cmd_msg.GetLocale();
-  extra_data_ = start_cmd_msg.GetExtraData();
-  ui_options_ = start_cmd_msg.GetUiOpts();
-
-  // cbor_ can be correctly created after the session received kStart cmd
-  // at runtime
-  cbor_ = std::make_unique<Cbor>(prompt_text_, extra_data_);
-  if (cbor_->IsMessageTooLong()) {
-    ConfUiLog(ERROR) << "The prompt text and extra_data are too long to be "
-                     << "properly encoded.";
-    ReportErrorToHal(hal_cli, HostError::kMessageTooLongError);
-    return false;
-  }
-  if (cbor_->IsMalformedUtf8()) {
-    ConfUiLog(ERROR) << "The prompt text appears to have incorrect UTF8 format";
-    ReportErrorToHal(hal_cli, HostError::kIncorrectUTF8);
-    return false;
-  }
-  if (!cbor_->IsOk()) {
-    ConfUiLog(ERROR) << "Unknown Error in cbor implementation";
-    ReportErrorToHal(hal_cli, HostError::kSystemError);
-    return false;
-  }
-
-  if (!RenderDialog()) {
+  auto confirmation_msg = additional_info;
+  if (!RenderDialog(confirmation_msg, locale_)) {
     // the confirmation UI is driven by a user app, not running from the start
-    // automatically so that means webRTC should have been set up
+    // automatically so that means webRTC/vnc should have been set up
     ConfUiLog(ERROR) << "Dialog is not rendered. However, it should."
                      << "No webRTC can't initiate any confirmation UI.";
-    ReportErrorToHal(hal_cli, HostError::kUIError);
-    return false;
+    ReportErrorToHal(hal_cli, "rendering failed");
+    return;
   }
-  start_time_ = std::make_unique<TimePoint>(std::move(Clock::now()));
-  if (!SendAck(hal_cli, session_id_, true, "started")) {
-    ConfUiLog(ERROR) << "Ack to kStart failed in I/O";
-    return false;
+  if (!packet::SendAck(hal_cli, session_id_, true, "started")) {
+    ConfUiLog(FATAL) << "Ack to kStart failed in I/O";
   }
   state_ = MainLoopState::kInSession;
-  return true;
+  return;
 }
 
-bool Session::HandleInSession(SharedFD hal_cli, const FsmInput fsm_input,
-                              const ConfUiMessage& conf_ui_msg) {
-  auto invalid_input_handler = [&, this]() {
-    ReportErrorToHal(hal_cli, HostError::kSystemError);
-    ConfUiLog(ERROR) << "cmd " << ToString(fsm_input)
-                     << " should not be handled in HandleInSession";
-  };
-
-  if (!IsUserInput(fsm_input)) {
-    invalid_input_handler();
-    return false;
+void Session::HandleInSession(const bool is_user_input, SharedFD hal_cli,
+                              const FsmInput fsm_input) {
+  if (!is_user_input) {
+    ConfUiLog(FATAL) << "cmd" << ToString(fsm_input)
+                     << "should not be handled in HandleInSession";
+    ReportErrorToHal(hal_cli, "wrong hal command");
+    return;
   }
 
-  const auto& user_input_msg =
-      static_cast<const ConfUiSecureUserSelectionMessage&>(conf_ui_msg);
-  const auto response = user_input_msg.GetResponse();
-  if (response == UserResponse::kUnknown ||
-      response == UserResponse::kUserAbort) {
-    invalid_input_handler();
-    return false;
-  }
-  const bool is_secure_input = user_input_msg.IsSecure();
-
-  ConfUiLog(VERBOSE) << "In HandleInSession, session " << session_id_
-                     << " is sending the user input " << ToString(fsm_input);
-
-  bool is_success = false;
-  if (response == UserResponse::kCancel) {
-    // no need to sign
-    is_success =
-        SendResponse(hal_cli, session_id_, UserResponse::kCancel,
-                     std::vector<std::uint8_t>{}, std::vector<std::uint8_t>{});
-  } else {
-    message_ = std::move(cbor_->GetMessage());
-    auto message_opt = (is_secure_input ? Sign(message_) : TestSign(message_));
-    if (!message_opt) {
-      ReportErrorToHal(hal_cli, HostError::kSystemError);
-      return false;
+  // send to hal_cli either confirm or cancel
+  if (fsm_input != FsmInput::kUserConfirm &&
+      fsm_input != FsmInput::kUserCancel) {
+    /*
+     * TODO(kwstephenkim@google.com): change here when other user inputs must
+     * be handled
+     *
+     */
+    if (!packet::SendAck(hal_cli, session_id_, true,
+                         "invalid user input error")) {
+      // note that input is what we control in memory
+      ConfUiCheck(false) << "Input must be either confirm or cancel for now.";
     }
-    signed_confirmation_ = message_opt.value();
-    is_success = SendResponse(hal_cli, session_id_, UserResponse::kConfirm,
-                              signed_confirmation_, message_);
+    return;
   }
 
-  if (!is_success) {
-    ConfUiLog(ERROR) << "I/O error in sending user response to HAL";
-    return false;
+  ConfUiLog(DEBUG) << "In HandlieInSession, session" << session_id_
+                   << "is sending the user input" << ToString(fsm_input);
+  auto selection = UserResponse::kConfirm;
+  if (fsm_input == FsmInput::kUserCancel) {
+    selection = UserResponse::kCancel;
+  }
+  if (!packet::SendResponse(hal_cli, session_id_, selection)) {
+    ConfUiLog(FATAL) << "I/O error in sending user response to HAL";
   }
   state_ = MainLoopState::kWaitStop;
-  return true;
+  return;
 }
 
-bool Session::HandleWaitStop(SharedFD hal_cli, const FsmInput fsm_input) {
-  if (IsUserInput(fsm_input)) {
+void Session::HandleWaitStop(const bool is_user_input, SharedFD hal_cli,
+                             const FsmInput fsm_input) {
+  using namespace cuttlefish::confui::packet;
+
+  if (is_user_input) {
     // ignore user input
     state_ = MainLoopState::kWaitStop;
-    return true;
+    return;
   }
   if (fsm_input == FsmInput::kHalStop) {
-    ConfUiLog(VERBOSE) << "Handling Abort in kWaitStop.";
-    ScheduleToTerminate();
-    return true;
+    ConfUiLog(DEBUG) << "Handling Abort in kWaitStop.";
+    Kill(hal_cli, "stopped");
+    return;
   }
-  ReportErrorToHal(hal_cli, HostError::kSystemError);
   ConfUiLog(FATAL) << "In WaitStop, received wrong HAL command "
                    << ToString(fsm_input);
-  return false;
+  state_ = MainLoopState::kAwaitCleanup;
+  return;
 }
 
 }  // end of namespace confui
