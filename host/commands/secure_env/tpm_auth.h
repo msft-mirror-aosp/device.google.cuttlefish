@@ -17,8 +17,6 @@
 
 #include <tss2/tss2_esys.h>
 
-namespace cuttlefish {
-
 /**
  * Authorization wrapper for TPM2 calls.
  *
@@ -43,5 +41,3 @@ private:
   ESYS_TR auth2_;
   ESYS_TR auth3_;
 };
-
-}  // namespace cuttlefish
