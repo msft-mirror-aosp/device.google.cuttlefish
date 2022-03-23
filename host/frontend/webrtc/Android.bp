@@ -22,7 +22,6 @@ cc_library_static {
     srcs: [
         "lib/audio_device.cpp",
         "lib/audio_track_source_impl.cpp",
-        "lib/camera_streamer.cpp",
         "lib/client_handler.cpp",
         "lib/keyboard.cpp",
         "lib/local_recorder.cpp",
@@ -31,7 +30,7 @@ cc_library_static {
         "lib/utils.cpp",
         "lib/video_track_source_impl.cpp",
         "lib/vp8only_encoder_factory.cpp",
-        "lib/server_connection.cpp",
+        "lib/ws_connection.cpp",
     ],
     cflags: [
         // libwebrtc headers need this
@@ -51,9 +50,8 @@ cc_library_static {
         "libgflags",
         "libdrm",
         "libffi",
-        "libwayland_crosvm_gpu_display_extension_server_protocols",
-        "libwayland_extension_server_protocols",
         "libwayland_server",
+        "libwayland_extension_server_protocols",
         "libwebsockets",
         "libcap",
         "libcuttlefish_utils",
@@ -62,12 +60,10 @@ cc_library_static {
         "libwebrtc_absl_types",
     ],
     shared_libs: [
-        "libbase",
-        "libcn-cbor",
-        "libcuttlefish_fs",
-        "libfruit",
-        "libjsoncpp",
         "libssl",
+        "libbase",
+        "libcuttlefish_fs",
+        "libjsoncpp",
         "libwebm_mkvmuxer",
     ],
     defaults: ["cuttlefish_buildhost_only"],
@@ -79,7 +75,6 @@ cc_binary_host {
         "adb_handler.cpp",
         "audio_handler.cpp",
         "bluetooth_handler.cpp",
-        "client_server.cpp",
         "connection_observer.cpp",
         "cvd_video_frame_buffer.cpp",
         "display_handler.cpp",
@@ -105,15 +100,13 @@ cc_binary_host {
         "libwebrtc_absl_types",
         "libaom",
         "libcap",
-        "libcn-cbor",
         "libcuttlefish_audio_connector",
-        "libcuttlefish_confui",
-        "libcuttlefish_confui_host",
         "libcuttlefish_host_config",
-        "libcuttlefish_security",
         "libcuttlefish_screen_connector",
         "libcuttlefish_utils",
         "libcuttlefish_wayland_server",
+        "libcuttlefish_confui",
+        "libcuttlefish_confui_host",
         "libft2.nodep",
         "libteeui",
         "libteeui_localization",
@@ -124,7 +117,6 @@ cc_binary_host {
         "libopus",
         "libsrtp2",
         "libvpx",
-        "libwayland_crosvm_gpu_display_extension_server_protocols",
         "libwayland_extension_server_protocols",
         "libwayland_server",
         "libwebrtc",
@@ -133,14 +125,11 @@ cc_binary_host {
         "libyuv",
     ],
     shared_libs: [
-        "libext2_blkid",
-        "android.hardware.keymaster@4.0",
         "libbase",
         "libcrypto",
         "libcuttlefish_fs",
         "libcuttlefish_kernel_log_monitor_utils",
         "libjsoncpp",
-        "libfruit",
         "libopus",
         "libssl",
         "libvpx",
@@ -148,60 +137,4 @@ cc_binary_host {
         "libwebm_mkvmuxer",
     ],
     defaults: ["cuttlefish_buildhost_only"],
-}
-
-prebuilt_usr_share_host {
-    name: "webrtc_client.html",
-    src: "client/client.html",
-    filename: "client.html",
-    sub_dir: "webrtc/assets",
-}
-
-prebuilt_usr_share_host {
-    name: "webrtc_style.css",
-    src: "client/style.css",
-    filename: "style.css",
-    sub_dir: "webrtc/assets",
-}
-
-prebuilt_usr_share_host {
-    name: "webrtc_controls.css",
-    src: "client/controls.css",
-    filename: "controls.css",
-    sub_dir: "webrtc/assets",
-}
-
-prebuilt_usr_share_host {
-    name: "webrtc_adb.js",
-    src: "client/js/adb.js",
-    filename: "adb.js",
-    sub_dir: "webrtc/assets/js",
-}
-
-prebuilt_usr_share_host {
-    name: "webrtc_cf.js",
-    src: "client/js/cf_webrtc.js",
-    filename: "cf_webrtc.js",
-    sub_dir: "webrtc/assets/js",
-}
-
-prebuilt_usr_share_host {
-    name: "webrtc_app.js",
-    src: "client/js/app.js",
-    filename: "app.js",
-    sub_dir: "webrtc/assets/js",
-}
-
-prebuilt_usr_share_host {
-    name: "webrtc_controls.js",
-    src: "client/js/controls.js",
-    filename: "controls.js",
-    sub_dir: "webrtc/assets/js",
-}
-
-prebuilt_usr_share_host {
-    name: "webrtc_rootcanal.js",
-    src: "client/js/rootcanal.js",
-    filename: "rootcanal.js",
-    sub_dir: "webrtc/assets/js",
 }
