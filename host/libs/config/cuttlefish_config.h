@@ -57,6 +57,7 @@ constexpr char kSharedDirName[] = "shared";
 constexpr char kLogDirName[] = "logs";
 constexpr char kCrosvmVarEmptyDir[] = "/var/empty";
 constexpr char kKernelLoadedMessage[] = "] Linux version";
+constexpr char kBootloaderLoadedMessage[] = "U-Boot 20";
 
 enum class SecureHal {
   Unknown,
@@ -150,8 +151,8 @@ class CuttlefishConfig {
   void set_crosvm_binary(const std::string& crosvm_binary);
   std::string crosvm_binary() const;
 
-  void set_tpm_device(const std::string& tpm_device);
-  std::string tpm_device() const;
+  void set_gem5_binary_dir(const std::string& gem5_binary_dir);
+  std::string gem5_binary_dir() const;
 
   void set_enable_sandbox(const bool enable_sandbox);
   bool enable_sandbox() const;
@@ -200,9 +201,6 @@ class CuttlefishConfig {
 
   void set_guest_enforce_security(bool guest_enforce_security);
   bool guest_enforce_security() const;
-
-  void set_guest_audit_security(bool guest_audit_security);
-  bool guest_audit_security() const;
 
   void set_enable_host_bluetooth(bool enable_host_bluetooth);
   bool enable_host_bluetooth() const;

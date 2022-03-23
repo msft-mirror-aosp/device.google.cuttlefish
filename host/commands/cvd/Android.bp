@@ -52,12 +52,22 @@ cc_binary_host {
 cc_binary_host {
     name: "cvd_server",
     srcs: [
+        "acloud_command.cpp",
+        "epoll_loop.cpp",
+        "instance_lock.cpp",
+        "instance_manager.cpp",
+        "scope_guard.cpp",
         "server.cc",
+        "server_client.cpp",
+        "server_command.cpp",
+        "server_shutdown.cpp",
+        "server_version.cpp",
     ],
     shared_libs: [
         "libbase",
         "libcuttlefish_fs",
         "libcuttlefish_utils",
+        "libfruit",
         "libjsoncpp",
         "libprotobuf-cpp-lite",
     ],

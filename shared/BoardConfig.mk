@@ -36,6 +36,9 @@ BOARD_RECOVERYIMAGE_PARTITION_SIZE := 67108864
 endif
 BOARD_VENDOR_BOOTIMAGE_PARTITION_SIZE := 67108864
 
+# init_boot partition size is recommended to be 8MB, it can be larger.
+# When this variable is set, init_boot.img will be built with the generic
+# ramdisk, and that ramdisk will no longer be included in boot.img.
 BOARD_INIT_BOOT_IMAGE_PARTITION_SIZE := 8388608
 
 # Build a separate vendor.img partition
@@ -67,6 +70,11 @@ TARGET_COPY_OUT_VENDOR_DLKM := vendor_dlkm
 BOARD_USES_ODM_DLKMIMAGE := true
 BOARD_ODM_DLKMIMAGE_FILE_SYSTEM_TYPE := $(TARGET_RO_FILE_SYSTEM_TYPE)
 TARGET_COPY_OUT_ODM_DLKM := odm_dlkm
+
+# Build a separate system_dlkm partition
+BOARD_USES_SYSTEM_DLKMIMAGE := true
+BOARD_SYSTEM_DLKMIMAGE_FILE_SYSTEM_TYPE := $(TARGET_RO_FILE_SYSTEM_TYPE)
+TARGET_COPY_OUT_SYSTEM_DLKM := system_dlkm
 
 # Enable AVB
 BOARD_AVB_ENABLE := true
@@ -110,9 +118,10 @@ BOARD_AVB_PRODUCT_ADD_HASHTREE_FOOTER_ARGS += --hash_algorithm $(TARGET_AVB_PROD
 BOARD_AVB_VENDOR_ADD_HASHTREE_FOOTER_ARGS += --hash_algorithm sha256
 BOARD_AVB_ODM_ADD_HASHTREE_FOOTER_ARGS += --hash_algorithm sha256
 
-# vendor_dlkm and odm_dlkm.
+# vendor_dlkm, odm_dlkm, and system_dlkm.
 BOARD_AVB_VENDOR_DLKM_ADD_HASHTREE_FOOTER_ARGS += --hash_algorithm sha256
 BOARD_AVB_ODM_DLKM_ADD_HASHTREE_FOOTER_ARGS += --hash_algorithm sha256
+BOARD_AVB_SYSTEM_DLKM_ADD_HASHTREE_FOOTER_ARGS += --hash_algorithm sha256
 
 BOARD_USES_GENERIC_AUDIO := false
 USE_CAMERA_STUB := true
@@ -124,9 +133,9 @@ TARGET_USES_HWC2 := true
 BOARD_MALLOC_ALIGNMENT := 16
 
 # Disable sparse on all filesystem images
-TARGET_USERIMAGES_SPARSE_EROFS_DISABLED := true
-TARGET_USERIMAGES_SPARSE_EXT_DISABLED := true
-TARGET_USERIMAGES_SPARSE_F2FS_DISABLED := true
+TARGET_USERIMAGES_SPARSE_EROFS_DISABLED ?= true
+TARGET_USERIMAGES_SPARSE_EXT_DISABLED ?= true
+TARGET_USERIMAGES_SPARSE_F2FS_DISABLED ?= true
 
 # Make the userdata partition 6G to accommodate ASAN and CTS
 BOARD_USERDATAIMAGE_PARTITION_SIZE := $(TARGET_USERDATAIMAGE_PARTITION_SIZE)
@@ -176,13 +185,6 @@ BOARD_VENDOR_SEPOLICY_DIRS += device/google/cuttlefish/shared/sepolicy/vendor/go
 
 BOARD_SEPOLICY_DIRS += system/bt/vendor_libs/linux/sepolicy
 
-# Avoid multiple includes of sepolicy already included by Pixel experience.
-ifneq ($(filter aosp_% %_auto %_go_phone trout_% gull% %_tv %_tv_amati,$(PRODUCT_NAME)),)
-
-SYSTEM_EXT_PRIVATE_SEPOLICY_DIRS += hardware/google/pixel-sepolicy/flipendo
-
-endif
-
 # product sepolicy, allow other layers to append
 PRODUCT_PRIVATE_SEPOLICY_DIRS += device/google/cuttlefish/shared/sepolicy/product/private
 # PRODUCT_PUBLIC_SEPOLICY_DIRS += device/google/cuttlefish/shared/sepolicy/product/public
@@ -206,7 +208,7 @@ TARGET_RECOVERY_FSTAB ?= device/google/cuttlefish/shared/config/fstab.f2fs
 
 BOARD_SUPER_PARTITION_SIZE := 7516192768  # 7GiB
 BOARD_SUPER_PARTITION_GROUPS := google_system_dynamic_partitions google_vendor_dynamic_partitions
-BOARD_GOOGLE_SYSTEM_DYNAMIC_PARTITIONS_PARTITION_LIST := product system system_ext
+BOARD_GOOGLE_SYSTEM_DYNAMIC_PARTITIONS_PARTITION_LIST := product system system_ext system_dlkm
 BOARD_GOOGLE_SYSTEM_DYNAMIC_PARTITIONS_SIZE := 5771362304  # 5.375GiB
 BOARD_GOOGLE_VENDOR_DYNAMIC_PARTITIONS_PARTITION_LIST := odm vendor vendor_dlkm odm_dlkm
 # 1404MiB, reserve 4MiB for dynamic partition metadata
@@ -224,12 +226,28 @@ BOARD_RAMDISK_USE_LZ4 := true
 # To see full logs from init, disable ratelimiting.
 # The default is 5 messages per second amortized, with a burst of up to 10.
 BOARD_KERNEL_CMDLINE += printk.devkmsg=on
+
+# Print audit messages for all security check failures
+BOARD_KERNEL_CMDLINE += audit=1
+
+# Reboot immediately on panic
+BOARD_KERNEL_CMDLINE += panic=-1
+
+# Always enable one legacy serial port, for alternative earlycon, kgdb, and
+# serial console. Doesn't do anything on ARM/ARM64 + QEMU or Gem5.
+BOARD_KERNEL_CMDLINE += 8250.nr_uarts=1
+
+# Cuttlefish doesn't use CMA, so don't reserve RAM for it
+BOARD_KERNEL_CMDLINE += cma=0
+
+# Default firmware load path
 BOARD_KERNEL_CMDLINE += firmware_class.path=/vendor/etc/
 
-BOARD_KERNEL_CMDLINE += init=/init
-BOARD_BOOTCONFIG += androidboot.hardware=cutf_cvm
-
+# Needed to boot Android
 BOARD_KERNEL_CMDLINE += loop.max_part=7
+BOARD_KERNEL_CMDLINE += init=/init
+
+BOARD_BOOTCONFIG += androidboot.hardware=cutf_cvm
 
 # TODO(b/182417593): Move all of these module options to modules.options
 # TODO(b/176860479): Remove once goldfish and cuttlefish share a wifi implementation
@@ -239,7 +257,8 @@ BOARD_BOOTCONFIG += \
     kernel.vmw_vsock_virtio_transport_common.virtio_transport_max_vsock_pkt_buf_size=16384
 
 BOARD_BOOTCONFIG += \
-    androidboot.vendor.apex.com.android.wifi.hal=com.google.cf.wifi_hwsim
+    androidboot.vendor.apex.com.android.wifi.hal=com.google.cf.wifi_hwsim \
+    androidboot.vendor.apex.com.google.emulated.camera.provider.hal=com.google.emulated.camera.provider.hal \
 
 BOARD_INCLUDE_DTB_IN_BOOTIMG := true
 ifndef BOARD_BOOT_HEADER_VERSION

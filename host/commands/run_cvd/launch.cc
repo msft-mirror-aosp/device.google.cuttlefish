@@ -152,11 +152,9 @@ class LogTeeCreator {
     cmd.RedirectStdIO(Subprocess::StdIOChannel::kStdOut, logs);
     cmd.RedirectStdIO(Subprocess::StdIOChannel::kStdErr, logs);
 
-    Command log_tee_cmd(HostBinaryPath("log_tee"));
-    log_tee_cmd.AddParameter("--process_name=", process_name);
-    log_tee_cmd.AddParameter("--log_fd_in=", logs);
-
-    return log_tee_cmd;
+    return Command(HostBinaryPath("log_tee"))
+        .AddParameter("--process_name=", process_name)
+        .AddParameter("--log_fd_in=", logs);
   }
 
  private:
@@ -222,9 +220,8 @@ class LogcatReceiver : public CommandSource, public DiagnosticInformation {
 
   // CommandSource
   std::vector<Command> Commands() override {
-    Command command(LogcatReceiverBinary());
-    command.AddParameter("-log_pipe_fd=", pipe_);
-    return single_element_emplace(std::move(command));
+    return single_element_emplace(
+        Command(LogcatReceiverBinary()).AddParameter("-log_pipe_fd=", pipe_));
   }
 
   // Feature
@@ -263,9 +260,8 @@ class ConfigServer : public CommandSource {
 
   // CommandSource
   std::vector<Command> Commands() override {
-    Command cmd(ConfigServerBinary());
-    cmd.AddParameter("-server_fd=", socket_);
-    return single_element_emplace(std::move(cmd));
+    return single_element_emplace(
+        Command(ConfigServerBinary()).AddParameter("-server_fd=", socket_));
   }
 
   // Feature
@@ -297,10 +293,10 @@ class TombstoneReceiver : public CommandSource {
 
   // CommandSource
   std::vector<Command> Commands() override {
-    Command cmd(TombstoneReceiverBinary());
-    cmd.AddParameter("-server_fd=", socket_);
-    cmd.AddParameter("-tombstone_dir=", tombstone_dir_);
-    return single_element_emplace(std::move(cmd));
+    return single_element_emplace(
+        Command(TombstoneReceiverBinary())
+            .AddParameter("-server_fd=", socket_)
+            .AddParameter("-tombstone_dir=", tombstone_dir_));
   }
 
   // Feature
@@ -434,7 +430,7 @@ class BluetoothConnector : public CommandSource {
 
   // CommandSource
   std::vector<Command> Commands() override {
-    Command command(DefaultHostArtifactsPath("bin/bt_connector"));
+    Command command(HostBinaryPath("bt_connector"));
     command.AddParameter("-bt_out=", fifos_[0]);
     command.AddParameter("-bt_in=", fifos_[1]);
     command.AddParameter("-hci_port=", config_.rootcanal_hci_port());
@@ -488,6 +484,7 @@ class SecureEnvironment : public CommandSource {
   // CommandSource
   std::vector<Command> Commands() override {
     Command command(HostBinaryPath("secure_env"));
+    command.AddParameter("-confui_server_fd=", confui_server_fd_);
     command.AddParameter("-keymaster_fd_out=", fifos_[0]);
     command.AddParameter("-keymaster_fd_in=", fifos_[1]);
     command.AddParameter("-gatekeeper_fd_out=", fifos_[2]);
@@ -507,7 +504,7 @@ class SecureEnvironment : public CommandSource {
 
   // Feature
   std::string Name() const override { return "SecureEnvironment"; }
-  bool Enabled() const override { return config_.enable_host_bluetooth(); }
+  bool Enabled() const override { return true; }
 
  private:
   std::unordered_set<Feature*> Dependencies() const override {
@@ -535,6 +532,15 @@ class SecureEnvironment : public CommandSource {
       fifos_.push_back(fd);
     }
 
+    auto confui_socket_path =
+        instance_.PerInstanceInternalPath("confui_sign.sock");
+    confui_server_fd_ = SharedFD::SocketLocalServer(confui_socket_path, false,
+                                                    SOCK_STREAM, 0600);
+    if (!confui_server_fd_->IsOpen()) {
+      LOG(ERROR) << "Could not open " << confui_socket_path << ": "
+                 << confui_server_fd_->StrError();
+      return false;
+    }
     kernel_log_pipe_ = kernel_log_pipe_provider_.KernelLogPipe();
 
     return true;
@@ -542,6 +548,7 @@ class SecureEnvironment : public CommandSource {
 
   const CuttlefishConfig& config_;
   const CuttlefishConfig::InstanceSpecific& instance_;
+  SharedFD confui_server_fd_;
   std::vector<SharedFD> fifos_;
   KernelLogPipeProvider& kernel_log_pipe_provider_;
   SharedFD kernel_log_pipe_;

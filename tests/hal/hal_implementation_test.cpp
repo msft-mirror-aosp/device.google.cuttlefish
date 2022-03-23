@@ -48,7 +48,7 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hardware.automotive.vehicle@2.0",
     "android.hardware.biometrics.fingerprint@2.3",
     "android.hardware.bluetooth.a2dp@1.0",
-    "android.hardware.bluetooth.audio@2.2",
+    "android.hardware.bluetooth.audio@2.1", // converted to AIDL, see b/203490261
     "android.hardware.broadcastradio@1.1",
     "android.hardware.broadcastradio@2.0",
     "android.hardware.cas.native@1.0",
@@ -76,6 +76,8 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hardware.oemlock@1.0",
     "android.hardware.power@1.3",
     "android.hardware.power.stats@1.0",
+    "android.hardware.radio@1.6", // converted to AIDL
+    "android.hardware.radio.config@1.3", // converted to AIDL
     "android.hardware.radio.deprecated@1.0",
     "android.hardware.renderscript@1.0",
     "android.hardware.soundtrigger@2.3",
@@ -128,10 +130,6 @@ static const std::set<VersionedAidlPackage> kKnownMissingAidl = {
     // No implementations on cuttlefish for omapi aidl hal
     {"android.se.omapi.", 1},
 
-    // Temporarily treat the dice hal default implementation as missing until it
-    // and its dependencies have landed. b/198197213
-    {"android.hardware.security.dice.", 1},
-
     // These KeyMaster types are in an AIDL types-only HAL because they're used
     // by the Identity Credential AIDL HAL. Remove this when fully porting
     // KeyMaster to AIDL.
@@ -149,25 +147,14 @@ static const std::set<VersionedAidlPackage> kKnownMissingAidl = {
     {"android.frameworks.automotive.powerpolicy.", 1},
     {"android.frameworks.automotive.telemetry.", 1},
     {"android.hardware.automotive.audiocontrol.", 1},
+    {"android.hardware.automotive.audiocontrol.", 2},
     {"android.hardware.automotive.occupant_awareness.", 1},
 
     // No implementation in AOSP for supplicant aidl hal (b/210166896)
     {"android.hardware.wifi.supplicant.", 1},
 
-    // These versions need to be implemented (b/198331776)
+    // types-only packages, which never expect a default implementation
     {"android.hardware.radio.", 1},
-    {"android.hardware.radio.data.", 1},
-    {"android.hardware.radio.messaging.", 1},
-    {"android.hardware.radio.modem.", 1},
-    {"android.hardware.radio.network.", 1},
-    {"android.hardware.radio.sim.", 1},
-    {"android.hardware.radio.voice.", 1},
-
-    // This version needs to be implemented (b/198331886)
-    {"android.hardware.radio.config.", 1},
-
-    // These versions need to be implemented (b/203490261)
-    {"android.hardware.bluetooth.audio.", 1},
 };
 
 static const std::set<VersionedAidlPackage> kComingSoonAidl = {
