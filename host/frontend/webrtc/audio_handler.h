@@ -35,9 +35,12 @@ class AudioHandler : public AudioServerExecutor {
 
     void Reset(size_t size);
     size_t Add(const volatile uint8_t* data, size_t max_len);
+    size_t Take(uint8_t* dst, size_t len);
     bool empty() const;
     bool full() const;
+    size_t freeCapacity() const;
     uint8_t* data();
+    uint8_t* end();
   };
   struct StreamDesc {
     std::mutex mtx;
@@ -63,6 +66,8 @@ class AudioHandler : public AudioServerExecutor {
   void ReleaseStream(StreamControlCommand& cmd) override;
   void StartStream(StreamControlCommand& cmd) override;
   void StopStream(StreamControlCommand& cmd) override;
+  void ChmapsInfo(ChmapInfoCommand& cmd) override;
+  void JacksInfo(JackInfoCommand& cmd) override;
 
   void OnPlaybackBuffer(TxBuffer buffer) override;
   void OnCaptureBuffer(RxBuffer buffer) override;
