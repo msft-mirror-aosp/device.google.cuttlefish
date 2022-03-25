@@ -17,6 +17,7 @@
 #include <iterator>
 #include <string>
 
+#include <curl/curl.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -31,9 +32,9 @@
 
 #include "host/libs/config/fetcher_config.h"
 
-#include "build_api.h"
-#include "credential_source.h"
-#include "install_zip.h"
+#include "host/libs/web/build_api.h"
+#include "host/libs/web/credential_source.h"
+#include "host/libs/web/install_zip.h"
 
 namespace {
 
@@ -78,9 +79,9 @@ std::string TargetBuildZipFromArtifacts(
     const std::vector<Artifact>& artifacts) {
   std::string product = std::visit([](auto&& arg) { return arg.product; }, build);
   auto id = std::visit([](auto&& arg) { return arg.id; }, build);
-  auto match = product + "-" + name + "-" + id;
+  auto match = product + "-" + name + "-" + id + ".zip";
   for (const auto& artifact : artifacts) {
-    if (artifact.Name().find(match) != std::string::npos) {
+    if (artifact.Name() == match) {
       return artifact.Name();
     }
   }
@@ -268,13 +269,16 @@ int FetchCvdMain(int argc, char** argv) {
 
   curl_global_init(CURL_GLOBAL_DEFAULT);
   {
+    auto curl = CurlWrapper::Create();
+    auto retrying_curl = CurlWrapper::WithServerErrorRetry(
+        *curl, 10, std::chrono::milliseconds(5000));
     std::unique_ptr<CredentialSource> credential_source;
     if (FLAGS_credential_source == "gce") {
-      credential_source = GceMetadataCredentialSource::make();
+      credential_source = GceMetadataCredentialSource::make(*retrying_curl);
     } else if (FLAGS_credential_source != "") {
       credential_source = FixedCredentialSource::make(FLAGS_credential_source);
     }
-    BuildApi build_api(std::move(credential_source));
+    BuildApi build_api(*retrying_curl, credential_source.get());
 
     auto default_build = ArgumentToBuild(&build_api, FLAGS_default_build,
                                          DEFAULT_BUILD_TARGET,
@@ -292,6 +296,9 @@ int FetchCvdMain(int argc, char** argv) {
       auto ota_build = default_build;
       if (FLAGS_otatools_build != "") {
         ota_build = ArgumentToBuild(&build_api, FLAGS_otatools_build,
+                                    DEFAULT_BUILD_TARGET, retry_period);
+      } else if (FLAGS_system_build != "") {
+        ota_build = ArgumentToBuild(&build_api, FLAGS_system_build,
                                     DEFAULT_BUILD_TARGET, retry_period);
       }
       std::vector<std::string> ota_tools_files =
