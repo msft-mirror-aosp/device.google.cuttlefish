@@ -20,14 +20,17 @@
 #include <memory>
 #include <vector>
 
+#include "common/libs/utils/result.h"
 #include "host/libs/config/cuttlefish_config.h"
 #include "host/libs/config/fetcher_config.h"
+#include "host/libs/image_aggregator/image_aggregator.h"
 
 namespace cuttlefish {
 
-bool ResolveInstanceFiles();
-bool ShouldCreateAllCompositeDisks(const CuttlefishConfig& config);
-void CreateDynamicDiskFiles(const FetcherConfig& fetcher_config,
-                            const CuttlefishConfig* config);
+Result<void> ResolveInstanceFiles();
+bool ShouldCreateOsCompositeDisk(const CuttlefishConfig& config);
+Result<void> CreateDynamicDiskFiles(const FetcherConfig& fetcher_config,
+                                    const CuttlefishConfig& config);
+std::vector<ImagePartition> GetOsCompositeDiskConfig();
 
 } // namespace cuttlefish
