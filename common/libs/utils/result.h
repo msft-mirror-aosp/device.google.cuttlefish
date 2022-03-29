@@ -18,9 +18,7 @@
 #include <type_traits>
 
 #include <android-base/logging.h>
-#include <android-base/result.h>
-
-#include "common/libs/utils/files.h"
+#include <android-base/result.h>  // IWYU pragma: export
 
 namespace cuttlefish {
 
