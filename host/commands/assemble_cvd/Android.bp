@@ -55,7 +55,6 @@ cc_binary {
         "libgflags",
     ],
     required: [
-        "mkenvimage",
         "mkenvimage_slim",
         "lz4",
     ],

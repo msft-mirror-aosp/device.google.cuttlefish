@@ -62,7 +62,7 @@ cvd_host_tools = [
     "metrics",
     "mkbootfs",
     "mkbootimg",
-    "mkenvimage",
+    "mkenvimage_slim",
     "modem_simulator",
     "ms-tpm-20-ref",
     "newfs_msdos",
