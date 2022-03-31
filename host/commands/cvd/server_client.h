@@ -26,6 +26,7 @@
 
 #include "common/libs/fs/shared_fd.h"
 #include "common/libs/utils/result.h"
+#include "common/libs/utils/unix_sockets.h"
 
 namespace cuttlefish {
 
@@ -34,6 +35,7 @@ class RequestWithStdio {
   RequestWithStdio(cvd::Request, std::vector<SharedFD>, std::optional<ucred>);
 
   const cvd::Request& Message() const;
+  const std::vector<SharedFD>& FileDescriptors() const;
   SharedFD In() const;
   SharedFD Out() const;
   SharedFD Err() const;
@@ -46,24 +48,9 @@ class RequestWithStdio {
   std::optional<ucred> creds_;
 };
 
-class ClientMessageQueue {
- public:
-  static Result<ClientMessageQueue> Create(SharedFD client);
-  ClientMessageQueue(ClientMessageQueue&&);
-  ~ClientMessageQueue();
-  ClientMessageQueue& operator=(ClientMessageQueue&&);
-
-  Result<RequestWithStdio> WaitForRequest();
-  Result<void> PostResponse(const cvd::Response& response);
-  Result<void> Stop();
-  void Join();
-
- private:
-  class Internal;
-
-  std::unique_ptr<Internal> internal_;
-
-  ClientMessageQueue(std::unique_ptr<Internal>);
-};
+Result<UnixMessageSocket> GetClient(const SharedFD& client);
+Result<std::optional<RequestWithStdio>> GetRequest(const SharedFD& client);
+Result<void> SendResponse(const SharedFD& client,
+                          const cvd::Response& response);
 
 }  // namespace cuttlefish
