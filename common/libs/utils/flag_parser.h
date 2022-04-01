@@ -16,13 +16,12 @@
 
 #pragma once
 
+#include <cstdint>
 #include <functional>
 #include <optional>
-#include <set>
+#include <ostream>
 #include <string>
 #include <vector>
-
-#include <android-base/logging.h>
 
 /* Support for parsing individual flags out of a larger list of flags. This
  * supports externally determining the order that flags are evaluated in, and
@@ -47,6 +46,10 @@ enum class FlagAliasMode {
   /* Match a pair of arguments of the form `<name>` `<value>`. In practice,
    * <name> will look like "-flag" or "--flag". */
   kFlagConsumesFollowing,
+  /* Match a sequence of arguments of the form `<name>` `<value>` `<value>`.
+   * This uses heuristics to try to determine when `<value>` is actually another
+   * flag. */
+  kFlagConsumesArbitrary,
 };
 
 /* A single matching rule for a `Flag`. One `Flag` can have multiple rules. */
@@ -97,6 +100,7 @@ class Flag {
     kFlagSkip,                  /* Flag skipped; consume no arguments. */
     kFlagConsumed,              /* Flag processed; consume one argument. */
     kFlagConsumedWithFollowing, /* Flag processed; consume 2 arguments. */
+    kFlagConsumedOnlyFollowing, /* Flag processed; consume next argument. */
   };
 
   void ValidateAlias(const FlagAlias& alias);
