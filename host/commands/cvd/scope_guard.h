@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 The Android Open Source Project
+ * Copyright (C) 2022 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,15 +15,22 @@
  */
 #pragma once
 
-#include <set>
-#include <string>
-
-#include "common/libs/utils/result.h"
+#include <functional>
 
 namespace cuttlefish {
 
-Result<void> CleanPriorFiles(const std::set<std::string>& preserving,
-                             const std::string& assembly_dir,
-                             const std::vector<std::string>& instance_dirs);
+class ScopeGuard {
+ public:
+  ScopeGuard();
+  explicit ScopeGuard(std::function<void()> fn);
+  ScopeGuard(ScopeGuard&&);
+  ~ScopeGuard();
+  ScopeGuard& operator=(ScopeGuard&&);
 
-} // namespace cuttlefish
+  void Cancel();
+
+ private:
+  std::function<void()> fn_;
+};
+
+}  // namespace cuttlefish

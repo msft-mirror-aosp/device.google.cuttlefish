@@ -40,6 +40,7 @@
 #include "common/libs/utils/shared_fd_flag.h"
 #include "common/libs/utils/subprocess.h"
 #include "host/commands/cvd/epoll_loop.h"
+#include "host/commands/cvd/scope_guard.h"
 #include "host/commands/cvd/server_constants.h"
 #include "host/libs/config/cuttlefish_config.h"
 #include "host/libs/config/known_paths.h"
@@ -51,6 +52,7 @@ static fruit::Component<> RequestComponent(CvdServer* server,
   return fruit::createComponent()
       .bindInstance(*server)
       .bindInstance(*instance_manager)
+      .install(AcloudCommandComponent)
       .install(cvdCommandComponent)
       .install(cvdShutdownComponent)
       .install(cvdVersionComponent);
@@ -155,20 +157,6 @@ static Result<CvdServerHandler*> RequestHandler(
   return compatible_handlers[0];
 }
 
-class ScopeGuard {
- public:
-  ScopeGuard(std::function<void()> fn) : fn_(fn) {}
-  ~ScopeGuard() {
-    if (fn_) {
-      fn_();
-    }
-  }
-  void Cancel() { fn_ = nullptr; }
-
- private:
-  std::function<void()> fn_;
-};
-
 Result<void> CvdServer::StartServer(SharedFD server_fd) {
   auto cb = [this](EpollEvent ev) -> Result<void> {
     CF_EXPECT(AcceptClient(ev));
@@ -215,6 +203,28 @@ Result<void> CvdServer::HandleMessage(EpollEvent event) {
     return {};
   }
 
+  auto response = HandleRequest(*request, event.fd);
+  if (!response.ok()) {
+    cvd::Response failure_message;
+    failure_message.mutable_status()->set_code(cvd::Status::INTERNAL);
+    failure_message.mutable_status()->set_message(response.error().message());
+    CF_EXPECT(SendResponse(event.fd, failure_message));
+    return {};  // Error already sent to the client, don't repeat on the server
+  }
+  CF_EXPECT(SendResponse(event.fd, *response));
+
+  auto self_cb = [this](EpollEvent ev) -> Result<void> {
+    CF_EXPECT(HandleMessage(ev));
+    return {};
+  };
+  CF_EXPECT(epoll_pool_.Register(event.fd, EPOLLIN, self_cb));
+
+  abandon_client.Cancel();
+  return {};
+}
+
+Result<cvd::Response> CvdServer::HandleRequest(RequestWithStdio request,
+                                               SharedFD client) {
   fruit::Injector<> injector(RequestComponent, this, &instance_manager_);
   auto possible_handlers = injector.getMultibindings<CvdServerHandler>();
 
@@ -222,7 +232,7 @@ Result<void> CvdServer::HandleMessage(EpollEvent event) {
   // hold on to this struct which will be cleaned out when the request handler
   // exits.
   auto shared = std::make_shared<OngoingRequest>();
-  shared->handler = CF_EXPECT(RequestHandler(*request, possible_handlers));
+  shared->handler = CF_EXPECT(RequestHandler(request, possible_handlers));
   shared->thread_id = std::this_thread::get_id();
 
   {
@@ -245,25 +255,16 @@ Result<void> CvdServer::HandleMessage(EpollEvent event) {
     CF_EXPECT(shared->handler->Interrupt());
     return {};
   };
-  CF_EXPECT(epoll_pool_.Register(event.fd, EPOLLHUP, interrupt_cb));
+  CF_EXPECT(epoll_pool_.Register(client, EPOLLHUP, interrupt_cb));
 
-  auto response = CF_EXPECT(shared->handler->Handle(*request));
-  CF_EXPECT(SendResponse(event.fd, response));
-
+  auto response = CF_EXPECT(shared->handler->Handle(request));
   {
     std::lock_guard lock(shared->mutex);
     shared->handler = nullptr;
   }
-  CF_EXPECT(epoll_pool_.Remove(event.fd));  // Delete interrupt handler
+  CF_EXPECT(epoll_pool_.Remove(client));  // Delete interrupt handler
 
-  auto self_cb = [this](EpollEvent ev) -> Result<void> {
-    CF_EXPECT(HandleMessage(ev));
-    return {};
-  };
-  CF_EXPECT(epoll_pool_.Register(event.fd, EPOLLIN, self_cb));
-
-  abandon_client.Cancel();
-  return {};
+  return response;
 }
 
 static fruit::Component<CvdServer> ServerComponent() {
@@ -271,21 +272,10 @@ static fruit::Component<CvdServer> ServerComponent() {
       .install(EpollLoopComponent);
 }
 
-static Result<int> CvdServerMain(int argc, char** argv) {
-  android::base::InitLogging(argv, android::base::StderrLogger);
-
+Result<int> CvdServerMain(SharedFD server_fd) {
   LOG(INFO) << "Starting server";
 
   signal(SIGPIPE, SIG_IGN);
-
-  std::vector<Flag> flags;
-  SharedFD server_fd;
-  flags.emplace_back(
-      SharedFDFlag("server_fd", server_fd)
-          .Help("File descriptor to an already created vsock server"));
-  std::vector<std::string> args =
-      ArgsToVec(argc - 1, argv + 1);  // Skip argv[0]
-  CF_EXPECT(ParseFlags(flags, args));
 
   CF_EXPECT(server_fd->IsOpen(), "Did not receive a valid cvd_server fd");
 
@@ -298,9 +288,3 @@ static Result<int> CvdServerMain(int argc, char** argv) {
 }
 
 }  // namespace cuttlefish
-
-int main(int argc, char** argv) {
-  auto res = cuttlefish::CvdServerMain(argc, argv);
-  CHECK(res.ok()) << "cvd server failed: " << res.error().message();
-  return *res;
-}
