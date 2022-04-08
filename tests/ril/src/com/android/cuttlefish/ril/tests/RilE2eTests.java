@@ -15,25 +15,22 @@
  */
 package com.android.cuttlefish.ril.tests;
 
-import static org.hamcrest.Matchers.greaterThan;
-
 import android.content.Context;
 import android.net.ConnectivityManager;
 import android.net.Network;
 import android.net.NetworkInfo;
+import android.net.wifi.SupplicantState;
+import android.net.wifi.WifiConfiguration;
+import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
-import android.os.Build;
+import android.support.test.InstrumentationRegistry;
 import android.telephony.CellInfoGsm;
 import android.telephony.CellSignalStrengthGsm;
 import android.telephony.TelephonyManager;
 import android.util.Log;
 
-import androidx.test.InstrumentationRegistry;
-
-import com.android.compatibility.common.util.PropertyUtil;
-
+import static org.hamcrest.Matchers.greaterThan;
 import org.junit.Assert;
-import org.junit.Assume;
 import org.junit.Before;
 import org.junit.Ignore;
 import org.junit.Test;
@@ -41,6 +38,7 @@ import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
 import java.net.Socket;
+import java.util.List;
 
 /**
  * Tests used to validate E2E RIL functionality.
@@ -56,13 +54,6 @@ public class RilE2eTests {
 
     @Before
     public void setUp() throws Exception {
-        // Ideally this should be done in the @BeforeClass hook, but that would
-        // make tradefed unhappy with a bunch "test did not run due to
-        // instrumentation issue. See run level error for reason." errors.
-        Assume.assumeFalse(
-                "Skip testing deprecated radio HAL from Q or earlier vendor",
-                PropertyUtil.getFirstApiLevel() <= Build.VERSION_CODES.Q);
-
         mContext = InstrumentationRegistry.getInstrumentation().getContext();
         mWifiManager = (WifiManager)mContext.getSystemService(Context.WIFI_SERVICE);
         mConnManager = (ConnectivityManager)mContext.getSystemService(Context.CONNECTIVITY_SERVICE);

@@ -26,7 +26,7 @@
 
 #include "android-base/logging.h"
 
-namespace cuttlefish {
+namespace cvd {
 namespace {
 uint32_t kRequestSequenceNumber = 0;
 }  // namespace
@@ -126,4 +126,4 @@ size_t NetlinkRequest::RequestLength() const {
   return request_.size();
 }
 
-}  // namespace cuttlefish
+}  // namespace cvd

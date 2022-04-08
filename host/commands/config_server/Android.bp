@@ -13,11 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package {
-    default_applicable_licenses: ["Android-Apache-2.0"],
-}
-
-cc_binary {
+cc_binary_host {
     name: "config_server",
     srcs: [
         "main.cpp",
@@ -25,16 +21,14 @@ cc_binary {
     shared_libs: [
         "libbase",
         "libcuttlefish_fs",
-        "libjsoncpp",
         "liblog",
         "libcuttlefish_utils",
         "libcuttlefish_device_config",
-        "libcuttlefish_device_config_proto",
-        "libprotobuf-cpp-full"
     ],
     static_libs: [
         "libcuttlefish_host_config",
         "libgflags",
+        "libjsoncpp",
     ],
-    defaults: ["cuttlefish_host"],
+    defaults: ["cuttlefish_host_only"],
 }

@@ -21,7 +21,7 @@
 #include "virtual_power_button.h"
 #include "virtual_touchscreen.h"
 
-namespace cuttlefish {
+namespace vsoc {
 namespace input_events {
 
 struct InputEvent {
@@ -31,9 +31,9 @@ struct InputEvent {
 };
 
 } // namespace input_events
-} // namespace cuttlefish
+} // namespace vsoc
 
-namespace cuttlefish_input_service {
+namespace vsoc_input_service {
 
 class VSoCInputService {
  public:
@@ -46,4 +46,4 @@ class VSoCInputService {
   std::shared_ptr<VirtualTouchScreen> virtual_touchscreen_;
 };
 
-}  // namespace cuttlefish_input_service
+}  // namespace vsoc_input_service

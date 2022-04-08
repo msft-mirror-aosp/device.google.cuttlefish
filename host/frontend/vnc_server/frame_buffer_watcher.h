@@ -22,27 +22,22 @@
 #include <utility>
 #include <vector>
 
-#include "common/libs/concurrency/thread_annotations.h"
+#include "common/libs/threads/thread_annotations.h"
 #include "host/frontend/vnc_server/blackboard.h"
 #include "host/frontend/vnc_server/jpeg_compressor.h"
 #include "host/frontend/vnc_server/simulated_hw_composer.h"
-#include "host/libs/screen_connector/screen_connector.h"
 
-namespace cuttlefish {
+namespace cvd {
 namespace vnc {
 class FrameBufferWatcher {
  public:
-  explicit FrameBufferWatcher(BlackBoard* bb,
-                              ScreenConnector& screen_connector);
+  explicit FrameBufferWatcher(BlackBoard* bb);
   FrameBufferWatcher(const FrameBufferWatcher&) = delete;
   FrameBufferWatcher& operator=(const FrameBufferWatcher&) = delete;
   ~FrameBufferWatcher();
 
   StripePtrVec StripesNewerThan(ScreenOrientation orientation,
                                 const SeqNumberVec& seq_num) const;
-  void IncClientCount();
-  void DecClientCount();
-
   static int StripesPerFrame();
 
  private:
@@ -74,8 +69,8 @@ class FrameBufferWatcher {
   mutable std::mutex m_;
   bool closed_ GUARDED_BY(m_){};
   BlackBoard* bb_{};
-  SimulatedHWComposer hwcomposer;
+  SimulatedHWComposer hwcomposer{bb_};
 };
 
 }  // namespace vnc
-}  // namespace cuttlefish
+}  // namespace cvd

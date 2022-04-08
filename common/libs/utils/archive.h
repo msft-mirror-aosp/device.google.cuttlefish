@@ -18,7 +18,7 @@
 #include <string>
 #include <vector>
 
-namespace cuttlefish {
+namespace cvd {
 
 // Operations on archive files
 class Archive {
@@ -34,4 +34,4 @@ public:
   std::string ExtractToMemory(const std::string& path);
 };
 
-} // namespace cuttlefish
+} // namespace cvd

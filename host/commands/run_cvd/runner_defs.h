@@ -15,7 +15,10 @@
  */
 #pragma once
 
-namespace cuttlefish {
+namespace cvd {
+
+constexpr char kLogcatSerialMode[] = "serial";
+constexpr char kLogcatVsockMode[] = "vsock";
 
 enum RunnerExitCodes : int {
   kSuccess = 0,
@@ -42,15 +45,10 @@ enum RunnerExitCodes : int {
   kTombstoneDirCreationError = 21,
   kInitRamFsConcatError = 22,
   kTapDeviceInUse = 23,
-  kTpmPassthroughError = 24,
-  kModemSimulatorServerError = 25,
-  kSocketProxyServerError = 26,
 };
 
 // Actions supported by the launcher server
 enum class LauncherAction : char {
-  kPowerwash = 'P',
-  kRestart = 'R',
   kStatus = 'I',
   kStop = 'X',
 };
@@ -61,4 +59,4 @@ enum class LauncherResponse : char {
   kError = 'E',
   kUnknownAction = 'U',
 };
-}  // namespace cuttlefish
+}  // namespace cvd

@@ -13,37 +13,26 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package {
-    default_applicable_licenses: ["Android-Apache-2.0"],
-}
-
-cc_binary {
+cc_binary_host {
     name: "run_cvd",
     srcs: [
-        "boot_state_machine.cc",
+        "kernel_args.cc",
         "launch.cc",
-        "launch_adb.cpp",
-        "launch_modem.cpp",
-        "launch_streamer.cpp",
         "main.cc",
         "process_monitor.cc",
-        "server_loop.cpp",
     ],
     shared_libs: [
         "libcuttlefish_fs",
         "libcuttlefish_utils",
-        "libcuttlefish_kernel_log_monitor_utils",
         "libbase",
-        "libjsoncpp",
-        "libnl",
+        "libnl"
     ],
     static_libs: [
         "libcuttlefish_host_config",
         "libcuttlefish_vm_manager",
         "libgflags",
+        "libxml2",
+        "libjsoncpp",
     ],
-    defaults: [
-        "cuttlefish_host",
-        "cuttlefish_libicuuc",
-    ],
+    defaults: ["cuttlefish_host_only", "cuttlefish_libicuuc"],
 }

@@ -15,15 +15,12 @@
  */
 
 #include "common/libs/utils/environment.h"
-#include "common/libs/utils/files.h"
 
 #include <stdlib.h>
 #include <stdio.h>
 #include <iostream>
 
-#include <android-base/logging.h>
-
-namespace cuttlefish {
+namespace cvd {
 
 std::string StringFromEnv(const std::string& varname,
                           const std::string& defval) {
@@ -41,7 +38,7 @@ std::string StringFromEnv(const std::string& varname,
  *
  * @return arch string on success, "" on failure
  */
-std::string HostArchStr() {
+std::string HostArch() {
   static std::string arch;
   static bool cached = false;
 
@@ -51,7 +48,7 @@ std::string HostArchStr() {
   cached = true;
 
   // good to check if uname exists and is executable
-  // or, guarantee uname is available by dependency list
+  // or, guarantee uname is availabe by dependency list
   FILE* pip = popen("uname -m", "r");
   if (!pip) {
     return std::string{};
@@ -85,40 +82,4 @@ std::string HostArchStr() {
   return arch;
 }
 
-Arch HostArch() {
-  std::string arch_str = HostArchStr();
-  if (arch_str == "aarch64") {
-    return Arch::Arm64;
-  } else if (arch_str == "arm") {
-    return Arch::Arm;
-  } else if (arch_str == "x86_64") {
-    return Arch::X86_64;
-  } else if (arch_str.size() == 4 && arch_str[0] == 'i' && arch_str[2] == '8' &&
-             arch_str[3] == '6') {
-    return Arch::X86;
-  } else {
-    LOG(FATAL) << "Unknown host architecture: " << arch_str;
-    return Arch::X86;
-  }
-}
-
-bool IsHostCompatible(Arch arch) {
-  Arch host_arch = HostArch();
-  return arch == host_arch || (arch == Arch::Arm && host_arch == Arch::Arm64) ||
-         (arch == Arch::X86 && host_arch == Arch::X86_64);
-}
-
-static bool IsRunningInDocker() {
-  // if /.dockerenv exists, it's inside a docker container
-  static std::string docker_env_path("/.dockerenv");
-  static bool ret =
-      FileExists(docker_env_path) || DirectoryExists(docker_env_path);
-  return ret;
-}
-
-bool IsRunningInContainer() {
-  // TODO: add more if we support other containers than docker
-  return IsRunningInDocker();
-}
-
-}  // namespace cuttlefish
+}  // namespace cvd

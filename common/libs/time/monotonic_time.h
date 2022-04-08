@@ -18,7 +18,7 @@
 #include <stdint.h>
 #include <time.h>
 
-namespace cuttlefish {
+namespace cvd {
 namespace time {
 
 static const int64_t kNanosecondsPerSecond = 1000000000;
@@ -226,6 +226,17 @@ class MonotonicTimePoint {
   struct timespec ts_;
 };
 
+class MonotonicTimePointFactory {
+ public:
+  static MonotonicTimePointFactory* GetInstance();
+
+  virtual ~MonotonicTimePointFactory() { }
+
+  virtual void FetchCurrentTime(MonotonicTimePoint* dest) const {
+    *dest = MonotonicTimePoint::Now();
+  }
+};
+
 class Seconds : public TimeDifference {
  public:
   explicit Seconds(const TimeDifference& difference) :
@@ -268,7 +279,7 @@ class Nanoseconds : public TimeDifference {
 };
 
 }  // namespace time
-}  // namespace cuttlefish
+}  // namespace cvd
 
 /**
  * Legacy support for microseconds. Use MonotonicTimePoint in new code.
@@ -276,6 +287,6 @@ class Nanoseconds : public TimeDifference {
 static const int64_t kSecsToUsecs = static_cast<int64_t>(1000) * 1000;
 
 static inline int64_t get_monotonic_usecs() {
-  return cuttlefish::time::Microseconds(
-      cuttlefish::time::MonotonicTimePoint::Now().SinceEpoch()).count();
+  return cvd::time::Microseconds(
+      cvd::time::MonotonicTimePoint::Now().SinceEpoch()).count();
 }

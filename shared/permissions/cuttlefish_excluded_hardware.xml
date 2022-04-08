@@ -14,6 +14,7 @@
      limitations under the License.
 -->
 <permissions>
+    <unavailable-feature name="android.hardware.microphone" />
     <unavailable-feature name="android.software.print" />
     <unavailable-feature name="android.software.voice_recognizers" />
 </permissions>

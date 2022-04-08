@@ -22,43 +22,44 @@
 
 #include <common/libs/utils/subprocess.h>
 
-namespace cuttlefish {
+namespace cvd {
 
 struct MonitorEntry;
-using OnSocketReadyCb = std::function<bool(MonitorEntry*, int)>;
+using OnSocketReadyCb = std::function<bool(MonitorEntry*)>;
 
 struct MonitorEntry {
   std::unique_ptr<Command> cmd;
   std::unique_ptr<Subprocess> proc;
+  OnSocketReadyCb on_control_socket_ready_cb;
 };
 
 // Keeps track of launched subprocesses, restarts them if they unexpectedly exit
 class ProcessMonitor {
  public:
-  ProcessMonitor(bool restart_subprocesses);
-  // Adds a command to the list of commands to be run and monitored. The
-  // callback will be called when the subprocess has ended.  If the callback
-  // returns false the subprocess will no longer be monitored. Can only be
-  // called before StartAndMonitorProcesses is called. OnSocketReadyCb will be
-  // called inside a forked process.
-  void AddCommand(Command cmd);
-  template <typename T>
-  void AddCommands(T&& commands) {
-    for (auto& command : commands) {
-      AddCommand(std::move(command));
-    }
-  }
-
-  // Start all processes given by AddCommand.
-  bool StartAndMonitorProcesses();
+  ProcessMonitor();
+  // Starts a managed subprocess with a controlling socket.
+  // The on_control_socket_ready_cb callback will be called when data is ready
+  // to be read from the socket or the subprocess has ended. No member functions
+  // of the process monitor object should be called from the callback as it may
+  // lead to a deadlock. If the callback returns false the subprocess will no
+  // longer be monitored.
+  void StartSubprocess(Command cmd, OnSocketReadyCb on_control_socket_ready_cb);
+  // Monitors an already started subprocess
+  void MonitorExistingSubprocess(Command cmd, Subprocess sub_process,
+                                 OnSocketReadyCb on_control_socket_ready_cb);
   // Stops all monitored subprocesses.
   bool StopMonitoredProcesses();
- private:
-  bool MonitorRoutine();
+  static bool RestartOnExitCb(MonitorEntry* entry);
+  static bool DoNotMonitorCb(MonitorEntry* entry);
 
-  bool restart_subprocesses_;
+ private:
+  void MonitorRoutine();
+
   std::vector<MonitorEntry> monitored_processes_;
-  pid_t monitor_;
-  SharedFD monitor_socket_;
+  // Used for communication with the restarter thread
+  cvd::SharedFD thread_comm_main_, thread_comm_monitor_;
+  std::thread monitor_thread_;
+  // Protects access to the monitored_processes_
+  std::mutex processes_mutex_;
 };
-}  // namespace cuttlefish
+}  // namespace cvd

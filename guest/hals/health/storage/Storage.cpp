@@ -18,20 +18,29 @@
 
 #include <android-base/logging.h>
 
-namespace aidl::android::hardware::health::storage {
+namespace android {
+namespace hardware {
+namespace health {
+namespace storage {
+namespace V1_0 {
+namespace implementation {
 
-ndk::ScopedAStatus
-Storage::garbageCollect(int64_t /*timeout_seconds*/,
-                        const std::shared_ptr<IGarbageCollectCallback> &cb) {
-  LOG(INFO) << "IStorage::garbageCollect() is called. Nothing to do.";
-  if (cb != nullptr) {
-    auto ret = cb->onFinish(Result::SUCCESS);
-    if (!ret.isOk()) {
-      LOG(WARNING) << "Cannot return result to callback: "
-                   << ret.getDescription();
+Return<void> Storage::garbageCollect(uint64_t /*timeoutSeconds*/,
+                                     const sp<IGarbageCollectCallback>& cb) {
+    LOG(INFO) << "IStorage::garbageCollect() is called. Nothing to do.";
+    if (cb != nullptr) {
+        auto ret = cb->onFinish(Result::SUCCESS);
+        if (!ret.isOk()) {
+            LOG(WARNING) << "Cannot return result to callback: " << ret.description();
+        }
     }
-  }
-  return ndk::ScopedAStatus::ok();
+    return Void();
 }
 
-} // namespace aidl::android::hardware::health::storage
+
+}  // namespace implementation
+}  // namespace V1_0
+}  // namespace storage
+}  // namespace health
+}  // namespace hardware
+}  // namespace android

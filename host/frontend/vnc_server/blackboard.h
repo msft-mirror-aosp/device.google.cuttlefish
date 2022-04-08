@@ -22,10 +22,10 @@
 #include <mutex>
 #include <unordered_map>
 
-#include "common/libs/concurrency/thread_annotations.h"
+#include "common/libs/threads/thread_annotations.h"
 #include "host/frontend/vnc_server/vnc_utils.h"
 
-namespace cuttlefish {
+namespace cvd {
 namespace vnc {
 
 class VncClientConnection;
@@ -110,4 +110,4 @@ class BlackBoard {
 };
 
 }  // namespace vnc
-}  // namespace cuttlefish
+}  // namespace cvd

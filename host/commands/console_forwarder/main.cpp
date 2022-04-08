@@ -14,10 +14,7 @@
  * limitations under the License.
  */
 
-#include <termios.h>
-#include <stdlib.h>
 #include <signal.h>
-#include <unistd.h>
 
 #include <deque>
 #include <thread>
@@ -38,11 +35,9 @@ DEFINE_int32(console_out_fd,
              -1,
              "File descriptor for the console's output channel");
 
-namespace cuttlefish {
-
-// Handles forwarding the serial console to a pseudo-terminal (PTY)
-// It receives a couple of fds for the console (could be the same fd twice if,
-// for example a socket_pair were used).
+// Handles forwarding the serial console to a socket.
+// It receives the socket fd along with a couple of fds for the console (could
+// be the same fd twice if, for example a socket_pair were used).
 // Data available in the console's output needs to be read immediately to avoid
 // the having the VMM blocked on writes to the pipe. To achieve this one thread
 // takes care of (and only of) all read calls (from console output and from the
@@ -51,73 +46,35 @@ namespace cuttlefish {
 // protected by a mutex.
 class ConsoleForwarder {
  public:
-  ConsoleForwarder(std::string console_path, SharedFD console_in,
-                   SharedFD console_out, SharedFD console_log)
-      : console_path_(console_path),
-        console_in_(console_in),
-        console_out_(console_out),
-        console_log_(console_log) {}
+  ConsoleForwarder(cvd::SharedFD socket,
+                   cvd::SharedFD console_in,
+                   cvd::SharedFD console_out) : socket_(socket),
+                                                console_in_(console_in),
+                                                console_out_(console_out) {}
   [[noreturn]] void StartServer() {
-    // Create a new thread to handle writes to the console
+    // Create a new thread to handle writes to the console and to the any client
+    // connected to the socket.
     writer_thread_ = std::thread([this]() { WriteLoop(); });
     // Use the calling thread (likely the process' main thread) to handle
     // reading the console's output and input from the client.
     ReadLoop();
   }
  private:
-  SharedFD OpenPTY() {
-    // Remove any stale symlink to a pts device
-    auto ret = unlink(console_path_.c_str());
-    CHECK(!(ret < 0 && errno != ENOENT))
-        << "Failed to unlink " << console_path_ << ": " << strerror(errno);
-
-    auto pty = posix_openpt(O_RDWR | O_NOCTTY | O_NONBLOCK);
-    CHECK(pty >= 0) << "Failed to open a PTY: " << strerror(errno);
-
-    grantpt(pty);
-    unlockpt(pty);
-
-    // Disable all echo modes on the PTY
-    struct termios termios;
-    CHECK(tcgetattr(pty, &termios) >= 0)
-        << "Failed to get terminal control: " << strerror(errno);
-
-    termios.c_lflag &= ~(ECHO | ECHOE | ECHOK | ECHONL);
-    termios.c_oflag &= ~(ONLCR);
-    CHECK(tcsetattr(pty, TCSANOW, &termios) >= 0)
-        << "Failed to set terminal control: " << strerror(errno);
-
-    auto pty_dev_name = ptsname(pty);
-    CHECK(pty_dev_name != nullptr)
-        << "Failed to obtain PTY device name: " << strerror(errno);
-
-    CHECK(symlink(pty_dev_name, console_path_.c_str()) >= 0)
-        << "Failed to create symlink to " << pty_dev_name << " at "
-        << console_path_ << ": " << strerror(errno);
-
-    auto pty_shared_fd = SharedFD::Dup(pty);
-    close(pty);
-    CHECK(pty_shared_fd->IsOpen())
-        << "Error dupping fd " << pty << ": " << pty_shared_fd->StrError();
-
-    return pty_shared_fd;
-  }
-
-  void EnqueueWrite(std::shared_ptr<std::vector<char>> buf_ptr, SharedFD fd) {
+  void EnqueueWrite(std::vector<char> buffer, cvd::SharedFD fd) {
     std::lock_guard<std::mutex> lock(write_queue_mutex_);
-    write_queue_.emplace_back(fd, buf_ptr);
+    write_queue_.emplace_back(fd, std::move(buffer));
     condvar_.notify_one();
   }
 
   [[noreturn]] void WriteLoop() {
     while (true) {
       while (!write_queue_.empty()) {
-        std::shared_ptr<std::vector<char>> buf_ptr;
-        SharedFD fd;
+        std::vector<char> buffer;
+        cvd::SharedFD fd;
         {
           std::lock_guard<std::mutex> lock(write_queue_mutex_);
           auto& front = write_queue_.front();
-          buf_ptr = front.second;
+          buffer = std::move(front.second);
           fd = front.first;
           write_queue_.pop_front();
         }
@@ -125,16 +82,12 @@ class ConsoleForwarder {
         // mutex lock should NOT be held while writing to avoid blocking the
         // other thread.
         ssize_t bytes_written = 0;
-        ssize_t bytes_to_write = buf_ptr->size();
+        ssize_t bytes_to_write = buffer.size();
         while (bytes_to_write > 0) {
           bytes_written =
-              fd->Write(buf_ptr->data() + bytes_written, bytes_to_write);
+              fd->Write(buffer.data() + bytes_written, bytes_to_write);
           if (bytes_written < 0) {
-            // It is expected for writes to the PTY to fail if nothing is connected
-            if(fd->GetErrno() != EAGAIN) {
-              LOG(ERROR) << "Error writing to fd: " << fd->StrError();
-            }
-
+            LOG(ERROR) << "Error writing to fd: " << fd->StrError();
             // Don't try to write from this buffer anymore, error handling will
             // be done on the reading thread (failed client will be
             // disconnected, on serial console failure this process will abort).
@@ -154,95 +107,116 @@ class ConsoleForwarder {
   }
 
   [[noreturn]] void ReadLoop() {
-    SharedFD client_fd;
+    cvd::SharedFD client_fd;
     while (true) {
-      if (!client_fd->IsOpen()) {
-        client_fd = OpenPTY();
+      cvd::SharedFDSet read_set;
+      if (client_fd->IsOpen()) {
+        read_set.Set(client_fd);
+      } else {
+        read_set.Set(socket_);
       }
-
-      SharedFDSet read_set;
       read_set.Set(console_out_);
-      read_set.Set(client_fd);
-
-      Select(&read_set, nullptr, nullptr, nullptr);
+      cvd::Select(&read_set, nullptr, nullptr, nullptr);
       if (read_set.IsSet(console_out_)) {
-        std::shared_ptr<std::vector<char>> buf_ptr = std::make_shared<std::vector<char>>(4096);
-        auto bytes_read = console_out_->Read(buf_ptr->data(), buf_ptr->size());
-        // This is likely unrecoverable, so exit here
-        CHECK(bytes_read > 0) << "Error reading from console output: "
-                              << console_out_->StrError();
-        buf_ptr->resize(bytes_read);
-        EnqueueWrite(buf_ptr, console_log_);
+        std::vector<char> buffer(4096);
+        auto bytes_read = console_out_->Read(buffer.data(), buffer.size());
+        if (bytes_read <= 0) {
+          LOG(ERROR) << "Error reading from console output: "
+                     << console_out_->StrError();
+          // This is likely unrecoverable, so exit here
+          std::exit(-4);
+        }
+        buffer.resize(bytes_read);
         if (client_fd->IsOpen()) {
-          EnqueueWrite(buf_ptr, client_fd);
+          EnqueueWrite(std::move(buffer), client_fd);
+        }
+      }
+      if (read_set.IsSet(socket_)) {
+        // socket_ will only be included in the select call (and therefore only
+        // present in the read set) if there is no client connected, so this
+        // assignment is safe.
+        client_fd = cvd::SharedFD::Accept(*socket_);
+        if (!client_fd->IsOpen()) {
+          LOG(ERROR) << "Error accepting connection on socket: "
+                     << client_fd->StrError();
         }
       }
       if (read_set.IsSet(client_fd)) {
-        std::shared_ptr<std::vector<char>> buf_ptr = std::make_shared<std::vector<char>>(4096);
-        auto bytes_read = client_fd->Read(buf_ptr->data(), buf_ptr->size());
+        std::vector<char> buffer(4096);
+        auto bytes_read = client_fd->Read(buffer.data(), buffer.size());
         if (bytes_read <= 0) {
-          // If this happens, it's usually because the PTY controller went away
-          // e.g. the user closed minicom, or killed screen, or closed kgdb. In
-          // such a case, we will just re-create the PTY
           LOG(ERROR) << "Error reading from client fd: "
                      << client_fd->StrError();
-          client_fd->Close();
+          client_fd->Close(); // ignore errors here
         } else {
-          buf_ptr->resize(bytes_read);
-          EnqueueWrite(buf_ptr, console_in_);
+          buffer.resize(bytes_read);
+          EnqueueWrite(std::move(buffer), console_in_);
         }
       }
     }
   }
 
-  std::string console_path_;
-  SharedFD console_in_;
-  SharedFD console_out_;
-  SharedFD console_log_;
+  cvd::SharedFD socket_;
+  cvd::SharedFD console_in_;
+  cvd::SharedFD console_out_;
   std::thread writer_thread_;
   std::mutex write_queue_mutex_;
   std::condition_variable condvar_;
-  std::deque<std::pair<SharedFD, std::shared_ptr<std::vector<char>>>>
-      write_queue_;
+  std::deque<std::pair<cvd::SharedFD, std::vector<char>>> write_queue_;
 };
 
-int ConsoleForwarderMain(int argc, char** argv) {
-  DefaultSubprocessLogging(argv);
+int main(int argc, char** argv) {
+  cvd::DefaultSubprocessLogging(argv);
   ::gflags::ParseCommandLineFlags(&argc, &argv, true);
 
-  CHECK(!(FLAGS_console_in_fd < 0 || FLAGS_console_out_fd < 0))
-      << "Invalid file descriptors: " << FLAGS_console_in_fd << ", "
-      << FLAGS_console_out_fd;
+  if (FLAGS_console_in_fd < 0 || FLAGS_console_out_fd < 0) {
+    LOG(ERROR) << "Invalid file descriptors: " << FLAGS_console_in_fd << ", "
+               << FLAGS_console_out_fd;
+    return -1;
+  }
 
-  auto console_in = SharedFD::Dup(FLAGS_console_in_fd);
-  CHECK(console_in->IsOpen()) << "Error dupping fd " << FLAGS_console_in_fd
-                              << ": " << console_in->StrError();
+  auto console_in = cvd::SharedFD::Dup(FLAGS_console_in_fd);
+  close(FLAGS_console_in_fd);
+  if (!console_in->IsOpen()) {
+    LOG(ERROR) << "Error dupping fd " << FLAGS_console_in_fd << ": "
+               << console_in->StrError();
+    return -2;
+  }
   close(FLAGS_console_in_fd);
 
-  auto console_out = SharedFD::Dup(FLAGS_console_out_fd);
-  CHECK(console_out->IsOpen()) << "Error dupping fd " << FLAGS_console_out_fd
-                               << ": " << console_out->StrError();
+  auto console_out = cvd::SharedFD::Dup(FLAGS_console_out_fd);
   close(FLAGS_console_out_fd);
+  if (!console_out->IsOpen()) {
+    LOG(ERROR) << "Error dupping fd " << FLAGS_console_out_fd << ": "
+               << console_out->StrError();
+    return -2;
+  }
 
-  auto config = CuttlefishConfig::Get();
-  CHECK(config) << "Unable to get config object";
+  auto config = vsoc::CuttlefishConfig::Get();
+  if (!config) {
+    LOG(ERROR) << "Unable to get config object";
+    return -3;
+  }
 
   auto instance = config->ForDefaultInstance();
-  auto console_path = instance.console_path();
-  auto console_log = instance.PerInstancePath("console_log");
-  auto console_log_fd =
-      SharedFD::Open(console_log.c_str(), O_CREAT | O_APPEND | O_WRONLY, 0666);
-  ConsoleForwarder console_forwarder(console_path, console_in, console_out, console_log_fd);
+  auto console_socket_name = instance.console_path();
+  auto socket = cvd::SharedFD::SocketLocalServer(console_socket_name.c_str(),
+                                                 false,
+                                                 SOCK_STREAM,
+                                                 0600);
+  if (!socket->IsOpen()) {
+    LOG(ERROR) << "Failed to create console socket at " << console_socket_name
+               << ": " << socket->StrError();
+    return -5;
+  }
+
+  ConsoleForwarder console_forwarder(socket, console_in, console_out);
 
   // Don't get a SIGPIPE from the clients
-  CHECK(sigaction(SIGPIPE, nullptr, nullptr) == 0)
-      << "Failed to set SIGPIPE to be ignored: " << strerror(errno);
+  if (sigaction(SIGPIPE, nullptr, nullptr) != 0) {
+    LOG(FATAL) << "Failed to set SIGPIPE to be ignored: " << strerror(errno);
+    return -6;
+  }
 
   console_forwarder.StartServer();
-}
-
-}  // namespace cuttlefish
-
-int main(int argc, char** argv) {
-  return cuttlefish::ConsoleForwarderMain(argc, argv);
 }

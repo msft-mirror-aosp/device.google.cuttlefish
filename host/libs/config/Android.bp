@@ -13,22 +13,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package {
-    default_applicable_licenses: ["Android-Apache-2.0"],
-}
-
-cc_library_static {
+cc_library_host_static {
     name: "libcuttlefish_host_config",
     srcs: [
-        "bootconfig_args.cpp",
-        "custom_actions.cpp",
         "cuttlefish_config.cpp",
-        "cuttlefish_config_instance.cpp",
-        "data_image.cpp",
         "fetcher_config.cpp",
-        "host_tools_version.cpp",
-        "kernel_args.cpp",
-        "known_paths.cpp",
         "logging.cpp",
     ],
     shared_libs: [
@@ -36,8 +25,10 @@ cc_library_static {
         "libcuttlefish_utils",
         "libbase",
         "libgflags",
-        "libjsoncpp",
-        "libz",
     ],
-    defaults: ["cuttlefish_host"],
+    static_libs: [
+        "libxml2",
+        "libjsoncpp",
+    ],
+    defaults: ["cuttlefish_host_only"],
 }

@@ -21,7 +21,7 @@
 
 int main(int argc, char* argv[]) {
   gflags::ParseCommandLineFlags(&argc, &argv, true);
-  cuttlefish_input_service::VSoCInputService service;
+  vsoc_input_service::VSoCInputService service;
   if (!service.SetUpDevices()) {
     return -1;
   }

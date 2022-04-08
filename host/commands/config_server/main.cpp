@@ -27,26 +27,26 @@ DEFINE_int32(
     "File descriptor to an already created vsock server. Must be specified.");
 
 int main(int argc, char** argv) {
-  cuttlefish::DefaultSubprocessLogging(argv);
+  cvd::DefaultSubprocessLogging(argv);
   google::ParseCommandLineFlags(&argc, &argv, true);
 
-  auto device_config_helper = cuttlefish::DeviceConfigHelper::Get();
+  auto device_config = cvd::DeviceConfig::Get();
 
-  CHECK(device_config_helper) << "Could not open device config";
+  CHECK(device_config) << "Could not open device config";
 
-  cuttlefish::SharedFD server_fd = cuttlefish::SharedFD::Dup(FLAGS_server_fd);
+  cvd::SharedFD server_fd = cvd::SharedFD::Dup(FLAGS_server_fd);
 
   CHECK(server_fd->IsOpen()) << "Inheriting logcat server: "
                              << server_fd->StrError();
 
   // Server loop
   while (true) {
-    auto conn = cuttlefish::SharedFD::Accept(*server_fd);
-    LOG(DEBUG) << "Connection received on configuration server";
+    auto conn = cvd::SharedFD::Accept(*server_fd);
+    LOG(INFO) << "Connection received on configuration server";
 
-    bool succeeded = device_config_helper->SendDeviceConfig(conn);
+    bool succeeded = device_config->SendRawData(conn);
     if (succeeded) {
-      LOG(DEBUG) << "Successfully sent device configuration";
+      LOG(INFO) << "Successfully sent device configuration";
     } else {
       LOG(ERROR) << "Failed to send the device configuration: "
                  << conn->StrError();

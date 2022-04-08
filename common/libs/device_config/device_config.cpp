@@ -21,16 +21,41 @@
 
 #include <android-base/logging.h>
 
-#include "common/libs/fs/shared_fd_stream.h"
+namespace cvd {
 
-namespace cuttlefish {
+// TODO(jemoreira): Endianness when on arm64 guest and x86 host is a problem
+// Raw data is sent through a vsocket from host to guest, this assert tries to
+// ensure the binary representation of the struct is the same in both sides.
+static constexpr int kRawDataSize = 68 + 16;  // ril + screen
+static_assert(sizeof(DeviceConfig::RawData) == kRawDataSize &&
+                  std::is_trivial<DeviceConfig::RawData>().value,
+              "DeviceConfigRawData needs to be the same in host and guess, did "
+              "you forget to update the size?");
 
-bool DeviceConfigHelper::SendDeviceConfig(SharedFD fd) {
-  SharedFDOstream stream(fd);
-  return device_config_.SerializeToOstream(&stream);
+namespace {
+
+static constexpr auto kDataSize = sizeof(DeviceConfig::RawData);
+
+}  // namespace
+
+bool DeviceConfig::SendRawData(cvd::SharedFD fd) {
+  std::size_t sent = 0;
+  auto buffer = reinterpret_cast<uint8_t*>(&data_);
+  while (sent < kDataSize) {
+    auto bytes = fd->Write(buffer + sent, kDataSize - sent);
+    if (bytes < 0) {
+      // Don't log here, let the caller do it.
+      return false;
+    }
+    sent += bytes;
+  }
+  return true;
 }
 
-DeviceConfigHelper::DeviceConfigHelper(const DeviceConfig& device_config)
-  : device_config_(device_config) {}
+void DeviceConfig::generate_address_and_prefix() {
+  std::ostringstream ss;
+  ss << ril_ipaddr() << "/" << ril_prefixlen();
+  ril_address_and_prefix_ = ss.str();
+}
 
-}  // namespace cuttlefish
+}  // namespace cvd

@@ -23,25 +23,21 @@
 #include "common/libs/fs/shared_fd.h"
 #include "common/libs/utils/subprocess.h"
 
-namespace cuttlefish {
 namespace vm_manager {
 
 // Starts a guest VM with crosvm. It requires the host package to support the
 // qemu-cli capability (for network only).
 class CrosvmManager : public VmManager {
  public:
-  static std::string name() { return "crosvm"; }
-  CrosvmManager(Arch arch) : VmManager(arch) {}
+  static const std::string name();
+  static bool EnsureInstanceDirExists(const std::string& instance_dir);
+  static std::vector<std::string> ConfigureGpu(const std::string& gpu_mode);
+  static std::vector<std::string> ConfigureBootDevices();
+
+  CrosvmManager(const vsoc::CuttlefishConfig* config);
   virtual ~CrosvmManager() = default;
 
-  bool IsSupported() override;
-  std::vector<std::string> ConfigureGpuMode(const std::string&) override;
-  std::string ConfigureBootDevices(int num_disks) override;
-
-  std::vector<cuttlefish::Command> StartCommands(
-      const CuttlefishConfig& config) override;
+  std::vector<cvd::Command> StartCommands() override;
 };
 
-} // namespace vm_manager
-} // namespace cuttlefish
-
+}  // namespace vm_manager

@@ -19,11 +19,13 @@
 #include <unistd.h>
 #include <fcntl.h>
 
+#include <future>
+
 #include <android-base/logging.h>
 
 #include "host/libs/wayland/wayland_server.h"
 
-namespace cuttlefish {
+namespace cvd {
 
 WaylandScreenConnector::WaylandScreenConnector(int frames_fd) {
   int wayland_fd = fcntl(frames_fd, F_DUPFD_CLOEXEC, 3);
@@ -33,10 +35,14 @@ WaylandScreenConnector::WaylandScreenConnector(int frames_fd) {
   server_.reset(new wayland::WaylandServer(wayland_fd));
 }
 
-bool WaylandScreenConnector::OnNextFrame(
-    const GenerateProcessedFrameCallbackImpl& frame_callback) {
-  server_->OnNextFrame(frame_callback);
+bool WaylandScreenConnector::OnFrameAfter(
+    std::uint32_t frame_number, const FrameCallback& frame_callback) {
+  std::future<void> frame_callback_completed_future =
+      server_->OnFrameAfter(frame_number, frame_callback);
+
+  frame_callback_completed_future.get();
+
   return true;
 }
 
-}  // namespace cuttlefish
+}  // namespace cvd

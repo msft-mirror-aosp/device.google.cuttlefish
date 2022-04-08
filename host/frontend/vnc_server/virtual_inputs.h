@@ -16,20 +16,17 @@
  * limitations under the License.
  */
 
-#include <map>
-#include <memory>
-#include <mutex>
-
-#include "host/libs/confui/host_virtual_input.h"
 #include "vnc_utils.h"
 
-namespace cuttlefish {
+#include <map>
+#include <mutex>
+
+namespace cvd {
 namespace vnc {
 
 class VirtualInputs {
  public:
-  static std::shared_ptr<VirtualInputs> Get(
-      cuttlefish::confui::HostVirtualInput& confui_input);
+  static VirtualInputs* Get();
 
   virtual ~VirtualInputs() = default;
 
@@ -44,4 +41,4 @@ class VirtualInputs {
 };
 
 }  // namespace vnc
-}  // namespace cuttlefish
+}  // namespace cvd

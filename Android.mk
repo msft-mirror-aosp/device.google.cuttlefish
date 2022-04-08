@@ -20,9 +20,5 @@ include $(LOCAL_PATH)/fetcher.mk
 include $(CLEAR_VARS)
 include $(LOCAL_PATH)/host_package.mk
 
+include $(call first-makefiles-under,$(LOCAL_PATH))
 endif
-
-LOCAL_PATH:= $(call my-dir)
-
-include $(CLEAR_VARS)
-include $(call all-makefiles-under,$(LOCAL_PATH))

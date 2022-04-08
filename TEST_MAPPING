@@ -2,9 +2,6 @@
   "postsubmit" : [
     {
       "name": "tombstone_transmit_tests"
-    },
-    {
-      "name": "RebootRecoveryTest"
     }
   ],
   "presubmit": [
@@ -16,9 +13,6 @@
     },
     {
       "name": "hal_implementation_test"
-    },
-    {
-      "name": "vts_ibase_test"
     }
   ]
 }

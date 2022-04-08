@@ -15,14 +15,9 @@
 #
 
 $(call inherit-product, device/google/cuttlefish/shared/tv/device.mk)
-$(call inherit-product, device/google/cuttlefish/vsoc_x86_64/kernel.mk)
-$(call inherit-product, device/google/cuttlefish/vsoc_x86_64/bootloader.mk)
+$(call inherit-product, device/google/cuttlefish/vsoc_x86/device.mk)
 
 PRODUCT_NAME := aosp_cf_x86_tv
 PRODUCT_DEVICE := vsoc_x86
-PRODUCT_MANUFACTURER := Google
 PRODUCT_MODEL := Cuttlefish x86 tv
-
-PRODUCT_VENDOR_PROPERTIES += \
-    ro.soc.manufacturer=$(PRODUCT_MANUFACTURER) \
-    ro.soc.model=$(PRODUCT_DEVICE)
+# PRODUCT_PACKAGE_OVERLAYS := device/google/cuttlefish/vsoc_x86/tv/overlay

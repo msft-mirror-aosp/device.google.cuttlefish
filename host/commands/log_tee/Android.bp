@@ -13,11 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package {
-    default_applicable_licenses: ["Android-Apache-2.0"],
-}
-
-cc_binary {
+cc_binary_host {
     name: "log_tee",
     srcs: [
         "log_tee.cpp",
@@ -26,13 +22,14 @@ cc_binary {
         "libcuttlefish_fs",
         "libcuttlefish_utils",
         "libbase",
-        "libjsoncpp",
         "libnl",
     ],
     static_libs: [
         "libgflags",
         "libcuttlefish_host_config",
         "libcuttlefish_vm_manager",
+        "libxml2",
+        "libjsoncpp",
     ],
-    defaults: ["cuttlefish_host", "cuttlefish_libicuuc"],
+    defaults: ["cuttlefish_host_only", "cuttlefish_libicuuc"],
 }

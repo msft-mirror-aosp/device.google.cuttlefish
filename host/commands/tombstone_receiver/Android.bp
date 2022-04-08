@@ -13,11 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package {
-    default_applicable_licenses: ["Android-Apache-2.0"],
-}
-
-cc_binary {
+cc_binary_host {
     name: "tombstone_receiver",
     srcs: [
         "main.cpp",
@@ -25,13 +21,13 @@ cc_binary {
     shared_libs: [
         "libbase",
         "libcuttlefish_fs",
-        "libjsoncpp",
         "liblog",
         "libcuttlefish_utils",
     ],
     static_libs: [
         "libcuttlefish_host_config",
+        "libjsoncpp",
         "libgflags",
     ],
-    defaults: ["cuttlefish_host"],
+    defaults: ["cuttlefish_host_only"],
 }

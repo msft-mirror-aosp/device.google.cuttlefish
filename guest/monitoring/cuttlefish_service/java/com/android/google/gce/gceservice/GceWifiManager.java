@@ -41,18 +41,18 @@ public class GceWifiManager extends JobBase {
     private final Context mContext;
     private final WifiManager mWifiManager;
     private final ConnectivityManager mConnManager;
-    private final EventReporter mEventReporter;
+    private final BootReporter mBootReporter;
 
     private final MonitorWifiJob mMonitorWifiJob;
 
 
-    public GceWifiManager(Context context, EventReporter eventReporter, JobExecutor executor) {
+    public GceWifiManager(Context context, BootReporter bootReporter, JobExecutor executor) {
         super(LOG_TAG);
 
         mContext = context;
         mWifiManager = (WifiManager)context.getSystemService(Context.WIFI_SERVICE);
         mConnManager = (ConnectivityManager)context.getSystemService(Context.CONNECTIVITY_SERVICE);
-        mEventReporter = eventReporter;
+        mBootReporter = bootReporter;
         mJobExecutor = executor;
         mMonitorWifiJob = new MonitorWifiJob();
     }
@@ -108,7 +108,7 @@ public class GceWifiManager extends JobBase {
                 }
                 return WIFI_RECONNECTION_TIMEOUT_S;
             } else {
-                mEventReporter.reportMessage(WIFI_CONNECTED_MESSAGE);
+                mBootReporter.reportMessage(WIFI_CONNECTED_MESSAGE);
                 Log.i(LOG_TAG, "Wifi connected.");
                 mWifiReady.set(true);
                 return 0;

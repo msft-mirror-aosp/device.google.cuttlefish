@@ -30,7 +30,7 @@ int main(int argc, char** argv) {
 
   CHECK(FLAGS_log_fd_in >= 0) << "-log_fd_in is required";
 
-  auto config = cuttlefish::CuttlefishConfig::Get();
+  auto config = vsoc::CuttlefishConfig::Get();
 
   CHECK(config) << "Could not open cuttlefish config";
 
@@ -38,13 +38,13 @@ int main(int argc, char** argv) {
 
   if (config->run_as_daemon()) {
     android::base::SetLogger(
-        cuttlefish::LogToFiles({instance.launcher_log_path()}));
+        cvd::LogToFiles({instance.launcher_log_path()}));
   } else {
     android::base::SetLogger(
-        cuttlefish::LogToStderrAndFiles({instance.launcher_log_path()}));
+        cvd::LogToStderrAndFiles({instance.launcher_log_path()}));
   }
 
-  auto log_fd = cuttlefish::SharedFD::Dup(FLAGS_log_fd_in);
+  auto log_fd = cvd::SharedFD::Dup(FLAGS_log_fd_in);
   CHECK(log_fd->IsOpen()) << "Failed to dup log_fd_in: " <<  log_fd->StrError();
   close(FLAGS_log_fd_in);
 
@@ -60,20 +60,7 @@ int main(int argc, char** argv) {
   while ((chars_read = log_fd->Read(buf, sizeof(buf))) > 0) {
     auto trimmed = android::base::Trim(std::string(buf, chars_read));
     // Newlines inside `trimmed` are handled by the android logging code.
-    // These checks attempt to determine the log severity coming from crosvm.
-    // There is no guarantee of success all the time since log line boundaries
-    // could be out sync with the reads, but that's ok.
-    if (android::base::StartsWith(trimmed, "[INFO")) {
-      LOG(INFO) << trimmed;
-    } else if (android::base::StartsWith(trimmed, "[ERROR")) {
-      LOG(ERROR) << trimmed;
-    } else if (android::base::StartsWith(trimmed, "[WARNING")) {
-      LOG(WARNING) << trimmed;
-    } else if (android::base::StartsWith(trimmed, "[VERBOSE")) {
-      LOG(VERBOSE) << trimmed;
-    } else {
-      LOG(DEBUG) << trimmed;
-    }
+    LOG(INFO) << trimmed;
   }
 
   if (chars_read < 0) {

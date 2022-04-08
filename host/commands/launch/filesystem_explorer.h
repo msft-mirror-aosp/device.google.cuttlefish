@@ -17,4 +17,4 @@
 
 #include "host/libs/config/fetcher_config.h"
 
-cuttlefish::FetcherConfig AvailableFilesReport();
+cvd::FetcherConfig AvailableFilesReport();

@@ -20,8 +20,6 @@
 #include <curl/curl.h>
 #include <json/json.h>
 
-namespace cuttlefish {
-
 class CurlWrapper {
   CURL* curl;
 public:
@@ -41,5 +39,3 @@ public:
   Json::Value DownloadToJson(const std::string& url,
                              const std::vector<std::string>& headers);
 };
-
-}

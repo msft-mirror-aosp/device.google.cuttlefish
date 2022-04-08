@@ -17,8 +17,8 @@
 
 #include <string>
 
-namespace cuttlefish {
+namespace cvd {
 
 bool InGroup(const std::string& group);
 
-}  // namespace cuttlefish
+}  // namespace cvd

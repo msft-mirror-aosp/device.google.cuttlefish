@@ -23,7 +23,7 @@
 
 #include <string>
 
-namespace cuttlefish {
+using cvd::SharedFD;
 
 char pipe_message[] = "Testing the pipe";
 
@@ -36,6 +36,4 @@ TEST(SendFD, Basic) {
   char buf[80];
   EXPECT_EQ(sizeof(pipe_message), fds[0]->Read(buf, sizeof(buf)));
   EXPECT_EQ(0, strcmp(buf, pipe_message));
-}
-
 }

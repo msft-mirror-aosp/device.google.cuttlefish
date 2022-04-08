@@ -17,22 +17,11 @@
 
 #include <string>
 
-namespace cuttlefish {
-
-enum class Arch {
-  Arm,
-  Arm64,
-  X86,
-  X86_64,
-};
+namespace cvd {
 
 std::string StringFromEnv(const std::string& varname,
                           const std::string& defval);
 
-std::string HostArchStr();
-Arch HostArch();
-bool IsHostCompatible(Arch arch);
+std::string HostArch();
 
-bool IsRunningInContainer();
-
-}  // namespace cuttlefish
+}  // namespace cvd

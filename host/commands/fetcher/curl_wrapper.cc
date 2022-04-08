@@ -24,7 +24,6 @@
 #include <curl/curl.h>
 #include <json/json.h>
 
-namespace cuttlefish {
 namespace {
 
 size_t file_write_callback(char *ptr, size_t, size_t nmemb, void *userdata) {
@@ -146,16 +145,12 @@ Json::Value CurlWrapper::DownloadToJson(const std::string& url) {
 Json::Value CurlWrapper::DownloadToJson(const std::string& url,
                                         const std::vector<std::string>& headers) {
   std::string contents = DownloadToString(url, headers);
-  Json::CharReaderBuilder builder;
-  std::unique_ptr<Json::CharReader> reader(builder.newCharReader());
+  Json::Reader reader;
   Json::Value json;
-  std::string errorMessage;
-  if (!reader->parse(&*contents.begin(), &*contents.end(), &json, &errorMessage)) {
-    LOG(ERROR) << "Could not parse json: " << errorMessage;
+  if (!reader.parse(contents, json)) {
+    LOG(ERROR) << "Could not parse json: " << reader.getFormattedErrorMessages();
     json["error"] = "Failed to parse json.";
     json["response"] = contents;
   }
   return json;
-}
-
 }

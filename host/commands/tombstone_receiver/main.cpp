@@ -50,26 +50,26 @@ static std::string next_tombstone_path() {
     num_tombstones_in_last_second = 0;
   }
 
-  LOG(DEBUG) << "Creating " << retval;
+  LOG(INFO) << "Creating " << retval;
   return retval;
 }
 
 #define CHUNK_RECV_MAX_LEN (1024)
 int main(int argc, char** argv) {
-  cuttlefish::DefaultSubprocessLogging(argv);
+  cvd::DefaultSubprocessLogging(argv);
   google::ParseCommandLineFlags(&argc, &argv, true);
 
-  cuttlefish::SharedFD server_fd = cuttlefish::SharedFD::Dup(FLAGS_server_fd);
+  cvd::SharedFD server_fd = cvd::SharedFD::Dup(FLAGS_server_fd);
   close(FLAGS_server_fd);
 
   CHECK(server_fd->IsOpen()) << "Error inheriting tombstone server: "
                              << server_fd->StrError();
-  LOG(DEBUG) << "Host is starting server on port "
-             << server_fd->VsockServerPort();
+  LOG(INFO) << "Host is starting server on port "
+            << server_fd->VsockServerPort();
 
   // Server loop
   while (true) {
-    auto conn = cuttlefish::SharedFD::Accept(*server_fd);
+    auto conn = cvd::SharedFD::Accept(*server_fd);
     std::ofstream file(next_tombstone_path(),
                        std::ofstream::out | std::ofstream::binary);
 

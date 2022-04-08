@@ -13,33 +13,23 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package {
-    default_applicable_licenses: ["Android-Apache-2.0"],
-}
-
-cc_library_static {
+cc_library_host_static {
     name: "libcuttlefish_screen_connector",
     srcs: [
+        "screen_connector.cpp",
+        "socket_based_screen_connector.cpp",
         "wayland_screen_connector.cpp",
     ],
     shared_libs: [
         "libcuttlefish_fs",
         "libbase",
-        "libjsoncpp",
         "liblog",
-    ],
-    header_libs: [
-        "libcuttlefish_confui_host_headers",
     ],
     static_libs: [
         "libcuttlefish_host_config",
         "libcuttlefish_utils",
-        "libcuttlefish_confui",
         "libcuttlefish_wayland_server",
-        "libcuttlefish_confui_host",
-        "libft2.nodep",
-        "libteeui",
-        "libteeui_localization",
+        "libjsoncpp",
     ],
-    defaults: ["cuttlefish_host"],
+    defaults: ["cuttlefish_host_only"],
 }

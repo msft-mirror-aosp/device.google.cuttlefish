@@ -15,7 +15,7 @@
 #
 
 #
-# arm64 target for Cuttlefish
+# x86 target for Cuttlefish
 #
 
 -include device/google/cuttlefish/shared/BoardConfig.mk
@@ -32,10 +32,7 @@ TARGET_2ND_CPU_ABI2 := armeabi
 TARGET_2ND_CPU_VARIANT := cortex-a53
 TARGET_TRANSLATE_2ND_ARCH := false
 
-ifeq ($(BOARD_VENDOR_RAMDISK_KERNEL_MODULES),)
-    BOARD_VENDOR_RAMDISK_KERNEL_MODULES += $(wildcard kernel/prebuilts/common-modules/virtual-device/$(TARGET_KERNEL_USE)/arm64/*.ko)
-endif
+BOARD_VENDOR_RAMDISK_KERNEL_MODULES += $(wildcard device/google/cuttlefish_kernel/5.4-arm64/*.ko)
 
-HOST_CROSS_OS := linux_bionic
-HOST_CROSS_ARCH := arm64
-HOST_CROSS_2ND_ARCH :=
+# TODO(b/149410031): temporarily exclude sdcardfs
+BOARD_VENDOR_RAMDISK_KERNEL_MODULES := $(filter-out %/sdcardfs.ko,$(BOARD_VENDOR_RAMDISK_KERNEL_MODULES))

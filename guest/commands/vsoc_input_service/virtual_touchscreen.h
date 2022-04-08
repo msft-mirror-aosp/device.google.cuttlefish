@@ -17,7 +17,7 @@
 
 #include "virtual_device_base.h"
 
-namespace cuttlefish_input_service {
+namespace vsoc_input_service {
 
 class VirtualTouchScreen : public VirtualDeviceBase {
  public:
@@ -30,4 +30,4 @@ class VirtualTouchScreen : public VirtualDeviceBase {
   virtual const std::vector<const uint32_t>& GetAbs() const;
 };
 
-}  // namespace cuttlefish_input_service
+}  // namespace vsoc_input_service
