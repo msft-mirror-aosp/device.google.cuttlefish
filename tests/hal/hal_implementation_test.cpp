@@ -55,6 +55,7 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hardware.cas.native@1.0",
     "android.hardware.configstore@1.1", // deprecated, see b/149050985, b/149050733
     "android.hardware.contexthub@1.2",
+    "android.hardware.drm@1.4", // converted to AIDL, b/200055138
     "android.hardware.fastboot@1.1",
     "android.hardware.dumpstate@1.1", // deprecated, see b/205760700
     "android.hardware.gnss@1.1", // GNSS converted to AIDL, b/206670536
@@ -63,6 +64,7 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hardware.gnss.visibility_control@1.0",
     "android.hardware.graphics.allocator@2.0",
     "android.hardware.graphics.allocator@3.0",
+    "android.hardware.graphics.allocator@4.0", // converted to AIDL, see b/205761012
     "android.hardware.graphics.bufferqueue@1.0",
     "android.hardware.graphics.bufferqueue@2.0",
     "android.hardware.graphics.composer@2.4", // converted to AIDL, see b/193240715
@@ -132,9 +134,6 @@ static const std::set<VersionedAidlPackage> kKnownMissingAidl = {
     {"android.hardware.common.", 2},
     {"android.hardware.common.fmq.", 1},
 
-    // This interface needs to be implemented (b/215332992)
-    {"android.hardware.graphics.allocator.", 1},
-
     {"android.hardware.graphics.common.", 1},
     {"android.hardware.graphics.common.", 2},
     {"android.hardware.graphics.common.", 3},
@@ -151,10 +150,6 @@ static const std::set<VersionedAidlPackage> kKnownMissingAidl = {
 
     // No implementations on cuttlefish for omapi aidl hal
     {"android.se.omapi.", 1},
-
-    // Temporarily treat the dice hal default implementation as missing until it
-    // and its dependencies have landed. b/198197213
-    {"android.hardware.security.dice.", 1},
 
     // These KeyMaster types are in an AIDL types-only HAL because they're used
     // by the Identity Credential AIDL HAL. Remove this when fully porting
@@ -175,6 +170,7 @@ static const std::set<VersionedAidlPackage> kKnownMissingAidl = {
     {"android.automotive.watchdog.", 3},
     {"android.frameworks.automotive.display.", 1},
     {"android.frameworks.automotive.powerpolicy.", 1},
+    {"android.frameworks.automotive.powerpolicy.internal.", 1},
     {"android.frameworks.automotive.telemetry.", 1},
     {"android.hardware.automotive.audiocontrol.", 1},
     {"android.hardware.automotive.audiocontrol.", 2},
@@ -188,14 +184,20 @@ static const std::set<VersionedAidlPackage> kKnownMissingAidl = {
     // types-only packages, which never expect a default implementation
     {"android.hardware.radio.", 1},
 
+    // No implementations of radio v2 on cuttlefish
+    {"android.hardware.radio.config.", 2},
+    {"android.hardware.radio.data.", 2},
+    {"android.hardware.radio.messaging.", 2},
+    {"android.hardware.radio.modem.", 2},
+    {"android.hardware.radio.network.", 2},
+    {"android.hardware.radio.sim.", 2},
+    {"android.hardware.radio.voice.", 2},
+
     // types-only packages, which never expect a default implementation
     {"android.hardware.uwb.fira_android.", 1},
 
     // These versions need to be implemented (b/203490261)
     {"android.hardware.bluetooth.audio.", 1},
-
-    // This interface needs to be implemented (b/200055138)
-    {"android.hardware.drm.", 1},
 };
 
 static const std::set<VersionedAidlPackage> kComingSoonAidl = {
