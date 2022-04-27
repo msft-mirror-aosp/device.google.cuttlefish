@@ -16,8 +16,7 @@
 
 #include "common/libs/utils/subprocess.h"
 
-#include <android-base/logging.h>
-#include <errno.h>
+#include <fcntl.h>
 #include <signal.h>
 #include <stdlib.h>
 #include <sys/prctl.h>
@@ -25,10 +24,20 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-#include <stdio.h>
+#include <cerrno>
+#include <cstring>
 #include <map>
+#include <memory>
+#include <ostream>
 #include <set>
+#include <sstream>
+#include <string>
 #include <thread>
+#include <utility>
+#include <vector>
+
+#include <android-base/logging.h>
+#include <android-base/strings.h>
 
 #include "common/libs/fs/shared_buf.h"
 #include "common/libs/utils/files.h"
@@ -255,6 +264,29 @@ Command Command::RedirectStdIO(Subprocess::StdIOChannel subprocess_channel,
   return std::move(*this);
 }
 
+Command& Command::SetWorkingDirectory(std::string path) & {
+  auto fd = SharedFD::Open(path, O_RDONLY | O_PATH | O_DIRECTORY);
+  CHECK(fd->IsOpen()) << "Could not open \"" << path
+                      << "\" dir fd: " << fd->StrError();
+  return SetWorkingDirectory(fd);
+}
+Command Command::SetWorkingDirectory(std::string path) && {
+  auto fd = SharedFD::Open(path, O_RDONLY | O_PATH | O_DIRECTORY);
+  CHECK(fd->IsOpen()) << "Could not open \"" << path
+                      << "\" dir fd: " << fd->StrError();
+  return std::move(SetWorkingDirectory(fd));
+}
+Command& Command::SetWorkingDirectory(SharedFD dirfd) & {
+  CHECK(dirfd->IsOpen()) << "Dir fd invalid: " << dirfd->StrError();
+  working_directory_ = dirfd;
+  return *this;
+}
+Command Command::SetWorkingDirectory(SharedFD dirfd) && {
+  CHECK(dirfd->IsOpen()) << "Dir fd invalid: " << dirfd->StrError();
+  working_directory_ = dirfd;
+  return std::move(*this);
+}
+
 Subprocess Command::Start(SubprocessOptions options) const {
   auto cmd = ToCharPointers(command_);
 
@@ -280,6 +312,11 @@ Subprocess Command::Start(SubprocessOptions options) const {
       if (fcntl(entry.second, F_SETFD, 0)) {
         int error_num = errno;
         LOG(ERROR) << "fcntl failed: " << strerror(error_num);
+      }
+    }
+    if (working_directory_->IsOpen()) {
+      if (SharedFD::Fchdir(working_directory_) != 0) {
+        LOG(ERROR) << "Fchdir failed: " << working_directory_->StrError();
       }
     }
     int rval;
