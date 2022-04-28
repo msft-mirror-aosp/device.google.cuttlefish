@@ -54,7 +54,7 @@ static void *noopRemoveWarning( void *a ) { return a; }
 
 #define MAX_AT_RESPONSE 0x1000
 
-#define MAX_PDP         3
+#define MAX_PDP 11  // max LTE bearers
 
 /* pathname returned from RIL_REQUEST_SETUP_DATA_CALL / RIL_REQUEST_SETUP_DEFAULT_PDP */
 // This is used if Wifi is not supported, plain old eth0
@@ -960,6 +960,19 @@ static void requestOrSendDataCallList(int cid, RIL_Token *t)
             responses[i].dnses = "8.8.8.8 8.8.4.4";
             responses[i].gateways = "";
         }
+    }
+
+    // If cid = -1, return the data call list without processing CGCONTRDP (setupDataCall)
+    if (cid == -1) {
+        if (t != NULL)
+            RIL_onRequestComplete(*t, RIL_E_SUCCESS, &responses[0],
+                                  sizeof(RIL_Data_Call_Response_v11));
+        else
+            RIL_onUnsolicitedResponse(RIL_UNSOL_DATA_CALL_LIST_CHANGED, responses,
+                                      n * sizeof(RIL_Data_Call_Response_v11));
+        at_response_free(p_response);
+        p_response = NULL;
+        return;
     }
 
     at_response_free(p_response);
@@ -2861,6 +2874,7 @@ static void requestDeactivateDataCall(void *data, RIL_Token t)
     rilErrno = setInterfaceState(radioInterfaceName, kInterfaceDown);
     RIL_onRequestComplete(t, rilErrno, NULL, 0);
     putPDP(cid);
+    requestOrSendDataCallList(-1, NULL);
 }
 
 static void requestSMSAcknowledge(void *data, size_t datalen __unused, RIL_Token t)

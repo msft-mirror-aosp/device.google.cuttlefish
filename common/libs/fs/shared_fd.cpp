@@ -19,6 +19,7 @@
 #include <fcntl.h>
 #include <netinet/in.h>
 #include <poll.h>
+#include <sys/file.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/syscall.h>
@@ -401,6 +402,16 @@ SharedFD SharedFD::Creat(const std::string& path, mode_t mode) {
   return SharedFD::Open(path, O_CREAT|O_WRONLY|O_TRUNC, mode);
 }
 
+int SharedFD::Fchdir(SharedFD shared_fd) {
+  if (!shared_fd.value_) {
+    return -1;
+  }
+  errno = 0;
+  int rval = TEMP_FAILURE_RETRY(fchdir(shared_fd->fd_));
+  shared_fd->errno_ = errno;
+  return rval;
+}
+
 SharedFD SharedFD::Fifo(const std::string& path, mode_t mode) {
   struct stat st;
   if (TEMP_FAILURE_RETRY(stat(path.c_str(), &st)) == 0) {
@@ -654,6 +665,13 @@ int FileInstance::UNMANAGED_Dup2(int newfd) {
 int FileInstance::Fcntl(int command, int value) {
   errno = 0;
   int rval = TEMP_FAILURE_RETRY(fcntl(fd_, command, value));
+  errno_ = errno;
+  return rval;
+}
+
+int FileInstance::Flock(int operation) {
+  errno = 0;
+  int rval = TEMP_FAILURE_RETRY(flock(fd_, operation));
   errno_ = errno;
   return rval;
 }
