@@ -15,11 +15,17 @@
  */
 #include "common/libs/utils/unix_sockets.h"
 
-#include <android-base/logging.h>
-#include <android-base/result.h>
+#include <fcntl.h>
+#include <sys/uio.h>
+#include <unistd.h>
 
-#include <numeric>
+#include <cstring>
+#include <memory>
+#include <ostream>
+#include <utility>
 #include <vector>
+
+#include <android-base/logging.h>
 
 #include "common/libs/fs/shared_fd.h"
 #include "common/libs/utils/result.h"
@@ -193,7 +199,8 @@ Result<ucred> UnixSocketMessage::Credentials() {
 UnixMessageSocket::UnixMessageSocket(SharedFD socket) : socket_(socket) {
   socklen_t ln = sizeof(max_message_size_);
   CHECK(socket->GetSockOpt(SOL_SOCKET, SO_SNDBUF, &max_message_size_, &ln) == 0)
-      << "error: can't retrieve socket max message size\n";
+      << "error: can't retrieve socket max message size: "
+      << socket->StrError();
 }
 
 Result<void> UnixMessageSocket::EnableCredentials(bool enable) {
@@ -215,13 +222,11 @@ Result<void> UnixMessageSocket::WriteMessage(const UnixSocketMessage& message) {
   message_header.msg_control = message_control.data();
   message_header.msg_controllen = message_control.size();
   auto cmsg = CMSG_FIRSTHDR(&message_header);
-  size_t calculated_control_len = 0;
   for (const ControlMessage& control : message.control) {
     CF_EXPECT(cmsg != nullptr,
               "Control messages did not fit in control buffer");
     /* size() should match CMSG_SPACE */
     memcpy(cmsg, control.data_.data(), control.data_.size());
-    calculated_control_len += control.data_.size();
     cmsg = CMSG_NXTHDR(&message_header, cmsg);
   }
 
