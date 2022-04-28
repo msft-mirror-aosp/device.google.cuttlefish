@@ -15,7 +15,7 @@ class DataImagePath {
   virtual const std::string& Path() const = 0;
 };
 
-class InitializeDataImage : public Feature {};
+class InitializeDataImage : public SetupFeature {};
 
 fruit::Component<DataImagePath> FixedDataImagePathComponent(
     const std::string* path);
@@ -23,11 +23,13 @@ fruit::Component<fruit::Required<const CuttlefishConfig, DataImagePath>,
                  InitializeDataImage>
 InitializeDataImageComponent();
 
-class InitializeEspImage : public Feature {};
+class InitializeEspImage : public SetupFeature {};
 
-fruit::Component<InitializeEspImage> InitializeEspImageComponent(
+fruit::Component<fruit::Required<const CuttlefishConfig>,
+    InitializeEspImage> InitializeEspImageComponent(
     const std::string* esp_image, const std::string* kernel_path,
-    const std::string* initramfs_path, const std::string* root_fs);
+    const std::string* initramfs_path, const std::string* root_fs,
+    const CuttlefishConfig* config);
 
 bool CreateBlankImage(
     const std::string& image, int num_mb, const std::string& image_fmt);
@@ -38,7 +40,7 @@ class MiscImagePath {
   virtual const std::string& Path() const = 0;
 };
 
-class InitializeMiscImage : public Feature {};
+class InitializeMiscImage : public SetupFeature {};
 
 fruit::Component<MiscImagePath> FixedMiscImagePathComponent(
     const std::string* path);
