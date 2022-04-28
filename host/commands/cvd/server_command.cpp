@@ -42,6 +42,7 @@ namespace {
 constexpr char kHostBugreportBin[] = "cvd_internal_host_bugreport";
 constexpr char kStartBin[] = "cvd_internal_start";
 constexpr char kFetchBin[] = "fetch_cvd";
+constexpr char kMkdirBin[] = "/bin/mkdir";
 
 constexpr char kClearBin[] = "clear_placeholder";  // Unused, runs CvdClear()
 constexpr char kFleetBin[] = "fleet_placeholder";  // Unused, runs CvdFleet()
@@ -79,6 +80,7 @@ const std::map<std::string, std::string> CommandToBinaryMap = {
     {"clear", kClearBin},
     {"fetch", kFetchBin},
     {"fetch_cvd", kFetchBin},
+    {"mkdir", kMkdirBin},
     {"fleet", kFleetBin}};
 
 }  // namespace
@@ -109,18 +111,17 @@ Result<cvd::Response> CvdCommandHandler::Handle(
   CF_EXPECT(subcommand_bin != CommandToBinaryMap.end());
   auto bin = subcommand_bin->second;
 
-  // assembly_dir is used to possibly set CuttlefishConfig path env variable
-  // later. This env variable is used by subcommands when locating the config.
-  std::vector<Flag> flags;
-  std::string assembly_dir =
-      StringFromEnv("HOME", ".") + "/cuttlefish_assembly";
-  flags.emplace_back(GflagsCompatFlag("assembly_dir", assembly_dir));
+  // HOME is used to possibly set CuttlefishConfig path env variable later. This
+  // env variable is used by subcommands when locating the config.
+  auto request_home = request.Message().command_request().env().find("HOME");
+  std::string home =
+      request_home != request.Message().command_request().env().end()
+          ? request_home->second
+          : StringFromEnv("HOME", ".");
 
   // Create a copy of args before parsing, to be passed to subcommands.
   auto args = invocation.arguments;
   auto args_copy = invocation.arguments;
-
-  CHECK(ParseFlags(flags, invocation.arguments));
 
   auto host_artifacts_path =
       request.Message().command_request().env().find("ANDROID_HOST_OUT");
@@ -179,17 +180,21 @@ Result<cvd::Response> CvdCommandHandler::Handle(
     CF_EXPECT(ParseFlags({ins_flag, num_instances_flag}, args));
 
     // Track this assembly_dir in the fleet.
-    InstanceManager::AssemblyInfo info;
+    InstanceManager::InstanceGroupInfo info;
     info.host_binaries_dir = host_artifacts_path->second + "/bin/";
     for (int i = first_instance; i < first_instance + num_instances; i++) {
       info.instances.insert(i);
     }
-    instance_manager_.SetAssembly(assembly_dir, info);
+    instance_manager_.SetInstanceGroup(home, info);
   }
 
-  Command command(HostBinaryPath("fetch_cvd"));
-  if (bin != kFetchBin) {
-    auto assembly_info = CF_EXPECT(instance_manager_.GetAssembly(assembly_dir));
+  Command command("(replaced)");
+  if (bin == kFetchBin) {
+    command.SetExecutable(HostBinaryPath("fetch_cvd"));
+  } else if (bin == kMkdirBin) {
+    command.SetExecutable(kMkdirBin);
+  } else {
+    auto assembly_info = CF_EXPECT(instance_manager_.GetInstanceGroup(home));
     command.SetExecutable(assembly_info.host_binaries_dir + bin);
   }
   for (const std::string& arg : args_copy) {
@@ -200,7 +205,7 @@ Result<cvd::Response> CvdCommandHandler::Handle(
   // used by subcommands when locating the CuttlefishConfig.
   if (request.Message().command_request().env().count(
           kCuttlefishConfigEnvVarName) == 0) {
-    auto config_path = GetCuttlefishConfigPath(assembly_dir);
+    auto config_path = GetCuttlefishConfigPath(home);
     if (config_path) {
       command.AddEnvironmentVariable(kCuttlefishConfigEnvVarName, *config_path);
     }
@@ -220,6 +225,16 @@ Result<cvd::Response> CvdCommandHandler::Handle(
       cvd::WAIT_BEHAVIOR_START) {
     options.ExitWithParent(false);
   }
+
+  const auto& working_dir =
+      request.Message().command_request().working_directory();
+  if (!working_dir.empty()) {
+    auto fd = SharedFD::Open(working_dir, O_RDONLY | O_PATH | O_DIRECTORY);
+    CF_EXPECT(fd->IsOpen(),
+              "Couldn't open \"" << working_dir << "\": " << fd->StrError());
+    command.SetWorkingDirectory(fd);
+  }
+
   subprocess_ = command.Start(options);
 
   if (request.Message().command_request().wait_behavior() ==
@@ -244,6 +259,10 @@ Result<cvd::Response> CvdCommandHandler::Handle(
   // reach unexpected processes.
 
   subprocess_ = {};
+
+  if (infop.si_code == CLD_EXITED && bin == kStopBin) {
+    instance_manager_.RemoveInstanceGroup(home);
+  }
 
   if (infop.si_code == CLD_EXITED && infop.si_status == 0) {
     response.mutable_status()->set_code(cvd::Status::OK);
