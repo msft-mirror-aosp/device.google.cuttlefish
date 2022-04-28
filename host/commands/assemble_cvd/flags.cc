@@ -26,7 +26,6 @@
 #include "common/libs/utils/flag_parser.h"
 #include "host/commands/assemble_cvd/alloc.h"
 #include "host/commands/assemble_cvd/boot_config.h"
-#include "host/commands/assemble_cvd/clean.h"
 #include "host/commands/assemble_cvd/disk_flags.h"
 #include "host/libs/config/config_flag.h"
 #include "host/libs/config/host_tools_version.h"
@@ -596,6 +595,15 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
       } else {
         tmp_config_obj.set_hwcomposer(kHwComposerRanchu);
       }
+  }
+
+  // The device needs to avoid having both hwcomposer2.4 and hwcomposer3
+  // services running at the same time so warn the user to manually build
+  // in drm_hwcomposer when needed.
+  if (tmp_config_obj.hwcomposer() == kHwComposerAuto) {
+    LOG(WARNING) << "In order to run with --hwcomposer=drm. Please make sure "
+                    "Cuttlefish was built with "
+                    "TARGET_ENABLE_DRMHWCOMPOSER=true.";
   }
 
   tmp_config_obj.set_enable_gpu_udmabuf(FLAGS_enable_gpu_udmabuf);

@@ -36,6 +36,9 @@ BOARD_RECOVERYIMAGE_PARTITION_SIZE := 67108864
 endif
 BOARD_VENDOR_BOOTIMAGE_PARTITION_SIZE := 67108864
 
+# init_boot partition size is recommended to be 8MB, it can be larger.
+# When this variable is set, init_boot.img will be built with the generic
+# ramdisk, and that ramdisk will no longer be included in boot.img.
 BOARD_INIT_BOOT_IMAGE_PARTITION_SIZE := 8388608
 
 # Build a separate vendor.img partition
@@ -130,9 +133,9 @@ TARGET_USES_HWC2 := true
 BOARD_MALLOC_ALIGNMENT := 16
 
 # Disable sparse on all filesystem images
-TARGET_USERIMAGES_SPARSE_EROFS_DISABLED := true
-TARGET_USERIMAGES_SPARSE_EXT_DISABLED := true
-TARGET_USERIMAGES_SPARSE_F2FS_DISABLED := true
+TARGET_USERIMAGES_SPARSE_EROFS_DISABLED ?= true
+TARGET_USERIMAGES_SPARSE_EXT_DISABLED ?= true
+TARGET_USERIMAGES_SPARSE_F2FS_DISABLED ?= true
 
 # Make the userdata partition 6G to accommodate ASAN and CTS
 BOARD_USERDATAIMAGE_PARTITION_SIZE := $(TARGET_USERDATAIMAGE_PARTITION_SIZE)
@@ -230,8 +233,9 @@ BOARD_KERNEL_CMDLINE += audit=1
 # Reboot immediately on panic
 BOARD_KERNEL_CMDLINE += panic=-1
 
-# Always (solely or additionally) print kernel logs to hvc0
-BOARD_KERNEL_CMDLINE += console=hvc0
+# Always enable one legacy serial port, for alternative earlycon, kgdb, and
+# serial console. Doesn't do anything on ARM/ARM64 + QEMU or Gem5.
+BOARD_KERNEL_CMDLINE += 8250.nr_uarts=1
 
 # Cuttlefish doesn't use CMA, so don't reserve RAM for it
 BOARD_KERNEL_CMDLINE += cma=0
@@ -253,7 +257,8 @@ BOARD_BOOTCONFIG += \
     kernel.vmw_vsock_virtio_transport_common.virtio_transport_max_vsock_pkt_buf_size=16384
 
 BOARD_BOOTCONFIG += \
-    androidboot.vendor.apex.com.android.wifi.hal=com.google.cf.wifi_hwsim
+    androidboot.vendor.apex.com.android.wifi.hal=com.google.cf.wifi_hwsim \
+    androidboot.vendor.apex.com.google.emulated.camera.provider.hal=com.google.emulated.camera.provider.hal \
 
 BOARD_INCLUDE_DTB_IN_BOOTIMG := true
 ifndef BOARD_BOOT_HEADER_VERSION
