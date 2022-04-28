@@ -156,7 +156,8 @@ std::string QemuManager::ConfigureBootDevices(int num_disks) {
     case Arch::X86:
     case Arch::X86_64: {
       // QEMU has additional PCI devices for an ISA bridge and PIIX4
-      return ConfigureMultipleBootDevices("pci0000:00/0000:00:", 2, num_disks);
+      // virtio_gpu precedes the first console or disk
+      return ConfigureMultipleBootDevices("pci0000:00/0000:00:", 3, num_disks);
     }
     case Arch::Arm:
       return "androidboot.boot_devices=3f000000.pcie";
@@ -357,11 +358,35 @@ std::vector<Command> QemuManager::StartCommands(
   qemu_cmd.AddParameter("-mon");
   qemu_cmd.AddParameter("chardev=charmonitor,id=monitor,mode=control");
 
+  if (config.gpu_mode() == kGpuModeDrmVirgl) {
+    qemu_cmd.AddParameter("-display");
+    qemu_cmd.AddParameter("egl-headless");
+
+    qemu_cmd.AddParameter("-vnc");
+    qemu_cmd.AddParameter(":", instance.qemu_vnc_server_port());
+  } else {
+    qemu_cmd.AddParameter("-display");
+    qemu_cmd.AddParameter("none");
+  }
+
+  auto display_configs = config.display_configs();
+  CHECK_GE(display_configs.size(), 1);
+  auto display_config = display_configs[0];
+
+  qemu_cmd.AddParameter("-device");
+
+  bool use_gpu_gl = qemu_version.first >= 6 &&
+                    config.gpu_mode() != kGpuModeGuestSwiftshader;
+  qemu_cmd.AddParameter(use_gpu_gl ?
+                            "virtio-gpu-gl-pci" : "virtio-gpu-pci", ",id=gpu0",
+                        ",xres=", display_config.width,
+                        ",yres=", display_config.height);
+
   // In kgdb mode, earlycon is an interactive console, and so early
   // dmesg will go there instead of the kernel.log. On QEMU, we do this
   // bit of logic up before the hvc console is set up, so the command line
   // flags appear in the right order and "append=on" does the right thing
-  if (!(config.console() && (config.kgdb() || config.use_bootloader()))) {
+  if (!config.console() && (config.kgdb() || config.use_bootloader())) {
     add_serial_console_ro(instance.kernel_log_pipe_name());
   }
 
@@ -441,17 +466,6 @@ std::vector<Command> QemuManager::StartCommands(
     qemu_cmd.AddParameter("-device");
     qemu_cmd.AddParameter("virtio-blk-pci-non-transitional,scsi=off,drive=drive-virtio-disk", i,
                           ",id=virtio-disk", i, bootindex);
-  }
-
-  if (config.gpu_mode() == kGpuModeDrmVirgl) {
-    qemu_cmd.AddParameter("-display");
-    qemu_cmd.AddParameter("egl-headless");
-
-    qemu_cmd.AddParameter("-vnc");
-    qemu_cmd.AddParameter(":", instance.qemu_vnc_server_port());
-  } else {
-    qemu_cmd.AddParameter("-display");
-    qemu_cmd.AddParameter("none");
   }
 
   if (!is_arm && FileExists(instance.pstore_path())) {
@@ -535,16 +549,6 @@ std::vector<Command> QemuManager::StartCommands(
   qemu_cmd.AddParameter("-device");
   qemu_cmd.AddParameter("virtio-net-pci-non-transitional,netdev=hostnet2,id=net2");
 #endif
-
-  auto display_configs = config.display_configs();
-  CHECK_GE(display_configs.size(), 1);
-  auto display_config = display_configs[0];
-
-  qemu_cmd.AddParameter("-device");
-  qemu_cmd.AddParameter(qemu_version.first < 6 ?
-                            "virtio-gpu-pci" : "virtio-gpu-gl-pci", ",id=gpu0",
-                        ",xres=", display_config.width,
-                        ",yres=", display_config.height);
 
   qemu_cmd.AddParameter("-cpu");
   qemu_cmd.AddParameter(IsHostCompatible(arch_) ? "host" : "max");

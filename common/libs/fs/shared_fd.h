@@ -34,6 +34,7 @@
 
 #include <memory>
 #include <sstream>
+#include <vector>
 
 #include <errno.h>
 #include <fcntl.h>
@@ -66,6 +67,8 @@
  */
 namespace cuttlefish {
 
+struct PollSharedFd;
+class Epoll;
 class FileInstance;
 
 /**
@@ -126,12 +129,15 @@ class SharedFD {
   // Fcntl or Dup functions.
   static SharedFD Open(const std::string& pathname, int flags, mode_t mode = 0);
   static SharedFD Creat(const std::string& pathname, mode_t mode);
+  static int Fchdir(SharedFD);
   static SharedFD Fifo(const std::string& pathname, mode_t mode);
   static bool Pipe(SharedFD* fd0, SharedFD* fd1);
   static SharedFD Event(int initval = 0, int flags = 0);
   static SharedFD MemfdCreate(const std::string& name, unsigned int flags = 0);
   static SharedFD MemfdCreateWithData(const std::string& name, const std::string& data, unsigned int flags = 0);
   static SharedFD Mkstemp(std::string* path);
+  static int Poll(PollSharedFd* fds, size_t num_fds, int timeout);
+  static int Poll(std::vector<PollSharedFd>& fds, int timeout);
   static bool SocketPair(int domain, int type, int protocol, SharedFD* fd0,
                          SharedFD* fd1);
   static SharedFD Socket(int domain, int socket_type, int protocol);
@@ -229,6 +235,7 @@ class ScopedMMap {
 class FileInstance {
   // Give SharedFD access to the aliasing constructor.
   friend class SharedFD;
+  friend class Epoll;
 
  public:
   virtual ~FileInstance() { Close(); }
@@ -249,10 +256,15 @@ class FileInstance {
   // The non-const reference is needed to avoid binding this to a particular
   // reference type.
   bool CopyFrom(FileInstance& in, size_t length);
+  // Same as CopyFrom, but reads from input until EOF is reached.
+  bool CopyAllFrom(FileInstance& in);
 
   int UNMANAGED_Dup();
   int UNMANAGED_Dup2(int newfd);
+  int Fchdir();
   int Fcntl(int command, int value);
+
+  int Flock(int operation);
 
   int GetErrno() const { return errno_; }
   int GetSockName(struct sockaddr* addr, socklen_t* addrlen);
@@ -326,6 +338,12 @@ class FileInstance {
   int errno_;
   std::string identity_;
   bool is_regular_file_;
+};
+
+struct PollSharedFd {
+  SharedFD fd;
+  short events;
+  short revents;
 };
 
 /* Methods that need both a fully defined SharedFD and a fully defined

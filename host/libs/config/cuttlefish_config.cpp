@@ -35,6 +35,7 @@
 #include "common/libs/utils/environment.h"
 #include "common/libs/utils/files.h"
 #include "host/libs/vm_manager/crosvm_manager.h"
+#include "host/libs/vm_manager/gem5_manager.h"
 #include "host/libs/vm_manager/qemu_manager.h"
 
 namespace cuttlefish {
@@ -310,6 +311,14 @@ std::string CuttlefishConfig::crosvm_binary() const {
 }
 void CuttlefishConfig::set_crosvm_binary(const std::string& crosvm_binary) {
   (*dictionary_)[kCrosvmBinary] = crosvm_binary;
+}
+
+static constexpr char kGem5BinaryDir[] = "gem5_binary_dir";
+std::string CuttlefishConfig::gem5_binary_dir() const {
+  return (*dictionary_)[kGem5BinaryDir].asString();
+}
+void CuttlefishConfig::set_gem5_binary_dir(const std::string& gem5_binary_dir) {
+  (*dictionary_)[kGem5BinaryDir] = gem5_binary_dir;
 }
 
 static constexpr char kEnableGnssGrpcProxy[] = "enable_gnss_grpc_proxy";
@@ -668,7 +677,8 @@ bool CuttlefishConfig::console() const {
 std::string CuttlefishConfig::console_dev() const {
   auto can_use_virtio_console = !kgdb() && !use_bootloader();
   std::string console_dev;
-  if (can_use_virtio_console) {
+  if (can_use_virtio_console ||
+      vm_manager() == vm_manager::Gem5Manager::name()) {
     // If kgdb and the bootloader are disabled, the Android serial console
     // spawns on a virtio-console port. If the bootloader is enabled, virtio
     // console can't be used since uboot doesn't support it.
