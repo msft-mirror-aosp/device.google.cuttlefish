@@ -60,9 +60,6 @@ TARGET_VULKAN_SUPPORT ?= true
 TARGET_ENABLE_HOST_BLUETOOTH_EMULATION ?= true
 TARGET_USE_BTLINUX_HAL_IMPL ?= true
 
-# TODO(b/65201432): Swiftshader needs to create executable memory.
-PRODUCT_REQUIRES_INSECURE_EXECMEM_FOR_SWIFTSHADER := true
-
 AB_OTA_UPDATER := true
 AB_OTA_PARTITIONS += \
     boot \
@@ -223,8 +220,7 @@ PRODUCT_PACKAGES += \
 ifeq ($(TARGET_VULKAN_SUPPORT),true)
 PRODUCT_PACKAGES += \
     vulkan.ranchu \
-    libvulkan_enc \
-    vulkan.pastel
+    libvulkan_enc
 endif
 
 # GL/Vk implementation for gfxstream
@@ -660,13 +656,14 @@ PRODUCT_PACKAGES += \
 
 #
 # USB
-ifeq ($(LOCAL_PREFER_VENDOR_APEX),true)
+# TODO(b/227791019): Convert USB AIDL HAL to APEX
+# ifeq ($(LOCAL_PREFER_VENDOR_APEX),true)
+# PRODUCT_PACKAGES += \
+#    com.android.hardware.usb
+#else
 PRODUCT_PACKAGES += \
-    com.android.hardware.usb
-else
-PRODUCT_PACKAGES += \
-    android.hardware.usb@1.0-service
-endif
+    android.hardware.usb-service.example
+#endif
 
 # Vibrator HAL
 ifeq ($(LOCAL_PREFER_VENDOR_APEX),true)
