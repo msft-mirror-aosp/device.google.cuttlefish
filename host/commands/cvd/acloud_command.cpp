@@ -15,12 +15,19 @@
  */
 #include "host/commands/cvd/server.h"
 
+#include <optional>
+#include <vector>
+
+#include <android-base/strings.h>
+
 #include "cvd_server.pb.h"
 
 #include "common/libs/fs/shared_buf.h"
 #include "common/libs/fs/shared_fd.h"
 #include "common/libs/utils/flag_parser.h"
 #include "common/libs/utils/result.h"
+#include "common/libs/utils/subprocess.h"
+#include "host/commands/cvd/command_sequence.h"
 #include "host/commands/cvd/instance_lock.h"
 #include "host/commands/cvd/server_client.h"
 
@@ -28,72 +35,43 @@ namespace cuttlefish {
 
 namespace {
 
-class TryAcloudCommand : public CvdServerHandler {
- public:
-  INJECT(TryAcloudCommand()) = default;
-  ~TryAcloudCommand() = default;
-
-  Result<bool> CanHandle(const RequestWithStdio& request) const override {
-    return ParseInvocation(request.Message()).command == "try-acloud";
-  }
-  Result<cvd::Response> Handle(const RequestWithStdio&) override {
-    return CF_ERR("TODO(schuffelen)");
-  }
-  Result<void> Interrupt() override { return CF_ERR("Can't be interrupted."); }
+struct ConvertedAcloudCreateCommand {
+  InstanceLockFile lock;
+  std::vector<RequestWithStdio> requests;
 };
 
-std::string BashEscape(const std::string& input) {
-  bool safe = true;
-  for (const auto& c : input) {
-    if ('0' <= c && c <= '9') {
-      continue;
-    }
-    if ('a' <= c && c <= 'z') {
-      continue;
-    }
-    if ('A' <= c && c <= 'Z') {
-      continue;
-    }
-    if (c == '_' || c == '-' || c == '.' || c == ',' || c == '/') {
-      continue;
-    }
-    safe = false;
-  }
-  using android::base::StringReplace;
-  return safe ? input : "'" + StringReplace(input, "'", "\\'", true) + "'";
+/**
+ * Split a string into arguments based on shell tokenization rules.
+ *
+ * This behaves like `shlex.split` from python where arguments are separated
+ * based on whitespace, but quoting and quote escaping is respected. This
+ * function effectively removes one level of quoting from its inputs while
+ * making the split.
+ */
+Result<std::vector<std::string>> BashTokenize(const std::string& str) {
+  Command command("bash");
+  command.AddParameter("-c");
+  command.AddParameter("printf '%s\n' ", str);
+  std::string stdout;
+  std::string stderr;
+  auto ret = RunWithManagedStdio(std::move(command), nullptr, &stdout, &stderr);
+  CF_EXPECT(ret == 0, "printf fail \"" << stdout << "\", \"" << stderr << "\"");
+  return android::base::Split(stdout, "\n");
 }
 
-class AcloudCommand : public CvdServerHandler {
+class ConvertAcloudCreateCommand {
  public:
-  INJECT(AcloudCommand(CvdCommandHandler& inner_handler,
-                       InstanceLockFileManager& lock_file_manager))
-      : inner_handler_(inner_handler), lock_file_manager_(lock_file_manager) {}
-  ~AcloudCommand() = default;
+  INJECT(ConvertAcloudCreateCommand(InstanceLockFileManager& lock_file_manager))
+      : lock_file_manager_(lock_file_manager) {}
 
-  Result<bool> CanHandle(const RequestWithStdio& request) const override {
-    return ParseInvocation(request.Message()).command == "acloud";
-  }
-  Result<cvd::Response> Handle(const RequestWithStdio& request) override {
-    std::unique_lock interrupt_lock(interrupt_mutex_);
-    if (interrupted_) {
-      return CF_ERR("Interrupted");
-    }
-    CF_EXPECT(CanHandle(request));
-
+  Result<ConvertedAcloudCreateCommand> Convert(
+      const RequestWithStdio& request) {
     auto arguments = ParseInvocation(request.Message()).arguments;
     CF_EXPECT(arguments.size() > 0);
     CF_EXPECT(arguments[0] == "create");
-
-    std::stringstream translation_message;
-    translation_message << "Translating request `";
-    translation_message << "acloud ";
-    for (const auto& argument : arguments) {
-      translation_message << BashEscape(argument) << " ";
-    }
-    translation_message.seekp(-1, translation_message.cur);
-    translation_message << "`\n";  // Overwrite last space
-
     arguments.erase(arguments.begin());
+
+    const auto& request_command = request.Message().command_request();
 
     std::vector<Flag> flags;
     bool local_instance_set;
@@ -134,6 +112,15 @@ class AcloudCommand : public CvdServerHandler {
               return true;
             }));
 
+    bool local_image;
+    flags.emplace_back(
+        Flag()
+            .Alias({FlagAliasMode::kFlagConsumesArbitrary, "--local-image"})
+            .Setter([&local_image](const FlagMatch& m) {
+              local_image = true;
+              return m.value == "";
+            }));
+
     std::optional<std::string> build_id;
     flags.emplace_back(
         Flag()
@@ -151,6 +138,15 @@ class AcloudCommand : public CvdServerHandler {
             .Alias({FlagAliasMode::kFlagConsumesFollowing, "--build_target"})
             .Setter([&build_target](const FlagMatch& m) {
               build_target = m.value;
+              return true;
+            }));
+
+    std::optional<std::string> launch_args;
+    flags.emplace_back(
+        Flag()
+            .Alias({FlagAliasMode::kFlagConsumesFollowing, "--launch-args"})
+            .Setter([&launch_args](const FlagMatch& m) {
+              launch_args = m.value;
               return true;
             }));
 
@@ -174,32 +170,42 @@ class AcloudCommand : public CvdServerHandler {
     auto dir = TempDir() + "/acloud_cvd_temp/local-instance-" +
                std::to_string(lock->Instance());
 
-    cvd::Request fetch_request;
-    auto& fetch_command = *fetch_request.mutable_command_request();
-    fetch_command.add_args("cvd");
-    fetch_command.add_args("fetch");
-    fetch_command.add_args("--directory");
-    fetch_command.add_args(dir);
-    if (branch || build_id || build_target) {
-      fetch_command.add_args("--default_build");
-      auto target = build_target ? "/" + *build_target : "";
-      auto build = build_id.value_or(branch.value_or("aosp-master"));
-      fetch_command.add_args(build + target);
-    }
-    auto& fetch_env = *fetch_command.mutable_env();
-    auto host_artifacts_path =
-        request.Message().command_request().env().find("ANDROID_HOST_OUT");
-    if (host_artifacts_path ==
-        request.Message().command_request().env().end()) {
-      cvd::Response response;
-      response.mutable_status()->set_code(cvd::Status::FAILED_PRECONDITION);
-      response.mutable_status()->set_message(
-          "Missing ANDROID_HOST_OUT in client environment.");
-      return response;
-    }
-    fetch_env["ANDROID_HOST_OUT"] = host_artifacts_path->second;
+    static constexpr char kAndroidHostOut[] = "ANDROID_HOST_OUT";
 
-    cvd::Request start_request;
+    auto host_artifacts_path = request_command.env().find(kAndroidHostOut);
+    CF_EXPECT(host_artifacts_path != request_command.env().end(),
+              "Missing " << kAndroidHostOut);
+
+    std::vector<cvd::Request> request_protos;
+    if (local_image) {
+      cvd::Request& mkdir_request = request_protos.emplace_back();
+      auto& mkdir_command = *mkdir_request.mutable_command_request();
+      mkdir_command.add_args("cvd");
+      mkdir_command.add_args("mkdir");
+      mkdir_command.add_args("-p");
+      mkdir_command.add_args(dir);
+      auto& mkdir_env = *mkdir_command.mutable_env();
+      mkdir_env[kAndroidHostOut] = host_artifacts_path->second;
+      *mkdir_command.mutable_working_directory() = dir;
+    } else {
+      cvd::Request& fetch_request = request_protos.emplace_back();
+      auto& fetch_command = *fetch_request.mutable_command_request();
+      fetch_command.add_args("cvd");
+      fetch_command.add_args("fetch");
+      fetch_command.add_args("--directory");
+      fetch_command.add_args(dir);
+      if (branch || build_id || build_target) {
+        fetch_command.add_args("--default_build");
+        auto target = build_target ? "/" + *build_target : "";
+        auto build = build_id.value_or(branch.value_or("aosp-master"));
+        fetch_command.add_args(build + target);
+      }
+      *fetch_command.mutable_working_directory() = dir;
+      auto& fetch_env = *fetch_command.mutable_env();
+      fetch_env[kAndroidHostOut] = host_artifacts_path->second;
+    }
+
+    cvd::Request& start_request = request_protos.emplace_back();
     auto& start_command = *start_request.mutable_command_request();
     start_command.add_args("cvd");
     start_command.add_args("start");
@@ -208,59 +214,96 @@ class AcloudCommand : public CvdServerHandler {
     start_command.add_args("report_anonymous_usage_stats");
     start_command.add_args("--report_anonymous_usage_stats");
     start_command.add_args("y");
+    if (launch_args) {
+      for (const auto& arg : CF_EXPECT(BashTokenize(*launch_args))) {
+        start_command.add_args(arg);
+      }
+    }
+    static constexpr char kAndroidProductOut[] = "ANDROID_PRODUCT_OUT";
     auto& start_env = *start_command.mutable_env();
-    start_env["ANDROID_HOST_OUT"] = dir;
-    start_env["ANDROID_PRODUCT_OUT"] = dir;
+    if (local_image) {
+      start_env[kAndroidHostOut] = host_artifacts_path->second;
+
+      auto product_out = request_command.env().find(kAndroidProductOut);
+      CF_EXPECT(product_out != request_command.env().end(),
+                "Missing " << kAndroidProductOut);
+      start_env[kAndroidProductOut] = product_out->second;
+    } else {
+      start_env[kAndroidHostOut] = dir;
+      start_env[kAndroidProductOut] = dir;
+    }
     start_env["CUTTLEFISH_INSTANCE"] = std::to_string(lock->Instance());
     start_env["HOME"] = dir;
+    *start_command.mutable_working_directory() = dir;
 
-    auto translation = translation_message.str();
-    CF_EXPECT(WriteAll(request.Err(), translation) == translation.size(),
-              request.Err()->StrError());
-
-    std::vector<cvd::Request> inner_requests = {fetch_request, start_request};
-    for (const auto& inner_proto : inner_requests) {
-      std::stringstream effective_command;
-      effective_command << "Executing `";
-      for (const auto& env_var : inner_proto.command_request().env()) {
-        effective_command << BashEscape(env_var.first) << "="
-                          << BashEscape(env_var.second) << " ";
-      }
-      for (const auto& argument : inner_proto.command_request().args()) {
-        effective_command << BashEscape(argument) << " ";
-      }
-      effective_command.seekp(-1, effective_command.cur);
-      effective_command << "`\n";  // Overwrite last space
-      auto command_str = effective_command.str();
-
-      std::vector<SharedFD> fds;
-      if (verbose) {
-        fds = request.FileDescriptors();
-      } else {
-        auto dev_null = SharedFD::Open("/dev/null", O_RDWR);
-        CF_EXPECT(dev_null->IsOpen(), dev_null->StrError());
-        fds = {dev_null, dev_null, dev_null};
-      }
-      RequestWithStdio inner_request(inner_proto, fds, request.Credentials());
-
-      CF_EXPECT(WriteAll(request.Err(), command_str) == command_str.size(),
-                request.Err()->StrError());
-
-      interrupt_lock.unlock();
-      auto response = CF_EXPECT(inner_handler_.Handle(inner_request));
-      interrupt_lock.lock();
-      if (interrupted_) {
-        return CF_ERR("Interrupted");
-      }
-      CF_EXPECT(response.status().code() == cvd::Status::OK,
-                "Reason: \"" << response.status().message() << "\"");
-      static const char kDoneMsg[] = "Done\n";
-
-      CF_EXPECT(WriteAll(request.Err(), kDoneMsg) == sizeof(kDoneMsg) - 1,
-                request.Err()->StrError());
+    std::vector<SharedFD> fds;
+    if (verbose) {
+      fds = request.FileDescriptors();
+    } else {
+      auto dev_null = SharedFD::Open("/dev/null", O_RDWR);
+      CF_EXPECT(dev_null->IsOpen(), dev_null->StrError());
+      fds = {dev_null, dev_null, dev_null};
     }
 
-    CF_EXPECT(lock->Status(InUseState::kInUse));
+    ConvertedAcloudCreateCommand ret = {
+        .lock = {std::move(*lock)},
+    };
+    for (auto& request_proto : request_protos) {
+      ret.requests.emplace_back(request_proto, fds, request.Credentials());
+    }
+    return ret;
+  }
+
+ private:
+  InstanceLockFileManager& lock_file_manager_;
+};
+
+class TryAcloudCreateCommand : public CvdServerHandler {
+ public:
+  INJECT(TryAcloudCreateCommand(ConvertAcloudCreateCommand& converter))
+      : converter_(converter) {}
+  ~TryAcloudCreateCommand() = default;
+
+  Result<bool> CanHandle(const RequestWithStdio& request) const override {
+    auto invocation = ParseInvocation(request.Message());
+    return invocation.command == "try-acloud" &&
+           invocation.arguments.size() >= 1 &&
+           invocation.arguments[0] == "create";
+  }
+  Result<cvd::Response> Handle(const RequestWithStdio& request) override {
+    CF_EXPECT(converter_.Convert(request));
+    return CF_ERR("Unreleased");
+  }
+  Result<void> Interrupt() override { return CF_ERR("Can't be interrupted."); }
+
+ private:
+  ConvertAcloudCreateCommand& converter_;
+};
+
+class AcloudCreateCommand : public CvdServerHandler {
+ public:
+  INJECT(AcloudCreateCommand(CommandSequenceExecutor& executor,
+                             ConvertAcloudCreateCommand& converter))
+      : executor_(executor), converter_(converter) {}
+  ~AcloudCreateCommand() = default;
+
+  Result<bool> CanHandle(const RequestWithStdio& request) const override {
+    auto invocation = ParseInvocation(request.Message());
+    return invocation.command == "acloud" && invocation.arguments.size() >= 1 &&
+           invocation.arguments[0] == "create";
+  }
+  Result<cvd::Response> Handle(const RequestWithStdio& request) override {
+    std::unique_lock interrupt_lock(interrupt_mutex_);
+    if (interrupted_) {
+      return CF_ERR("Interrupted");
+    }
+    CF_EXPECT(CanHandle(request));
+
+    auto converted = CF_EXPECT(converter_.Convert(request));
+    interrupt_lock.unlock();
+    CF_EXPECT(executor_.Execute(converted.requests, request.Err()));
+
+    CF_EXPECT(converted.lock.Status(InUseState::kInUse));
 
     cvd::Response response;
     response.mutable_command_response();
@@ -269,13 +312,13 @@ class AcloudCommand : public CvdServerHandler {
   Result<void> Interrupt() override {
     std::scoped_lock interrupt_lock(interrupt_mutex_);
     interrupted_ = true;
-    CF_EXPECT(inner_handler_.Interrupt());
+    CF_EXPECT(executor_.Interrupt());
     return {};
   }
 
  private:
-  CvdCommandHandler& inner_handler_;
-  InstanceLockFileManager& lock_file_manager_;
+  CommandSequenceExecutor& executor_;
+  ConvertAcloudCreateCommand& converter_;
 
   std::mutex interrupt_mutex_;
   bool interrupted_ = false;
@@ -285,8 +328,8 @@ class AcloudCommand : public CvdServerHandler {
 
 fruit::Component<fruit::Required<CvdCommandHandler>> AcloudCommandComponent() {
   return fruit::createComponent()
-      .addMultibinding<CvdServerHandler, AcloudCommand>()
-      .addMultibinding<CvdServerHandler, TryAcloudCommand>();
+      .addMultibinding<CvdServerHandler, AcloudCreateCommand>()
+      .addMultibinding<CvdServerHandler, TryAcloudCreateCommand>();
 }
 
 }  // namespace cuttlefish
