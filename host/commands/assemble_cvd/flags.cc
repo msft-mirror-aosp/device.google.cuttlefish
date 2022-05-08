@@ -26,7 +26,6 @@
 #include "common/libs/utils/flag_parser.h"
 #include "host/commands/assemble_cvd/alloc.h"
 #include "host/commands/assemble_cvd/boot_config.h"
-#include "host/commands/assemble_cvd/clean.h"
 #include "host/commands/assemble_cvd/disk_flags.h"
 #include "host/libs/config/config_flag.h"
 #include "host/libs/config/host_tools_version.h"
@@ -279,6 +278,8 @@ DEFINE_int32(modem_simulator_sim_type, 1,
 
 DEFINE_bool(console, false, "Enable the serial console");
 
+DEFINE_bool(enable_kernel_log, true, "Enable kernel console/dmesg logging");
+
 DEFINE_bool(vhost_net, false, "Enable vhost acceleration of networking");
 
 DEFINE_string(
@@ -325,8 +326,7 @@ DEFINE_bool(use_sdcard, true, "Create blank SD-Card image and expose to guest");
 
 DEFINE_bool(protected_vm, false, "Boot in Protected VM mode");
 
-DEFINE_bool(enable_audio, cuttlefish::HostArch() != cuttlefish::Arch::Arm64,
-            "Whether to play or capture audio");
+DEFINE_bool(enable_audio, true, "Whether to play or capture audio");
 
 DEFINE_uint32(camera_server_port, 0, "camera vsock port");
 
@@ -637,6 +637,7 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
   }
 
   tmp_config_obj.set_console(FLAGS_console);
+  tmp_config_obj.set_enable_kernel_log(FLAGS_enable_kernel_log);
   tmp_config_obj.set_kgdb(FLAGS_console && FLAGS_kgdb);
 
   tmp_config_obj.set_host_tools_version(HostToolsCrc());
@@ -903,11 +904,6 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
 
   tmp_config_obj.set_enable_sandbox(FLAGS_enable_sandbox);
 
-  // Audio is not available for Arm64
-  SetCommandLineOptionWithMode(
-      "enable_audio",
-      (cuttlefish::HostArch() == cuttlefish::Arch::Arm64) ? "false" : "true",
-      SET_FLAGS_DEFAULT);
   tmp_config_obj.set_enable_audio(FLAGS_enable_audio);
 
   return tmp_config_obj;

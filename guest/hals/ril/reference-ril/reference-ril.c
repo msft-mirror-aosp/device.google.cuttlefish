@@ -54,7 +54,7 @@ static void *noopRemoveWarning( void *a ) { return a; }
 
 #define MAX_AT_RESPONSE 0x1000
 
-#define MAX_PDP         3
+#define MAX_PDP 11  // max LTE bearers
 
 /* pathname returned from RIL_REQUEST_SETUP_DATA_CALL / RIL_REQUEST_SETUP_DEFAULT_PDP */
 // This is used if Wifi is not supported, plain old eth0
@@ -962,6 +962,19 @@ static void requestOrSendDataCallList(int cid, RIL_Token *t)
         }
     }
 
+    // If cid = -1, return the data call list without processing CGCONTRDP (setupDataCall)
+    if (cid == -1) {
+        if (t != NULL)
+            RIL_onRequestComplete(*t, RIL_E_SUCCESS, &responses[0],
+                                  sizeof(RIL_Data_Call_Response_v11));
+        else
+            RIL_onUnsolicitedResponse(RIL_UNSOL_DATA_CALL_LIST_CHANGED, responses,
+                                      n * sizeof(RIL_Data_Call_Response_v11));
+        at_response_free(p_response);
+        p_response = NULL;
+        return;
+    }
+
     at_response_free(p_response);
     p_response = NULL;
 
@@ -1445,6 +1458,32 @@ done:
         i = getBitmapFromPreferred(preferred);
     }
     RIL_onRequestComplete(t, RIL_E_SUCCESS, &i, sizeof(i));
+}
+
+static void requestGetCarrierRestrictions(void* data, size_t datalen, RIL_Token t) {
+    RIL_UNUSED_PARM(datalen);
+    RIL_UNUSED_PARM(data);
+
+    // Fixed values. TODO: query modem
+    RIL_Carrier allowed_carriers = {
+            "123",          // mcc
+            "456",          // mnc
+            RIL_MATCH_ALL,  // match_type
+            "",             // match_data
+    };
+
+    RIL_Carrier excluded_carriers;
+
+    RIL_CarrierRestrictionsWithPriority restrictions = {
+            1,                   // len_allowed_carriers
+            0,                   // len_excluded_carriers
+            &allowed_carriers,   // allowed_carriers
+            &excluded_carriers,  // excluded_carriers
+            1,                   // allowedCarriersPrioritized
+            NO_MULTISIM_POLICY   // multiSimPolicy
+    };
+
+    RIL_onRequestComplete(t, RIL_E_SUCCESS, &restrictions, sizeof(restrictions));
 }
 
 static void requestCdmaPrlVersion(int request __unused, void *data __unused,
@@ -2835,6 +2874,7 @@ static void requestDeactivateDataCall(void *data, RIL_Token t)
     rilErrno = setInterfaceState(radioInterfaceName, kInterfaceDown);
     RIL_onRequestComplete(t, rilErrno, NULL, 0);
     putPDP(cid);
+    requestOrSendDataCallList(-1, NULL);
 }
 
 static void requestSMSAcknowledge(void *data, size_t datalen __unused, RIL_Token t)
@@ -4755,6 +4795,7 @@ onRequest (int request, void *data, size_t datalen, RIL_Token t)
         case RIL_REQUEST_ALLOW_DATA:
         case RIL_REQUEST_ENTER_NETWORK_DEPERSONALIZATION:
         case RIL_REQUEST_SET_BAND_MODE:
+        case RIL_REQUEST_SET_CARRIER_RESTRICTIONS:
         case RIL_REQUEST_GET_NEIGHBORING_CELL_IDS:
         case RIL_REQUEST_SET_LOCATION_UPDATES:
         case RIL_REQUEST_SET_TTY_MODE:
@@ -4961,6 +5002,8 @@ onRequest (int request, void *data, size_t datalen, RIL_Token t)
         case RIL_REQUEST_GET_SLICING_CONFIG:
             RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
             break;
+        case RIL_REQUEST_GET_CARRIER_RESTRICTIONS:
+            requestGetCarrierRestrictions(data, datalen, t);
 
         // Radio config requests
         case RIL_REQUEST_CONFIG_GET_SLOT_STATUS:
