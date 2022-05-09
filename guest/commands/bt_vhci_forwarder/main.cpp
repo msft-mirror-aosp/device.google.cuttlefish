@@ -26,7 +26,7 @@
 
 #include "android-base/logging.h"
 
-#include "model/devices/h4_packetizer.h"
+#include "model/hci/h4_packetizer.h"
 
 // Copied from net/bluetooth/hci.h
 #define HCI_ACLDATA_PKT 0x02
@@ -109,7 +109,7 @@ int main(int argc, char** argv) {
   fds[1].events = POLLIN;
   unsigned char buf[kBufferSize];
 
-  auto h4 = test_vendor_lib::H4Packetizer(
+  auto h4 = rootcanal::H4Packetizer(
       virtio_fd,
       [](const std::vector<uint8_t>& /* raw_command */) {
         LOG(ERROR)
@@ -128,7 +128,6 @@ int main(int argc, char** argv) {
         send(vhci_fd, HCI_ISODATA_PKT, raw_iso.data(), raw_iso.size());
       },
       []() { LOG(INFO) << "HCI socket device disconnected"; });
-
   while (true) {
     int ret = TEMP_FAILURE_RETRY(poll(fds, 2, -1));
     if (ret < 0) {
@@ -143,7 +142,11 @@ int main(int argc, char** argv) {
         PLOG(ERROR) << "vhci to virtio-console failed";
       }
     }
-
+    if (fds[1].revents & POLLHUP) {
+      LOG(ERROR) << "PollHUP";
+      usleep(50 * 1000);
+      continue;
+    }
     if (fds[1].revents & (POLLIN | POLLERR)) {
       // 'virtio-console to vhci' depends on H4Packetizer because vhci expects
       // full packet, but the data from virtio-console could be partial.
