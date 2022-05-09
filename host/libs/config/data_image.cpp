@@ -10,6 +10,7 @@
 #include "common/libs/utils/result.h"
 #include "common/libs/utils/subprocess.h"
 #include "host/libs/config/mbr.h"
+#include "host/libs/vm_manager/gem5_manager.h"
 
 namespace cuttlefish {
 
@@ -29,12 +30,18 @@ const int FSCK_ERROR_CORRECTED_REQUIRES_REBOOT = 2;
 //       build an EFI monolith for this architecture.
 const std::string kBootPathIA32 = "EFI/BOOT/BOOTIA32.EFI";
 const std::string kBootPathAA64 = "EFI/BOOT/BOOTAA64.EFI";
+const std::string kM5 = "";
 
 // These are the paths Debian installs the monoliths to. If another distro
 // uses an alternative monolith path, add it to this table
 const std::pair<std::string, std::string> kGrubBlobTable[] = {
     {"/usr/lib/grub/i386-efi/monolithic/grubia32.efi", kBootPathIA32},
     {"/usr/lib/grub/arm64-efi/monolithic/grubaa64.efi", kBootPathAA64},
+};
+
+// M5 checkpoint required binary file
+const std::pair<std::string, std::string> kM5BlobTable[] = {
+    {"/tmp/m5", kM5},
 };
 
 bool ForceFsckImage(const CuttlefishConfig& config,
@@ -237,12 +244,12 @@ class InitializeDataImageImpl : public InitializeDataImage {
                                  DataImagePath& data_path))
       : config_(config), data_path_(data_path) {}
 
-  // Feature
+  // SetupFeature
   std::string Name() const override { return "InitializeDataImageImpl"; }
   bool Enabled() const override { return true; }
 
  private:
-  std::unordered_set<Feature*> Dependencies() const override { return {}; }
+  std::unordered_set<SetupFeature*> Dependencies() const override { return {}; }
   bool Setup() override {
     auto action = ChooseAction();
     if (!action.ok()) {
@@ -328,7 +335,7 @@ fruit::Component<fruit::Required<const CuttlefishConfig, DataImagePath>,
                  InitializeDataImage>
 InitializeDataImageComponent() {
   return fruit::createComponent()
-      .addMultibinding<Feature, InitializeDataImage>()
+      .addMultibinding<SetupFeature, InitializeDataImage>()
       .bind<InitializeDataImage, InitializeDataImageImpl>();
 }
 
@@ -350,12 +357,12 @@ class InitializeMiscImageImpl : public InitializeMiscImage {
   INJECT(InitializeMiscImageImpl(MiscImagePath& misc_path))
       : misc_path_(misc_path) {}
 
-  // Feature
+  // SetupFeature
   std::string Name() const override { return "InitializeMiscImageImpl"; }
   bool Enabled() const override { return true; }
 
  private:
-  std::unordered_set<Feature*> Dependencies() const override { return {}; }
+  std::unordered_set<SetupFeature*> Dependencies() const override { return {}; }
   bool Setup() override {
     bool misc_exists = FileHasContent(misc_path_.Path());
 
@@ -388,7 +395,7 @@ fruit::Component<MiscImagePath> FixedMiscImagePathComponent(
 fruit::Component<fruit::Required<MiscImagePath>, InitializeMiscImage>
 InitializeMiscImageComponent() {
   return fruit::createComponent()
-      .addMultibinding<Feature, InitializeMiscImage>()
+      .addMultibinding<SetupFeature, InitializeMiscImage>()
       .bind<InitializeMiscImage, InitializeMiscImageImpl>();
 }
 
@@ -396,6 +403,7 @@ struct EspImageTag {};
 struct KernelPathTag {};
 struct InitRamFsTag {};
 struct RootFsTag {};
+struct ConfigTag {};
 
 class InitializeEspImageImpl : public InitializeEspImage {
  public:
@@ -404,15 +412,17 @@ class InitializeEspImageImpl : public InitializeEspImage {
                                     kernel_path,
                                 ANNOTATED(InitRamFsTag, std::string)
                                     initramfs_path,
-                                ANNOTATED(RootFsTag, std::string) rootfs_path))
+                                ANNOTATED(RootFsTag, std::string) rootfs_path,
+                                ANNOTATED(ConfigTag, const CuttlefishConfig *) config))
       : esp_image_(esp_image),
         kernel_path_(kernel_path),
         initramfs_path_(initramfs_path),
-        rootfs_path_(rootfs_path) {}
+        rootfs_path_(rootfs_path),
+        config_(config){}
 
-  // Feature
+  // SetupFeature
   std::string Name() const override { return "InitializeEspImageImpl"; }
-  std::unordered_set<Feature*> Dependencies() const override { return {}; }
+  std::unordered_set<SetupFeature*> Dependencies() const override { return {}; }
   bool Enabled() const override { return !rootfs_path_.empty(); }
 
  protected:
@@ -439,16 +449,27 @@ class InitializeEspImageImpl : public InitializeEspImage {
     // they can use -esp_image=/path/to/esp.img to override, so we don't need
     // to accommodate customizations of this packing process.
 
-    // Currently we only support Debian based distributions, and GRUB is built
-    // for those distros to always load grub.cfg from EFI/debian/grub.cfg, and
-    // nowhere else. If you want to add support for other distros, make the
-    // extra directories below and copy the initial grub.cfg there as well
-    auto mmd = HostBinaryPath("mmd");
-    auto success =
-        execute({mmd, "-i", tmp_esp_image, "EFI", "EFI/BOOT", "EFI/debian"});
-    if (success != 0) {
-      LOG(ERROR) << "Failed to create directories in " << tmp_esp_image;
-      return false;
+    int success;
+    const std::pair<std::string, std::string> *kBlobTable;
+    std::size_t size;
+    // Skip GRUB on Gem5
+    if (config_->vm_manager() != vm_manager::Gem5Manager::name()){
+      // Currently we only support Debian based distributions, and GRUB is built
+      // for those distros to always load grub.cfg from EFI/debian/grub.cfg, and
+      // nowhere else. If you want to add support for other distros, make the
+      // extra directories below and copy the initial grub.cfg there as well
+      auto mmd = HostBinaryPath("mmd");
+      success =
+          execute({mmd, "-i", tmp_esp_image, "EFI", "EFI/BOOT", "EFI/debian"});
+      if (success != 0) {
+        LOG(ERROR) << "Failed to create directories in " << tmp_esp_image;
+        return false;
+      }
+      size = sizeof(kGrubBlobTable)/sizeof(const std::pair<std::string, std::string>);
+      kBlobTable = kGrubBlobTable;
+    } else {
+      size = sizeof(kM5BlobTable)/sizeof(const std::pair<std::string, std::string>);
+      kBlobTable = kM5BlobTable;
     }
 
     // The grub binaries are small, so just copy all the architecture blobs
@@ -457,7 +478,8 @@ class InitializeEspImageImpl : public InitializeEspImage {
     // supported
     auto mcopy = HostBinaryPath("mcopy");
     bool copied = false;
-    for (auto grub : kGrubBlobTable) {
+    for (int i=0; i<size; i++) {
+      auto grub = kBlobTable[i];
       if (!FileExists(grub.first)) {
         continue;
       }
@@ -472,18 +494,21 @@ class InitializeEspImageImpl : public InitializeEspImage {
     }
 
     if (!copied) {
-      LOG(ERROR) << "No GRUB binaries were found on this system; Other OS "
+      LOG(ERROR) << "Binary dependencies were not found on this system; Other OS "
                     "support will be broken";
       return false;
     }
 
-    auto grub_cfg = DefaultHostArtifactsPath("etc/grub/grub.cfg");
-    CHECK(FileExists(grub_cfg)) << "Missing file " << grub_cfg << "!";
-    success =
-        execute({mcopy, "-i", tmp_esp_image, "-s", grub_cfg, "::EFI/debian/"});
-    if (success != 0) {
-      LOG(ERROR) << "Failed to copy " << grub_cfg << " to " << tmp_esp_image;
-      return false;
+    // Skip Gem5 case. Gem5 will never be able to use bootloaders like grub.
+    if (config_->vm_manager() != vm_manager::Gem5Manager::name()){
+      auto grub_cfg = DefaultHostArtifactsPath("etc/grub/grub.cfg");
+      CHECK(FileExists(grub_cfg)) << "Missing file " << grub_cfg << "!";
+      success =
+          execute({mcopy, "-i", tmp_esp_image, "-s", grub_cfg, "::EFI/debian/"});
+      if (success != 0) {
+        LOG(ERROR) << "Failed to copy " << grub_cfg << " to " << tmp_esp_image;
+        return false;
+      }
     }
 
     if (!kernel_path_.empty()) {
@@ -519,19 +544,23 @@ class InitializeEspImageImpl : public InitializeEspImage {
   std::string kernel_path_;
   std::string initramfs_path_;
   std::string rootfs_path_;
+  const CuttlefishConfig* config_;
 };
 
-fruit::Component<InitializeEspImage> InitializeEspImageComponent(
+fruit::Component<fruit::Required<const CuttlefishConfig>,
+    InitializeEspImage> InitializeEspImageComponent(
     const std::string* esp_image, const std::string* kernel_path,
-    const std::string* initramfs_path, const std::string* rootfs_path) {
+    const std::string* initramfs_path, const std::string* rootfs_path,
+    const CuttlefishConfig* config) {
   return fruit::createComponent()
-      .addMultibinding<Feature, InitializeEspImage>()
+      .addMultibinding<SetupFeature, InitializeEspImage>()
       .bind<InitializeEspImage, InitializeEspImageImpl>()
       .bindInstance<fruit::Annotated<EspImageTag, std::string>>(*esp_image)
       .bindInstance<fruit::Annotated<KernelPathTag, std::string>>(*kernel_path)
       .bindInstance<fruit::Annotated<InitRamFsTag, std::string>>(
           *initramfs_path)
-      .bindInstance<fruit::Annotated<RootFsTag, std::string>>(*rootfs_path);
+      .bindInstance<fruit::Annotated<RootFsTag, std::string>>(*rootfs_path)
+      .bindInstance<fruit::Annotated<ConfigTag, CuttlefishConfig>>(*config);
 }
 
 } // namespace cuttlefish
