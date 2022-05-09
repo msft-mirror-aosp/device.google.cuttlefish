@@ -54,7 +54,7 @@ static void *noopRemoveWarning( void *a ) { return a; }
 
 #define MAX_AT_RESPONSE 0x1000
 
-#define MAX_PDP         3
+#define MAX_PDP 11  // max LTE bearers
 
 /* pathname returned from RIL_REQUEST_SETUP_DATA_CALL / RIL_REQUEST_SETUP_DEFAULT_PDP */
 // This is used if Wifi is not supported, plain old eth0
@@ -413,9 +413,8 @@ struct PDPInfo {
 };
 
 struct PDPInfo s_PDP[] = {
-     {1, PDP_IDLE},
-     {2, PDP_IDLE},
-     {3, PDP_IDLE},
+        {1, PDP_IDLE}, {2, PDP_IDLE}, {3, PDP_IDLE}, {4, PDP_IDLE},  {5, PDP_IDLE},  {6, PDP_IDLE},
+        {7, PDP_IDLE}, {8, PDP_IDLE}, {9, PDP_IDLE}, {10, PDP_IDLE}, {11, PDP_IDLE},
 };
 
 static void pollSIMState (void *param);
@@ -960,6 +959,19 @@ static void requestOrSendDataCallList(int cid, RIL_Token *t)
             responses[i].dnses = "8.8.8.8 8.8.4.4";
             responses[i].gateways = "";
         }
+    }
+
+    // If cid = -1, return the data call list without processing CGCONTRDP (setupDataCall)
+    if (cid == -1) {
+        if (t != NULL)
+            RIL_onRequestComplete(*t, RIL_E_SUCCESS, &responses[0],
+                                  sizeof(RIL_Data_Call_Response_v11));
+        else
+            RIL_onUnsolicitedResponse(RIL_UNSOL_DATA_CALL_LIST_CHANGED, responses,
+                                      n * sizeof(RIL_Data_Call_Response_v11));
+        at_response_free(p_response);
+        p_response = NULL;
+        return;
     }
 
     at_response_free(p_response);
@@ -2810,7 +2822,24 @@ static void requestSetupDataCall(void *data, size_t datalen, RIL_Token t)
         }
 
         cid = getPDP();
-        if (cid < 1 ) goto error;
+        if (cid < 1) {
+            RLOGE("SETUP_DATA_CALL MAX_PDP reached.");
+            RIL_Data_Call_Response_v11 response;
+            response.status = 0x41 /* PDP_FAIL_MAX_ACTIVE_PDP_CONTEXT_REACHED */;
+            response.suggestedRetryTime = -1;
+            response.cid = cid;
+            response.active = -1;
+            response.type = "";
+            response.ifname = "";
+            response.addresses = "";
+            response.dnses = "";
+            response.gateways = "";
+            response.pcscf = "";
+            response.mtu = 0;
+            RIL_onRequestComplete(t, RIL_E_SUCCESS, &response, sizeof(RIL_Data_Call_Response_v11));
+            at_response_free(p_response);
+            return;
+        }
 
         asprintf(&cmd, "AT+CGDCONT=%d,\"%s\",\"%s\",,0,0", cid, pdp_type, apn);
         //FIXME check for error here
@@ -2861,6 +2890,7 @@ static void requestDeactivateDataCall(void *data, RIL_Token t)
     rilErrno = setInterfaceState(radioInterfaceName, kInterfaceDown);
     RIL_onRequestComplete(t, rilErrno, NULL, 0);
     putPDP(cid);
+    requestOrSendDataCallList(-1, NULL);
 }
 
 static void requestSMSAcknowledge(void *data, size_t datalen __unused, RIL_Token t)
