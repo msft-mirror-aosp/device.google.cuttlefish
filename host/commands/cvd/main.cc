@@ -100,16 +100,16 @@ class CvdClient {
       }
     }
     if (server_version.build() != android::build::GetBuildNumber()) {
-      std::cerr << "WARNING: cvd_server client version ("
-                << android::build::GetBuildNumber()
-                << ") does not match server version (" << server_version.build()
-                << std::endl;
+      LOG(VERBOSE) << "cvd_server client version ("
+                   << android::build::GetBuildNumber()
+                   << ") does not match server version ("
+                   << server_version.build() << std::endl;
     }
     auto self_crc32 = FileCrc("/proc/self/exe");
     if (server_version.crc32() != self_crc32) {
-      std::cerr << "WARNING: cvd_server client checksum (" << self_crc32
-                << ") doesn't match server checksum (" << server_version.crc32()
-                << std::endl;
+      LOG(VERBOSE) << "cvd_server client checksum (" << self_crc32
+                   << ") doesn't match server checksum ("
+                   << server_version.crc32() << std::endl;
     }
     return {};
   }
@@ -299,7 +299,7 @@ Result<int> CvdMain(int argc, char** argv, char** envp) {
   CvdClient client;
 
   // TODO(b/206893146): Make this decision inside the server.
-  if (args[0] == "acloud") {
+  if (android::base::Basename(args[0]) == "acloud") {
     auto server_running = client.EnsureCvdServerRunning(
         android::base::Dirname(android::base::GetExecutableDirectory()));
     if (server_running.ok()) {

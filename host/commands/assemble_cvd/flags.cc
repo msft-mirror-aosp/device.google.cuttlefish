@@ -29,6 +29,7 @@
 #include "host/commands/assemble_cvd/disk_flags.h"
 #include "host/libs/config/config_flag.h"
 #include "host/libs/config/host_tools_version.h"
+#include "host/libs/config/instance_nums.h"
 #include "host/libs/graphics_detector/graphics_detector.h"
 #include "host/libs/vm_manager/crosvm_manager.h"
 #include "host/libs/vm_manager/gem5_manager.h"
@@ -257,6 +258,9 @@ DEFINE_string(boot_slot, "", "Force booting into the given slot. If empty, "
              "bootloader. It will default to 'a' if empty and not using a "
              "bootloader.");
 DEFINE_int32(num_instances, 1, "Number of Android guests to launch");
+DEFINE_string(instance_nums, "",
+              "A comma-separated list of instance numbers "
+              "to use. Mutually exclusive with base_instance_num.");
 DEFINE_string(report_anonymous_usage_stats, "", "Report anonymous usage "
             "statistics for metrics collection and analysis.");
 DEFINE_string(ril_dns, "8.8.8.8", "DNS address of mobile network (RIL)");
@@ -277,6 +281,8 @@ DEFINE_int32(modem_simulator_sim_type, 1,
              "Sim type: 1 for normal, 2 for CtsCarrierApiTestCases");
 
 DEFINE_bool(console, false, "Enable the serial console");
+
+DEFINE_bool(enable_kernel_log, true, "Enable kernel console/dmesg logging");
 
 DEFINE_bool(vhost_net, false, "Enable vhost acceleration of networking");
 
@@ -324,8 +330,7 @@ DEFINE_bool(use_sdcard, true, "Create blank SD-Card image and expose to guest");
 
 DEFINE_bool(protected_vm, false, "Boot in Protected VM mode");
 
-DEFINE_bool(enable_audio, cuttlefish::HostArch() != cuttlefish::Arch::Arm64,
-            "Whether to play or capture audio");
+DEFINE_bool(enable_audio, true, "Whether to play or capture audio");
 
 DEFINE_uint32(camera_server_port, 0, "camera vsock port");
 
@@ -636,6 +641,7 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
   }
 
   tmp_config_obj.set_console(FLAGS_console);
+  tmp_config_obj.set_enable_kernel_log(FLAGS_enable_kernel_log);
   tmp_config_obj.set_kgdb(FLAGS_console && FLAGS_kgdb);
 
   tmp_config_obj.set_host_tools_version(HostToolsCrc());
@@ -726,14 +732,13 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
 
   tmp_config_obj.set_userdata_format(FLAGS_userdata_format);
 
-  std::vector<int> num_instances;
-  for (int i = 0; i < FLAGS_num_instances; i++) {
-    num_instances.push_back(GetInstance() + i);
-  }
   std::vector<std::string> gnss_file_paths = android::base::Split(FLAGS_gnss_file_path, ",");
 
+  auto instance_nums = InstanceNumsCalculator().FromGlobalGflags().Calculate();
+  CHECK(instance_nums.ok()) << instance_nums.error();
+
   bool is_first_instance = true;
-  for (const auto& num : num_instances) {
+  for (const auto& num : *instance_nums) {
     IfaceConfig iface_config;
     if (FLAGS_use_allocd) {
       auto iface_opt = AllocateNetworkInterfaces();
@@ -892,7 +897,7 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
     } else {
       instance.set_modem_simulator_ports("");
     }
-  } // end of num_instances loop
+  }  // end of num_instances loop
 
   std::vector<std::string> names;
   for (const auto& instance : tmp_config_obj.Instances()) {
@@ -902,11 +907,6 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
 
   tmp_config_obj.set_enable_sandbox(FLAGS_enable_sandbox);
 
-  // Audio is not available for Arm64
-  SetCommandLineOptionWithMode(
-      "enable_audio",
-      (cuttlefish::HostArch() == cuttlefish::Arch::Arm64) ? "false" : "true",
-      SET_FLAGS_DEFAULT);
   tmp_config_obj.set_enable_audio(FLAGS_enable_audio);
 
   return tmp_config_obj;

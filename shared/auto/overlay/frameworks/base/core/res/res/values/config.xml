@@ -28,14 +28,13 @@
     <bool name="config_guestUserEphemeral" translatable="false">true</bool>
     <!--  Maximum number of users allowed on the device. -->
     <integer name="config_multiuserMaximumUsers" translatable="false">4</integer>
-    <!-- Restricting eth1 -->
-    <string-array translatable="false" name="config_ethernet_interfaces">
-        <item>eth1;11,12,14;;</item>
-    </string-array>
     <!-- Car uses hardware amplifier for volume. -->
     <bool name="config_useFixedVolume">true</bool>
     <!--
       Handle volume keys directly in CarAudioService without passing them to the foreground app
     -->
     <bool name="config_handleVolumeKeysInWindowManager">true</bool>
+
+    <!-- Show the "Adaptive Brightness" toggle. -->
+    <bool name="config_automatic_brightness_available">true</bool>
 </resources>

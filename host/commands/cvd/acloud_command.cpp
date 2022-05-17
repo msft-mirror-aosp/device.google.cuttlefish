@@ -150,6 +150,60 @@ class ConvertAcloudCreateCommand {
               return true;
             }));
 
+    std::optional<std::string> system_branch;
+    flags.emplace_back(
+        Flag()
+            .Alias({FlagAliasMode::kFlagConsumesFollowing, "--system-branch"})
+            .Setter([&system_branch](const FlagMatch& m) {
+              system_branch = m.value;
+              return true;
+            }));
+
+    std::optional<std::string> system_build_target;
+    flags.emplace_back(Flag()
+                           .Alias({FlagAliasMode::kFlagConsumesFollowing,
+                                   "--system-build-target"})
+                           .Setter([&system_build_target](const FlagMatch& m) {
+                             system_build_target = m.value;
+                             return true;
+                           }));
+
+    std::optional<std::string> system_build_id;
+    flags.emplace_back(
+        Flag()
+            .Alias({FlagAliasMode::kFlagConsumesFollowing, "--system-build-id"})
+            .Setter([&system_build_id](const FlagMatch& m) {
+              system_build_id = m.value;
+              return true;
+            }));
+
+    std::optional<std::string> kernel_branch;
+    flags.emplace_back(
+        Flag()
+            .Alias({FlagAliasMode::kFlagConsumesFollowing, "--kernel-branch"})
+            .Setter([&kernel_branch](const FlagMatch& m) {
+              kernel_branch = m.value;
+              return true;
+            }));
+
+    std::optional<std::string> kernel_build_target;
+    flags.emplace_back(Flag()
+                           .Alias({FlagAliasMode::kFlagConsumesFollowing,
+                                   "--kernel-build-target"})
+                           .Setter([&kernel_build_target](const FlagMatch& m) {
+                             kernel_build_target = m.value;
+                             return true;
+                           }));
+
+    std::optional<std::string> kernel_build_id;
+    flags.emplace_back(
+        Flag()
+            .Alias({FlagAliasMode::kFlagConsumesFollowing, "--kernel-build-id"})
+            .Setter([&kernel_build_id](const FlagMatch& m) {
+              kernel_build_id = m.value;
+              return true;
+            }));
+
     CF_EXPECT(ParseFlags(flags, arguments));
     CF_EXPECT(arguments.size() == 0,
               "Unrecognized arguments:'"
@@ -178,6 +232,8 @@ class ConvertAcloudCreateCommand {
 
     std::vector<cvd::Request> request_protos;
     if (local_image) {
+      CF_EXPECT(!(system_branch || system_build_target || system_build_id),
+                "--local-image incompatible with --system-* flags");
       cvd::Request& mkdir_request = request_protos.emplace_back();
       auto& mkdir_command = *mkdir_request.mutable_command_request();
       mkdir_command.add_args("cvd");
@@ -186,6 +242,7 @@ class ConvertAcloudCreateCommand {
       mkdir_command.add_args(dir);
       auto& mkdir_env = *mkdir_command.mutable_env();
       mkdir_env[kAndroidHostOut] = host_artifacts_path->second;
+      *mkdir_command.mutable_working_directory() = dir;
     } else {
       cvd::Request& fetch_request = request_protos.emplace_back();
       auto& fetch_command = *fetch_request.mutable_command_request();
@@ -199,6 +256,24 @@ class ConvertAcloudCreateCommand {
         auto build = build_id.value_or(branch.value_or("aosp-master"));
         fetch_command.add_args(build + target);
       }
+      if (system_branch || system_build_id || system_build_target) {
+        fetch_command.add_args("--system_build");
+        auto target = system_build_target.value_or(build_target.value_or(""));
+        if (target != "") {
+          target = "/" + target;
+        }
+        auto build =
+            system_build_id.value_or(system_branch.value_or("aosp-master"));
+        fetch_command.add_args(build + target);
+      }
+      if (kernel_branch || kernel_build_id || kernel_build_target) {
+        fetch_command.add_args("--kernel_build");
+        auto target = kernel_build_target.value_or("kernel_virt_x86_64");
+        auto build = kernel_build_id.value_or(
+            branch.value_or("aosp_kernel-common-android-mainline"));
+        fetch_command.add_args(build + "/" + target);
+      }
+      *fetch_command.mutable_working_directory() = dir;
       auto& fetch_env = *fetch_command.mutable_env();
       fetch_env[kAndroidHostOut] = host_artifacts_path->second;
     }
@@ -232,6 +307,7 @@ class ConvertAcloudCreateCommand {
     }
     start_env["CUTTLEFISH_INSTANCE"] = std::to_string(lock->Instance());
     start_env["HOME"] = dir;
+    *start_command.mutable_working_directory() = dir;
 
     std::vector<SharedFD> fds;
     if (verbose) {

@@ -45,6 +45,7 @@
 #include "host/libs/config/config_fragment.h"
 #include "host/libs/config/custom_actions.h"
 #include "host/libs/config/cuttlefish_config.h"
+#include "host/libs/config/inject.h"
 #include "host/libs/vm_manager/vm_manager.h"
 
 namespace cuttlefish {
@@ -100,12 +101,67 @@ class CuttlefishEnvironment : public SetupFeature,
   const CuttlefishConfig::InstanceSpecific& instance_;
 };
 
-fruit::Component<ServerLoop> runCvdComponent(
+class InstanceLifecycle : public LateInjected {
+ public:
+  INJECT(InstanceLifecycle(const CuttlefishConfig& config,
+                           ServerLoop& server_loop))
+      : config_(config), server_loop_(server_loop) {}
+
+  Result<void> LateInject(fruit::Injector<>& injector) override {
+    config_fragments_ = injector.getMultibindings<ConfigFragment>();
+    setup_features_ = injector.getMultibindings<SetupFeature>();
+    command_sources_ = injector.getMultibindings<CommandSource>();
+    diagnostics_ = injector.getMultibindings<DiagnosticInformation>();
+    return {};
+  }
+
+  Result<void> Run() {
+    for (auto& fragment : config_fragments_) {
+      CF_EXPECT(config_.LoadFragment(*fragment));
+    }
+
+    // One of the setup features can consume most output, so print this early.
+    DiagnosticInformation::PrintAll(diagnostics_);
+
+    CF_EXPECT(SetupFeature::RunSetup(setup_features_));
+
+    // Monitor and restart host processes supporting the CVD
+    ProcessMonitor::Properties process_monitor_properties;
+    process_monitor_properties.RestartSubprocesses(
+        config_.restart_subprocesses());
+
+    for (auto& command_source : command_sources_) {
+      if (command_source->Enabled()) {
+        process_monitor_properties.AddCommands(command_source->Commands());
+      }
+    }
+
+    ProcessMonitor process_monitor(std::move(process_monitor_properties));
+
+    CF_EXPECT(process_monitor.StartAndMonitorProcesses());
+
+    server_loop_.Run(process_monitor);
+
+    return {};
+  }
+
+ private:
+  const CuttlefishConfig& config_;
+  ServerLoop& server_loop_;
+  std::vector<ConfigFragment*> config_fragments_;
+  std::vector<SetupFeature*> setup_features_;
+  std::vector<CommandSource*> command_sources_;
+  std::vector<DiagnosticInformation*> diagnostics_;
+};
+
+fruit::Component<> runCvdComponent(
     const CuttlefishConfig* config,
     const CuttlefishConfig::InstanceSpecific* instance) {
   return fruit::createComponent()
       .addMultibinding<DiagnosticInformation, CuttlefishEnvironment>()
       .addMultibinding<SetupFeature, CuttlefishEnvironment>()
+      .addMultibinding<InstanceLifecycle, InstanceLifecycle>()
+      .addMultibinding<LateInjected, InstanceLifecycle>()
       .bindInstance(*config)
       .bindInstance(*instance)
       .install(AdbConfigComponent)
@@ -122,34 +178,23 @@ fruit::Component<ServerLoop> runCvdComponent(
       .install(vm_manager::VmManagerComponent);
 }
 
-bool IsStdinValid() {
-  if (isatty(0)) {
-    LOG(ERROR) << "stdin was a tty, expected to be passed the output of a "
-                  "previous stage. "
-               << "Did you mean to run launch_cvd?";
-    return false;
-  } else {
-    int error_num = errno;
-    if (error_num == EBADF) {
-      LOG(ERROR) << "stdin was not a valid file descriptor, expected to be "
-                    "passed the output "
-                 << "of assemble_cvd. Did you mean to run launch_cvd?";
-      return false;
-    }
-  }
-  return true;
+Result<void> StdinValid() {
+  CF_EXPECT(!isatty(0),
+            "stdin was a tty, expected to be passed the output of a"
+            " previous stage. Did you mean to run launch_cvd?");
+  CF_EXPECT(errno != EBADF,
+            "stdin was not a valid file descriptor, expected to be passed the "
+            "output of assemble_cvd. Did you mean to run launch_cvd?");
+  return {};
 }
 
-const CuttlefishConfig* FindConfigFromStdin() {
+Result<const CuttlefishConfig*> FindConfigFromStdin() {
   std::string input_files_str;
   {
     auto input_fd = SharedFD::Dup(0);
     auto bytes_read = ReadAll(input_fd, &input_files_str);
-    if (bytes_read < 0) {
-      LOG(ERROR) << "Failed to read input files. Error was \""
-                 << input_fd->StrError() << "\"";
-      return nullptr;
-    }
+    CF_EXPECT(bytes_read >= 0, "Failed to read input files. Error was \""
+                                   << input_fd->StrError() << "\"");
   }
   std::vector<std::string> input_files =
       android::base::Split(input_files_str, "\n");
@@ -158,7 +203,7 @@ const CuttlefishConfig* FindConfigFromStdin() {
       setenv(kCuttlefishConfigEnvVarName, file.c_str(), /* overwrite */ false);
     }
   }
-  return CuttlefishConfig::Get();
+  return CF_EXPECT(CuttlefishConfig::Get());  // Null check
 }
 
 void ConfigureLogs(const CuttlefishConfig& config,
@@ -179,18 +224,16 @@ void ConfigureLogs(const CuttlefishConfig& config,
   ::android::base::SetLogger(LogToStderrAndFiles({log_path}, prefix));
 }
 
-bool ChdirIntoRuntimeDir(const CuttlefishConfig::InstanceSpecific& instance) {
+Result<void> ChdirIntoRuntimeDir(
+    const CuttlefishConfig::InstanceSpecific& instance) {
   // Change working directory to the instance directory as early as possible to
   // ensure all host processes have the same working dir. This helps stop_cvd
   // find the running processes when it can't establish a communication with the
   // launcher.
-  auto chdir_ret = chdir(instance.instance_dir().c_str());
-  if (chdir_ret != 0) {
-    PLOG(ERROR) << "Unable to change dir into instance directory ("
-                << instance.instance_dir() << "): ";
-    return false;
-  }
-  return true;
+  CF_EXPECT(chdir(instance.instance_dir().c_str()) == 0,
+            "Unable to change dir into instance directory \""
+                << instance.instance_dir() << "\": " << strerror(errno));
+  return {};
 }
 
 }  // namespace
@@ -200,38 +243,22 @@ Result<void> RunCvdMain(int argc, char** argv) {
   ::android::base::InitLogging(argv, android::base::StderrLogger);
   google::ParseCommandLineFlags(&argc, &argv, false);
 
-  CF_EXPECT(IsStdinValid(), "Invalid stdin");
+  CF_EXPECT(StdinValid(), "Invalid stdin");
   auto config = CF_EXPECT(FindConfigFromStdin());
   auto instance = config->ForDefaultInstance();
 
   ConfigureLogs(*config, instance);
   CF_EXPECT(ChdirIntoRuntimeDir(instance));
 
-  fruit::Injector<ServerLoop> injector(runCvdComponent, config, &instance);
+  fruit::Injector<> injector(runCvdComponent, config, &instance);
 
-  for (auto& fragment : injector.getMultibindings<ConfigFragment>()) {
-    CF_EXPECT(config->LoadFragment(*fragment));
+  for (auto& late_injected : injector.getMultibindings<LateInjected>()) {
+    CF_EXPECT(late_injected->LateInject(injector));
   }
 
-  // One of the setup features can consume most output, so print this early.
-  DiagnosticInformation::PrintAll(
-      injector.getMultibindings<DiagnosticInformation>());
-
-  const auto& features = injector.getMultibindings<SetupFeature>();
-  CF_EXPECT(SetupFeature::RunSetup(features));
-
-  // Monitor and restart host processes supporting the CVD
-  ProcessMonitor process_monitor(config->restart_subprocesses());
-
-  for (auto& command_source : injector.getMultibindings<CommandSource>()) {
-    if (command_source->Enabled()) {
-      process_monitor.AddCommands(command_source->Commands());
-    }
-  }
-
-  CF_EXPECT(process_monitor.StartAndMonitorProcesses());
-
-  injector.get<ServerLoop&>().Run(process_monitor);  // Should not return
+  auto instance_bindings = injector.getMultibindings<InstanceLifecycle>();
+  CF_EXPECT(instance_bindings.size() == 1);
+  CF_EXPECT(instance_bindings[0]->Run());  // Should not return
 
   return CF_ERR("The server loop returned, it should never happen!!");
 }

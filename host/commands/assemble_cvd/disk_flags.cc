@@ -31,10 +31,12 @@
 #include "common/libs/utils/subprocess.h"
 #include "host/commands/assemble_cvd/boot_config.h"
 #include "host/commands/assemble_cvd/boot_image_utils.h"
+#include "host/commands/assemble_cvd/disk_builder.h"
 #include "host/commands/assemble_cvd/super_image_mixer.h"
 #include "host/libs/config/bootconfig_args.h"
 #include "host/libs/config/cuttlefish_config.h"
 #include "host/libs/config/data_image.h"
+#include "host/libs/config/inject.h"
 #include "host/libs/vm_manager/crosvm_manager.h"
 #include "host/libs/vm_manager/gem5_manager.h"
 
@@ -94,7 +96,6 @@ DECLARE_bool(protected_vm);
 
 namespace cuttlefish {
 
-using vm_manager::CrosvmManager;
 using vm_manager::Gem5Manager;
 
 Result<void> ResolveInstanceFiles() {
@@ -142,16 +143,7 @@ Result<void> ResolveInstanceFiles() {
 
   return {};
 }
-void create_overlay_image(const CuttlefishConfig& config,
-                          std::string overlay_path) {
-  bool missingOverlay = !FileExists(overlay_path);
-  bool newOverlay = FileModificationTime(overlay_path) <
-                    FileModificationTime(config.os_composite_disk_path());
-  if (missingOverlay || !FLAGS_resume || newOverlay) {
-    CreateQcowOverlay(config.crosvm_binary(), config.os_composite_disk_path(),
-                      overlay_path);
-  }
-}
+
 std::vector<ImagePartition> GetOsCompositeDiskConfig() {
   std::vector<ImagePartition> partitions;
   partitions.push_back(ImagePartition{
@@ -247,6 +239,18 @@ std::vector<ImagePartition> GetOsCompositeDiskConfig() {
   return partitions;
 }
 
+DiskBuilder OsCompositeDiskBuilder(const CuttlefishConfig& config) {
+  return DiskBuilder()
+      .Partitions(GetOsCompositeDiskConfig())
+      .VmManager(config.vm_manager())
+      .CrosvmPath(config.crosvm_binary())
+      .ConfigPath(config.AssemblyPath("os_composite_disk_config.txt"))
+      .HeaderPath(config.AssemblyPath("os_composite_gpt_header.img"))
+      .FooterPath(config.AssemblyPath("os_composite_gpt_footer.img"))
+      .CompositeDiskPath(config.os_composite_disk_path())
+      .ResumeIfPossible(FLAGS_resume);
+}
+
 std::vector<ImagePartition> persistent_composite_disk_config(
     const CuttlefishConfig& config,
     const CuttlefishConfig::InstanceSpecific& instance) {
@@ -279,67 +283,6 @@ std::vector<ImagePartition> persistent_composite_disk_config(
   return partitions;
 }
 
-static std::chrono::system_clock::time_point LastUpdatedInputDisk(
-    const std::vector<ImagePartition>& partitions) {
-  std::chrono::system_clock::time_point ret;
-  for (auto& partition : partitions) {
-    if (partition.label == "frp") {
-      continue;
-    }
-
-    auto partition_mod_time = FileModificationTime(partition.image_file_path);
-    if (partition_mod_time > ret) {
-      ret = partition_mod_time;
-    }
-  }
-  return ret;
-}
-
-bool DoesCompositeMatchCurrentDiskConfig(
-    const std::string& prior_disk_config_path,
-    const std::vector<ImagePartition>& partitions) {
-  std::string current_disk_config_path = prior_disk_config_path + ".tmp";
-  std::ostringstream disk_conf;
-  for (auto& partition : partitions) {
-    disk_conf << partition.image_file_path << "\n";
-  }
-
-  {
-    // This file acts as a descriptor of the cuttlefish disk contents in a VMM agnostic way (VMMs
-    // used are QEMU and CrosVM at the time of writing). This file is used to determine if the
-    // disk config for the pending boot matches the disk from the past boot.
-    std::ofstream file_out(current_disk_config_path.c_str(), std::ios::binary);
-    file_out << disk_conf.str();
-    CHECK(file_out.good()) << "Disk config verification failed.";
-  }
-
-  if (!FileExists(prior_disk_config_path) ||
-      ReadFile(prior_disk_config_path) != ReadFile(current_disk_config_path)) {
-    CHECK(cuttlefish::RenameFile(current_disk_config_path, prior_disk_config_path))
-        << "Unable to delete the old disk config descriptor";
-    LOG(DEBUG) << "Disk Config has changed since last boot. Regenerating composite disk.";
-    return false;
-  } else {
-    RemoveFile(current_disk_config_path);
-    return true;
-  }
-}
-
-bool ShouldCreateCompositeDisk(const std::string& composite_disk_path,
-                               const std::vector<ImagePartition>& partitions) {
-  if (!FileExists(composite_disk_path)) {
-    return true;
-  }
-
-  auto composite_age = FileModificationTime(composite_disk_path);
-  return composite_age < LastUpdatedInputDisk(partitions);
-}
-
-bool ShouldCreateOsCompositeDisk(const CuttlefishConfig& config) {
-  return ShouldCreateCompositeDisk(config.os_composite_disk_path(),
-                                   GetOsCompositeDiskConfig());
-}
-
 static uint64_t AvailableSpaceAtPath(const std::string& path) {
   struct statvfs vfs;
   if (statvfs(path.c_str(), &vfs) != 0) {
@@ -350,73 +293,6 @@ static uint64_t AvailableSpaceAtPath(const std::string& path) {
   }
   // f_frsize (block size) * f_bavail (free blocks) for unprivileged users.
   return static_cast<uint64_t>(vfs.f_frsize) * vfs.f_bavail;
-}
-
-Result<void> CreateOsCompositeDisk(const CuttlefishConfig& config) {
-  CF_EXPECT(
-      SharedFD::Open(config.os_composite_disk_path().c_str(),
-                     O_WRONLY | O_CREAT, 0644)
-          ->IsOpen(),
-      "Could not ensure \"" << config.os_composite_disk_path() << "\" exists");
-  if (config.vm_manager() == CrosvmManager::name()) {
-    // Check if filling in the sparse image would run out of disk space.
-    auto existing_sizes = SparseFileSizes(FLAGS_data_image);
-    CF_EXPECT(existing_sizes.sparse_size > 0 || existing_sizes.disk_size > 0,
-              "Unable to determine size of \"" << FLAGS_data_image
-                                               << "\". Does this file exist?");
-    auto available_space = AvailableSpaceAtPath(FLAGS_data_image);
-    if (available_space < existing_sizes.sparse_size - existing_sizes.disk_size) {
-      // TODO(schuffelen): Duplicate this check in run_cvd when it can run on a separate machine
-      return CF_ERR("Not enough space remaining in fs containing \""
-                    << FLAGS_data_image << "\", wanted "
-                    << (existing_sizes.sparse_size - existing_sizes.disk_size)
-                    << ", got " << available_space);
-    } else {
-      LOG(DEBUG) << "Available space: " << available_space;
-      LOG(DEBUG) << "Sparse size of \"" << FLAGS_data_image << "\": "
-                 << existing_sizes.sparse_size;
-      LOG(DEBUG) << "Disk size of \"" << FLAGS_data_image << "\": "
-                 << existing_sizes.disk_size;
-    }
-    std::string header_path =
-        config.AssemblyPath("os_composite_gpt_header.img");
-    std::string footer_path =
-        config.AssemblyPath("os_composite_gpt_footer.img");
-    CreateCompositeDisk(GetOsCompositeDiskConfig(), AbsolutePath(header_path),
-                        AbsolutePath(footer_path),
-                        AbsolutePath(config.os_composite_disk_path()));
-  } else {
-    // If this doesn't fit into the disk, it will fail while aggregating. The
-    // aggregator doesn't maintain any sparse attributes.
-    AggregateImage(GetOsCompositeDiskConfig(), config.os_composite_disk_path());
-  }
-  return {};
-}
-
-bool CreatePersistentCompositeDisk(
-    const CuttlefishConfig& config,
-    const CuttlefishConfig::InstanceSpecific& instance) {
-  if (!SharedFD::Open(instance.persistent_composite_disk_path().c_str(),
-                      O_WRONLY | O_CREAT, 0644)
-           ->IsOpen()) {
-    LOG(ERROR) << "Could not ensure "
-               << instance.persistent_composite_disk_path() << " exists";
-    return false;
-  }
-  if (config.vm_manager() == CrosvmManager::name()) {
-    std::string header_path =
-        instance.PerInstancePath("persistent_composite_gpt_header.img");
-    std::string footer_path =
-        instance.PerInstancePath("persistent_composite_gpt_footer.img");
-    CreateCompositeDisk(
-        persistent_composite_disk_config(config, instance),
-        AbsolutePath(header_path), AbsolutePath(footer_path),
-        AbsolutePath(instance.persistent_composite_disk_path()));
-  } else {
-    AggregateImage(persistent_composite_disk_config(config, instance),
-                   instance.persistent_composite_disk_path());
-  }
-  return true;
 }
 
 class BootImageRepacker : public SetupFeature {
@@ -530,7 +406,7 @@ class Gem5ImageUnpacker : public SetupFeature {
   }
 
  protected:
-  bool Setup() override {
+  Result<void> ResultSetup() override {
     /* Unpack the original or repacked boot and vendor boot ramdisks, so that
      * we have access to the baked bootconfig and raw compressed ramdisks.
      * This allows us to emulate what a bootloader would normally do, which
@@ -540,35 +416,23 @@ class Gem5ImageUnpacker : public SetupFeature {
      * does the parts which are instance agnostic.
      */
 
-    if (!FileHasContent(FLAGS_boot_image)) {
-      LOG(ERROR) << "File not found: " << FLAGS_boot_image;
-      return false;
-    }
+    CF_EXPECT(FileHasContent(FLAGS_boot_image), FLAGS_boot_image);
     // The init_boot partition is be optional for testing boot.img
     // with the ramdisk inside.
     if (!FileHasContent(FLAGS_init_boot_image)) {
       LOG(WARNING) << "File not found: " << FLAGS_init_boot_image;
     }
 
-    if (!FileHasContent(FLAGS_vendor_boot_image)) {
-      LOG(ERROR) << "File not found: " << FLAGS_vendor_boot_image;
-      return false;
-    }
+    CF_EXPECT(FileHasContent(FLAGS_vendor_boot_image), FLAGS_vendor_boot_image);
 
     const std::string unpack_dir = config_.assembly_dir();
 
-    bool success = UnpackBootImage(FLAGS_init_boot_image, unpack_dir);
-    if (!success) {
-      LOG(ERROR) << "Failed to extract the init boot image";
-      return false;
-    }
+    CF_EXPECT(UnpackBootImage(FLAGS_init_boot_image, unpack_dir),
+              "Failed to extract the init boot image");
 
-    success = UnpackVendorBootImageIfNotUnpacked(FLAGS_vendor_boot_image,
-                                                 unpack_dir);
-    if (!success) {
-      LOG(ERROR) << "Failed to extract the vendor boot image";
-      return false;
-    }
+    CF_EXPECT(
+        UnpackVendorBootImageIfNotUnpacked(FLAGS_vendor_boot_image, unpack_dir),
+        "Failed to extract the vendor boot image");
 
     // Assume the user specified a kernel manually which is a vmlinux
     std::ofstream kernel(unpack_dir + "/kernel", std::ios_base::binary |
@@ -580,11 +444,10 @@ class Gem5ImageUnpacker : public SetupFeature {
     // Gem5 needs the bootloader binary to be a specific directory structure
     // to find it. Create a 'binaries' directory and copy it into there
     const std::string binaries_dir = unpack_dir + "/binaries";
-    if (mkdir(binaries_dir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) < 0
-        && errno != EEXIST) {
-      PLOG(ERROR) << "Failed to create dir: \"" << binaries_dir << "\" ";
-      return false;
-    }
+    CF_EXPECT(mkdir(binaries_dir.c_str(),
+                    S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) == 0 ||
+                  errno == EEXIST,
+              "\"" << binaries_dir << "\": " << strerror(errno));
     std::ofstream bootloader(binaries_dir + "/" +
                              cpp_basename(FLAGS_bootloader),
                              std::ios_base::binary | std::ios_base::trunc);
@@ -602,7 +465,7 @@ class Gem5ImageUnpacker : public SetupFeature {
     boot_arm << src_boot_arm.rdbuf();
     boot_arm.close();
 
-    return true;
+    return {};
   }
 
  private:
@@ -627,55 +490,51 @@ class GeneratePersistentBootconfig : public SetupFeature {
 
  private:
   std::unordered_set<SetupFeature*> Dependencies() const override { return {}; }
-  bool Setup() override {
+  Result<void> ResultSetup() override {
     //  Cuttlefish for the time being won't be able to support OTA from a
     //  non-bootconfig kernel to a bootconfig-kernel (or vice versa) IF the
     //  device is stopped (via stop_cvd). This is rarely an issue since OTA
     //  testing run on cuttlefish is done within one launch cycle of the device.
     //  If this ever becomes an issue, this code will have to be rewritten.
     if(!config_.bootconfig_supported()) {
-      return true;
+      return {};
     }
 
     const auto bootconfig_path = instance_.persistent_bootconfig_path();
     if (!FileExists(bootconfig_path)) {
-      if (!CreateBlankImage(bootconfig_path, 1 /* mb */, "none")) {
-        LOG(ERROR) << "Failed to create image at " << bootconfig_path;
-        return false;
-      }
+      CF_EXPECT(CreateBlankImage(bootconfig_path, 1 /* mb */, "none"),
+                "Failed to create image at " << bootconfig_path);
     }
 
     auto bootconfig_fd = SharedFD::Open(bootconfig_path, O_RDWR);
-    if (!bootconfig_fd->IsOpen()) {
-      LOG(ERROR) << "Unable to open bootconfig file: "
-                 << bootconfig_fd->StrError();
-      return false;
-    }
+    CF_EXPECT(bootconfig_fd->IsOpen(),
+              "Unable to open bootconfig file: " << bootconfig_fd->StrError());
 
     const std::string bootconfig =
         android::base::Join(BootconfigArgsFromConfig(config_, instance_),
                             "\n") +
         "\n";
+    LOG(DEBUG) << "bootconfig size is " << bootconfig.size();
     ssize_t bytesWritten = WriteAll(bootconfig_fd, bootconfig);
-    LOG(DEBUG) << "bootconfig size is " << bytesWritten;
-    if (bytesWritten != bootconfig.size()) {
-      LOG(ERROR) << "Failed to write contents of bootconfig to \""
-                 << bootconfig_path << "\"";
-      return false;
-    }
+    CF_EXPECT(WriteAll(bootconfig_fd, bootconfig) == bootconfig.size(),
+              "Failed to write bootconfig to \"" << bootconfig_path << "\"");
     LOG(DEBUG) << "Bootconfig parameters from vendor boot image and config are "
                << ReadFile(bootconfig_path);
 
-    if (bootconfig_fd->Truncate(bytesWritten) != 0) {
-      LOG(ERROR) << "`truncate --size=" << bytesWritten << " bytes "
-                 << bootconfig_path << "` failed:" << bootconfig_fd->StrError();
-      return false;
-    }
+    CF_EXPECT(bootconfig_fd->Truncate(bootconfig.size()) == 0,
+              "`truncate --size=" << bootconfig.size() << " bytes "
+                                  << bootconfig_path
+                                  << "` failed:" << bootconfig_fd->StrError());
 
-    if (config_.vm_manager() != Gem5Manager::name()) {
+    if (config_.vm_manager() == Gem5Manager::name()) {
+      const off_t bootconfig_size_bytes_gem5 =
+          AlignToPowerOf2(bytesWritten, PARTITION_SIZE_SHIFT);
+      CF_EXPECT(bootconfig_fd->Truncate(bootconfig_size_bytes_gem5) == 0);
+      bootconfig_fd->Close();
+    } else {
       bootconfig_fd->Close();
       const off_t bootconfig_size_bytes = AlignToPowerOf2(
-          MAX_AVB_METADATA_SIZE + bytesWritten, PARTITION_SIZE_SHIFT);
+          MAX_AVB_METADATA_SIZE + bootconfig.size(), PARTITION_SIZE_SHIFT);
 
       auto avbtool_path = HostBinaryPath("avbtool");
       Command bootconfig_hash_footer_cmd(avbtool_path);
@@ -692,18 +551,11 @@ class GeneratePersistentBootconfig : public SetupFeature {
       bootconfig_hash_footer_cmd.AddParameter("--algorithm");
       bootconfig_hash_footer_cmd.AddParameter("SHA256_RSA4096");
       int success = bootconfig_hash_footer_cmd.Start().Wait();
-      if (success != 0) {
-        LOG(ERROR) << "Unable to run append hash footer. Exited with status "
-                   << success;
-        return false;
-      }
-    } else {
-      const off_t bootconfig_size_bytes_gem5 = AlignToPowerOf2(
-          bytesWritten, PARTITION_SIZE_SHIFT);
-      bootconfig_fd->Truncate(bootconfig_size_bytes_gem5);
-      bootconfig_fd->Close();
+      CF_EXPECT(
+          success == 0,
+          "Unable to run append hash footer. Exited with status " << success);
     }
-    return true;
+    return {};
   }
 
   const CuttlefishConfig& config_;
@@ -801,17 +653,16 @@ class InitializeMetadataImage : public SetupFeature {
 
  private:
   std::unordered_set<SetupFeature*> Dependencies() const override { return {}; }
-  bool Setup() override {
-    if (!FileExists(FLAGS_metadata_image)) {
-      bool success = CreateBlankImage(FLAGS_metadata_image,
-                                      FLAGS_blank_metadata_image_mb, "none");
-      if (!success) {
-        LOG(ERROR) << "Failed to create \"" << FLAGS_metadata_image
-                   << "\" with size " << FLAGS_blank_metadata_image_mb;
-      }
-      return success;
+  Result<void> ResultSetup() override {
+    if (FileExists(FLAGS_metadata_image)) {
+      return {};
     }
-    return true;
+
+    CF_EXPECT(CreateBlankImage(FLAGS_metadata_image,
+                               FLAGS_blank_metadata_image_mb, "none"),
+              "Failed to create \"" << FLAGS_metadata_image << "\" with size "
+                                    << FLAGS_blank_metadata_image_mb);
+    return {};
   }
 };
 
@@ -828,18 +679,14 @@ class InitializeAccessKregistryImage : public SetupFeature {
 
  private:
   std::unordered_set<SetupFeature*> Dependencies() const override { return {}; }
-  bool Setup() {
-    if (FileExists(instance_.access_kregistry_path())) {
-      return true;
+  Result<void> ResultSetup() override {
+    auto access_kregistry = instance_.access_kregistry_path();
+    if (FileExists(access_kregistry)) {
+      return {};
     }
-    bool success =
-        CreateBlankImage(instance_.access_kregistry_path(), 2 /* mb */, "none");
-    if (!success) {
-      LOG(ERROR) << "Failed to create access_kregistry_path \""
-                 << instance_.access_kregistry_path() << "\"";
-      return false;
-    }
-    return true;
+    CF_EXPECT(CreateBlankImage(access_kregistry, 2 /* mb */, "none"),
+              "Failed to create \"" << access_kregistry << "\"");
+    return {};
   }
 
   const CuttlefishConfig& config_;
@@ -859,18 +706,14 @@ class InitializeHwcomposerPmemImage : public SetupFeature {
 
  private:
   std::unordered_set<SetupFeature*> Dependencies() const override { return {}; }
-  bool Setup() {
+  Result<void> ResultSetup() override {
     if (FileExists(instance_.hwcomposer_pmem_path())) {
-      return true;
+      return {};
     }
-    bool success =
-        CreateBlankImage(instance_.hwcomposer_pmem_path(), 2 /* mb */, "none");
-    if (!success) {
-      LOG(ERROR) << "Failed to create hwcomposer pmem image \""
-                 << instance_.hwcomposer_pmem_path() << "\"";
-      return false;
-    }
-    return true;
+    CF_EXPECT(
+        CreateBlankImage(instance_.hwcomposer_pmem_path(), 2 /* mb */, "none"),
+        "Failed creating \"" << instance_.hwcomposer_pmem_path() << "\"");
+    return {};
   }
 
   const CuttlefishConfig& config_;
@@ -889,18 +732,14 @@ class InitializePstore : public SetupFeature {
 
  private:
   std::unordered_set<SetupFeature*> Dependencies() const override { return {}; }
-  bool Setup() {
+  Result<void> ResultSetup() override {
     if (FileExists(instance_.pstore_path())) {
-      return true;
+      return {};
     }
-    bool success =
-        CreateBlankImage(instance_.pstore_path(), 2 /* mb */, "none");
-    if (!success) {
-      LOG(ERROR) << "Failed to create pstore_path \"" << instance_.pstore_path()
-                 << "\"";
-      return false;
-    }
-    return true;
+
+    CF_EXPECT(CreateBlankImage(instance_.pstore_path(), 2 /* mb */, "none"),
+              "Failed to create \"" << instance_.pstore_path() << "\"");
+    return {};
   }
 
   const CuttlefishConfig& config_;
@@ -921,18 +760,14 @@ class InitializeSdCard : public SetupFeature {
 
  private:
   std::unordered_set<SetupFeature*> Dependencies() const override { return {}; }
-  bool Setup() {
+  Result<void> ResultSetup() override {
     if (FileExists(instance_.sdcard_path())) {
-      return true;
+      return {};
     }
-    bool success = CreateBlankImage(instance_.sdcard_path(),
-                                    FLAGS_blank_sdcard_image_mb, "sdcard");
-    if (!success) {
-      LOG(ERROR) << "Failed to create sdcard \"" << instance_.sdcard_path()
-                 << "\"";
-      return false;
-    }
-    return true;
+    CF_EXPECT(CreateBlankImage(instance_.sdcard_path(),
+                               FLAGS_blank_sdcard_image_mb, "sdcard"),
+              "Failed to create \"" << instance_.sdcard_path() << "\"");
+    return {};
   }
 
   const CuttlefishConfig& config_;
@@ -952,18 +787,14 @@ class InitializeFactoryResetProtected : public SetupFeature {
 
  private:
   std::unordered_set<SetupFeature*> Dependencies() const override { return {}; }
-  bool Setup() {
-    if (FileExists(instance_.factory_reset_protected_path())) {
-      return true;
+  Result<void> ResultSetup() override {
+    auto frp = instance_.factory_reset_protected_path();
+    if (FileExists(frp)) {
+      return {};
     }
-    bool success = CreateBlankImage(instance_.factory_reset_protected_path(),
-                                    1 /* mb */, "none");
-    if (!success) {
-      LOG(ERROR) << "Failed to create FRP \""
-                 << instance_.factory_reset_protected_path() << "\"";
-      return false;
-    }
-    return true;
+    CF_EXPECT(CreateBlankImage(frp, 1 /* mb */, "none"),
+              "Failed to create \"" << frp << "\"");
+    return {};
   }
 
   const CuttlefishConfig& config_;
@@ -994,22 +825,23 @@ class InitializeInstanceCompositeDisk : public SetupFeature {
         static_cast<SetupFeature*>(&vbmeta_),
     };
   }
-  bool Setup() override {
-    bool compositeMatchesDiskConfig = DoesCompositeMatchCurrentDiskConfig(
-        instance_.PerInstancePath("persistent_composite_disk_config.txt"),
-        persistent_composite_disk_config(config_, instance_));
-    bool oldCompositeDisk =
-        ShouldCreateCompositeDisk(instance_.persistent_composite_disk_path(),
-                                  persistent_composite_disk_config(config_, instance_));
+  Result<void> ResultSetup() override {
+    auto ipath = [this](const std::string& path) -> std::string {
+      return instance_.PerInstancePath(path.c_str());
+    };
+    auto persistent_disk_builder =
+        DiskBuilder()
+            .Partitions(persistent_composite_disk_config(config_, instance_))
+            .VmManager(config_.vm_manager())
+            .CrosvmPath(config_.crosvm_binary())
+            .ConfigPath(ipath("persistent_composite_disk_config.txt"))
+            .HeaderPath(ipath("persistent_composite_gpt_header.img"))
+            .FooterPath(ipath("persistent_composite_gpt_footer.img"))
+            .CompositeDiskPath(instance_.persistent_composite_disk_path())
+            .ResumeIfPossible(FLAGS_resume);
 
-    if (!compositeMatchesDiskConfig || oldCompositeDisk) {
-      bool success = CreatePersistentCompositeDisk(config_, instance_);
-      if (!success) {
-        LOG(ERROR) << "Failed to create persistent composite disk";
-        return false;
-      }
-    }
-    return true;
+    CF_EXPECT(persistent_disk_builder.BuildCompositeDiskIfNecessary());
+    return {};
   }
 
   const CuttlefishConfig& config_;
@@ -1027,23 +859,21 @@ class VbmetaEnforceMinimumSize : public SetupFeature {
 
  private:
   std::unordered_set<SetupFeature*> Dependencies() const override { return {}; }
-  bool Setup() override {
+  Result<void> ResultSetup() override {
     // libavb expects to be able to read the maximum vbmeta size, so we must
     // provide a partition which matches this or the read will fail
     for (const auto& vbmeta_image :
          {FLAGS_vbmeta_image, FLAGS_vbmeta_system_image}) {
       if (FileSize(vbmeta_image) != VBMETA_MAX_SIZE) {
         auto fd = SharedFD::Open(vbmeta_image, O_RDWR);
-        bool success = fd->Truncate(VBMETA_MAX_SIZE) == 0;
-        if (!success) {
-          LOG(ERROR) << "`truncate --size=" << VBMETA_MAX_SIZE << " "
-                     << vbmeta_image << "` "
-                     << "failed: " << fd->StrError();
-          return false;
-        }
+        CF_EXPECT(fd->IsOpen(), "Could not open \"" << vbmeta_image << "\": "
+                                                    << fd->StrError());
+        CF_EXPECT(fd->Truncate(VBMETA_MAX_SIZE) == 0,
+                  "`truncate --size=" << VBMETA_MAX_SIZE << " " << vbmeta_image
+                                      << "` failed: " << fd->StrError());
       }
     }
-    return true;
+    return {};
   }
 };
 
@@ -1056,12 +886,10 @@ class BootloaderPresentCheck : public SetupFeature {
 
  private:
   std::unordered_set<SetupFeature*> Dependencies() const override { return {}; }
-  bool Setup() override {
-    if (!FileHasContent(FLAGS_bootloader)) {
-      LOG(ERROR) << "File not found: " << FLAGS_bootloader;
-      return false;
-    }
-    return true;
+  Result<void> ResultSetup() override {
+    CF_EXPECT(FileHasContent(FLAGS_bootloader),
+              "File not found: " << FLAGS_bootloader);
+    return {};
   }
 };
 
@@ -1110,32 +938,53 @@ Result<void> CreateDynamicDiskFiles(const FetcherConfig& fetcher_config,
   // assemble_cvd.cpp
   fruit::Injector<> injector(DiskChangesComponent, &fetcher_config, &config);
 
+  for (auto& late_injected : injector.getMultibindings<LateInjected>()) {
+    CF_EXPECT(late_injected->LateInject(injector));
+  }
+
   const auto& features = injector.getMultibindings<SetupFeature>();
   CF_EXPECT(SetupFeature::RunSetup(features));
 
   for (const auto& instance : config.Instances()) {
     fruit::Injector<> instance_injector(DiskChangesPerInstanceComponent,
                                         &fetcher_config, &config, &instance);
+    for (auto& late_injected :
+         instance_injector.getMultibindings<LateInjected>()) {
+      CF_EXPECT(late_injected->LateInject(instance_injector));
+    }
+
     const auto& instance_features =
         instance_injector.getMultibindings<SetupFeature>();
     CF_EXPECT(SetupFeature::RunSetup(instance_features),
               "instance = \"" << instance.instance_name() << "\"");
   }
 
-  bool oldOsCompositeDisk = ShouldCreateOsCompositeDisk(config);
-  bool osCompositeMatchesDiskConfig = DoesCompositeMatchCurrentDiskConfig(
-      config.AssemblyPath("os_composite_disk_config.txt"),
-      GetOsCompositeDiskConfig());
-  if (!osCompositeMatchesDiskConfig || oldOsCompositeDisk || !FLAGS_resume) {
-    CF_EXPECT(CreateOsCompositeDisk(config));
+  // Check if filling in the sparse image would run out of disk space.
+  auto existing_sizes = SparseFileSizes(FLAGS_data_image);
+  CF_EXPECT(existing_sizes.sparse_size > 0 || existing_sizes.disk_size > 0,
+            "Unable to determine size of \"" << FLAGS_data_image
+                                             << "\". Does this file exist?");
+  auto available_space = AvailableSpaceAtPath(FLAGS_data_image);
+  if (available_space < existing_sizes.sparse_size - existing_sizes.disk_size) {
+    // TODO(schuffelen): Duplicate this check in run_cvd when it can run on a
+    // separate machine
+    return CF_ERR("Not enough space remaining in fs containing \""
+                  << FLAGS_data_image << "\", wanted "
+                  << (existing_sizes.sparse_size - existing_sizes.disk_size)
+                  << ", got " << available_space);
+  } else {
+    LOG(DEBUG) << "Available space: " << available_space;
+    LOG(DEBUG) << "Sparse size of \"" << FLAGS_data_image
+               << "\": " << existing_sizes.sparse_size;
+    LOG(DEBUG) << "Disk size of \"" << FLAGS_data_image
+               << "\": " << existing_sizes.disk_size;
+  }
 
+  auto os_disk_builder = OsCompositeDiskBuilder(config);
+  auto built_composite =
+      CF_EXPECT(os_disk_builder.BuildCompositeDiskIfNecessary());
+  if (built_composite) {
     for (auto instance : config.Instances()) {
-      if (FLAGS_resume) {
-        LOG(INFO) << "Requested to continue an existing session, (the default) "
-                  << "but the disk files have become out of date. Wiping the "
-                  << "old session files and starting a new session for device "
-                  << instance.serial_number();
-      }
       if (FileExists(instance.access_kregistry_path())) {
         CF_EXPECT(CreateBlankImage(instance.access_kregistry_path(), 2 /* mb */,
                                    "none"),
@@ -1155,10 +1004,11 @@ Result<void> CreateDynamicDiskFiles(const FetcherConfig& fetcher_config,
 
   if (!FLAGS_protected_vm) {
     for (auto instance : config.Instances()) {
-      create_overlay_image(config, instance.PerInstancePath("overlay.img"));
+      os_disk_builder.OverlayPath(instance.PerInstancePath("overlay.img"));
+      CF_EXPECT(os_disk_builder.BuildOverlayIfNecessary());
       if (instance.start_ap()) {
-        create_overlay_image(config,
-                             instance.PerInstancePath("ap_overlay.img"));
+        os_disk_builder.OverlayPath(instance.PerInstancePath("ap_overlay.img"));
+        CF_EXPECT(os_disk_builder.BuildOverlayIfNecessary());
       }
     }
   }
