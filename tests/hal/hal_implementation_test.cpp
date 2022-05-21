@@ -64,6 +64,7 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hardware.gnss.visibility_control@1.0",
     "android.hardware.graphics.allocator@2.0",
     "android.hardware.graphics.allocator@3.0",
+    "android.hardware.graphics.allocator@4.0", // converted to AIDL, see b/205761012
     "android.hardware.graphics.bufferqueue@1.0",
     "android.hardware.graphics.bufferqueue@2.0",
     "android.hardware.graphics.composer@2.4", // converted to AIDL, see b/193240715
@@ -169,6 +170,7 @@ static const std::set<VersionedAidlPackage> kKnownMissingAidl = {
     {"android.automotive.watchdog.", 3},
     {"android.frameworks.automotive.display.", 1},
     {"android.frameworks.automotive.powerpolicy.", 1},
+    {"android.frameworks.automotive.powerpolicy.internal.", 1},
     {"android.frameworks.automotive.telemetry.", 1},
     {"android.hardware.automotive.audiocontrol.", 1},
     {"android.hardware.automotive.audiocontrol.", 2},
@@ -184,9 +186,6 @@ static const std::set<VersionedAidlPackage> kKnownMissingAidl = {
 
     // types-only packages, which never expect a default implementation
     {"android.hardware.uwb.fira_android.", 1},
-
-    // These versions need to be implemented (b/203490261)
-    {"android.hardware.bluetooth.audio.", 1},
 };
 
 static const std::set<VersionedAidlPackage> kComingSoonAidl = {
