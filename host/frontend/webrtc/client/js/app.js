@@ -101,6 +101,7 @@ class DeviceControlApp {
   #recording = {};
   #phys = {};
   #deviceCount = 0;
+  #micActive = false;
 
   constructor(deviceConnection) {
     this.#deviceConnection = deviceConnection;
@@ -112,9 +113,6 @@ class DeviceControlApp {
     createToggleControl(
         document.getElementById('keyboard-capture-control'), 'keyboard',
         enabled => this.#onKeyboardCaptureToggle(enabled));
-    createToggleControl(
-        document.getElementById('mic-capture-control'), 'mic',
-        enabled => this.#onMicCaptureToggle(enabled));
     createToggleControl(
         document.getElementById('camera-control'), 'videocam',
         enabled => this.#onCameraCaptureToggle(enabled));
@@ -155,6 +153,8 @@ class DeviceControlApp {
     addMouseListeners(
         document.querySelector('#volume_down_btn'),
         evt => this.#onControlPanelButton(evt, 'volumedown'));
+    addMouseListeners(
+        document.querySelector('#mic_btn'), evt => this.#onMicButton(evt));
 
     createModalButton(
         'device-details-button', 'device-details-modal',
@@ -207,14 +207,14 @@ class DeviceControlApp {
         if (button.shell_command) {
           // This button's command is handled by sending an ADB shell command.
           let element = createControlPanelButton(
-              button.command, button.title, button.icon_name,
+              button.title, button.icon_name,
               e => this.#onCustomShellButton(button.shell_command, e),
               'control-panel-custom-buttons');
           element.dataset.adb = true;
         } else if (button.device_states) {
           // This button corresponds to variable hardware device state(s).
           let element = createControlPanelButton(
-              button.command, button.title, button.icon_name,
+              button.title, button.icon_name,
               this.#getCustomDeviceStateButtonCb(button.device_states),
               'control-panel-custom-buttons');
           for (const device_state of button.device_states) {
@@ -923,8 +923,18 @@ class DeviceControlApp {
     }
   }
 
-  #onMicCaptureToggle(enabled) {
-    return this.#deviceConnection.useMic(enabled);
+  #onMicButton(evt) {
+    let nextState = evt.type == 'mousedown';
+    if (nextState) {
+      evt.target.classList.add('pressed_down');
+    } else {
+      evt.target.classList.remove('pressed_down');
+    }
+    if (this.#micActive == nextState) {
+      return;
+    }
+    this.#micActive = nextState;
+    this.#deviceConnection.useMic(nextState);
   }
 
   #onCameraCaptureToggle(enabled) {
