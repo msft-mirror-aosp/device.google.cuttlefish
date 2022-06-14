@@ -468,18 +468,6 @@ PRODUCT_COPY_FILES += $(LOCAL_AUDIO_PRODUCT_COPY_FILES)
 DEVICE_PACKAGE_OVERLAYS += $(LOCAL_AUDIO_DEVICE_PACKAGE_OVERLAYS)
 
 #
-# BiometricsFace HAL (HIDL)
-#
-PRODUCT_PACKAGES += \
-    android.hardware.biometrics.face@1.0-service.example
-
-#
-# BiometricsFingerprint HAL (HIDL)
-#
-PRODUCT_PACKAGES += \
-    android.hardware.biometrics.fingerprint@2.2-service.example
-
-#
 # BiometricsFace HAL (AIDL)
 #
 PRODUCT_PACKAGES += \
@@ -801,7 +789,7 @@ PRODUCT_VENDOR_PROPERTIES += \
 
 # Enable GPU-intensive background blur support on Cuttlefish when requested by apps
 PRODUCT_VENDOR_PROPERTIES += \
-    ro.surface_flinger.supports_background_blur 1
+    ro.surface_flinger.supports_background_blur=1
 
 # Set support one-handed mode
 PRODUCT_PRODUCT_PROPERTIES += \

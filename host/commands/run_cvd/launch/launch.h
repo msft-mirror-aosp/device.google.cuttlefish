@@ -57,6 +57,18 @@ fruit::Component<fruit::Required<const CuttlefishConfig,
                                  const CuttlefishConfig::InstanceSpecific>>
 ConsoleForwarderComponent();
 
+fruit::Component<fruit::Required<const CuttlefishConfig,
+                                 const CuttlefishConfig::InstanceSpecific>>
+GnssGrpcProxyServerComponent();
+
+fruit::Component<fruit::Required<const CuttlefishConfig>>
+MetricsServiceComponent();
+
+fruit::Component<
+    fruit::Required<const CuttlefishConfig,
+                    const CuttlefishConfig::InstanceSpecific, LogTeeCreator>>
+OpenWrtComponent();
+
 fruit::Component<
     fruit::Required<const CuttlefishConfig,
                     const CuttlefishConfig::InstanceSpecific, LogTeeCreator>>
@@ -74,10 +86,10 @@ fruit::Component<fruit::Required<const CuttlefishConfig,
                                  const CuttlefishConfig::InstanceSpecific>>
 VehicleHalServerComponent();
 
-fruit::Component<fruit::Required<const CuttlefishConfig, vm_manager::VmManager,
-                                 const CuttlefishConfig::InstanceSpecific>,
-                 KernelLogPipeProvider>
-launchComponent();
+fruit::Component<
+    fruit::Required<const CuttlefishConfig,
+                    const CuttlefishConfig::InstanceSpecific, LogTeeCreator>>
+WmediumdServerComponent();
 
 fruit::Component<fruit::Required<const CuttlefishConfig,
                                  const CuttlefishConfig::InstanceSpecific>>

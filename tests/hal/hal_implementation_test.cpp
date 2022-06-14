@@ -46,7 +46,8 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hardware.automotive.evs@1.1",
     "android.hardware.automotive.sv@1.0",
     "android.hardware.automotive.vehicle@2.0",
-    "android.hardware.biometrics.fingerprint@2.3",
+    "android.hardware.biometrics.fingerprint@2.3", // converted to AIDL, see b/152416783
+    "android.hardware.biometrics.face@1.0", // converted to AIDL, see b/168730443
     "android.hardware.bluetooth.a2dp@1.0",
     "android.hardware.bluetooth.audio@2.1", // converted to AIDL, see b/203490261
     "android.hardware.broadcastradio@1.1",
@@ -97,6 +98,7 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hardware.wifi.offload@1.0",
     "android.hidl.base@1.0",
     "android.hidl.memory.token@1.0",
+    "android.system.net.netd@1.1", // Converted to AIDL (see b/205764585)
     "android.system.suspend@1.0", // Converted to AIDL (see b/170260236)
 };
 // clang-format on
@@ -110,6 +112,8 @@ struct VersionedAidlPackage {
 };
 
 static const std::set<VersionedAidlPackage> kKnownMissingAidl = {
+    // TODO(227536004) Implement bootctrl AIDL
+    {"android.hardware.boot.", 1},
     // Cuttlefish Identity Credential HAL implementation is currently
     // stuck at version 3 while RKP support is being added. Will be
     // updated soon.

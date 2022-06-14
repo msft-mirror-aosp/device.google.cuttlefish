@@ -20,44 +20,36 @@
 namespace cuttlefish {
 namespace {
 
-class ConfigServer : public CommandSource {
+class MetricsService : public CommandSource {
  public:
-  INJECT(ConfigServer(const CuttlefishConfig::InstanceSpecific& instance))
-      : instance_(instance) {}
+  INJECT(MetricsService(const CuttlefishConfig& config)) : config_(config) {}
 
   // CommandSource
   Result<std::vector<Command>> Commands() override {
-    return single_element_emplace(
-        Command(ConfigServerBinary()).AddParameter("-server_fd=", socket_));
+    return single_element_emplace(Command(MetricsBinary()));
   }
 
   // SetupFeature
-  std::string Name() const override { return "ConfigServer"; }
-  bool Enabled() const override { return true; }
-
- private:
-  std::unordered_set<SetupFeature*> Dependencies() const override { return {}; }
-  Result<void> ResultSetup() override {
-    auto port = instance_.config_server_port();
-    socket_ = SharedFD::VsockServer(port, SOCK_STREAM);
-    CF_EXPECT(socket_->IsOpen(),
-              "Unable to create configuration server socket: "
-                  << socket_->StrError());
-    return {};
+  std::string Name() const override { return "MetricsService"; }
+  bool Enabled() const override {
+    return config_.enable_metrics() == CuttlefishConfig::kYes;
   }
 
  private:
-  const CuttlefishConfig::InstanceSpecific& instance_;
-  SharedFD socket_;
+  std::unordered_set<SetupFeature*> Dependencies() const override { return {}; }
+  bool Setup() override { return true; }
+
+ private:
+  const CuttlefishConfig& config_;
 };
 
 }  // namespace
 
-fruit::Component<fruit::Required<const CuttlefishConfig::InstanceSpecific>>
-ConfigServerComponent() {
+fruit::Component<fruit::Required<const CuttlefishConfig>>
+MetricsServiceComponent() {
   return fruit::createComponent()
-      .addMultibinding<CommandSource, ConfigServer>()
-      .addMultibinding<SetupFeature, ConfigServer>();
+      .addMultibinding<CommandSource, MetricsService>()
+      .addMultibinding<SetupFeature, MetricsService>();
 }
 
 }  // namespace cuttlefish
