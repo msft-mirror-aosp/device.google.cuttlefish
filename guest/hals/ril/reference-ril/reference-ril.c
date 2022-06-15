@@ -54,12 +54,12 @@ static void *noopRemoveWarning( void *a ) { return a; }
 
 #define MAX_AT_RESPONSE 0x1000
 
-#define MAX_PDP 11  // max LTE bearers
+#define MAX_PDP         3
 
 /* pathname returned from RIL_REQUEST_SETUP_DATA_CALL / RIL_REQUEST_SETUP_DEFAULT_PDP */
 // This is used if Wifi is not supported, plain old eth0
 #ifdef CUTTLEFISH_ENABLE
-#define PPP_TTY_PATH_ETH0 "buried_eth0"
+#define PPP_TTY_PATH_ETH0 "rmnet0"
 #else
 #define PPP_TTY_PATH_ETH0 "eth0"
 #endif
@@ -208,7 +208,7 @@ static int32_t net2pmask[] = {
 #define CDMA  (RAF_IS95A | RAF_IS95B | RAF_1xRTT)
 #define EVDO  (RAF_EVDO_0 | RAF_EVDO_A | RAF_EVDO_B | RAF_EHRPD)
 #define WCDMA (RAF_HSUPA | RAF_HSDPA | RAF_HSPA | RAF_HSPAP | RAF_UMTS)
-#define LTE   (RAF_LTE)
+#define LTE   (RAF_LTE | RAF_LTE_CA)
 #define NR    (RAF_NR)
 
 typedef struct {
@@ -378,9 +378,6 @@ static int s_cid = 0;
 static bool s_stkServiceRunning = false;
 static char *s_stkUnsolResponse = NULL;
 
-// Next available handle for keep alive session
-static uint32_t s_session_handle = 1;
-
 typedef enum {
     STK_UNSOL_EVENT_UNKNOWN,
     STK_UNSOL_EVENT_NOTIFY,
@@ -413,8 +410,9 @@ struct PDPInfo {
 };
 
 struct PDPInfo s_PDP[] = {
-        {1, PDP_IDLE}, {2, PDP_IDLE}, {3, PDP_IDLE}, {4, PDP_IDLE},  {5, PDP_IDLE},  {6, PDP_IDLE},
-        {7, PDP_IDLE}, {8, PDP_IDLE}, {9, PDP_IDLE}, {10, PDP_IDLE}, {11, PDP_IDLE},
+     {1, PDP_IDLE},
+     {2, PDP_IDLE},
+     {3, PDP_IDLE},
 };
 
 static void pollSIMState (void *param);
@@ -703,28 +701,17 @@ static void requestShutdown(RIL_Token t)
 {
     int onOff;
 
+    int err;
     ATResponse *p_response = NULL;
 
     if (sState != RADIO_STATE_OFF) {
-        at_send_command("AT+CFUN=0", &p_response);
+        err = at_send_command("AT+CFUN=0", &p_response);
         setRadioState(RADIO_STATE_UNAVAILABLE);
     }
 
     at_response_free(p_response);
     RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
     return;
-}
-
-static void requestNvResetConfig(void* data, size_t datalen __unused, RIL_Token t) {
-    assert(datalen >= sizeof(int*));
-    int nvConfig = ((int*)data)[0];
-    if (nvConfig == 1 /* ResetNvType::RELOAD */) {
-        setRadioState(RADIO_STATE_OFF);
-        // Wait for FW to process radio off before sending radio on for reboot
-        sleep(5);
-        setRadioState(RADIO_STATE_ON);
-    }
-    RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
 }
 
 static void requestOrSendDataCallList(int cid, RIL_Token *t);
@@ -973,19 +960,6 @@ static void requestOrSendDataCallList(int cid, RIL_Token *t)
         }
     }
 
-    // If cid = -1, return the data call list without processing CGCONTRDP (setupDataCall)
-    if (cid == -1) {
-        if (t != NULL)
-            RIL_onRequestComplete(*t, RIL_E_SUCCESS, &responses[0],
-                                  sizeof(RIL_Data_Call_Response_v11));
-        else
-            RIL_onUnsolicitedResponse(RIL_UNSOL_DATA_CALL_LIST_CHANGED, responses,
-                                      n * sizeof(RIL_Data_Call_Response_v11));
-        at_response_free(p_response);
-        p_response = NULL;
-        return;
-    }
-
     at_response_free(p_response);
     p_response = NULL;
 
@@ -1220,6 +1194,7 @@ static void requestDial(void *data, size_t datalen __unused, RIL_Token t)
     RIL_Dial *p_dial;
     char *cmd;
     const char *clir;
+    int ret;
 
     p_dial = (RIL_Dial *)data;
 
@@ -1232,7 +1207,7 @@ static void requestDial(void *data, size_t datalen __unused, RIL_Token t)
 
     asprintf(&cmd, "ATD%s%s;", p_dial->address, clir);
 
-    at_send_command(cmd, NULL);
+    ret = at_send_command(cmd, NULL);
 
     free(cmd);
 
@@ -1276,6 +1251,7 @@ static void requestHangup(void *data, size_t datalen __unused, RIL_Token t)
 {
     int *p_line;
 
+    int ret;
     char *cmd;
 
     if (getSIMStatus() == SIM_ABSENT) {
@@ -1288,7 +1264,7 @@ static void requestHangup(void *data, size_t datalen __unused, RIL_Token t)
     // "Releases a specific active call X"
     asprintf(&cmd, "AT+CHLD=1%d", p_line[0]);
 
-    at_send_command(cmd, NULL);
+    ret = at_send_command(cmd, NULL);
 
     free(cmd);
 
@@ -1310,7 +1286,6 @@ static void requestSignalStrength(void *data __unused, size_t datalen __unused, 
 
     memset(response, 0, sizeof(response));
 
-    // TODO(b/206814247): Rename AT+CSQ command.
     err = at_send_command_singleline("AT+CSQ", "+CSQ:", &p_response);
 
     if (err < 0 || p_response->success == 0) {
@@ -1469,32 +1444,6 @@ done:
         i = getBitmapFromPreferred(preferred);
     }
     RIL_onRequestComplete(t, RIL_E_SUCCESS, &i, sizeof(i));
-}
-
-static void requestGetCarrierRestrictions(void* data, size_t datalen, RIL_Token t) {
-    RIL_UNUSED_PARM(datalen);
-    RIL_UNUSED_PARM(data);
-
-    // Fixed values. TODO: query modem
-    RIL_Carrier allowed_carriers = {
-            "123",          // mcc
-            "456",          // mnc
-            RIL_MATCH_ALL,  // match_type
-            "",             // match_data
-    };
-
-    RIL_Carrier excluded_carriers;
-
-    RIL_CarrierRestrictionsWithPriority restrictions = {
-            1,                   // len_allowed_carriers
-            0,                   // len_excluded_carriers
-            &allowed_carriers,   // allowed_carriers
-            &excluded_carriers,  // excluded_carriers
-            1,                   // allowedCarriersPrioritized
-            NO_MULTISIM_POLICY   // multiSimPolicy
-    };
-
-    RIL_onRequestComplete(t, RIL_E_SUCCESS, &restrictions, sizeof(restrictions));
 }
 
 static void requestCdmaPrlVersion(int request __unused, void *data __unused,
@@ -1720,10 +1669,8 @@ static int parseRegistrationState(char *str, int *type, int *items, int **respon
     char *line = str, *p;
     int *resp = NULL;
     int skip;
+    int count = 3;
     int commas;
-
-    s_lac = -1;
-    s_cid = -1;
 
     RLOGD("parseRegistrationState. Parsing: %s",str);
     err = at_tok_start(&line);
@@ -1762,14 +1709,19 @@ static int parseRegistrationState(char *str, int *type, int *items, int **respon
         case 0: /* +CREG: <stat> */
             err = at_tok_nextint(&line, &resp[0]);
             if (err < 0) goto error;
-            break;
+            resp[1] = -1;
+            resp[2] = -1;
+        break;
 
         case 1: /* +CREG: <n>, <stat> */
             err = at_tok_nextint(&line, &skip);
             if (err < 0) goto error;
             err = at_tok_nextint(&line, &resp[0]);
             if (err < 0) goto error;
-            break;
+            resp[1] = -1;
+            resp[2] = -1;
+            if (err < 0) goto error;
+        break;
 
         case 2: /* +CREG: <stat>, <lac>, <cid> */
             err = at_tok_nextint(&line, &resp[0]);
@@ -1803,16 +1755,13 @@ static int parseRegistrationState(char *str, int *type, int *items, int **respon
             if (err < 0) goto error;
             err = at_tok_nextint(&line, &resp[3]);
             if (err < 0) goto error;
+            count = 4;
         break;
         default:
             goto error;
     }
-
-    if (commas >= 2) {
-        s_lac = resp[1];
-        s_cid = resp[2];
-    }
-
+    s_lac = resp[1];
+    s_cid = resp[2];
     if (response)
         *response = resp;
     if (items)
@@ -1941,12 +1890,8 @@ static void requestRegistrationState(int request, void *data __unused,
     } else { // type == RADIO_TECH_3GPP
         RLOGD("registration state type: 3GPP");
         startfrom = 0;
-        if (count > 1) {
-            asprintf(&responseStr[1], "%x", registration[1]);
-        }
-        if (count > 2) {
-            asprintf(&responseStr[2], "%x", registration[2]);
-        }
+        asprintf(&responseStr[1], "%x", registration[1]);
+        asprintf(&responseStr[2], "%x", registration[2]);
         if (count > 3) {
             asprintf(&responseStr[3], "%d", mapNetworkRegistrationResponse(registration[3]));
         }
@@ -2667,6 +2612,7 @@ static void requestTransmitApduBasic( void *data, size_t datalen,
     RIL_UNUSED_PARM(datalen);
 
     int err, len;
+    int instruction = 0;
     char *cmd = NULL;
     char *line = NULL;
     RIL_SIM_APDU *p_args = NULL;
@@ -2711,6 +2657,7 @@ static void requestTransmitApduBasic( void *data, size_t datalen,
     sscanf(&(sr.simResponse[len - 4]), "%02x%02x", &(sr.sw1), &(sr.sw2));
     sr.simResponse[len - 4] = '\0';
 
+    instruction = p_args->instruction;
     RIL_onRequestComplete(t, RIL_E_SUCCESS, &sr, sizeof(sr));
     at_response_free(p_response);
     return;
@@ -2815,9 +2762,9 @@ static void requestSetupDataCall(void *data, size_t datalen, RIL_Token t)
             goto error;
         }
 
-        qmistatus = system("netcfg buried_eth0 dhcp");
+        qmistatus = system("netcfg rmnet0 dhcp");
 
-        RLOGD("netcfg buried_eth0 dhcp: status %d\n", qmistatus);
+        RLOGD("netcfg rmnet0 dhcp: status %d\n", qmistatus);
 
         if (qmistatus < 0) goto error;
 
@@ -2834,24 +2781,7 @@ static void requestSetupDataCall(void *data, size_t datalen, RIL_Token t)
         }
 
         cid = getPDP();
-        if (cid < 1) {
-            RLOGE("SETUP_DATA_CALL MAX_PDP reached.");
-            RIL_Data_Call_Response_v11 response;
-            response.status = 0x41 /* PDP_FAIL_MAX_ACTIVE_PDP_CONTEXT_REACHED */;
-            response.suggestedRetryTime = -1;
-            response.cid = cid;
-            response.active = -1;
-            response.type = "";
-            response.ifname = "";
-            response.addresses = "";
-            response.dnses = "";
-            response.gateways = "";
-            response.pcscf = "";
-            response.mtu = 0;
-            RIL_onRequestComplete(t, RIL_E_SUCCESS, &response, sizeof(RIL_Data_Call_Response_v11));
-            at_response_free(p_response);
-            return;
-        }
+        if (cid < 1 ) goto error;
 
         asprintf(&cmd, "AT+CGDCONT=%d,\"%s\",\"%s\",,0,0", cid, pdp_type, apn);
         //FIXME check for error here
@@ -2902,7 +2832,6 @@ static void requestDeactivateDataCall(void *data, RIL_Token t)
     rilErrno = setInterfaceState(radioInterfaceName, kInterfaceDown);
     RIL_onRequestComplete(t, rilErrno, NULL, 0);
     putPDP(cid);
-    requestOrSendDataCallList(-1, NULL);
 }
 
 static void requestSMSAcknowledge(void *data, size_t datalen __unused, RIL_Token t)
@@ -2919,22 +2848,14 @@ static void requestSMSAcknowledge(void *data, size_t datalen __unused, RIL_Token
 
     if (ackSuccess == 1) {
         err = at_send_command("AT+CNMA=1", NULL);
-        if (err < 0) {
-            goto error;
-        }
     } else if (ackSuccess == 0)  {
         err = at_send_command("AT+CNMA=2", NULL);
-        if (err < 0) {
-            goto error;
-        }
     } else {
         RLOGE("unsupported arg to RIL_REQUEST_SMS_ACKNOWLEDGE\n");
         goto error;
     }
 
     RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
-
-    return;
 error:
     RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
 }
@@ -3340,36 +3261,6 @@ static void requestGetCellInfoList(void *data __unused, size_t datalen __unused,
     RIL_onRequestComplete(t, RIL_E_SUCCESS, ci, sizeof(ci));
 }
 
-static void requestGetCellInfoList_1_6(void* data __unused, size_t datalen __unused, RIL_Token t) {
-    RIL_CellInfo_v16 ci[1] = {{    // ci[0]
-                               3,  // cellInfoType
-                               1,  // registered
-                               CELL_CONNECTION_PRIMARY_SERVING,
-                               {        // union CellInfo
-                                .lte = {// RIL_CellInfoLte_v12 lte
-                                        {
-                                                // RIL_CellIdentityLte_v12
-                                                // lte.cellIdentityLte
-                                                s_mcc,  // mcc
-                                                s_mnc,  // mnc
-                                                s_cid,  // ci
-                                                0,      // pci
-                                                s_lac,  // tac
-                                                7,      // earfcn
-                                        },
-                                        {
-                                                // RIL_LTE_SignalStrength_v8
-                                                // lte.signalStrengthLte
-                                                10,      // signalStrength
-                                                44,      // rsrp
-                                                3,       // rsrq
-                                                30,      // rssnr
-                                                0,       // cqi
-                                                INT_MAX  // timingAdvance invalid value
-                                        }}}}};
-
-    RIL_onRequestComplete(t, RIL_E_SUCCESS, ci, sizeof(ci));
-}
 
 static void requestSetCellInfoListRate(void *data, size_t datalen __unused, RIL_Token t)
 {
@@ -4322,13 +4213,6 @@ error:
     RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
 }
 
-static void requestStartKeepalive(RIL_Token t) {
-    RIL_KeepaliveStatus resp;
-    resp.sessionHandle = s_session_handle++;
-    resp.code = KEEPALIVE_ACTIVE;
-    RIL_onRequestComplete(t, RIL_E_SUCCESS, &resp, sizeof(resp));
-}
-
 void getConfigSlotStatus(RIL_SimSlotStatus_V1_2 *pSimSlotStatus) {
     if (pSimSlotStatus == NULL) {
         return;
@@ -4349,16 +4233,6 @@ void getConfigSlotStatus(RIL_SimSlotStatus_V1_2 *pSimSlotStatus) {
 
     pSimSlotStatus->base.logicalSlotId = 0;
     pSimSlotStatus->eid = "";
-}
-
-void sendUnsolNetworkScanResult() {
-    RIL_NetworkScanResult scanr;
-    memset(&scanr, 0, sizeof(scanr));
-    scanr.status = COMPLETE;
-    scanr.error = RIL_E_SUCCESS;
-    scanr.network_infos = NULL;
-    scanr.network_infos_length = 0;
-    RIL_onUnsolicitedResponse(RIL_UNSOL_NETWORK_SCAN_RESULT, &scanr, sizeof(scanr));
 }
 
 void onIccSlotStatus(RIL_Token t) {
@@ -4776,10 +4650,6 @@ onRequest (int request, void *data, size_t datalen, RIL_Token t)
             requestGetCellInfoList(data, datalen, t);
             break;
 
-        case RIL_REQUEST_GET_CELL_INFO_LIST_1_6:
-            requestGetCellInfoList_1_6(data, datalen, t);
-            break;
-
         case RIL_REQUEST_SET_UNSOL_CELL_INFO_LIST_RATE:
             requestSetCellInfoListRate(data, datalen, t);
             break;
@@ -4826,16 +4696,11 @@ onRequest (int request, void *data, size_t datalen, RIL_Token t)
         case RIL_REQUEST_ALLOW_DATA:
         case RIL_REQUEST_ENTER_NETWORK_DEPERSONALIZATION:
         case RIL_REQUEST_SET_BAND_MODE:
-        case RIL_REQUEST_SET_CARRIER_RESTRICTIONS:
         case RIL_REQUEST_GET_NEIGHBORING_CELL_IDS:
         case RIL_REQUEST_SET_LOCATION_UPDATES:
         case RIL_REQUEST_SET_TTY_MODE:
         case RIL_REQUEST_CDMA_SET_PREFERRED_VOICE_PRIVACY_MODE:
             RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
-            break;
-
-        case RIL_REQUEST_NV_RESET_CONFIG:
-            requestNvResetConfig(data, datalen, t);
             break;
 
         case RIL_REQUEST_BASEBAND_VERSION:
@@ -4992,8 +4857,6 @@ onRequest (int request, void *data, size_t datalen, RIL_Token t)
         // New requests after P.
         case RIL_REQUEST_START_NETWORK_SCAN:
             RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
-            // send unsol network scan results after a short while
-            RIL_requestTimedCallback (sendUnsolNetworkScanResult, NULL, &TIMEVAL_SIMPOLL);
             break;
         case RIL_REQUEST_GET_MODEM_STACK_STATUS:
             RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
@@ -5037,8 +4900,6 @@ onRequest (int request, void *data, size_t datalen, RIL_Token t)
         case RIL_REQUEST_GET_SLICING_CONFIG:
             RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
             break;
-        case RIL_REQUEST_GET_CARRIER_RESTRICTIONS:
-            requestGetCarrierRestrictions(data, datalen, t);
 
         // Radio config requests
         case RIL_REQUEST_CONFIG_GET_SLOT_STATUS:
@@ -5113,15 +4974,6 @@ onRequest (int request, void *data, size_t datalen, RIL_Token t)
             RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
             break;
         case RIL_REQUEST_SET_DATA_THROTTLING:
-            RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
-            break;
-        case RIL_REQUEST_START_KEEPALIVE:
-            requestStartKeepalive(t);
-            break;
-        case RIL_REQUEST_STOP_KEEPALIVE:
-            RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
-            break;
-        case RIL_REQUEST_SET_UNSOLICITED_RESPONSE_FILTER:
             RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
             break;
         default:
@@ -6138,7 +5990,7 @@ static void onUnsolicited (const char *s, const char *sms_pdu)
             response, sizeof(response));
         free(line);
     } else if (strStartsWith(s, "+CUSATEND")) {  // session end
-        RIL_onUnsolicitedResponse(RIL_UNSOL_STK_SESSION_END, NULL, 0);
+      RIL_onUnsolicitedResponse(RIL_UNSOL_STK_SESSION_END, NULL, 0);
     } else if (strStartsWith(s, "+CUSATP:")) {
         line = p = strdup(s);
         if (!line) {
@@ -6355,10 +6207,6 @@ const RIL_RadioFunctions *RIL_Init(const struct RIL_Env *env, int argc, char **a
     pthread_attr_init (&attr);
     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
     ret = pthread_create(&s_tid_mainloop, &attr, mainLoop, NULL);
-    if (ret < 0) {
-        RLOGE("pthread_create: %s:", strerror(errno));
-        return NULL;
-    }
 
     return &s_callbacks;
 }

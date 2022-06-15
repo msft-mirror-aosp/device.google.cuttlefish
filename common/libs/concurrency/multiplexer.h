@@ -17,7 +17,6 @@
 #pragma once
 
 #include <condition_variable>
-#include <functional>
 #include <memory>
 #include <vector>
 
@@ -25,56 +24,46 @@
 #include "common/libs/concurrency/thread_safe_queue.h"
 
 namespace cuttlefish {
-template <typename T, typename Queue>
+namespace confui {
+template <typename T>
 class Multiplexer {
  public:
-  using QueuePtr = std::unique_ptr<Queue>;
-  using QueueSelector = std::function<int(void)>;
-
-  template <typename... Args>
-  static QueuePtr CreateQueue(Args&&... args) {
-    auto raw_ptr = new Queue(std::forward<Args>(args)...);
-    return QueuePtr(raw_ptr);
+  Multiplexer(int n_qs, int max_elements) : sem_items_{0}, next_{0} {
+    auto drop_new = [](typename ThreadSafeQueue<T>::QueueImpl* internal_q) {
+      internal_q->pop_front();
+    };
+    for (int i = 0; i < n_qs; i++) {
+      auto queue = std::make_unique<ThreadSafeQueue<T>>(max_elements, drop_new);
+      queues_.push_back(std::move(queue));
+    }
   }
 
-  Multiplexer() : sem_items_{0} {}
-
-  int RegisterQueue(QueuePtr&& queue) {
-    const int id_to_return = queues_.size();
-    queues_.push_back(std::move(queue));
-    return id_to_return;
+  int GetNewQueueId() {
+    CHECK(next_ < queues_.size())
+        << "can't get more queues than " << queues_.size();
+    return next_++;
   }
 
   void Push(const int idx, T&& t) {
     CheckIdx(idx);
-    queues_[idx]->Push(std::move(t));
+    queues_[idx]->Push(t);
     sem_items_.SemPost();
   }
 
-  T Pop(QueueSelector selector) {
-    SemWait();
-    int q_id = selector();
-    CheckIdx(q_id);  // check, if weird, will die there
-    QueuePtr& queue = queues_[q_id];
-    CHECK(queue) << "queue must not be null.";
-    return queue->Pop();
-  }
-
   T Pop() {
-    auto default_selector = [this]() -> int {
-      for (int i = 0; i < queues_.size(); i++) {
-        if (!queues_[i]->IsEmpty()) {
-          return i;
-        }
+    // the idx must have an item!
+    // no waiting in fn()!
+    sem_items_.SemWait();
+    for (auto& q : queues_) {
+      if (q->IsEmpty()) {
+        continue;
       }
-      return -1;
-    };
-    return Pop(default_selector);
+      return q->Pop();
+    }
+    CHECK(false) << "Multiplexer.Pop() should be able to return an item";
+    // must not reach here
+    return T{};
   }
-
-  bool IsEmpty(const int idx) { return queues_[idx]->IsEmpty(); }
-
-  void SemWait() { sem_items_.SemWait(); }
 
  private:
   void CheckIdx(const int idx) {
@@ -82,7 +71,8 @@ class Multiplexer {
   }
   // total items across the queues
   Semaphore sem_items_;
-  std::vector<QueuePtr> queues_;
-  QueuePtr null_ptr_;
+  std::vector<std::unique_ptr<ThreadSafeQueue<T>>> queues_;
+  int next_;
 };
+}  // end of namespace confui
 }  // end of namespace cuttlefish

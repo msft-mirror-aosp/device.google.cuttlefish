@@ -35,6 +35,7 @@
 #include "host/commands/kernel_log_monitor/utils.h"
 #include "host/libs/config/logging.h"
 #include "host/libs/confui/host_mode_ctrl.h"
+#include "host/libs/confui/host_renderer.h"
 #include "host/libs/confui/host_virtual_input.h"
 #include "host/libs/confui/server_common.h"
 #include "host/libs/confui/session.h"
@@ -49,11 +50,11 @@ class HostServer : public HostVirtualInput {
       cuttlefish::ScreenConnectorFrameRenderer& screen_connector);
 
   void Start();  // start this server itself
-  virtual ~HostServer() {}
+  virtual ~HostServer() = default;
 
-  // implement input interfaces. called by webRTC
-  void TouchEvent(const int x, const int y, const bool is_down) override;
-  void UserAbortEvent() override;
+  // implement input interfaces. called by webRTC & vnc
+  void PressConfirmButton(const bool is_down) override;
+  void PressCancelButton(const bool is_down) override;
   bool IsConfUiActive() override;
 
  private:
@@ -88,7 +89,7 @@ class HostServer : public HostVirtualInput {
    *  should render the Android guest frames but keep the confirmation
    *  UI session and frame
    *
-   *  The inputs are I = {u, g}. 'u' is the user input from webRTC
+   *  The inputs are I = {u, g}. 'u' is the user input from vnc/webRTC
    *  clients. Note that the host service serialized the concurrent user
    *  inputs from multiple clients. 'g' is the command from the HAL service
    *
@@ -114,10 +115,21 @@ class HostServer : public HostVirtualInput {
 
   SharedFD EstablishHalConnection();
 
-  std::shared_ptr<Session> CreateSession(const std::string& session_name);
-  void SendUserSelection(std::unique_ptr<ConfUiMessage>& input);
+  // failed to start dialog, etc
+  // basically, will reset the session, so start from the beginning in the same
+  // session
+  void ResetOnCommandFailure();
 
-  void Transition(std::unique_ptr<ConfUiMessage>& input_ptr);
+  // note: the picked session will be removed from session_map_
+  std::unique_ptr<Session> GetSession(const std::string& session_id) {
+    if (session_map_.find(session_id) == session_map_.end()) {
+      return nullptr;
+    }
+    std::unique_ptr<Session> temp = std::move(session_map_[session_id]);
+    session_map_.erase(session_id);
+    return temp;
+  }
+
   std::string GetCurrentSessionId() {
     if (curr_session_) {
       return curr_session_->GetId();
@@ -131,23 +143,29 @@ class HostServer : public HostVirtualInput {
     }
     return ToString(curr_session_->GetState());
   }
+  std::unique_ptr<Session> ComputeCurrentSession(const std::string& session_id);
+  bool SendUserSelection(UserResponse::type selection);
 
   const std::uint32_t display_num_;
   HostModeCtrl& host_mode_ctrl_;
   ScreenConnectorFrameRenderer& screen_connector_;
 
-  std::string input_socket_path_;
-  int hal_vsock_port_;
+  // this member creates a raw frame
+  ConfUiRenderer renderer_;
 
-  std::shared_ptr<Session> curr_session_;
+  std::string input_socket_path_;
+  std::string hal_socket_path_;
+
+  // session id to Session object map, for those that are suspended
+  std::unordered_map<std::string, std::unique_ptr<Session>> session_map_;
+  // curr_session_ doesn't belong to session_map_
+  std::unique_ptr<Session> curr_session_;
 
   SharedFD guest_hal_socket_;
   // ACCEPTED fd on guest_hal_socket_
   SharedFD hal_cli_socket_;
+  std::mutex input_socket_mtx_;
 
-  using Multiplexer =
-      Multiplexer<std::unique_ptr<ConfUiMessage>,
-                  ThreadSafeQueue<std::unique_ptr<ConfUiMessage>>>;
   /*
    * Multiplexer has N queues. When pop(), it is going to sleep until
    * there's at least one item in at least one queue. The lower the Q
@@ -156,16 +174,12 @@ class HostServer : public HostVirtualInput {
    * For HostServer, we have a queue for the user input events, and
    * another for hal cmd/msg queues
    */
-  Multiplexer input_multiplexer_;
+  Multiplexer<ConfUiMessage> input_multiplexer_;
   int hal_cmd_q_id_;         // Q id in input_multiplexer_
   int user_input_evt_q_id_;  // Q id in input_multiplexer_
 
   std::thread main_loop_thread_;
   std::thread hal_input_fetcher_thread_;
-
-  std::mutex socket_flag_mtx_;
-  std::condition_variable socket_flag_cv_;
-  bool is_socket_ok_;
 };
 
 }  // end of namespace confui

@@ -15,16 +15,18 @@
  */
 
 #include <set>
+#include <thread>
 #include <android-base/logging.h>
 #include <gflags/gflags.h>
 
 #include "common/libs/fs/shared_fd.h"
-#include "common/libs/utils/socket2socket_proxy.h"
 #include "host/commands/kernel_log_monitor/utils.h"
 
 #ifdef CUTTLEFISH_HOST
 #include "host/libs/config/logging.h"
 #endif // CUTTLEFISH_HOST
+
+constexpr std::size_t kMaxPacketSize = 8192;
 
 DEFINE_string(server, "",
               "The type of server to host, `vsock` or `tcp`. When hosting a server "
@@ -44,6 +46,109 @@ DEFINE_int32(
     "server and the corresponding port flag will be ignored");
 
 namespace {
+// Sends packets, Shutdown(SHUT_WR) on destruction
+class SocketSender {
+ public:
+  explicit SocketSender(cuttlefish::SharedFD socket) : socket_{socket} {}
+
+  SocketSender(SocketSender&&) = default;
+  SocketSender& operator=(SocketSender&&) = default;
+
+  SocketSender(const SocketSender&&) = delete;
+  SocketSender& operator=(const SocketSender&) = delete;
+
+  ~SocketSender() {
+    if (socket_.operator->()) {  // check that socket_ was not moved-from
+      socket_->Shutdown(SHUT_WR);
+    }
+  }
+
+  ssize_t SendAll(const char* packet, ssize_t length) {
+    ssize_t written{};
+    while (written < length) {
+      if (!socket_->IsOpen()) {
+        return -1;
+      }
+      auto just_written =
+          socket_->Send(packet + written,
+                        length - written, MSG_NOSIGNAL);
+      if (just_written <= 0) {
+        LOG(WARNING) << "Couldn't write to client: "
+                     << strerror(socket_->GetErrno());
+        return just_written;
+      }
+      written += just_written;
+    }
+    return written;
+  }
+
+ private:
+  cuttlefish::SharedFD socket_;
+};
+
+class SocketReceiver {
+ public:
+  explicit SocketReceiver(cuttlefish::SharedFD socket) : socket_{socket} {}
+
+  SocketReceiver(SocketReceiver&&) = default;
+  SocketReceiver& operator=(SocketReceiver&&) = default;
+
+  SocketReceiver(const SocketReceiver&&) = delete;
+  SocketReceiver& operator=(const SocketReceiver&) = delete;
+
+  // return value will be 0 if Read returns 0 or error
+  ssize_t Recv(char* packet, ssize_t length) {
+    auto size = socket_->Read(packet, length);
+    if (size < 0) {
+      size = 0;
+    }
+
+    return size;
+  }
+
+ private:
+  cuttlefish::SharedFD socket_;
+};
+
+void SocketToVsock(SocketReceiver socket_receiver,
+                   SocketSender vsock_sender) {
+  char packet[kMaxPacketSize] = {};
+
+  while (true) {
+    ssize_t length = socket_receiver.Recv(packet, kMaxPacketSize);
+    if (length == 0 || vsock_sender.SendAll(packet, length) < 0) {
+      break;
+    }
+  }
+  LOG(DEBUG) << "Socket to vsock exiting";
+}
+
+void VsockToSocket(SocketSender socket_sender,
+                   SocketReceiver vsock_receiver) {
+  char packet[kMaxPacketSize] = {};
+
+  while (true) {
+    ssize_t length = vsock_receiver.Recv(packet, kMaxPacketSize);
+    if (length == 0) {
+      break;
+    }
+    if (socket_sender.SendAll(packet, length) < 0) {
+      break;
+    }
+  }
+  LOG(DEBUG) << "Vsock to socket exiting";
+}
+
+// One thread for reading from shm and writing into a socket.
+// One thread for reading from a socket and writing into shm.
+void HandleConnection(cuttlefish::SharedFD vsock,
+                      cuttlefish::SharedFD socket) {
+  auto socket_to_vsock =
+      std::thread(SocketToVsock, SocketReceiver{socket}, SocketSender{vsock});
+  VsockToSocket(SocketSender{socket}, SocketReceiver{vsock});
+  socket_to_vsock.join();
+}
+
 void WaitForAdbdToBeStarted(int events_fd) {
   auto evt_shared_fd = cuttlefish::SharedFD::Dup(events_fd);
   close(events_fd);
@@ -65,7 +170,7 @@ void WaitForAdbdToBeStarted(int events_fd) {
 }
 
 // intented to run as cuttlefish host service
-void TcpServer() {
+[[noreturn]] void TcpServer() {
   LOG(DEBUG) << "starting TCP server on " << FLAGS_tcp_port
              << " for vsock port " << FLAGS_vsock_port;
   cuttlefish::SharedFD server;
@@ -79,8 +184,10 @@ void TcpServer() {
   CHECK(server->IsOpen()) << "Could not start server on " << FLAGS_tcp_port;
   LOG(DEBUG) << "Accepting client connections";
   int last_failure_reason = 0;
-  cuttlefish::Proxy(server, [&last_failure_reason]() {
-    auto vsock_socket = cuttlefish::SharedFD::VsockClient(
+  while (true) {
+    auto client_socket = cuttlefish::SharedFD::Accept(*server);
+    CHECK(client_socket->IsOpen()) << "error creating client socket";
+    cuttlefish::SharedFD vsock_socket = cuttlefish::SharedFD::VsockClient(
         FLAGS_vsock_cid, FLAGS_vsock_port, SOCK_STREAM);
     if (vsock_socket->IsOpen()) {
       last_failure_reason = 0;
@@ -93,9 +200,12 @@ void TcpServer() {
         LOG(ERROR) << "Unable to connect to vsock server: "
                    << vsock_socket->StrError();
       }
+      continue;
     }
-    return vsock_socket;
-  });
+    auto thread = std::thread(HandleConnection, std::move(vsock_socket),
+                              std::move(client_socket));
+    thread.detach();
+  }
 }
 
 cuttlefish::SharedFD OpenSocketConnection() {
@@ -122,7 +232,7 @@ bool socketErrorIsRecoverable(int error) {
 }
 
 // intended to run inside Android guest
-void VsockServer() {
+[[noreturn]] void VsockServer() {
   LOG(DEBUG) << "Starting vsock server on " << FLAGS_vsock_port;
   cuttlefish::SharedFD vsock;
   if (FLAGS_server_fd < 0) {
@@ -138,12 +248,17 @@ void VsockServer() {
     close(FLAGS_server_fd);
   }
   CHECK(vsock->IsOpen()) << "Could not start server on " << FLAGS_vsock_port;
-  cuttlefish::Proxy(vsock, []() {
+  while (true) {
+    LOG(DEBUG) << "waiting for vsock connection";
+    auto vsock_client = cuttlefish::SharedFD::Accept(*vsock);
+    CHECK(vsock_client->IsOpen()) << "error creating vsock socket";
     LOG(DEBUG) << "vsock socket accepted";
     auto client = OpenSocketConnection();
     CHECK(client->IsOpen()) << "error connecting to guest client";
-    return client;
-  });
+    auto thread = std::thread(HandleConnection, std::move(vsock_client),
+                              std::move(client));
+    thread.detach();
+  }
 }
 
 }  // namespace

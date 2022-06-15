@@ -18,10 +18,12 @@
 namespace cuttlefish {
 
 DeviceListHandler::DeviceListHandler(struct lws* wsi,
-                                           DeviceRegistry& registry)
-    : DynHandler(wsi), registry_(registry) {}
+                                     const DeviceRegistry& registry)
+    : WebSocketHandler(wsi), registry_(registry) {}
 
-HttpStatusCode DeviceListHandler::DoGet() {
+void DeviceListHandler::OnReceive(const uint8_t* /*msg*/, size_t /*len*/,
+                                  bool /*binary*/) {
+  // Ignore the message, just send the reply
   Json::Value reply(Json::ValueType::arrayValue);
 
   for (const auto& id : registry_.ListDeviceIds()) {
@@ -29,11 +31,18 @@ HttpStatusCode DeviceListHandler::DoGet() {
   }
   Json::StreamWriterBuilder json_factory;
   auto replyAsString = Json::writeString(json_factory, reply);
-  AppendDataOut(replyAsString);
-  return HttpStatusCode::Ok;
-}
-HttpStatusCode DeviceListHandler::DoPost() {
-  return HttpStatusCode::NotFound;
+  EnqueueMessage(replyAsString.c_str(), replyAsString.size());
+  Close();
 }
 
+void DeviceListHandler::OnConnected() {}
+
+void DeviceListHandler::OnClosed() {}
+
+DeviceListHandlerFactory::DeviceListHandlerFactory(const DeviceRegistry& registry)
+  : registry_(registry) {}
+
+std::shared_ptr<WebSocketHandler> DeviceListHandlerFactory::Build(struct lws* wsi) {
+  return std::shared_ptr<WebSocketHandler>(new DeviceListHandler(wsi, registry_));
+}
 }  // namespace cuttlefish

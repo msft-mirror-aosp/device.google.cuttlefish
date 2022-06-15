@@ -21,8 +21,6 @@
 #include <cstddef>
 #include <string>
 
-namespace cuttlefish {
-
 std::string TpmCommandName(std::uint32_t command_num) {
   switch(command_num) {
     #define MATCH_TPM_COMMAND(name) case name: return #name;
@@ -147,5 +145,3 @@ std::string TpmCommandName(std::uint32_t command_num) {
       return "Unknown";
   }
 }
-
-}  // namespace cuttlefish

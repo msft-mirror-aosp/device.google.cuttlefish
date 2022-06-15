@@ -23,7 +23,8 @@
 
 namespace wayland {
 
-Surface::Surface(Surfaces& surfaces) : surfaces_(surfaces) {}
+Surface::Surface(std::uint32_t display_number, Surfaces& surfaces)
+    : display_number_(display_number), surfaces_(surfaces) {}
 
 void Surface::SetRegion(const Region& region) {
   std::unique_lock<std::mutex> lock(state_mutex_);
@@ -44,39 +45,28 @@ void Surface::Commit() {
     return;
   }
 
-  if (state_.virtio_gpu_metadata_.scanout_id.has_value()) {
-    const uint32_t display_number = *state_.virtio_gpu_metadata_.scanout_id;
+  struct wl_shm_buffer* shm_buffer = wl_shm_buffer_get(state_.current_buffer);
+  CHECK(shm_buffer != nullptr);
 
-    struct wl_shm_buffer* shm_buffer = wl_shm_buffer_get(state_.current_buffer);
-    CHECK(shm_buffer != nullptr);
+  wl_shm_buffer_begin_access(shm_buffer);
 
-    wl_shm_buffer_begin_access(shm_buffer);
+  const int32_t buffer_w = wl_shm_buffer_get_width(shm_buffer);
+  CHECK(buffer_w == state_.region.w);
+  const int32_t buffer_h = wl_shm_buffer_get_height(shm_buffer);
+  CHECK(buffer_h == state_.region.h);
 
-    const int32_t buffer_w = wl_shm_buffer_get_width(shm_buffer);
-    CHECK(buffer_w == state_.region.w);
-    const int32_t buffer_h = wl_shm_buffer_get_height(shm_buffer);
-    CHECK(buffer_h == state_.region.h);
-    const int32_t buffer_stride_bytes = wl_shm_buffer_get_stride(shm_buffer);
+  uint8_t* buffer_pixels =
+      reinterpret_cast<uint8_t*>(wl_shm_buffer_get_data(shm_buffer));
 
-    uint8_t* buffer_pixels =
-        reinterpret_cast<uint8_t*>(wl_shm_buffer_get_data(shm_buffer));
+  surfaces_.HandleSurfaceFrame(display_number_, buffer_pixels);
 
-    surfaces_.HandleSurfaceFrame(display_number, buffer_w, buffer_h,
-                                 buffer_stride_bytes, buffer_pixels);
-
-    wl_shm_buffer_end_access(shm_buffer);
-  }
+  wl_shm_buffer_end_access(shm_buffer);
 
   wl_buffer_send_release(state_.current_buffer);
   wl_client_flush(wl_resource_get_client(state_.current_buffer));
 
   state_.current_buffer = nullptr;
   state_.current_frame_number++;
-}
-
-void Surface::SetVirtioGpuScanoutId(uint32_t scanout_id) {
-  std::unique_lock<std::mutex> lock(state_mutex_);
-  state_.virtio_gpu_metadata_.scanout_id = scanout_id;
 }
 
 }  // namespace wayland

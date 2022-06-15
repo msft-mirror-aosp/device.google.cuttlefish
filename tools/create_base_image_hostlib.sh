@@ -2,6 +2,9 @@
 
 # Common code to build a host image on GCE
 
+# INTERNAL_extra_source may be set to a directory containing the source for
+# extra package to build.
+
 # INTERNAL_IP can be set to --internal-ip run on a GCE instance
 # The instance will need --scope compute-rw
 
@@ -19,7 +22,7 @@ DEFINE_string dest_project "$(gcloud config get-value project)" \
   "Project to use for the new image" "p"
 DEFINE_string launch_instance "" \
   "Name of the instance to launch with the new image" "l"
-DEFINE_string source_image_family "debian-11" \
+DEFINE_string source_image_family "debian-10" \
   "Image familty to use as the base" "s"
 DEFINE_string source_image_project debian-cloud \
   "Project holding the base image" "m"
@@ -76,6 +79,9 @@ main() {
     "${ANDROID_BUILD_TOP}/device/google/cuttlefish/tools/create_base_image_gce.sh"
     ${scratch_dir}/*
   )
+  if [[ -n "${INTERNAL_extra_source}" ]]; then
+    source_files+=("${INTERNAL_extra_source}"/*)
+  fi
 
   delete_instances=("${FLAGS_build_instance}" "${FLAGS_dest_image}")
   if [[ -n "${FLAGS_launch_instance}" ]]; then
@@ -137,7 +143,6 @@ main() {
       --scopes storage-ro \
       --accelerator="type=${gpu_type},count=1" \
       --maintenance-policy=TERMINATE \
-      --boot-disk-size=200GiB \
       "${FLAGS_launch_instance}"
   fi
   cat <<EOF
@@ -151,11 +156,3 @@ main() {
       "${FLAGS_dest_image}"
 EOF
 }
-
-FLAGS "$@" || exit 1
-if [[ "${FLAGS_help}" -eq 0 ]]; then
-  echo ${FLAGS_help}
-  exit 1
-fi
-
-main "${FLAGS_ARGV[@]}"

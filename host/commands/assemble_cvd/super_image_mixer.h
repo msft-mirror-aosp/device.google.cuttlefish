@@ -13,18 +13,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <fruit/fruit.h>
-
 #include "host/libs/config/cuttlefish_config.h"
-#include "host/libs/config/feature.h"
 #include "host/libs/config/fetcher_config.h"
 
 namespace cuttlefish {
 
-class SuperImageRebuilder : public SetupFeature {};
-
-fruit::Component<fruit::Required<const FetcherConfig, const CuttlefishConfig>,
-                 SuperImageRebuilder>
-SuperImageRebuilderComponent(const std::string* output_path);
+bool SuperImageNeedsRebuilding(const FetcherConfig& fetcher_config,
+                               const CuttlefishConfig& config);
+bool RebuildSuperImage(const FetcherConfig& fetcher_config,
+                       const CuttlefishConfig& config,
+                       const std::string& output_path);
 
 } // namespace cuttlefish

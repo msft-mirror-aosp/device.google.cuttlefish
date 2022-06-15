@@ -1,2 +1,0 @@
-service setup_wifi /vendor/bin/setup_wifi
-    oneshot

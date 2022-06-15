@@ -19,8 +19,6 @@
 
 #include "common/libs/security/keymaster_channel.h"
 
-namespace cuttlefish {
-
 class KeymasterResponder {
 private:
   cuttlefish::KeymasterChannel& channel_;
@@ -31,5 +29,3 @@ public:
 
   bool ProcessMessage();
 };
-
-}  // namespace cuttlefish

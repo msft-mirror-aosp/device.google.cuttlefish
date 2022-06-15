@@ -15,7 +15,6 @@
 
 #pragma once
 
-#include <algorithm>
 #include <sstream>
 #include <string>
 #include <type_traits>
@@ -36,25 +35,13 @@ template <typename Delim, typename... Args>
 std::string ArgsToStringWithDelim(Delim&& delim, Args&&... args) {
   std::stringstream ss;
   ([&ss, &delim](auto& arg) { ss << arg << delim; }(args), ...);
-  auto result = ss.str();
-  std::string delim_str(delim);
-  if (!result.empty() && !delim_str.empty()) {
-    for (int i = 0; i < delim_str.size(); i++) {
-      result.pop_back();
-    }
-  }
-  return result;
+  return ss.str();
 }
 
 // make t... to a single string with no blank in between
 template <typename... Args>
 std::string ArgsToString(Args&&... args) {
   return ArgsToStringWithDelim("", std::forward<Args>(args)...);
-}
-
-inline bool IsOnlyDigits(const std::string& src) {
-  return std::all_of(src.begin(), src.end(),
-                     [](int c) -> bool { return std::isdigit(c); });
 }
 
 // note that no () surrounding LOG(level) << "ConfUI:" is crucial

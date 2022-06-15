@@ -256,8 +256,8 @@ void SmsService::SendSmsToRemote(std::string remote_port, PDUParser& sms_pdu) {
     return;
   }
 
-  auto local_host_id = GetHostId();
-  auto pdu = sms_pdu.CreateRemotePDU(local_host_id);
+  auto local_host_port = GetHostPort();
+  auto pdu = sms_pdu.CreateRemotePDU(local_host_port);
 
   std::string command = "AT+REMOTESMS=" + pdu + "\r";
   std::string token = "REM0";
@@ -292,22 +292,25 @@ void SmsService::HandleSendSMSPDU(const Client& client, std::string& command) {
     return;
   } else if (port >= kRemotePortRange.first &&
              port <= kRemotePortRange.second) {
-    auto remote_host_port = std::to_string(port);
-    if (GetHostId() == remote_host_port) {  // Send SMS to local host port
-      thread_looper_->Post(
-          makeSafeCallback<SmsService>(
-              this,
-              [&sms_pdu](SmsService* me) { me->HandleReceiveSMS(sms_pdu); }),
-          std::chrono::seconds(1));
+    std::stringstream ss;
+    ss << port;
+    auto remote_host_port = ss.str();
+    if (GetHostPort() == remote_host_port) {  // Send SMS to local host port
+      thread_looper_->PostWithDelay(
+          std::chrono::seconds(1),
+          makeSafeCallback<SmsService>(this, [&sms_pdu](SmsService* me) {
+            me->HandleReceiveSMS(sms_pdu);
+          }));
     } else {  // Send SMS to remote host port
       SendSmsToRemote(remote_host_port, sms_pdu);
     }
   } else if (sim_service_ && phone_number == sim_service_->GetPhoneNumber()) {
     /* Local phone number */
-    thread_looper_->Post(
-        makeSafeCallback<SmsService>(
-            this, [sms_pdu](SmsService* me) { me->HandleReceiveSMS(sms_pdu); }),
-        std::chrono::seconds(1));
+    thread_looper_->PostWithDelay(
+        std::chrono::seconds(1),
+        makeSafeCallback<SmsService>(this, [sms_pdu](SmsService* me) {
+          me->HandleReceiveSMS(sms_pdu);
+        }));
   } /* else pretend send SMS success */
 
   std::stringstream ss;
@@ -318,12 +321,11 @@ void SmsService::HandleSendSMSPDU(const Client& client, std::string& command) {
 
   if (sms_pdu.IsNeededStatuReport()) {
     int ref = message_reference_;
-    thread_looper_->Post(
-        makeSafeCallback<SmsService>(this,
-                                     [sms_pdu, ref](SmsService* me) {
-                                       me->HandleSMSStatuReport(sms_pdu, ref);
-                                     }),
-        std::chrono::seconds(1));
+    thread_looper_->PostWithDelay(
+        std::chrono::seconds(1),
+        makeSafeCallback<SmsService>(this, [sms_pdu, ref](SmsService* me) {
+          me->HandleSMSStatuReport(sms_pdu, ref);
+        }));
   }
 }
 

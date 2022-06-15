@@ -27,27 +27,18 @@
 
 namespace cuttlefish {
 class DeviceHandler;
-
-class ClientHandler {
+class ClientHandler : public SignalHandler,
+                      public std::enable_shared_from_this<ClientHandler> {
  public:
-  virtual ~ClientHandler() = default;
-  virtual void SendDeviceMessage(const Json::Value& message) = 0;
-};
-
-class ClientWSHandler : public ClientHandler,
-                        public SignalHandler,
-                        public std::enable_shared_from_this<ClientHandler> {
- public:
-  ClientWSHandler(struct lws* wsi, DeviceRegistry* registry,
-                  const ServerConfig& server_config);
-
-  void SendDeviceMessage(const Json::Value& message) override;
+  ClientHandler(struct lws* wsi, DeviceRegistry* registry,
+                const ServerConfig& server_config);
+  void SendDeviceMessage(const Json::Value& message);
 
   void OnClosed() override;
 
  protected:
   void handleMessage(const std::string& type,
-                     const Json::Value& message) override;
+                    const Json::Value& message) override;
 
  private:
   void handleConnectionRequest(const Json::Value& message);
@@ -59,91 +50,14 @@ class ClientWSHandler : public ClientHandler,
   size_t client_id_;
 };
 
-class ClientWSHandlerFactory : public WebSocketHandlerFactory {
+class ClientHandlerFactory : public WebSocketHandlerFactory {
  public:
-  ClientWSHandlerFactory(DeviceRegistry* registry,
-                         const ServerConfig& server_config);
+  ClientHandlerFactory(DeviceRegistry* registry,
+                       const ServerConfig& server_config);
   std::shared_ptr<WebSocketHandler> Build(struct lws* wsi) override;
 
  private:
   DeviceRegistry* registry_;
   const ServerConfig& server_config_;
 };
-
-class PollConnectionHandler;
-
-class PollConnectionStore {
-  public:
-    PollConnectionStore() = default;
-
-    std::shared_ptr<PollConnectionHandler> Get(const std::string& conn_id) const;
-    std::string Add(std::shared_ptr<PollConnectionHandler> handler);
-  private:
-   std::map<std::string, std::shared_ptr<PollConnectionHandler>>
-       handlers_;
-};
-
-class ClientDynHandler : public DynHandler,
-                         public std::enable_shared_from_this<ClientHandler> {
- public:
-  ClientDynHandler(struct lws* wsi, PollConnectionStore* poll_store);
-
-  HttpStatusCode DoGet() override;
-  HttpStatusCode DoPost() override;
-
- protected:
-  virtual HttpStatusCode DoPostInner(std::shared_ptr<PollConnectionHandler>,
-                                     const Json::Value&) = 0;
-  // In the base class because it's shared by some of the subclasses
-  HttpStatusCode Poll(std::shared_ptr<PollConnectionHandler>);
-
-  void Reply(const Json::Value& json);
-  void ReplyError(const std::string& message);
-  bool ParseInput();
-
-  PollConnectionStore* poll_store_;
-};
-
-class ConnectHandler : public ClientDynHandler {
- public:
-  ConnectHandler(struct lws* wsi, DeviceRegistry* registry,
-                 PollConnectionStore* poll_store);
-
- protected:
-  HttpStatusCode DoPostInner(std::shared_ptr<PollConnectionHandler>,
-                             const Json::Value&) override;
- private:
-  DeviceRegistry* registry_;
-};
-
-class ForwardHandler : public ClientDynHandler {
- public:
-  ForwardHandler(struct lws* wsi, PollConnectionStore* poll_store);
-
- protected:
-  HttpStatusCode DoPostInner(std::shared_ptr<PollConnectionHandler>,
-                             const Json::Value&) override;
-};
-
-class PollHandler : public ClientDynHandler {
- public:
-  PollHandler(struct lws* wsi, PollConnectionStore* poll_store);
-
- protected:
-  HttpStatusCode DoPostInner(std::shared_ptr<PollConnectionHandler>,
-                             const Json::Value&) override;
-};
-
-class ConfigHandler : public DynHandler {
- public:
-  ConfigHandler(struct lws* wsi, const ServerConfig& server_config);
-
-  HttpStatusCode DoGet() override;
-
-  HttpStatusCode DoPost() override;
-
- private:
-  const ServerConfig& server_config_;
-};
-
 }  // namespace cuttlefish

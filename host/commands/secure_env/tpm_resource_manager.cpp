@@ -18,8 +18,6 @@
 #include <android-base/logging.h>
 #include <tss2/tss2_rc.h>
 
-namespace cuttlefish {
-
 TpmResourceManager::ObjectSlot::ObjectSlot(TpmResourceManager* resource_manager)
     : ObjectSlot(resource_manager, ESYS_TR_NONE) {
 }
@@ -77,5 +75,3 @@ TpmObjectSlot TpmResourceManager::ReserveSlot() {
   }
   return TpmObjectSlot{new ObjectSlot(this)};
 }
-
-}  // namespace cuttlefish

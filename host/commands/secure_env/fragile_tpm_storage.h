@@ -26,8 +26,6 @@
 #include "host/commands/secure_env/gatekeeper_storage.h"
 #include "host/commands/secure_env/tpm_resource_manager.h"
 
-namespace cuttlefish {
-
 /**
  * Manager for data stored inside the TPM with an index outside of the TPM. The
  * contents of the data cannot be corrupted or decrypted by accessing the index,
@@ -60,5 +58,3 @@ private:
   std::string index_file_;
   Json::Value index_;
 };
-
-}  // namespace cuttlefish

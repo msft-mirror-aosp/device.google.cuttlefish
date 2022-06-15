@@ -182,10 +182,7 @@ const struct wl_surface_interface surface_implementation = {
   .damage_buffer = surface_damage_buffer,
 };
 
-void surface_destroy_resource_callback(struct wl_resource* surface_resource) {
-  Surface* surface = GetUserData<Surface>(surface_resource);
-  delete surface;
-}
+void surface_destroy_resource_callback(struct wl_resource*) {}
 
 void compositor_create_surface(wl_client* client,
                                wl_resource* compositor,
@@ -194,8 +191,12 @@ void compositor_create_surface(wl_client* client,
                << " compositor=" << compositor
                << " id=" << id;
 
+  // Wayland seems to use a single global id space for all objects.
+  static std::atomic<std::uint32_t> sNextDisplayId{0};
+  uint32_t display_id = sNextDisplayId++;
+
   Surfaces* surfaces = GetUserData<Surfaces>(compositor);
-  Surface* surface = new Surface(*surfaces);
+  Surface* surface = surfaces->GetOrCreateSurface(display_id);
 
   wl_resource* surface_resource = wl_resource_create(
       client, &wl_surface_interface, wl_resource_get_version(compositor), id);

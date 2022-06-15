@@ -14,17 +14,10 @@
  * limitations under the License.
  */
 
-#include "common/libs/security/keymaster_channel.h"
-
-#include <cstdlib>
-#include <memory>
-#include <ostream>
-#include <string>
+#include "keymaster_channel.h"
 
 #include <android-base/logging.h>
-#include <keymaster/android_keymaster_messages.h>
-#include <keymaster/mem.h>
-#include <keymaster/serializable.h>
+#include "keymaster/android_keymaster_utils.h"
 
 #include "common/libs/fs/shared_buf.h"
 
@@ -32,7 +25,7 @@ namespace cuttlefish {
 
 ManagedKeymasterMessage CreateKeymasterMessage(
     AndroidKeymasterCommand command, bool is_response, size_t payload_size) {
-  auto memory = std::malloc(payload_size + sizeof(keymaster_message));
+  auto memory = new uint8_t[payload_size + sizeof(keymaster_message)];
   auto message = reinterpret_cast<keymaster_message*>(memory);
   message->cmd = command;
   message->is_response = is_response;
@@ -44,7 +37,7 @@ void KeymasterCommandDestroyer::operator()(keymaster_message* ptr) {
   {
     keymaster::Eraser(ptr, sizeof(keymaster_message) + ptr->payload_size);
   }
-  std::free(ptr);
+  delete reinterpret_cast<uint8_t*>(ptr);
 }
 
 KeymasterChannel::KeymasterChannel(SharedFD input, SharedFD output)

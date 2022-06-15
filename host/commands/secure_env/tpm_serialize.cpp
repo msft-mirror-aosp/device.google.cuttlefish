@@ -21,8 +21,6 @@
 #include "tss2/tss2_mu.h"
 #include "tss2/tss2_rc.h"
 
-namespace cuttlefish {
-
 template<typename T>
 int MarshalFn = 0; // Break code without an explicit specialization.
 
@@ -84,5 +82,3 @@ bool TpmSerializable<T>::Deserialize(
 
 template class TpmSerializable<TPM2B_PRIVATE>;
 template class TpmSerializable<TPM2B_PUBLIC>;
-
-}  // namespace cuttlefish

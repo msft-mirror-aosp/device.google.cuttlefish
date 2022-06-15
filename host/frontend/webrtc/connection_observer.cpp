@@ -35,7 +35,6 @@
 #include "common/libs/fs/shared_buf.h"
 #include "host/frontend/webrtc/adb_handler.h"
 #include "host/frontend/webrtc/bluetooth_handler.h"
-#include "host/frontend/webrtc/lib/camera_controller.h"
 #include "host/frontend/webrtc/lib/utils.h"
 #include "host/libs/config/cuttlefish_config.h"
 
@@ -96,25 +95,24 @@ std::unique_ptr<InputEventBuffer> GetEventBuffer() {
  * i.e. when it is not in the confirmation UI mode (or TEE),
  * the control flow will fall back to this ConnectionObserverForAndroid
  */
-class ConnectionObserverImpl
+class ConnectionObserverForAndroid
     : public cuttlefish::webrtc_streaming::ConnectionObserver {
  public:
-  ConnectionObserverImpl(
+  ConnectionObserverForAndroid(
       cuttlefish::InputSockets &input_sockets,
       cuttlefish::KernelLogEventsHandler *kernel_log_events_handler,
       std::map<std::string, cuttlefish::SharedFD>
           commands_to_custom_action_servers,
-      std::weak_ptr<DisplayHandler> display_handler,
-      CameraController *camera_controller,
-      cuttlefish::confui::HostVirtualInput &confui_input)
+      std::weak_ptr<DisplayHandler> display_handler)
       : input_sockets_(input_sockets),
         kernel_log_events_handler_(kernel_log_events_handler),
         commands_to_custom_action_servers_(commands_to_custom_action_servers),
-        weak_display_handler_(display_handler),
-        camera_controller_(camera_controller),
-        confui_input_(confui_input) {}
-  virtual ~ConnectionObserverImpl() {
+        weak_display_handler_(display_handler) {}
+  virtual ~ConnectionObserverForAndroid() {
     auto display_handler = weak_display_handler_.lock();
+    if (display_handler) {
+      display_handler->DecClientCount();
+    }
     if (kernel_log_subscription_id_ != -1) {
       kernel_log_events_handler_->Unsubscribe(kernel_log_subscription_id_);
     }
@@ -124,6 +122,7 @@ class ConnectionObserverImpl
                    /*ctrl_msg_sender*/) override {
     auto display_handler = weak_display_handler_.lock();
     if (display_handler) {
+      display_handler->IncClientCount();
       std::thread th([this]() {
         // The encoder in libwebrtc won't drop 5 consecutive frames due to frame
         // size, so we make sure at least 5 frames are sent every time a client
@@ -140,15 +139,11 @@ class ConnectionObserverImpl
       });
       th.detach();
     }
-  }
-
-  void OnTouchEvent(const std::string &display_label, int x, int y,
-                    bool down) override {
-    if (confui_input_.IsConfUiActive()) {
-      ConfUiLog(DEBUG) << "delivering a touch event in confirmation UI mode";
-      confui_input_.TouchEvent(x, y, down);
-      return;
     }
+
+  void OnTouchEvent(const std::string & /*display_label*/, int x, int y,
+                    bool down) override {
+
     auto buffer = GetEventBuffer();
     if (!buffer) {
       LOG(ERROR) << "Failed to allocate event buffer";
@@ -158,35 +153,26 @@ class ConnectionObserverImpl
     buffer->AddEvent(EV_ABS, ABS_Y, y);
     buffer->AddEvent(EV_KEY, BTN_TOUCH, down);
     buffer->AddEvent(EV_SYN, SYN_REPORT, 0);
-    cuttlefish::WriteAll(input_sockets_.GetTouchClientByLabel(display_label),
+    cuttlefish::WriteAll(input_sockets_.touch_client,
                          reinterpret_cast<const char *>(buffer->data()),
                          buffer->size());
   }
 
-  void OnMultiTouchEvent(const std::string &display_label, Json::Value id,
+  void OnMultiTouchEvent(const std::string & /*display_label*/, Json::Value id,
                          Json::Value slot, Json::Value x, Json::Value y,
-                         bool down, int size) {
+                         bool down, int size) override {
+
     auto buffer = GetEventBuffer();
     if (!buffer) {
       LOG(ERROR) << "Failed to allocate event buffer";
       return;
     }
 
-    for (int i = 0; i < size; i++) {
+    for (int i=0; i<size; i++) {
       auto this_slot = slot[i].asInt();
       auto this_id = id[i].asInt();
       auto this_x = x[i].asInt();
       auto this_y = y[i].asInt();
-
-      if (confui_input_.IsConfUiActive()) {
-        if (down) {
-          ConfUiLog(DEBUG) << "Delivering event (" << x << ", " << y
-                           << ") to conf ui";
-        }
-        confui_input_.TouchEvent(this_x, this_y, down);
-        continue;
-      }
-
       buffer->AddEvent(EV_ABS, ABS_MT_SLOT, this_slot);
       if (down) {
         bool is_new = active_touch_slots_.insert(this_slot).second;
@@ -212,17 +198,12 @@ class ConnectionObserverImpl
     }
 
     buffer->AddEvent(EV_SYN, SYN_REPORT, 0);
-    cuttlefish::WriteAll(input_sockets_.GetTouchClientByLabel(display_label),
+    cuttlefish::WriteAll(input_sockets_.touch_client,
                          reinterpret_cast<const char *>(buffer->data()),
                          buffer->size());
   }
 
   void OnKeyboardEvent(uint16_t code, bool down) override {
-    if (confui_input_.IsConfUiActive()) {
-      ConfUiLog(DEBUG) << "keyboard event ignored in confirmation UI mode";
-      return;
-    }
-
     auto buffer = GetEventBuffer();
     if (!buffer) {
       LOG(ERROR) << "Failed to allocate event buffer";
@@ -263,9 +244,6 @@ class ConnectionObserverImpl
   void OnControlChannelOpen(std::function<bool(const Json::Value)>
                             control_message_sender) override {
     LOG(VERBOSE) << "Control Channel open";
-    if (camera_controller_) {
-      camera_controller_->SetMessageSender(control_message_sender);
-    }
     kernel_log_subscription_id_ =
         kernel_log_events_handler_->AddSubscriber(control_message_sender);
   }
@@ -306,10 +284,6 @@ class ConnectionObserverImpl
         // Sensor HAL.
       }
       return;
-    } else if (command.rfind("camera_", 0) == 0 && camera_controller_) {
-      // Handle commands starting with "camera_" by camera controller
-      camera_controller_->HandleMessage(evt);
-      return;
     }
 
     auto button_state = evt["button_state"].asString();
@@ -321,6 +295,8 @@ class ConnectionObserverImpl
       OnKeyboardEvent(KEY_HOMEPAGE, button_state == "down");
     } else if (command == "menu") {
       OnKeyboardEvent(KEY_MENU, button_state == "down");
+    } else if (command == "volumemute") {
+      OnKeyboardEvent(KEY_MUTE, button_state == "down");
     } else if (command == "volumedown") {
       OnKeyboardEvent(KEY_VOLUMEDOWN, button_state == "down");
     } else if (command == "volumeup") {
@@ -343,20 +319,15 @@ class ConnectionObserverImpl
   void OnBluetoothChannelOpen(std::function<bool(const uint8_t *, size_t)>
                                   bluetooth_message_sender) override {
     LOG(VERBOSE) << "Bluetooth channel open";
-    auto config = cuttlefish::CuttlefishConfig::Get();
-    CHECK(config) << "Failed to get config";
     bluetooth_handler_.reset(new cuttlefish::webrtc_streaming::BluetoothHandler(
-        config->rootcanal_test_port(), bluetooth_message_sender));
+        cuttlefish::CuttlefishConfig::Get()
+            ->ForDefaultInstance()
+            .rootcanal_test_port(),
+        bluetooth_message_sender));
   }
 
   void OnBluetoothMessage(const uint8_t *msg, size_t size) override {
     bluetooth_handler_->handleMessage(msg, size);
-  }
-
-  void OnCameraData(const std::vector<char> &data) override {
-    if (camera_controller_) {
-      camera_controller_->HandleMessage(data);
-    }
   }
 
  private:
@@ -369,7 +340,101 @@ class ConnectionObserverImpl
   std::map<std::string, cuttlefish::SharedFD> commands_to_custom_action_servers_;
   std::weak_ptr<DisplayHandler> weak_display_handler_;
   std::set<int32_t> active_touch_slots_;
-  cuttlefish::CameraController *camera_controller_;
+};
+
+class ConnectionObserverDemuxer
+    : public cuttlefish::webrtc_streaming::ConnectionObserver {
+ public:
+  ConnectionObserverDemuxer(
+      /* params for the base class */
+      cuttlefish::InputSockets &input_sockets,
+      cuttlefish::KernelLogEventsHandler *kernel_log_events_handler,
+      std::map<std::string, cuttlefish::SharedFD>
+          commands_to_custom_action_servers,
+      std::weak_ptr<DisplayHandler> display_handler,
+      /* params for this class */
+      cuttlefish::confui::HostVirtualInput &confui_input)
+      : android_input_(input_sockets, kernel_log_events_handler,
+                       commands_to_custom_action_servers, display_handler),
+        confui_input_{confui_input} {}
+  virtual ~ConnectionObserverDemuxer() = default;
+
+  void OnConnected(std::function<void(const uint8_t *, size_t, bool)>
+                       ctrl_msg_sender) override {
+    android_input_.OnConnected(ctrl_msg_sender);
+  }
+
+  void OnTouchEvent(const std::string &label, int x, int y,
+                    bool down) override {
+    if (confui_input_.IsConfUiActive()) {
+      ConfUiLog(DEBUG) << "touch event ignored in confirmation UI mode";
+      return;
+    }
+    android_input_.OnTouchEvent(label, x, y, down);
+  }
+
+  void OnMultiTouchEvent(const std::string &label, Json::Value id,
+                         Json::Value slot, Json::Value x, Json::Value y,
+                         bool down, int size) override {
+    if (confui_input_.IsConfUiActive()) {
+      ConfUiLog(DEBUG) << "multi-touch event ignored in confirmation UI mode";
+      return;
+    }
+    android_input_.OnMultiTouchEvent(label, id, slot, x, y, down, size);
+  }
+
+  void OnKeyboardEvent(uint16_t code, bool down) override {
+    if (confui_input_.IsConfUiActive()) {
+      switch (code) {
+        case KEY_POWER:
+          confui_input_.PressConfirmButton(down);
+          break;
+        case KEY_MENU:
+          confui_input_.PressCancelButton(down);
+          break;
+        default:
+          ConfUiLog(DEBUG) << "key" << code
+                           << "is ignored in confirmation UI mode";
+          break;
+      }
+      return;
+    }
+    android_input_.OnKeyboardEvent(code, down);
+  }
+
+  void OnSwitchEvent(uint16_t code, bool state) override {
+    android_input_.OnSwitchEvent(code, state);
+  }
+
+  void OnAdbChannelOpen(std::function<bool(const uint8_t *, size_t)>
+                            adb_message_sender) override {
+    android_input_.OnAdbChannelOpen(adb_message_sender);
+  }
+
+  void OnAdbMessage(const uint8_t *msg, size_t size) override {
+    android_input_.OnAdbMessage(msg, size);
+  }
+
+  void OnControlChannelOpen(
+      std::function<bool(const Json::Value)> control_message_sender) override {
+    android_input_.OnControlChannelOpen(control_message_sender);
+  }
+
+  void OnControlMessage(const uint8_t *msg, size_t size) override {
+    android_input_.OnControlMessage(msg, size);
+  }
+
+  void OnBluetoothChannelOpen(std::function<bool(const uint8_t *, size_t)>
+                                  bluetooth_message_sender) override {
+    android_input_.OnBluetoothChannelOpen(bluetooth_message_sender);
+  }
+
+  void OnBluetoothMessage(const uint8_t *msg, size_t size) override {
+    android_input_.OnBluetoothMessage(msg, size);
+  }
+
+ private:
+  ConnectionObserverForAndroid android_input_;
   cuttlefish::confui::HostVirtualInput &confui_input_;
 };
 
@@ -384,10 +449,9 @@ CfConnectionObserverFactory::CfConnectionObserverFactory(
 std::shared_ptr<cuttlefish::webrtc_streaming::ConnectionObserver>
 CfConnectionObserverFactory::CreateObserver() {
   return std::shared_ptr<cuttlefish::webrtc_streaming::ConnectionObserver>(
-      new ConnectionObserverImpl(input_sockets_, kernel_log_events_handler_,
-                                 commands_to_custom_action_servers_,
-                                 weak_display_handler_, camera_controller_,
-                                 confui_input_));
+      new ConnectionObserverDemuxer(input_sockets_, kernel_log_events_handler_,
+                                    commands_to_custom_action_servers_,
+                                    weak_display_handler_, confui_input_));
 }
 
 void CfConnectionObserverFactory::AddCustomActionServer(
@@ -402,10 +466,5 @@ void CfConnectionObserverFactory::AddCustomActionServer(
 void CfConnectionObserverFactory::SetDisplayHandler(
     std::weak_ptr<DisplayHandler> display_handler) {
   weak_display_handler_ = display_handler;
-}
-
-void CfConnectionObserverFactory::SetCameraHandler(
-    CameraController *controller) {
-  camera_controller_ = controller;
 }
 }  // namespace cuttlefish

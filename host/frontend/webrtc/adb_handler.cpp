@@ -44,11 +44,7 @@ SharedFD SetupAdbSocket(const std::string &adb_host_and_port) {
   }
 
   auto local_client = SharedFD::SocketLocalClient(port, SOCK_STREAM);
-  if (!local_client->IsOpen()) {
-    LOG(WARNING) << "Failed to connect to ADB server socket (non-Android guest?) Using /dev/null workaround."
-                 << local_client->StrError();
-    return SharedFD::Open("/dev/null", O_RDWR);
-  }
+  CHECK(local_client->IsOpen()) << "Failed to connect to adb socket: " << local_client->StrError();
   return local_client;
 }
 

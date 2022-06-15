@@ -20,8 +20,6 @@
 #include <tss2/tss2_tcti.h>
 #include <tss2/tss2_tcti_device.h>
 
-namespace cuttlefish {
-
 static void FinalizeTcti(TSS2_TCTI_CONTEXT* tcti_context) {
   if (tcti_context == nullptr) {
     return;
@@ -54,5 +52,3 @@ DeviceTpm::DeviceTpm(const std::string& path) : tpm_(nullptr, &FinalizeTcti) {
 TSS2_TCTI_CONTEXT* DeviceTpm::TctiContext() {
   return tpm_.get();
 }
-
-}  // namespace cuttlefish

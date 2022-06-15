@@ -14,7 +14,7 @@
  */
 
 #include <fcntl.h>
-#include <poll.h>
+#include <sys/poll.h>
 #include <unistd.h>
 #include <ios>
 #include <mutex>
