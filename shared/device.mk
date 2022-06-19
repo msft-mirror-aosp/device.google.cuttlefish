@@ -468,6 +468,18 @@ PRODUCT_COPY_FILES += $(LOCAL_AUDIO_PRODUCT_COPY_FILES)
 DEVICE_PACKAGE_OVERLAYS += $(LOCAL_AUDIO_DEVICE_PACKAGE_OVERLAYS)
 
 #
+# BiometricsFace HAL (HIDL)
+#
+PRODUCT_PACKAGES += \
+    android.hardware.biometrics.face@1.0-service.example
+
+#
+# BiometricsFingerprint HAL (HIDL)
+#
+PRODUCT_PACKAGES += \
+    android.hardware.biometrics.fingerprint@2.2-service.example
+
+#
 # BiometricsFace HAL (AIDL)
 #
 PRODUCT_PACKAGES += \
@@ -633,8 +645,6 @@ endif
 # NeuralNetworks HAL
 #
 PRODUCT_PACKAGES += \
-    android.hardware.neuralnetworks@1.3-service-sample-all \
-    android.hardware.neuralnetworks@1.3-service-sample-limited \
     android.hardware.neuralnetworks-service-sample-all \
     android.hardware.neuralnetworks-service-sample-limited \
     android.hardware.neuralnetworks-shim-service-sample
