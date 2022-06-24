@@ -237,6 +237,12 @@ PRODUCT_PACKAGES += \
     aidl_lazy_test_server \
     hidl_lazy_test_server
 
+# The connectivity overlay will be migrated to the Connectivity module. (b/214348333)
+# Adding this to work with the new module in future Android versions. (b/232124299)
+# It is needed as Ethernet (eth1) is enabled by default on CF now. (b/172286896)
+PRODUCT_PACKAGES += \
+    cuttlefish_overlay_connectivity
+
 DEVICE_PACKAGE_OVERLAYS := device/google/cuttlefish/shared/overlay
 # PRODUCT_AAPT_CONFIG and PRODUCT_AAPT_PREF_CONFIG are intentionally not set to
 # pick up every density resources.
