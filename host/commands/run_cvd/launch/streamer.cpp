@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "host/commands/run_cvd/launch.h"
+#include "host/commands/run_cvd/launch/launch.h"
 
 #include <android-base/logging.h>
 #include <sstream>
@@ -105,6 +105,8 @@ class StreamerSockets : public virtual SetupFeature {
     if (config_.enable_audio()) {
       cmd.AddParameter("--audio_server_fd=", audio_server_);
     }
+    cmd.AddParameter("--confui_in_fd=", confui_in_fd_);
+    cmd.AddParameter("--confui_out_fd=", confui_out_fd_);
   }
 
   // SetupFeature
@@ -143,6 +145,27 @@ class StreamerSockets : public virtual SetupFeature {
           SharedFD::SocketLocalServer(path, false, SOCK_SEQPACKET, 0666);
       CF_EXPECT(audio_server_->IsOpen(), audio_server_->StrError());
     }
+    AddConfUiFifo();
+    return {};
+  }
+
+  Result<void> AddConfUiFifo() {
+    std::vector<std::string> fifo_files = {
+        instance_.PerInstanceInternalPath("confui_fifo_vm.in"),
+        instance_.PerInstanceInternalPath("confui_fifo_vm.out")};
+    for (const auto& path : fifo_files) {
+      unlink(path.c_str());
+    }
+    std::vector<SharedFD> fds;
+    for (const auto& path : fifo_files) {
+      CF_EXPECT(mkfifo(path.c_str(), 0660) == 0, "Could not create " << path);
+      auto fd = SharedFD::Open(path, O_RDWR);
+      CF_EXPECT(fd->IsOpen(),
+                "Could not open " << path << ": " << fd->StrError());
+      fds.emplace_back(fd);
+    }
+    confui_in_fd_ = fds[0];
+    confui_out_fd_ = fds[1];
     return {};
   }
 
@@ -152,10 +175,13 @@ class StreamerSockets : public virtual SetupFeature {
   SharedFD keyboard_server_;
   SharedFD frames_server_;
   SharedFD audio_server_;
+  SharedFD confui_in_fd_;   // host -> guest
+  SharedFD confui_out_fd_;  // guest -> host
 };
 
 class WebRtcServer : public virtual CommandSource,
-                     public DiagnosticInformation {
+                     public DiagnosticInformation,
+                     public KernelLogPipeConsumer {
  public:
   INJECT(WebRtcServer(const CuttlefishConfig& config,
                       const CuttlefishConfig::InstanceSpecific& instance,
@@ -182,14 +208,13 @@ class WebRtcServer : public virtual CommandSource,
   }
 
   // CommandSource
-  std::vector<Command> Commands() override {
+  Result<std::vector<Command>> Commands() override {
     std::vector<Command> commands;
     if (instance_.start_webrtc_sig_server()) {
       Command sig_server(WebRtcSigServerBinary());
       sig_server.AddParameter("-assets_dir=", config_.webrtc_assets_dir());
-      sig_server.AddParameter(
-          "-use_secure_http=",
-          config_.sig_server_secure() ? "true" : "false");
+      sig_server.AddParameter("-use_secure_http=",
+                              config_.sig_server_secure() ? "true" : "false");
       if (!config_.webrtc_certs_dir().empty()) {
         sig_server.AddParameter("-certs_dir=", config_.webrtc_certs_dir());
       }
@@ -298,6 +323,7 @@ launchStreamerComponent() {
   return fruit::createComponent()
       .addMultibinding<CommandSource, WebRtcServer>()
       .addMultibinding<DiagnosticInformation, WebRtcServer>()
+      .addMultibinding<KernelLogPipeConsumer, WebRtcServer>()
       .addMultibinding<SetupFeature, StreamerSockets>()
       .addMultibinding<SetupFeature, WebRtcServer>();
 }

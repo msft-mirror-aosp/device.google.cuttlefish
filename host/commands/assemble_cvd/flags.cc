@@ -29,6 +29,7 @@
 #include "host/commands/assemble_cvd/disk_flags.h"
 #include "host/libs/config/config_flag.h"
 #include "host/libs/config/host_tools_version.h"
+#include "host/libs/config/instance_nums.h"
 #include "host/libs/graphics_detector/graphics_detector.h"
 #include "host/libs/vm_manager/crosvm_manager.h"
 #include "host/libs/vm_manager/gem5_manager.h"
@@ -257,6 +258,9 @@ DEFINE_string(boot_slot, "", "Force booting into the given slot. If empty, "
              "bootloader. It will default to 'a' if empty and not using a "
              "bootloader.");
 DEFINE_int32(num_instances, 1, "Number of Android guests to launch");
+DEFINE_string(instance_nums, "",
+              "A comma-separated list of instance numbers "
+              "to use. Mutually exclusive with base_instance_num.");
 DEFINE_string(report_anonymous_usage_stats, "", "Report anonymous usage "
             "statistics for metrics collection and analysis.");
 DEFINE_string(ril_dns, "8.8.8.8", "DNS address of mobile network (RIL)");
@@ -264,10 +268,13 @@ DEFINE_bool(kgdb, false, "Configure the virtual device for debugging the kernel 
                          "with kgdb/kdb. The kernel must have been built with "
                          "kgdb support, and serial console must be enabled.");
 
-DEFINE_bool(start_gnss_proxy, false, "Whether to start the gnss proxy.");
+DEFINE_bool(start_gnss_proxy, true, "Whether to start the gnss proxy.");
 
 DEFINE_string(gnss_file_path, "",
-              "Local gnss file path for the gnss proxy");
+              "Local gnss raw measurement file path for the gnss proxy");
+
+DEFINE_string(fixed_location_file_path, "",
+              "Local fixed location file path for the gnss proxy");
 
 // by default, this modem-simulator is disabled
 DEFINE_bool(enable_modem_simulator, true,
@@ -728,14 +735,16 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
 
   tmp_config_obj.set_userdata_format(FLAGS_userdata_format);
 
-  std::vector<int> num_instances;
-  for (int i = 0; i < FLAGS_num_instances; i++) {
-    num_instances.push_back(GetInstance() + i);
-  }
   std::vector<std::string> gnss_file_paths = android::base::Split(FLAGS_gnss_file_path, ",");
+  std::vector<std::string> fixed_location_file_paths =
+      android::base::Split(FLAGS_fixed_location_file_path, ",");
+
+  auto instance_nums = InstanceNumsCalculator().FromGlobalGflags().Calculate();
+  CHECK(instance_nums.ok()) << instance_nums.error();
 
   bool is_first_instance = true;
-  for (const auto& num : num_instances) {
+  int instance_index = 0;
+  for (const auto& num : *instance_nums) {
     IfaceConfig iface_config;
     if (FLAGS_use_allocd) {
       auto iface_opt = AllocateNetworkInterfaces();
@@ -795,8 +804,13 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
     instance.set_gnss_grpc_proxy_server_port(7200 + num -1);
 
     if (num <= gnss_file_paths.size()) {
-      instance.set_gnss_file_path(gnss_file_paths[num-1]);
+      instance.set_gnss_file_path(gnss_file_paths[instance_index]);
     }
+    if (num <= fixed_location_file_paths.size()) {
+      instance.set_fixed_location_file_path(
+          fixed_location_file_paths[instance_index]);
+    }
+    instance_index++;
 
     instance.set_camera_server_port(FLAGS_camera_server_port);
 
@@ -894,7 +908,7 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
     } else {
       instance.set_modem_simulator_ports("");
     }
-  } // end of num_instances loop
+  }  // end of num_instances loop
 
   std::vector<std::string> names;
   for (const auto& instance : tmp_config_obj.Instances()) {

@@ -141,9 +141,6 @@ PRODUCT_VENDOR_PROPERTIES += \
 # Enforce privapp permissions control.
 PRODUCT_VENDOR_PROPERTIES += ro.control_privapp_permissions?=enforce
 
-# aes-256-heh default is not supported in standard kernels.
-PRODUCT_VENDOR_PROPERTIES += ro.crypto.volume.filenames_mode=aes-256-cts
-
 # Copy preopted files from system_b on first boot
 PRODUCT_VENDOR_PROPERTIES += ro.cp_system_other_odex=1
 
@@ -648,8 +645,6 @@ endif
 # NeuralNetworks HAL
 #
 PRODUCT_PACKAGES += \
-    android.hardware.neuralnetworks@1.3-service-sample-all \
-    android.hardware.neuralnetworks@1.3-service-sample-limited \
     android.hardware.neuralnetworks-service-sample-all \
     android.hardware.neuralnetworks-service-sample-limited \
     android.hardware.neuralnetworks-shim-service-sample
@@ -804,7 +799,7 @@ PRODUCT_VENDOR_PROPERTIES += \
 
 # Enable GPU-intensive background blur support on Cuttlefish when requested by apps
 PRODUCT_VENDOR_PROPERTIES += \
-    ro.surface_flinger.supports_background_blur 1
+    ro.surface_flinger.supports_background_blur=1
 
 # Set support one-handed mode
 PRODUCT_PRODUCT_PROPERTIES += \
