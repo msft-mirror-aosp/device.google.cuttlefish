@@ -23,6 +23,7 @@
 
 #include "common/libs/utils/result.h"
 #include "host/commands/cvd/server_constants.h"
+#include "host/libs/config/host_tools_version.h"
 
 namespace cuttlefish {
 namespace {
@@ -32,22 +33,23 @@ class CvdVersionHandler : public CvdServerHandler {
   INJECT(CvdVersionHandler()) = default;
 
   Result<bool> CanHandle(const RequestWithStdio& request) const override {
-    return request.request.contents_case() ==
+    return request.Message().contents_case() ==
            cvd::Request::ContentsCase::kVersionRequest;
   }
 
   Result<cvd::Response> Handle(const RequestWithStdio& request) override {
     CF_EXPECT(CanHandle(request));
     cvd::Response response;
-    response.mutable_version_response()->mutable_version()->set_major(
-        cvd::kVersionMajor);
-    response.mutable_version_response()->mutable_version()->set_minor(
-        cvd::kVersionMinor);
-    response.mutable_version_response()->mutable_version()->set_build(
-        android::build::GetBuildNumber());
+    auto& version = *response.mutable_version_response()->mutable_version();
+    version.set_major(cvd::kVersionMajor);
+    version.set_minor(cvd::kVersionMinor);
+    version.set_build(android::build::GetBuildNumber());
+    version.set_crc32(FileCrc("/proc/self/exe"));
     response.mutable_status()->set_code(cvd::Status::OK);
     return response;
   }
+
+  Result<void> Interrupt() override { return CF_ERR("Can't interrupt"); }
 };
 
 }  // namespace

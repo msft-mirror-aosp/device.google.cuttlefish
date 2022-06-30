@@ -23,16 +23,19 @@
 #include "common/libs/fs/shared_buf.h"
 #include "common/libs/fs/shared_fd.h"
 #include "common/libs/utils/result.h"
+#include "host/commands/cvd/instance_manager.h"
 
 namespace cuttlefish {
 namespace {
 
 class CvdShutdownHandler : public CvdServerHandler {
  public:
-  INJECT(CvdShutdownHandler(CvdServer& server)) : server_(server) {}
+  INJECT(CvdShutdownHandler(CvdServer& server,
+                            InstanceManager& instance_manager))
+      : server_(server), instance_manager_(instance_manager) {}
 
   Result<bool> CanHandle(const RequestWithStdio& request) const override {
-    return request.request.contents_case() ==
+    return request.Message().contents_case() ==
            cvd::Request::ContentsCase::kShutdownRequest;
   }
 
@@ -41,19 +44,22 @@ class CvdShutdownHandler : public CvdServerHandler {
     cvd::Response response;
     response.mutable_shutdown_response();
 
-    if (!request.extra) {
+    if (!request.Extra()) {
       response.mutable_status()->set_code(cvd::Status::FAILED_PRECONDITION);
       response.mutable_status()->set_message(
           "Missing extra SharedFD for shutdown");
       return response;
     }
 
-    if (request.request.shutdown_request().clear()) {
-      *response.mutable_status() = server_.CvdClear(request.out, request.err);
-      return response;
+    if (request.Message().shutdown_request().clear()) {
+      *response.mutable_status() =
+          instance_manager_.CvdClear(request.Out(), request.Err());
+      if (response.status().code() != cvd::Status::OK) {
+        return response;
+      }
     }
 
-    if (!server_.Assemblies().empty()) {
+    if (instance_manager_.HasInstanceGroups()) {
       response.mutable_status()->set_code(cvd::Status::FAILED_PRECONDITION);
       response.mutable_status()->set_message(
           "Cannot shut down cvd_server while devices are being tracked. "
@@ -63,22 +69,26 @@ class CvdShutdownHandler : public CvdServerHandler {
 
     // Intentionally leak the write_pipe fd so that it only closes
     // when this process fully exits.
-    (*request.extra)->UNMANAGED_Dup();
+    (*request.Extra())->UNMANAGED_Dup();
 
-    WriteAll(request.out, "Stopping the cvd_server.\n");
+    WriteAll(request.Out(), "Stopping the cvd_server.\n");
     server_.Stop();
 
     response.mutable_status()->set_code(cvd::Status::OK);
     return response;
   }
 
+  Result<void> Interrupt() override { return CF_ERR("Can't interrupt"); }
+
  private:
   CvdServer& server_;
+  InstanceManager& instance_manager_;
 };
 
 }  // namespace
 
-fruit::Component<> cvdShutdownComponent() {
+fruit::Component<fruit::Required<CvdServer, InstanceManager>>
+cvdShutdownComponent() {
   return fruit::createComponent()
       .addMultibinding<CvdServerHandler, CvdShutdownHandler>();
 }

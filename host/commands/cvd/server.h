@@ -16,8 +16,10 @@
 
 #pragma once
 
+#include <atomic>
 #include <map>
 #include <optional>
+#include <shared_mutex>
 #include <string>
 #include <vector>
 
@@ -25,19 +27,16 @@
 
 #include "cvd_server.pb.h"
 
+#include "common/libs/fs/epoll.h"
 #include "common/libs/fs/shared_fd.h"
 #include "common/libs/utils/result.h"
+#include "common/libs/utils/subprocess.h"
 #include "common/libs/utils/unix_sockets.h"
+#include "host/commands/cvd/epoll_loop.h"
+#include "host/commands/cvd/instance_manager.h"
+#include "host/commands/cvd/server_client.h"
 
 namespace cuttlefish {
-
-constexpr char kStopBin[] = "cvd_internal_stop";
-
-struct RequestWithStdio {
-  cvd::Request request;
-  SharedFD in, out, err;
-  std::optional<SharedFD> extra;
-};
 
 class CvdServerHandler {
  public:
@@ -45,48 +44,61 @@ class CvdServerHandler {
 
   virtual Result<bool> CanHandle(const RequestWithStdio&) const = 0;
   virtual Result<cvd::Response> Handle(const RequestWithStdio&) = 0;
+  virtual Result<void> Interrupt() = 0;
 };
 
 class CvdServer {
  public:
-  using AssemblyDir = std::string;
-  struct AssemblyInfo {
-    std::string host_binaries_dir;
-  };
+  INJECT(CvdServer(EpollPool&, InstanceManager&));
+  ~CvdServer();
 
-  INJECT(CvdServer()) = default;
-
-  Result<void> AddHandler(CvdServerHandler* handler);
-
-  std::map<AssemblyDir, AssemblyInfo>& Assemblies();
-
+  Result<void> StartServer(SharedFD server);
   void Stop();
-
-  void ServerLoop(const SharedFD& server);
-
-  cvd::Status CvdClear(const SharedFD& out, const SharedFD& err);
+  void Join();
 
  private:
-  std::map<AssemblyDir, AssemblyInfo> assemblies_;
-  std::vector<CvdServerHandler*> handlers_;
-  bool running_ = true;
+  struct OngoingRequest {
+    CvdServerHandler* handler;
+    std::mutex mutex;
+    std::thread::id thread_id;
+  };
 
-  Result<cvd::Response> HandleRequest(const RequestWithStdio& request);
+  Result<void> AcceptClient(EpollEvent);
+  Result<void> HandleMessage(EpollEvent);
+  Result<cvd::Response> HandleRequest(RequestWithStdio, SharedFD client);
+  Result<void> BestEffortWakeup();
 
-  Result<UnixMessageSocket> GetClient(const SharedFD& client) const;
+  EpollPool& epoll_pool_;
+  InstanceManager& instance_manager_;
+  std::atomic_bool running_ = true;
 
-  Result<RequestWithStdio> GetRequest(const SharedFD& client) const;
-
-  Result<void> SendResponse(const SharedFD& client,
-                            const cvd::Response& response) const;
+  std::mutex ongoing_requests_mutex_;
+  std::set<std::shared_ptr<OngoingRequest>> ongoing_requests_;
+  // TODO(schuffelen): Move this thread pool to another class.
+  std::mutex threads_mutex_;
+  std::vector<std::thread> threads_;
 };
 
-fruit::Component<> cvdCommandComponent();
-fruit::Component<> cvdShutdownComponent();
-fruit::Component<> cvdVersionComponent();
+class CvdCommandHandler : public CvdServerHandler {
+ public:
+  INJECT(CvdCommandHandler(InstanceManager& instance_manager));
 
-std::optional<std::string> GetCuttlefishConfigPath(
-    const std::string& assembly_dir);
+  Result<bool> CanHandle(const RequestWithStdio&) const override;
+  Result<cvd::Response> Handle(const RequestWithStdio&) override;
+  Result<void> Interrupt() override;
+
+ private:
+  InstanceManager& instance_manager_;
+  std::optional<Subprocess> subprocess_;
+  std::mutex interruptible_;
+  bool interrupted_ = false;
+};
+
+fruit::Component<fruit::Required<InstanceManager>> cvdCommandComponent();
+fruit::Component<fruit::Required<CvdServer, InstanceManager>>
+cvdShutdownComponent();
+fruit::Component<> cvdVersionComponent();
+fruit::Component<fruit::Required<CvdCommandHandler>> AcloudCommandComponent();
 
 struct CommandInvocation {
   std::string command;
@@ -94,5 +106,7 @@ struct CommandInvocation {
 };
 
 CommandInvocation ParseInvocation(const cvd::Request& request);
+
+Result<int> CvdServerMain(SharedFD server_fd);
 
 }  // namespace cuttlefish

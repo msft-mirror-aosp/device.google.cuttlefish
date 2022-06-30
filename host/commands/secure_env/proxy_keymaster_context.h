@@ -97,6 +97,10 @@ class ProxyKeymasterContext : public keymaster::KeymasterContext {
     return wrapped_.enforcement_policy();
   }
 
+  keymaster::AttestationContext* attestation_context() override {
+    return wrapped_.attestation_context();
+  }
+
   keymaster::CertificateChain GenerateAttestation(
       const keymaster::Key& key,
       const keymaster::AuthorizationSet& attest_params,
@@ -137,6 +141,12 @@ class ProxyKeymasterContext : public keymaster::KeymasterContext {
   }
   keymaster_error_t SetBootPatchlevel(uint32_t boot_patchlevel) override {
     return wrapped_.SetBootPatchlevel(boot_patchlevel);
+  }
+  keymaster_error_t SetVerifiedBootInfo(
+      std::string_view verified_boot_state, std::string_view bootloader_state,
+      const std::vector<uint8_t>& vbmeta_digest) {
+    return wrapped_.SetVerifiedBootInfo(verified_boot_state, bootloader_state,
+                                        vbmeta_digest);
   }
   std::optional<uint32_t> GetVendorPatchlevel() const override {
     return wrapped_.GetVendorPatchlevel();
