@@ -45,7 +45,8 @@ cuttlefish::SharedFD AddTapFdParameter(cuttlefish::Command* crosvm_cmd,
                                 const std::string& tap_name) {
   auto tap_fd = cuttlefish::OpenTapInterface(tap_name);
   if (tap_fd->IsOpen()) {
-    crosvm_cmd->AddParameter("--tap-fd=", tap_fd);
+    crosvm_cmd->AddParameter("--tap-fd");
+    crosvm_cmd->AddParameter(tap_fd);
   } else {
     LOG(ERROR) << "Unable to connect to " << tap_name << ": "
                << tap_fd->StrError();
@@ -114,7 +115,7 @@ std::vector<std::string> CrosvmManager::ConfigureBootDevices() {
   // TODO There is no way to control this assignment with crosvm (yet)
   if (cuttlefish::HostArch() == "x86_64") {
     // PCI domain 0, bus 0, device 4, function 0
-    return { "androidboot.boot_devices=pci0000:00/0000:00:04.0" };
+    return { "androidboot.boot_devices=pci0000:00/0000:00:06.0" };
   } else {
     return { "androidboot.boot_devices=10000.pci" };
   }
@@ -134,33 +135,41 @@ std::vector<cuttlefish::Command> CrosvmManager::StartCommands() {
   });
   crosvm_cmd.AddParameter("run");
 
+  crosvm_cmd.AddParameter("--gpu");
   if (config_->gpu_mode() == cuttlefish::kGpuModeGuestSwiftshader) {
-    crosvm_cmd.AddParameter("--gpu=2D,",
+    crosvm_cmd.AddParameter("2D,",
                             "width=", config_->x_res(), ",",
                             "height=", config_->y_res());
   } else if (config_->gpu_mode() == cuttlefish::kGpuModeDrmVirgl) {
-    crosvm_cmd.AddParameter("--gpu=",
-                            "width=", config_->x_res(), ",",
+    crosvm_cmd.AddParameter("width=", config_->x_res(), ",",
                             "height=", config_->y_res(), ",",
                             "egl=true,surfaceless=true,glx=false,gles=false");
-    crosvm_cmd.AddParameter("--wayland-sock=", config_->frames_socket_path());
   }
+  crosvm_cmd.AddParameter("--wayland-sock");
+  crosvm_cmd.AddParameter(config_->frames_socket_path());
   if (!config_->final_ramdisk_path().empty()) {
-    crosvm_cmd.AddParameter("--initrd=", config_->final_ramdisk_path());
+    crosvm_cmd.AddParameter("--initrd");
+    crosvm_cmd.AddParameter(config_->final_ramdisk_path());
   }
-  // crosvm_cmd.AddParameter("--null-audio");
-  crosvm_cmd.AddParameter("--mem=", config_->memory_mb());
-  crosvm_cmd.AddParameter("--cpus=", config_->cpus());
-  crosvm_cmd.AddParameter("--params=", kernel_cmdline_);
+  crosvm_cmd.AddParameter("--mem");
+  crosvm_cmd.AddParameter(config_->memory_mb());
+  crosvm_cmd.AddParameter("--cpus");
+  crosvm_cmd.AddParameter(config_->cpus());
+  crosvm_cmd.AddParameter("--params");
+  crosvm_cmd.AddParameter(kernel_cmdline_);
   for (const auto& disk : config_->virtual_disk_paths()) {
-    crosvm_cmd.AddParameter("--rwdisk=", disk);
+    crosvm_cmd.AddParameter("--rwdisk");
+    crosvm_cmd.AddParameter(disk);
   }
-  crosvm_cmd.AddParameter("--socket=", GetControlSocketPath(config_));
+  crosvm_cmd.AddParameter("--socket");
+  crosvm_cmd.AddParameter(GetControlSocketPath(config_));
 
   if (frontend_enabled_) {
-    crosvm_cmd.AddParameter("--single-touch=", config_->touch_socket_path(),
+    crosvm_cmd.AddParameter("--single-touch");
+    crosvm_cmd.AddParameter(config_->touch_socket_path(),
                             ":", config_->x_res(), ":", config_->y_res());
-    crosvm_cmd.AddParameter("--keyboard=", config_->keyboard_socket_path());
+    crosvm_cmd.AddParameter("--keyboard");
+    crosvm_cmd.AddParameter(config_->keyboard_socket_path());
   }
 
   auto wifi_tap = AddTapFdParameter(&crosvm_cmd, config_->wifi_tap_name());
@@ -176,24 +185,28 @@ std::vector<cuttlefish::Command> CrosvmManager::StartCommands() {
                  << " does not exist " << std::endl;
       return {};
     }
-    crosvm_cmd.AddParameter("--seccomp-policy-dir=", config_->seccomp_policy_dir());
+    crosvm_cmd.AddParameter("--seccomp-policy-dir");
+    crosvm_cmd.AddParameter(config_->seccomp_policy_dir());
   } else {
     crosvm_cmd.AddParameter("--disable-sandbox");
   }
 
   if (config_->vsock_guest_cid() >= 2) {
-    crosvm_cmd.AddParameter("--cid=", config_->vsock_guest_cid());
+    crosvm_cmd.AddParameter("--cid");
+    crosvm_cmd.AddParameter(config_->vsock_guest_cid());
   }
 
   // Use an 8250 UART (ISA or platform device) for earlycon, as the
   // virtio-console driver may not be available for early messages
-  crosvm_cmd.AddParameter("--serial=hardware=serial,num=1,type=file,path=",
+  crosvm_cmd.AddParameter("--serial");
+  crosvm_cmd.AddParameter("hardware=serial,num=1,type=file,path=",
                           config_->kernel_log_pipe_name(), ",earlycon=true");
 
   // Use a virtio-console instance for the main kernel console. All
   // messages will switch from earlycon to virtio-console after the driver
   // is loaded, and crosvm will append to the kernel log automatically
-  crosvm_cmd.AddParameter("--serial=hardware=virtio-console,num=1,type=file,path=",
+  crosvm_cmd.AddParameter("--serial");
+  crosvm_cmd.AddParameter("hardware=virtio-console,num=1,type=file,path=",
                           config_->kernel_log_pipe_name(), ",console=true");
 
   // Redirect standard input to a pipe for the console forwarder host process
@@ -225,7 +238,8 @@ std::vector<cuttlefish::Command> CrosvmManager::StartCommands() {
   // crosvm. A file (named pipe) is used here instead of stdout to ensure only
   // the serial port output is received by the console forwarder as crosvm may
   // print other messages to stdout.
-  crosvm_cmd.AddParameter("--serial=hardware=virtio-console,num=2,type=file,path=",
+  crosvm_cmd.AddParameter("--serial");
+  crosvm_cmd.AddParameter("hardware=virtio-console,num=2,type=file,path=",
                           console_pipe_name, ",stdin=true");
 
   crosvm_cmd.RedirectStdIO(cuttlefish::Subprocess::StdIOChannel::kStdIn,
@@ -235,7 +249,8 @@ std::vector<cuttlefish::Command> CrosvmManager::StartCommands() {
   console_cmd.AddParameter("--console_out_fd=", console_out_rd);
 
   // Serial port for logcat, redirected to a pipe
-  crosvm_cmd.AddParameter("--serial=hardware=virtio-console,num=3,type=file,path=",
+  crosvm_cmd.AddParameter("--serial");
+  crosvm_cmd.AddParameter("hardware=virtio-console,num=3,type=file,path=",
                           config_->logcat_pipe_name());
 
   // This needs to be the last parameter

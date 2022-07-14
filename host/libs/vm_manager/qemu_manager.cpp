@@ -103,7 +103,7 @@ std::vector<std::string> QemuManager::ConfigureGpu(const std::string& gpu_mode) 
 
 std::vector<std::string> QemuManager::ConfigureBootDevices() {
   // PCI domain 0, bus 0, device 5, function 0
-  return { "androidboot.boot_devices=pci0000:00/0000:00:05.0" };
+  return { "androidboot.boot_devices=pci0000:00/0000:00:06.0" };
 }
 
 QemuManager::QemuManager(const cuttlefish::CuttlefishConfig* config)
@@ -165,9 +165,12 @@ std::vector<cuttlefish::Command> QemuManager::StartCommands() {
   qemu_cmd.AddParameter("-append");
   qemu_cmd.AddParameter(kernel_cmdline_);
 
+  qemu_cmd.AddParameter("-device");
+  qemu_cmd.AddParameter("virtio-gpu-pci,id=gpu0");
+
   qemu_cmd.AddParameter("-chardev");
   qemu_cmd.AddParameter("socket,id=charmonitor,path=", GetMonitorPath(config_),
-                        ",server,nowait");
+                        ",server=on,wait=off");
 
   qemu_cmd.AddParameter("-mon");
   qemu_cmd.AddParameter("chardev=charmonitor,id=monitor,mode=control");
@@ -184,17 +187,17 @@ std::vector<cuttlefish::Command> QemuManager::StartCommands() {
                         config_->kernel_log_pipe_name(), ",append=on");
 
   qemu_cmd.AddParameter("-device");
-  qemu_cmd.AddParameter("virtio-serial-pci,max_ports=1,id=virtio-serial0");
+  qemu_cmd.AddParameter("virtio-serial-pci-non-transitional,max_ports=1,id=virtio-serial0");
 
   qemu_cmd.AddParameter("-device");
   qemu_cmd.AddParameter("virtconsole,bus=virtio-serial0.0,chardev=hvc0");
 
   qemu_cmd.AddParameter("-chardev");
   qemu_cmd.AddParameter("socket,id=hvc1,path=", config_->console_path(),
-                        ",server,nowait");
+                        ",server=on,wait=off");
 
   qemu_cmd.AddParameter("-device");
-  qemu_cmd.AddParameter("virtio-serial-pci,max_ports=1,id=virtio-serial1");
+  qemu_cmd.AddParameter("virtio-serial-pci-non-transitional,max_ports=1,id=virtio-serial1");
 
   qemu_cmd.AddParameter("-device");
   qemu_cmd.AddParameter("virtconsole,bus=virtio-serial1.0,chardev=hvc1");
@@ -204,7 +207,7 @@ std::vector<cuttlefish::Command> QemuManager::StartCommands() {
                         config_->logcat_pipe_name(), ",append=on");
 
   qemu_cmd.AddParameter("-device");
-  qemu_cmd.AddParameter("virtio-serial-pci,max_ports=1,id=virtio-serial2");
+  qemu_cmd.AddParameter("virtio-serial-pci-non-transitional,max_ports=1,id=virtio-serial2");
 
   qemu_cmd.AddParameter("-device");
   qemu_cmd.AddParameter("virtconsole,bus=virtio-serial2.0,chardev=hvc2");
@@ -216,9 +219,20 @@ std::vector<cuttlefish::Command> QemuManager::StartCommands() {
     qemu_cmd.AddParameter("file=", disk, ",if=none,id=drive-virtio-disk", i,
                           ",aio=threads,format=raw");
     qemu_cmd.AddParameter("-device");
-    qemu_cmd.AddParameter("virtio-blk-pci,scsi=off,drive=drive-virtio-disk", i,
-                          ",id=virtio-disk", i, bootindex);
+    qemu_cmd.AddParameter("virtio-blk-pci-non-transitional,scsi=off,"
+                          "drive=drive-virtio-disk", i, ",id=virtio-disk", i,
+                          bootindex);
   }
+
+  qemu_cmd.AddParameter("-object");
+  qemu_cmd.AddParameter("rng-random,id=objrng0,filename=/dev/urandom");
+
+  qemu_cmd.AddParameter("-device");
+  qemu_cmd.AddParameter("virtio-rng-pci-non-transitional,rng=objrng0,id=rng0,",
+                        "max-bytes=1024,period=2000");
+
+  qemu_cmd.AddParameter("-device");
+  qemu_cmd.AddParameter("virtio-balloon-pci-non-transitional,id=balloon0");
 
   qemu_cmd.AddParameter("-netdev");
   qemu_cmd.AddParameter("tap,id=hostnet0,ifname=", config_->wifi_tap_name(),
@@ -226,36 +240,27 @@ std::vector<cuttlefish::Command> QemuManager::StartCommands() {
 
   auto romfile = is_arm ? ",romfile" : "";
   qemu_cmd.AddParameter("-device");
-  qemu_cmd.AddParameter("virtio-net-pci,netdev=hostnet0,id=net0", romfile);
+  qemu_cmd.AddParameter("virtio-net-pci-non-transitional,netdev=hostnet0,id=net0", romfile);
 
   qemu_cmd.AddParameter("-netdev");
   qemu_cmd.AddParameter("tap,id=hostnet1,ifname=", config_->mobile_tap_name(),
                         ",script=no,downscript=no");
 
   qemu_cmd.AddParameter("-device");
-  qemu_cmd.AddParameter("virtio-net-pci,netdev=hostnet1,id=net1", romfile);
+  qemu_cmd.AddParameter("virtio-net-pci-non-transitional,netdev=hostnet1,id=net1", romfile);
 
   qemu_cmd.AddParameter("-device");
-  qemu_cmd.AddParameter("virtio-balloon-pci,id=balloon0");
+  qemu_cmd.AddParameter("vhost-vsock-pci-non-transitional,guest-cid=",
+                        config_->vsock_guest_cid());
 
   qemu_cmd.AddParameter("-device");
-  qemu_cmd.AddParameter("virtio-gpu-pci,id=gpu0");
-
-  qemu_cmd.AddParameter("-object");
-  qemu_cmd.AddParameter("rng-random,id=objrng0,filename=/dev/urandom");
-
-  qemu_cmd.AddParameter("-device");
-  qemu_cmd.AddParameter("virtio-rng-pci,rng=objrng0,id=rng0,",
-                        "max-bytes=1024,period=2000");
+  qemu_cmd.AddParameter("AC97");
 
   qemu_cmd.AddParameter("-cpu");
   qemu_cmd.AddParameter(is_arm ? "cortex-a53" : "host");
 
   qemu_cmd.AddParameter("-msg");
   qemu_cmd.AddParameter("timestamp=on");
-
-  qemu_cmd.AddParameter("-device");
-  qemu_cmd.AddParameter("AC97");
 
   if (config_->use_bootloader()) {
     qemu_cmd.AddParameter("-bios");
@@ -269,10 +274,6 @@ std::vector<cuttlefish::Command> QemuManager::StartCommands() {
 
   qemu_cmd.AddParameter("-initrd");
   qemu_cmd.AddParameter(config_->final_ramdisk_path());
-
-  qemu_cmd.AddParameter("-device");
-  qemu_cmd.AddParameter("vhost-vsock-pci,guest-cid=",
-                        config_->vsock_guest_cid());
 
   LogAndSetEnv("QEMU_AUDIO_DRV", "none");
 
