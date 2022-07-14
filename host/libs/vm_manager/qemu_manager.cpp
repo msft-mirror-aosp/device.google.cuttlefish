@@ -107,8 +107,8 @@ std::vector<std::string> QemuManager::ConfigureGpu(const std::string& gpu_mode) 
 }
 
 std::vector<std::string> QemuManager::ConfigureBootDevices() {
-  // PCI domain 0, bus 0, device 5, function 0
-  return { "androidboot.boot_devices=pci0000:00/0000:00:05.0" };
+  // PCI domain 0, bus 0, device 6, function 0
+  return { "androidboot.boot_devices=pci0000:00/0000:00:06.0" };
 }
 
 QemuManager::QemuManager(const cuttlefish::CuttlefishConfig* config)
@@ -188,9 +188,12 @@ std::vector<cuttlefish::Command> QemuManager::StartCommands() {
   qemu_cmd.AddParameter("-append");
   qemu_cmd.AddParameter(kernel_cmdline_);
 
+  qemu_cmd.AddParameter("-device");
+  qemu_cmd.AddParameter("virtio-gpu-pci,id=gpu0");
+
   qemu_cmd.AddParameter("-chardev");
   qemu_cmd.AddParameter("socket,id=charmonitor,path=", GetMonitorPath(config_),
-                        ",server,nowait");
+                        ",server=on,wait=off");
 
   qemu_cmd.AddParameter("-mon");
   qemu_cmd.AddParameter("chardev=charmonitor,id=monitor,mode=control");
@@ -290,7 +293,7 @@ std::vector<cuttlefish::Command> QemuManager::StartCommands() {
     // As we will pass this to ramoops, define this region first so it is always
     // located at this address. This is currently x86 only.
     qemu_cmd.AddParameter("-object");
-    qemu_cmd.AddParameter("memory-backend-file,id=objpmem0,share,mem-path=",
+    qemu_cmd.AddParameter("memory-backend-file,id=objpmem0,share=on,mem-path=",
                           instance.pstore_path(), ",size=", pstore_size_bytes);
 
     qemu_cmd.AddParameter("-device");
@@ -301,7 +304,7 @@ std::vector<cuttlefish::Command> QemuManager::StartCommands() {
   // when the device has been added
   if (!is_arm) {
     qemu_cmd.AddParameter("-object");
-    qemu_cmd.AddParameter("memory-backend-file,id=objpmem1,share,mem-path=",
+    qemu_cmd.AddParameter("memory-backend-file,id=objpmem1,share=on,mem-path=",
                           instance.access_kregistry_path(), ",size=",
                           access_kregistry_size_bytes);
 
@@ -340,23 +343,20 @@ std::vector<cuttlefish::Command> QemuManager::StartCommands() {
   qemu_cmd.AddParameter("virtio-net-pci-non-transitional,netdev=hostnet1,id=net1");
 
   qemu_cmd.AddParameter("-device");
-  qemu_cmd.AddParameter("virtio-gpu-pci,id=gpu0");
+  qemu_cmd.AddParameter("vhost-vsock-pci-non-transitional,guest-cid=",
+                        instance.vsock_guest_cid());
+
+  qemu_cmd.AddParameter("-device");
+  qemu_cmd.AddParameter("qemu-xhci,id=xhci");
+
+  qemu_cmd.AddParameter("-device");
+  qemu_cmd.AddParameter("AC97");
 
   qemu_cmd.AddParameter("-cpu");
   qemu_cmd.AddParameter(is_arm ? "cortex-a53" : "host");
 
   qemu_cmd.AddParameter("-msg");
   qemu_cmd.AddParameter("timestamp=on");
-
-  qemu_cmd.AddParameter("-device");
-  qemu_cmd.AddParameter("vhost-vsock-pci-non-transitional,guest-cid=",
-                        instance.vsock_guest_cid());
-
-  qemu_cmd.AddParameter("-device");
-  qemu_cmd.AddParameter("AC97");
-
-  qemu_cmd.AddParameter("-device");
-  qemu_cmd.AddParameter("qemu-xhci,id=xhci");
 
   if (config_->use_bootloader()) {
     qemu_cmd.AddParameter("-bios");

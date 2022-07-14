@@ -34,20 +34,18 @@ cvd_host_executables := \
     extract-vmlinux \
     crosvm \
     aarch64-linux-gnu/crosvm \
+    aarch64-linux-gnu/libdrm.so.2 \
     aarch64-linux-gnu/libepoxy.so.0 \
     aarch64-linux-gnu/libgbm.so.1 \
     aarch64-linux-gnu/libminijail.so \
     aarch64-linux-gnu/libvirglrenderer.so.1 \
     x86_64-linux-gnu/crosvm \
+    x86_64-linux-gnu/libdrm.so.2 \
     x86_64-linux-gnu/libepoxy.so.0 \
     x86_64-linux-gnu/libgbm.so.1 \
+    x86_64-linux-gnu/libgfxstream_backend.so \
     x86_64-linux-gnu/libminijail.so \
     x86_64-linux-gnu/libvirglrenderer.so.1 \
-    x86_64-linux-gnu/libc++.so.1 \
-    x86_64-linux-gnu/libandroid-emu-shared.so \
-    x86_64-linux-gnu/libemugl_common.so \
-    x86_64-linux-gnu/libOpenglRender.so \
-    x86_64-linux-gnu/libgfxstream_backend.so \
     logcat_receiver \
     config_server \
     tombstone_receiver \

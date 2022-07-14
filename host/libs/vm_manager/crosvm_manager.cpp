@@ -46,7 +46,8 @@ std::string GetControlSocketPath(const cuttlefish::CuttlefishConfig* config) {
 void AddTapFdParameter(cuttlefish::Command* crosvm_cmd, const std::string& tap_name) {
   auto tap_fd = cuttlefish::OpenTapInterface(tap_name);
   if (tap_fd->IsOpen()) {
-    crosvm_cmd->AddParameter("--tap-fd=", tap_fd);
+    crosvm_cmd->AddParameter("--tap-fd");
+    crosvm_cmd->AddParameter(tap_fd);
   } else {
     LOG(ERROR) << "Unable to connect to " << tap_name << ": "
                << tap_fd->StrError();
@@ -115,8 +116,8 @@ std::vector<std::string> CrosvmManager::ConfigureGpu(const std::string& gpu_mode
 std::vector<std::string> CrosvmManager::ConfigureBootDevices() {
   // TODO There is no way to control this assignment with crosvm (yet)
   if (cuttlefish::HostArch() == "x86_64") {
-    // PCI domain 0, bus 0, device 4, function 0
-    return { "androidboot.boot_devices=pci0000:00/0000:00:04.0" };
+    // PCI domain 0, bus 0, device 6, function 0
+    return { "androidboot.boot_devices=pci0000:00/0000:00:06.0" };
   } else {
     return { "androidboot.boot_devices=10000.pci" };
   }
@@ -139,48 +140,60 @@ std::vector<cuttlefish::Command> CrosvmManager::StartCommands() {
 
   auto gpu_mode = config_->gpu_mode();
 
+  crosvm_cmd.AddParameter("--gpu");
   if (gpu_mode == cuttlefish::kGpuModeGuestSwiftshader) {
-    crosvm_cmd.AddParameter("--gpu=2D,",
-                            "width=", config_->x_res(), ",",
+    crosvm_cmd.AddParameter("2D,width=", config_->x_res(), ",",
                             "height=", config_->y_res());
   } else if (gpu_mode == cuttlefish::kGpuModeDrmVirgl ||
              gpu_mode == cuttlefish::kGpuModeGfxStream) {
     crosvm_cmd.AddParameter(gpu_mode == cuttlefish::kGpuModeGfxStream ?
-                                "--gpu=gfxstream," : "--gpu=",
+                                "gfxstream," : "",
                             "width=", config_->x_res(), ",",
                             "height=", config_->y_res(), ",",
                             "egl=true,surfaceless=true,glx=false,gles=true");
-    crosvm_cmd.AddParameter("--wayland-sock=", instance.frames_socket_path());
   }
+  crosvm_cmd.AddParameter("--wayland-sock");
+  crosvm_cmd.AddParameter(instance.frames_socket_path());
   if (!config_->final_ramdisk_path().empty()) {
-    crosvm_cmd.AddParameter("--initrd=", config_->final_ramdisk_path());
+    crosvm_cmd.AddParameter("--initrd");
+    crosvm_cmd.AddParameter(config_->final_ramdisk_path());
   }
-  crosvm_cmd.AddParameter("--mem=", config_->memory_mb());
-  crosvm_cmd.AddParameter("--cpus=", config_->cpus());
-  crosvm_cmd.AddParameter("--params=", kernel_cmdline_);
+  crosvm_cmd.AddParameter("--mem");
+  crosvm_cmd.AddParameter(config_->memory_mb());
+  crosvm_cmd.AddParameter("--cpus");
+  crosvm_cmd.AddParameter(config_->cpus());
+  crosvm_cmd.AddParameter("--params");
+  crosvm_cmd.AddParameter(kernel_cmdline_);
   for (const auto& disk : instance.virtual_disk_paths()) {
-    crosvm_cmd.AddParameter("--rwdisk=", disk);
+    crosvm_cmd.AddParameter("--rwdisk");
+    crosvm_cmd.AddParameter(disk);
   }
-  crosvm_cmd.AddParameter("--socket=", GetControlSocketPath(config_));
+  crosvm_cmd.AddParameter("--socket");
+  crosvm_cmd.AddParameter(GetControlSocketPath(config_));
 
   if (frontend_enabled_) {
-    crosvm_cmd.AddParameter("--single-touch=", instance.touch_socket_path(),
+    crosvm_cmd.AddParameter("--single-touch");
+    crosvm_cmd.AddParameter(instance.touch_socket_path(),
                             ":", config_->x_res(), ":", config_->y_res());
-    crosvm_cmd.AddParameter("--keyboard=", instance.keyboard_socket_path());
+    crosvm_cmd.AddParameter("--keyboard");
+    crosvm_cmd.AddParameter(instance.keyboard_socket_path());
   }
 
   AddTapFdParameter(&crosvm_cmd, instance.wifi_tap_name());
   AddTapFdParameter(&crosvm_cmd, instance.mobile_tap_name());
 
-  crosvm_cmd.AddParameter("--rw-pmem-device=", instance.access_kregistry_path());
-  crosvm_cmd.AddParameter("--pstore=path=", instance.pstore_path(), ",size=",
+  crosvm_cmd.AddParameter("--rw-pmem-device");
+  crosvm_cmd.AddParameter(instance.access_kregistry_path());
+  crosvm_cmd.AddParameter("--pstore");
+  crosvm_cmd.AddParameter("path=", instance.pstore_path(), ",size=",
                           cuttlefish::FileSize(instance.pstore_path()));
 
   // TODO remove this (use crosvm's seccomp files)
   crosvm_cmd.AddParameter("--disable-sandbox");
 
   if (instance.vsock_guest_cid() >= 2) {
-    crosvm_cmd.AddParameter("--cid=", instance.vsock_guest_cid());
+    crosvm_cmd.AddParameter("--cid");
+    crosvm_cmd.AddParameter(instance.vsock_guest_cid());
   }
 
   // Use an 8250 UART (ISA or platform device) for earlycon, as the
@@ -188,14 +201,16 @@ std::vector<cuttlefish::Command> CrosvmManager::StartCommands() {
   // In kgdb mode, earlycon is an interactive console, and so early
   // dmesg will go there instead of the kernel.log
   if (!(config_->console() && (config_->use_bootloader() || config_->kgdb()))) {
-    crosvm_cmd.AddParameter("--serial=hardware=serial,num=1,type=file,path=",
+    crosvm_cmd.AddParameter("--serial");
+    crosvm_cmd.AddParameter("hardware=serial,num=1,type=file,path=",
                             instance.kernel_log_pipe_name(), ",earlycon=true");
   }
 
   // Use a virtio-console instance for the main kernel console. All
   // messages will switch from earlycon to virtio-console after the driver
   // is loaded, and crosvm will append to the kernel log automatically
-  crosvm_cmd.AddParameter("--serial=hardware=virtio-console,num=1,type=file,path=",
+  crosvm_cmd.AddParameter("--serial");
+  crosvm_cmd.AddParameter("hardware=virtio-console,num=1,type=file,path=",
                           instance.kernel_log_pipe_name(), ",console=true");
 
   if (config_->console()) {
@@ -204,7 +219,8 @@ std::vector<cuttlefish::Command> CrosvmManager::StartCommands() {
     // the serial port output is received by the console forwarder as crosvm may
     // print other messages to stdout.
     if (config_->kgdb() || config_->use_bootloader()) {
-      crosvm_cmd.AddParameter("--serial=hardware=serial,num=1,type=file,path=",
+      crosvm_cmd.AddParameter("--serial");
+      crosvm_cmd.AddParameter("hardware=serial,num=1,type=file,path=",
                               instance.console_out_pipe_name(), ",input=",
                               instance.console_in_pipe_name(), ",earlycon=true");
       // In kgdb mode, we have the interactive console on ttyS0 (both Android's
@@ -212,9 +228,11 @@ std::vector<cuttlefish::Command> CrosvmManager::StartCommands() {
       // allocated to Android's serial console, and redirect it to a sink. This
       // ensures that that the PCI device assignments (and thus sepolicy) don't
       // have to change
-      crosvm_cmd.AddParameter("--serial=hardware=virtio-console,num=2,type=sink");
+      crosvm_cmd.AddParameter("--serial");
+      crosvm_cmd.AddParameter("hardware=virtio-console,num=2,type=sink");
     } else {
-      crosvm_cmd.AddParameter("--serial=hardware=virtio-console,num=2,type=file,path=",
+      crosvm_cmd.AddParameter("--serial");
+      crosvm_cmd.AddParameter("hardware=virtio-console,num=2,type=file,path=",
                               instance.console_out_pipe_name(), ",input=",
                               instance.console_in_pipe_name());
     }
@@ -222,16 +240,19 @@ std::vector<cuttlefish::Command> CrosvmManager::StartCommands() {
     // as above, create a fake virtio-console 'sink' port when the serial
     // console is disabled, so the PCI device ID assignments don't move
     // around
-    crosvm_cmd.AddParameter("--serial=hardware=virtio-console,num=2,type=sink");
+    crosvm_cmd.AddParameter("--serial");
+    crosvm_cmd.AddParameter("hardware=virtio-console,num=2,type=sink");
   }
 
   // Serial port for logcat, redirected to a pipe
-  crosvm_cmd.AddParameter("--serial=hardware=virtio-console,num=3,type=file,path=",
+  crosvm_cmd.AddParameter("--serial");
+  crosvm_cmd.AddParameter("hardware=virtio-console,num=3,type=file,path=",
                           instance.logcat_pipe_name());
 
   // This needs to be the last parameter
   if (config_->use_bootloader()) {
-    crosvm_cmd.AddParameter("--bios=", config_->bootloader());
+    crosvm_cmd.AddParameter("--bios");
+    crosvm_cmd.AddParameter(config_->bootloader());
   } else {
     crosvm_cmd.AddParameter(config_->GetKernelImageToUse());
   }

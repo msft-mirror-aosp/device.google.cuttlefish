@@ -29,18 +29,21 @@ genfscon sysfs $1/rtc/rtc$2/alarmtimer.0.auto/wakeup/wakeup`'eval($3 + 1)`' u:ob
 dnl')dnl
 dnl
 # crosvm (x86)
-cf_pci_block_device(/devices/pci0000:00, 0x4, 3)
-cf_pci_gpu_device(/devices/pci0000:00, 0xf)
+cf_pci_block_device(/devices/pci0000:00, 0x6, 5)
+cf_pci_gpu_device(/devices/pci0000:00, 0x2)
 ## find /sys/devices/platform/* -type d -name 'rtc[0-9]' | sed 's,/rtc[0-9],,'
 genfscon sysfs /devices/platform/rtc_cmos/rtc u:object_r:sysfs_rtc:s0
 ## find /sys/devices/platform/* -type d -name 'wakeup[0-9]'
-cf_rtc_wakeup_alarmtimer(/devices/platform/rtc_cmos, 0, 0)
-genfscon sysfs /devices/platform/rtc-test.1/wakeup/wakeup2 u:object_r:sysfs_wakeup:s0
-genfscon sysfs /devices/platform/rtc-test.2/wakeup/wakeup3 u:object_r:sysfs_wakeup:s0
+genfscon sysfs /devices/LNXSYSTM:00/LNXPWRBN:00/wakeup u:object_r:sysfs_wakeup:s0
+genfscon sysfs /devices/LNXSYSTM:00/LNXSLPBN:00/wakeup u:object_r:sysfs_wakeup:s0
+genfscon sysfs /devices/LNXSYSTM:00/LNXSYBUS:00/PNP0A08:00/wakeup u:object_r:sysfs_wakeup:s0
+cf_rtc_wakeup_alarmtimer(/devices/platform/rtc_cmos, 0, 3)
+genfscon sysfs /devices/platform/rtc-test.1/wakeup/wakeup5 u:object_r:sysfs_wakeup:s0
+genfscon sysfs /devices/platform/rtc-test.2/wakeup/wakeup6 u:object_r:sysfs_wakeup:s0
 
 # crosvm (arm64)
-cf_pci_block_device(/devices/platform/10000.pci, 0x4, 2)
-cf_pci_gpu_device(/devices/platform/10000.pci/pci0000:00, 0xf)
+cf_pci_block_device(/devices/platform/10000.pci, 0x6, 5)
+cf_pci_gpu_device(/devices/platform/10000.pci/pci0000:00, 0x2)
 ## find /sys/devices/platform/* -type d -name 'rtc[0-9]' | sed 's,/rtc[0-9],,'
 genfscon sysfs /devices/platform/2000.rtc/rtc u:object_r:sysfs_rtc:s0
 ## find /sys/devices/platform/* -type d -name 'wakeup[0-9]'
@@ -49,7 +52,7 @@ cf_rtc_wakeup_alarmtimer(/devices/platform/rtc-test.1, 2, 0)
 genfscon sysfs /devices/platform/rtc-test.2/wakeup/wakeup2 u:object_r:sysfs_wakeup:s0
 
 # qemu (x86)
-cf_pci_block_device(/devices/pci0000:00, 0x5, 3)
+cf_pci_block_device(/devices/pci0000:00, 0x6, 4)
 ## find /sys/devices/platform/* -type d -name 'rtc[0-9]' | sed 's,/rtc[0-9],,'
 genfscon sysfs /devices/pnp0/00:04/rtc u:object_r:sysfs_rtc:s0
 ## find /sys/devices/platform/* -type d -name 'wakeup[0-9][0-9]'
@@ -58,8 +61,8 @@ genfscon sysfs /devices/platform/rtc-test.1/wakeup/wakeup21 u:object_r:sysfs_wak
 genfscon sysfs /devices/platform/rtc-test.2/wakeup/wakeup22 u:object_r:sysfs_wakeup:s0
 
 # qemu (arm64)
-cf_pci_block_device(/devices/platform/4010000000.pcie/pci0000:00, 0x4, 2)
-cf_pci_gpu_device(/devices/platform/4010000000.pcie/pci0000:00, 0xd)
+cf_pci_block_device(/devices/platform/4010000000.pcie/pci0000:00, 0x6, 4)
+cf_pci_gpu_device(/devices/platform/4010000000.pcie/pci0000:00, 0x2)
 ## find /sys/devices/platform/* -type d -name 'rtc[0-9]' | sed 's,/rtc[0-9],,'
 genfscon sysfs /devices/platform/9010000.pl031/rtc u:object_r:sysfs_rtc:s0
 ## find /sys/devices/platform/* -type d -name 'wakeup[0-9]'
