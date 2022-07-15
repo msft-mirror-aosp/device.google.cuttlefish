@@ -78,7 +78,7 @@ std::vector<std::string> CrosvmManager::ConfigureGpu(const std::string& gpu_mode
     return {
         "androidboot.cpuvulkan.version=" + std::to_string(VK_API_VERSION_1_1),
         "androidboot.hardware.gralloc=minigbm",
-        "androidboot.hardware.hwcomposer=cutf",
+        "androidboot.hardware.hwcomposer=ranchu",
         "androidboot.hardware.egl=angle",
         "androidboot.hardware.vulkan=pastel",
     };
@@ -96,7 +96,8 @@ std::vector<std::string> CrosvmManager::ConfigureGpu(const std::string& gpu_mode
     return {
       "androidboot.cpuvulkan.version=0",
       "androidboot.hardware.gralloc=minigbm",
-      "androidboot.hardware.hwcomposer=drm_minigbm",
+      "androidboot.hardware.hwcomposer=ranchu",
+      "androidboot.hardware.hwcomposer.mode=client",
       "androidboot.hardware.egl=mesa",
     };
   }
@@ -104,7 +105,7 @@ std::vector<std::string> CrosvmManager::ConfigureGpu(const std::string& gpu_mode
     return {
         "androidboot.cpuvulkan.version=0",
         "androidboot.hardware.gralloc=minigbm",
-        "androidboot.hardware.hwcomposer=drm_minigbm",
+        "androidboot.hardware.hwcomposer=ranchu",
         "androidboot.hardware.egl=emulation",
         "androidboot.hardware.vulkan=ranchu",
         "androidboot.hardware.gltransport=virtio-gpu-asg",
