@@ -111,7 +111,8 @@ std::vector<std::string> QemuManager::ConfigureGpuMode(
     return {
       "androidboot.cpuvulkan.version=0",
       "androidboot.hardware.gralloc=minigbm",
-      "androidboot.hardware.hwcomposer=drm_minigbm",
+      "androidboot.hardware.hwcomposer=ranchu",
+      "androidboot.hardware.hwcomposer.mode=client",
       "androidboot.hardware.egl=mesa",
       // No "hardware" Vulkan support, yet
       "androidboot.opengles.version=196608"};  // OpenGL ES 3.0
