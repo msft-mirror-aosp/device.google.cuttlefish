@@ -126,8 +126,8 @@ std::vector<Command> CrosvmManager::StartCommands(
 
 #ifdef ENFORCE_MAC80211_HWSIM
   if (!config.vhost_user_mac80211_hwsim().empty()) {
-    crosvm_cmd.Cmd().AddParameter("--vhost-user-mac80211-hwsim=",
-                                  config.vhost_user_mac80211_hwsim());
+    crosvm_cmd.Cmd().AddParameter("--vhost-user-mac80211-hwsim");
+    crosvm_cmd.Cmd().AddParameter(config.vhost_user_mac80211_hwsim());
   }
 #endif
 
@@ -137,47 +137,51 @@ std::vector<Command> CrosvmManager::StartCommands(
 
   if (config.gdb_port() > 0) {
     CHECK(config.cpus() == 1) << "CPUs must be 1 for crosvm gdb mode";
-    crosvm_cmd.Cmd().AddParameter("--gdb=", config.gdb_port());
+    crosvm_cmd.Cmd().AddParameter("--gdb");
+    crosvm_cmd.Cmd().AddParameter(config.gdb_port());
   }
 
   auto gpu_capture_enabled = !config.gpu_capture_binary().empty();
   auto gpu_mode = config.gpu_mode();
   auto udmabuf_string = config.enable_gpu_udmabuf() ? "true" : "false";
   auto angle_string = config.enable_gpu_angle() ? ",angle=true" : "";
+  crosvm_cmd.Cmd().AddParameter("--gpu");
   if (gpu_mode == kGpuModeGuestSwiftshader) {
-    crosvm_cmd.Cmd().AddParameter("--gpu=2D,udmabuf=", udmabuf_string);
+    crosvm_cmd.Cmd().AddParameter("2D,udmabuf=", udmabuf_string);
   } else if (gpu_mode == kGpuModeDrmVirgl || gpu_mode == kGpuModeGfxStream) {
     crosvm_cmd.Cmd().AddParameter(
-        gpu_mode == kGpuModeGfxStream ? "--gpu=gfxstream," : "--gpu=",
+        gpu_mode == kGpuModeGfxStream ? "gfxstream," : "",
         "egl=true,surfaceless=true,glx=false,gles=true,udmabuf=", udmabuf_string,
         angle_string);
   }
 
   for (const auto& display_config : config.display_configs()) {
+    crosvm_cmd.Cmd().AddParameter("--gpu-display");
     crosvm_cmd.Cmd().AddParameter(
-        "--gpu-display=", "width=", display_config.width, ",",
+        "width=", display_config.width, ",",
         "height=", display_config.height);
   }
 
-  crosvm_cmd.Cmd().AddParameter("--wayland-sock=",
-                                instance.frames_socket_path());
+  crosvm_cmd.Cmd().AddParameter("--wayland-sock");
+  crosvm_cmd.Cmd().AddParameter(instance.frames_socket_path());
 
-  // crosvm_cmd.Cmd().AddParameter("--null-audio");
-  crosvm_cmd.Cmd().AddParameter("--mem=", config.memory_mb());
-  crosvm_cmd.Cmd().AddParameter("--cpus=", config.cpus());
+  crosvm_cmd.Cmd().AddParameter("--mem");
+  crosvm_cmd.Cmd().AddParameter(config.memory_mb());
+  crosvm_cmd.Cmd().AddParameter("--cpus");
+  crosvm_cmd.Cmd().AddParameter(config.cpus());
 
   auto disk_num = instance.virtual_disk_paths().size();
   CHECK_GE(VmManager::kMaxDisks, disk_num)
       << "Provided too many disks (" << disk_num << "), maximum "
       << VmManager::kMaxDisks << "supported";
   for (const auto& disk : instance.virtual_disk_paths()) {
-    crosvm_cmd.Cmd().AddParameter(
-        config.protected_vm() ? "--disk=" : "--rwdisk=", disk);
+    crosvm_cmd.Cmd().AddParameter(config.protected_vm() ? "--disk" : "--rwdisk");
+    crosvm_cmd.Cmd().AddParameter(disk);
   }
 
   if (config.enable_webrtc()) {
     auto touch_type_parameter =
-        config.enable_webrtc() ? "--multi-touch=" : "--single-touch=";
+        config.enable_webrtc() ? "--multi-touch" : "--single-touch";
 
     auto display_configs = config.display_configs();
     CHECK_GE(display_configs.size(), 1);
@@ -185,16 +189,16 @@ std::vector<Command> CrosvmManager::StartCommands(
     for (int i = 0; i < display_configs.size(); ++i) {
       auto display_config = display_configs[i];
 
-      crosvm_cmd.Cmd().AddParameter(
-          touch_type_parameter, instance.touch_socket_path(i), ":",
+      crosvm_cmd.Cmd().AddParameter(touch_type_parameter);
+      crosvm_cmd.Cmd().AddParameter(instance.touch_socket_path(i), ":",
           display_config.width, ":", display_config.height);
     }
-    crosvm_cmd.Cmd().AddParameter("--keyboard=",
-                                  instance.keyboard_socket_path());
+    crosvm_cmd.Cmd().AddParameter("--keyboard");
+    crosvm_cmd.Cmd().AddParameter(instance.keyboard_socket_path());
   }
   if (config.enable_webrtc()) {
-    crosvm_cmd.Cmd().AddParameter("--switches=",
-                                  instance.switches_socket_path());
+    crosvm_cmd.Cmd().AddParameter("--switches");
+    crosvm_cmd.Cmd().AddParameter(instance.switches_socket_path());
   }
 
   SharedFD wifi_tap;
@@ -212,17 +216,18 @@ std::vector<Command> CrosvmManager::StartCommands(
   }
 
   if (FileExists(instance.access_kregistry_path())) {
-    crosvm_cmd.Cmd().AddParameter("--rw-pmem-device=",
-                                  instance.access_kregistry_path());
+    crosvm_cmd.Cmd().AddParameter("--rw-pmem-device");
+    crosvm_cmd.Cmd().AddParameter(instance.access_kregistry_path());
   }
 
   if (FileExists(instance.hwcomposer_pmem_path())) {
-    crosvm_cmd.Cmd().AddParameter("--rw-pmem-device=",
-                                  instance.hwcomposer_pmem_path());
+    crosvm_cmd.Cmd().AddParameter("--rw-pmem-device");
+    crosvm_cmd.Cmd().AddParameter(instance.hwcomposer_pmem_path());
   }
 
   if (FileExists(instance.pstore_path())) {
-    crosvm_cmd.Cmd().AddParameter("--pstore=path=", instance.pstore_path(),
+    crosvm_cmd.Cmd().AddParameter("--pstore");
+    crosvm_cmd.Cmd().AddParameter("path=", instance.pstore_path(),
                                   ",size=", FileSize(instance.pstore_path()));
   }
 
@@ -236,14 +241,15 @@ std::vector<Command> CrosvmManager::StartCommands(
                  << " does not exist " << std::endl;
       return {};
     }
-    crosvm_cmd.Cmd().AddParameter("--seccomp-policy-dir=",
-                                  config.seccomp_policy_dir());
+    crosvm_cmd.Cmd().AddParameter("--seccomp-policy-dir");
+    crosvm_cmd.Cmd().AddParameter(config.seccomp_policy_dir());
   } else {
     crosvm_cmd.Cmd().AddParameter("--disable-sandbox");
   }
 
   if (instance.vsock_guest_cid() >= 2) {
-    crosvm_cmd.Cmd().AddParameter("--cid=", instance.vsock_guest_cid());
+    crosvm_cmd.Cmd().AddParameter("--cid");
+    crosvm_cmd.Cmd().AddParameter(instance.vsock_guest_cid());
   }
 
   // Use a virtio-console instance for the main kernel console. All
@@ -337,20 +343,21 @@ std::vector<Command> CrosvmManager::StartCommands(
       << VmManager::kMaxDisks + VmManager::kDefaultNumHvcs << " devices";
 
   if (config.enable_audio()) {
-    crosvm_cmd.Cmd().AddParameter(
-        "--sound=", config.ForDefaultInstance().audio_server_path());
+    crosvm_cmd.Cmd().AddParameter("--sound");
+    crosvm_cmd.Cmd().AddParameter(config.ForDefaultInstance().audio_server_path());
   }
 
   // TODO(b/162071003): virtiofs crashes without sandboxing, this should be fixed
   if (0 && config.enable_sandbox()) {
     // Set up directory shared with virtiofs
-    crosvm_cmd.Cmd().AddParameter(
-        "--shared-dir=", instance.PerInstancePath(kSharedDirName),
-        ":shared:type=fs");
+    crosvm_cmd.Cmd().AddParameter("--shared-dir");
+    crosvm_cmd.Cmd().AddParameter(instance.PerInstancePath(kSharedDirName),
+                                  ":shared:type=fs");
   }
 
   // This needs to be the last parameter
-  crosvm_cmd.Cmd().AddParameter("--bios=", config.bootloader());
+  crosvm_cmd.Cmd().AddParameter("--bios");
+  crosvm_cmd.Cmd().AddParameter(config.bootloader());
 
   // TODO(b/199103204): remove this as well when PRODUCT_ENFORCE_MAC80211_HWSIM
   // is removed

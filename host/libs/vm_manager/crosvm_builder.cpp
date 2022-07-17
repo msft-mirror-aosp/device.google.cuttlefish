@@ -47,51 +47,61 @@ void CrosvmBuilder::AddControlSocket(const std::string& control_socket) {
                ? StopperResult::kStopCrash
                : StopperResult::kStopFailure;
   });
-  command_.AddParameter("--socket=", control_socket);
+  command_.AddParameter("--socket");
+  command_.AddParameter(control_socket);
 }
 
 void CrosvmBuilder::AddHvcSink() {
-  command_.AddParameter("--serial=hardware=virtio-console,num=", ++hvc_num_,
+  command_.AddParameter("--serial");
+  command_.AddParameter("hardware=virtio-console,num=", ++hvc_num_,
                         ",type=sink");
 }
 void CrosvmBuilder::AddHvcConsoleReadOnly(const std::string& output) {
-  command_.AddParameter("--serial=hardware=virtio-console,num=", ++hvc_num_,
+  command_.AddParameter("--serial");
+  command_.AddParameter("hardware=virtio-console,num=", ++hvc_num_,
                         ",type=file,path=", output, ",console=true");
 }
 void CrosvmBuilder::AddHvcReadOnly(const std::string& output) {
-  command_.AddParameter("--serial=hardware=virtio-console,num=", ++hvc_num_,
+  command_.AddParameter("--serial");
+  command_.AddParameter("hardware=virtio-console,num=", ++hvc_num_,
                         ",type=file,path=", output);
 }
 void CrosvmBuilder::AddHvcReadWrite(const std::string& output,
                                     const std::string& input) {
-  command_.AddParameter("--serial=hardware=virtio-console,num=", ++hvc_num_,
+  command_.AddParameter("--serial");
+  command_.AddParameter("hardware=virtio-console,num=", ++hvc_num_,
                         ",type=file,path=", output, ",input=", input);
 }
 
 void CrosvmBuilder::AddSerialSink() {
-  command_.AddParameter("--serial=hardware=serial,num=", ++serial_num_,
+  command_.AddParameter("--serial");
+  command_.AddParameter("hardware=serial,num=", ++serial_num_,
                         ",type=sink");
 }
 void CrosvmBuilder::AddSerialConsoleReadOnly(const std::string& output) {
-  command_.AddParameter("--serial=hardware=serial,num=", ++serial_num_,
+  command_.AddParameter("--serial");
+  command_.AddParameter("hardware=serial,num=", ++serial_num_,
                         ",type=file,path=", output, ",earlycon=true");
 }
 void CrosvmBuilder::AddSerialConsoleReadWrite(const std::string& output,
                                               const std::string& input) {
-  command_.AddParameter("--serial=hardware=serial,num=", ++serial_num_,
+  command_.AddParameter("--serial");
+  command_.AddParameter("hardware=serial,num=", ++serial_num_,
                         ",type=file,path=", output, ",input=", input,
                         ",earlycon=true");
 }
 void CrosvmBuilder::AddSerial(const std::string& output,
                               const std::string& input) {
-  command_.AddParameter("--serial=hardware=serial,num=", ++serial_num_,
+  command_.AddParameter("--serial");
+  command_.AddParameter("hardware=serial,num=", ++serial_num_,
                         ",type=file,path=", output, ",input=", input);
 }
 
 SharedFD CrosvmBuilder::AddTap(const std::string& tap_name) {
   auto tap_fd = OpenTapInterface(tap_name);
   if (tap_fd->IsOpen()) {
-    command_.AddParameter("--tap-fd=", tap_fd);
+    command_.AddParameter("--tap-fd");
+    command_.AddParameter(tap_fd);
   } else {
     LOG(ERROR) << "Unable to connect to \"" << tap_name
                << "\": " << tap_fd->StrError();

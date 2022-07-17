@@ -724,8 +724,8 @@ class OpenWrt : public CommandSource {
         instance_.PerInstanceInternalPath(crosvm_for_ap_socket));
 
     if (!config_.vhost_user_mac80211_hwsim().empty()) {
-      ap_cmd.Cmd().AddParameter("--vhost-user-mac80211-hwsim=",
-                                config_.vhost_user_mac80211_hwsim());
+      ap_cmd.Cmd().AddParameter("--vhost-user-mac80211-hwsim");
+      ap_cmd.Cmd().AddParameter(config_.vhost_user_mac80211_hwsim());
     }
     SharedFD wifi_tap = ap_cmd.AddTap(instance_.wifi_tap_name());
     // Only run the leases workaround if we are not using the new network
@@ -752,12 +752,12 @@ class OpenWrt : public CommandSource {
     } else {
       ap_cmd.Cmd().AddParameter("--disable-sandbox");
     }
-    ap_cmd.Cmd().AddParameter("--rwdisk=",
-                              instance_.PerInstancePath("ap_overlay.img"));
-    ap_cmd.Cmd().AddParameter(
-        "--disk=", instance_.PerInstancePath("persistent_composite.img"));
-    ap_cmd.Cmd().AddParameter("--params=\"root=" + config_.ap_image_dev_path() +
-                              "\"");
+    ap_cmd.Cmd().AddParameter("--rwdisk");
+    ap_cmd.Cmd().AddParameter(instance_.PerInstancePath("ap_overlay.img"));
+    ap_cmd.Cmd().AddParameter("--disk");
+    ap_cmd.Cmd().AddParameter(instance_.PerInstancePath("persistent_composite.img"));
+    ap_cmd.Cmd().AddParameter("--params");
+    ap_cmd.Cmd().AddParameter("\"root=" + config_.ap_image_dev_path() + "\"");
 
     auto kernel_logs_path = instance_.PerInstanceLogPath("crosvm_openwrt.log");
     ap_cmd.AddSerialConsoleReadOnly(kernel_logs_path);
