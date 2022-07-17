@@ -124,7 +124,7 @@ std::string QemuManager::ConfigureBootDevices(int num_disks) {
     case Arch::X86:
     case Arch::X86_64: {
       // QEMU has additional PCI devices for an ISA bridge and PIIX4
-      return ConfigureMultipleBootDevices("pci0000:00/0000:00:", 2, num_disks);
+      return ConfigureMultipleBootDevices("pci0000:00/0000:00:", 3, num_disks);
     }
     case Arch::Arm:
       return "androidboot.boot_devices=3f000000.pcie";
@@ -290,9 +290,23 @@ std::vector<Command> QemuManager::StartCommands(
   qemu_cmd.AddParameter("-boot");
   qemu_cmd.AddParameter("strict=on");
 
+  if (config.gpu_mode() == kGpuModeDrmVirgl) {
+    qemu_cmd.AddParameter("-display");
+    qemu_cmd.AddParameter("egl-headless");
+
+    qemu_cmd.AddParameter("-vnc");
+    qemu_cmd.AddParameter(":", instance.vnc_server_port() - 5900);
+  } else {
+    qemu_cmd.AddParameter("-display");
+    qemu_cmd.AddParameter("none");
+  }
+
+  qemu_cmd.AddParameter("-device");
+  qemu_cmd.AddParameter("virtio-gpu-gl-pci,id=gpu0");
+
   qemu_cmd.AddParameter("-chardev");
   qemu_cmd.AddParameter("socket,id=charmonitor,path=", GetMonitorPath(config),
-                        ",server,nowait");
+                        ",server=on,wait=off");
 
   qemu_cmd.AddParameter("-mon");
   qemu_cmd.AddParameter("chardev=charmonitor,id=monitor,mode=control");
@@ -378,23 +392,12 @@ std::vector<Command> QemuManager::StartCommands(
                           ",id=virtio-disk", i, bootindex);
   }
 
-  if (config.gpu_mode() == kGpuModeDrmVirgl) {
-    qemu_cmd.AddParameter("-display");
-    qemu_cmd.AddParameter("egl-headless");
-
-    qemu_cmd.AddParameter("-vnc");
-    qemu_cmd.AddParameter(":", instance.vnc_server_port() - 5900);
-  } else {
-    qemu_cmd.AddParameter("-display");
-    qemu_cmd.AddParameter("none");
-  }
-
   if (!is_arm && FileExists(instance.pstore_path())) {
     // QEMU will assign the NVDIMM (ramoops pstore region) 100000000-1001fffff
     // As we will pass this to ramoops, define this region first so it is always
     // located at this address. This is currently x86 only.
     qemu_cmd.AddParameter("-object");
-    qemu_cmd.AddParameter("memory-backend-file,id=objpmem0,share,mem-path=",
+    qemu_cmd.AddParameter("memory-backend-file,id=objpmem0,share=on,mem-path=",
                           instance.pstore_path(), ",size=", pstore_size_bytes);
 
     qemu_cmd.AddParameter("-device");
@@ -405,7 +408,7 @@ std::vector<Command> QemuManager::StartCommands(
   // when the device has been added
   if (!is_arm && FileExists(instance.access_kregistry_path())) {
     qemu_cmd.AddParameter("-object");
-    qemu_cmd.AddParameter("memory-backend-file,id=objpmem1,share,mem-path=",
+    qemu_cmd.AddParameter("memory-backend-file,id=objpmem1,share=on,mem-path=",
                           instance.access_kregistry_path(), ",size=",
                           access_kregistry_size_bytes);
 
@@ -421,10 +424,14 @@ std::vector<Command> QemuManager::StartCommands(
                         "max-bytes=1024,period=2000");
 
   qemu_cmd.AddParameter("-device");
-  qemu_cmd.AddParameter("virtio-mouse-pci");
+  qemu_cmd.AddParameter("virtio-mouse-pci,disable-legacy=on");
 
   qemu_cmd.AddParameter("-device");
-  qemu_cmd.AddParameter("virtio-keyboard-pci");
+  qemu_cmd.AddParameter("virtio-keyboard-pci,disable-legacy=on");
+
+  // device padding for unsupported "switches" input
+  qemu_cmd.AddParameter("-device");
+  qemu_cmd.AddParameter("virtio-keyboard-pci,disable-legacy=on");
 
   auto vhost_net = config.vhost_net() ? ",vhost=on" : "";
 
@@ -453,23 +460,20 @@ std::vector<Command> QemuManager::StartCommands(
   qemu_cmd.AddParameter("virtio-net-pci-non-transitional,netdev=hostnet2,id=net2");
 
   qemu_cmd.AddParameter("-device");
-  qemu_cmd.AddParameter("virtio-gpu-pci,id=gpu0");
+  qemu_cmd.AddParameter("vhost-vsock-pci-non-transitional,guest-cid=",
+                        instance.vsock_guest_cid());
+
+  qemu_cmd.AddParameter("-device");
+  qemu_cmd.AddParameter("qemu-xhci,id=xhci");
+
+  qemu_cmd.AddParameter("-device");
+  qemu_cmd.AddParameter("AC97");
 
   qemu_cmd.AddParameter("-cpu");
   qemu_cmd.AddParameter(IsHostCompatible(arch_) ? "host" : "max");
 
   qemu_cmd.AddParameter("-msg");
   qemu_cmd.AddParameter("timestamp=on");
-
-  qemu_cmd.AddParameter("-device");
-  qemu_cmd.AddParameter("vhost-vsock-pci-non-transitional,guest-cid=",
-                        instance.vsock_guest_cid());
-
-  qemu_cmd.AddParameter("-device");
-  qemu_cmd.AddParameter("AC97");
-
-  qemu_cmd.AddParameter("-device");
-  qemu_cmd.AddParameter("qemu-xhci,id=xhci");
 
   qemu_cmd.AddParameter("-bios");
   qemu_cmd.AddParameter(config.bootloader());
