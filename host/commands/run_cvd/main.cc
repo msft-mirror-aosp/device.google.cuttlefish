@@ -594,9 +594,7 @@ int main(int argc, char** argv) {
   LaunchLogcatReceiver(*config, &process_monitor);
   LaunchConfigServer(*config, &process_monitor);
   LaunchTombstoneReceiverIfEnabled(*config, &process_monitor);
-
-  auto secure_env = LaunchSecureEnvironment(&process_monitor, *config);
-  auto secure_env_args = KernelCommandLineFromSecureEnv(secure_env);
+  LaunchSecureEnvironment(&process_monitor, *config);
 
   LaunchVerhicleHalServerIfEnabled(*config, &process_monitor);
   LaunchConsoleForwarderIfEnabled(*config, &process_monitor);
@@ -617,8 +615,6 @@ int main(int argc, char** argv) {
   auto kernel_args = KernelCommandLineFromConfig(*config);
   kernel_args.insert(kernel_args.end(), streamer_kernel_args.begin(),
                      streamer_kernel_args.end());
-  kernel_args.insert(kernel_args.end(), secure_env_args.begin(),
-                     secure_env_args.end());
 
   // Start the guest VM
   vm_manager->WithFrontend(streamer_config.launched);

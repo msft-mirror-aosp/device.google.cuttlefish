@@ -349,6 +349,10 @@ class CuttlefishConfig {
     int logcat_port() const;
     int config_server_port() const;
     int host_port() const;
+    // Port number to connect to the gatekeeper server on the host
+    int gatekeeper_vsock_port() const;
+    // Port number to connect to the keymaster server on the host
+    int keymaster_vsock_port() const;
     std::string adb_ip_and_port() const;
     std::string adb_device_name() const;
     std::string device_title() const;
@@ -428,6 +432,8 @@ class CuttlefishConfig {
     void set_tombstone_receiver_port(int tombstone_receiver_port);
     void set_logcat_port(int logcat_port);
     void set_config_server_port(int config_server_port);
+    void set_gatekeeper_vsock_port(int gatekeeper_vsock_port);
+    void set_keymaster_vsock_port(int keymaster_vsock_port);
     void set_host_port(int host_port);
     void set_adb_ip_and_port(const std::string& ip_port);
     void set_device_title(const std::string& title);

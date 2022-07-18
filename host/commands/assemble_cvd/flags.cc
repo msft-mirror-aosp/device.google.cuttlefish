@@ -725,6 +725,9 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
     instance.set_logcat_port(6700 + num - 1);
     instance.set_config_server_port(6800 + num - 1);
 
+    instance.set_keymaster_vsock_port(7200 + num - 1);
+    instance.set_gatekeeper_vsock_port(7300 + num - 1);
+
     instance.set_device_title(FLAGS_device_title);
 
     instance.set_virtual_disk_paths({

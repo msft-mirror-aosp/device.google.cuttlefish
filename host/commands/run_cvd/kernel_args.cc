@@ -117,6 +117,11 @@ std::vector<std::string> KernelCommandLineFromConfig(const cuttlefish::Cuttlefis
     kernel_cmdline.push_back("androidboot.tombstone_transmit=0");
   }
 
+  kernel_cmdline.push_back(concat("androidboot.vsock_keymaster_port=",
+                                  instance.keymaster_vsock_port()));
+  kernel_cmdline.push_back(concat("androidboot.vsock_gatekeeper_port=",
+                                  instance.gatekeeper_vsock_port()));
+
   if (instance.logcat_port()) {
     kernel_cmdline.push_back(concat("androidboot.vsock_logcat_port=", instance.logcat_port()));
   }
@@ -146,11 +151,4 @@ std::vector<std::string> KernelCommandLineFromStreamer(
                                  *streamer_launch.keyboard_server_vsock_port));
   }
   return kernel_args;
-}
-
-std::vector<std::string> KernelCommandLineFromSecureEnv(const SecureEnvironmentPorts& config_server) {
-  return {
-    concat("androidboot.vsock_keymaster_port=", config_server.server_keymaster_port),
-    concat("androidboot.vsock_gatekeeper_port=", config_server.server_gatekeeper_port),
-  };
 }

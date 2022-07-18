@@ -557,15 +557,15 @@ void LaunchConsoleForwarderIfEnabled(const cuttlefish::CuttlefishConfig& config,
 
 }
 
-SecureEnvironmentPorts LaunchSecureEnvironment(
-    cuttlefish::ProcessMonitor* process_monitor,
+void LaunchSecureEnvironment(cuttlefish::ProcessMonitor* process_monitor,
     const cuttlefish::CuttlefishConfig& config) {
-  auto keymaster = cuttlefish::SharedFD::VsockServer(SOCK_STREAM);
-  auto gatekeeper = cuttlefish::SharedFD::VsockServer(SOCK_STREAM);
+  auto keymaster_port = config.ForDefaultInstance().keymaster_vsock_port();
+  auto keymaster_server = cuttlefish::SharedFD::VsockServer(keymaster_port, SOCK_STREAM);
+  auto gatekeeper_port = config.ForDefaultInstance().gatekeeper_vsock_port();
+  auto gatekeeper_server = cuttlefish::SharedFD::VsockServer(gatekeeper_port, SOCK_STREAM);
   cuttlefish::Command command(cuttlefish::DefaultHostArtifactsPath("bin/secure_env"));
-  command.AddParameter("-keymaster_fd=", keymaster);
-  command.AddParameter("-gatekeeper_fd=", gatekeeper);
+  command.AddParameter("-keymaster_fd=", keymaster_server);
+  command.AddParameter("-gatekeeper_fd=", gatekeeper_server);
   process_monitor->StartSubprocess(std::move(command),
                                    GetOnSubprocessExitCallback(config));
-  return { keymaster->VsockServerPort(), gatekeeper->VsockServerPort() };
 }

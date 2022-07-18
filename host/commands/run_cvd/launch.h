@@ -58,6 +58,5 @@ struct SecureEnvironmentPorts {
   unsigned int server_gatekeeper_port;
 };
 
-SecureEnvironmentPorts LaunchSecureEnvironment(
-    cuttlefish::ProcessMonitor* process_monitor,
-    const cuttlefish::CuttlefishConfig& config);
+void LaunchSecureEnvironment(cuttlefish::ProcessMonitor* process_monitor,
+                             const cuttlefish::CuttlefishConfig& config);
