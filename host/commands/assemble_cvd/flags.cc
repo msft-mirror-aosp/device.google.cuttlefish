@@ -127,6 +127,9 @@ DEFINE_bool(pause_in_bootloader, false,
             "to the device console and typing in \"boot\".");
 DEFINE_bool(enable_host_bluetooth, true,
             "Enable the root-canal which is Bluetooth emulator in the host.");
+DEFINE_bool(
+    rootcanal_attach_mode, false,
+    "Instead of running rootcanal, attach an existing rootcanal instance.");
 
 DEFINE_string(bluetooth_controller_properties_file,
               "etc/rootcanal/data/controller_properties.json",
@@ -249,6 +252,8 @@ DEFINE_string(crosvm_binary, HostBinaryPath("crosvm"),
               "The Crosvm binary to use");
 DEFINE_string(gem5_binary_dir, HostBinaryPath("gem5"),
               "Path to the gem5 build tree root");
+DEFINE_string(gem5_checkpoint_dir, "",
+              "Path to the gem5 restore checkpoint directory");
 DEFINE_bool(restart_subprocesses, true, "Restart any crashed host process");
 DEFINE_bool(enable_vehicle_hal_grpc_server, true, "Enables the vehicle HAL "
             "emulation gRPC server on the host");
@@ -268,7 +273,7 @@ DEFINE_bool(kgdb, false, "Configure the virtual device for debugging the kernel 
                          "with kgdb/kdb. The kernel must have been built with "
                          "kgdb support, and serial console must be enabled.");
 
-DEFINE_bool(start_gnss_proxy, false, "Whether to start the gnss proxy.");
+DEFINE_bool(start_gnss_proxy, true, "Whether to start the gnss proxy.");
 
 DEFINE_string(gnss_file_path, "",
               "Local gnss raw measurement file path for the gnss proxy");
@@ -654,6 +659,7 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
   tmp_config_obj.set_qemu_binary_dir(FLAGS_qemu_binary_dir);
   tmp_config_obj.set_crosvm_binary(FLAGS_crosvm_binary);
   tmp_config_obj.set_gem5_binary_dir(FLAGS_gem5_binary_dir);
+  tmp_config_obj.set_gem5_checkpoint_dir(FLAGS_gem5_checkpoint_dir);
 
   tmp_config_obj.set_seccomp_policy_dir(FLAGS_seccomp_policy_dir);
 
@@ -787,7 +793,6 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
     instance.set_qemu_vnc_server_port(544 + num - 1);
     instance.set_adb_host_port(6520 + num - 1);
     instance.set_adb_ip_and_port("0.0.0.0:" + std::to_string(6520 + num - 1));
-    instance.set_confui_host_vsock_port(7700 + num - 1);
     instance.set_tombstone_receiver_port(calc_vsock_port(6600));
     instance.set_vehicle_hal_server_port(9300 + num - 1);
     instance.set_audiocontrol_server_port(9410);  /* OK to use the same port number across instances */
@@ -887,10 +892,11 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
       instance.set_start_wmediumd(false);
     }
 
-    instance.set_start_rootcanal(is_first_instance);
+    instance.set_start_rootcanal(is_first_instance &&
+                                 !FLAGS_rootcanal_attach_mode);
 
     instance.set_start_ap(!FLAGS_ap_rootfs_image.empty() &&
-                          !FLAGS_ap_kernel_image.empty() && is_first_instance);
+                          !FLAGS_ap_kernel_image.empty() && start_wmediumd);
 
     is_first_instance = false;
 
