@@ -104,7 +104,7 @@ std::vector<std::string> QemuManager::ConfigureGpuMode(
         "androidboot.hardware.hwcomposer=ranchu",
         "androidboot.hardware.egl=swiftshader",
         "androidboot.hardware.vulkan=pastel",
-    };
+        "androidboot.opengles.version=196609"};  // OpenGL ES 3.1
   }
 
   if (gpu_mode == kGpuModeDrmVirgl) {
@@ -113,7 +113,8 @@ std::vector<std::string> QemuManager::ConfigureGpuMode(
       "androidboot.hardware.gralloc=minigbm",
       "androidboot.hardware.hwcomposer=drm_minigbm",
       "androidboot.hardware.egl=mesa",
-    };
+      // No "hardware" Vulkan support, yet
+      "androidboot.opengles.version=196608"};  // OpenGL ES 3.0
   }
 
   return {};

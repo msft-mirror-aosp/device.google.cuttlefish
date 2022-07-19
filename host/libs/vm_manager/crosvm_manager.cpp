@@ -121,7 +121,8 @@ std::vector<std::string> CrosvmManager::ConfigureGpuMode(
       "androidboot.hardware.gralloc=minigbm",
       "androidboot.hardware.hwcomposer=drm_minigbm",
       "androidboot.hardware.egl=mesa",
-    };
+      // No "hardware" Vulkan support, yet
+      "androidboot.opengles.version=196608"};  // OpenGL ES 3.0
   }
   if (gpu_mode == kGpuModeGfxStream) {
     return {"androidboot.cpuvulkan.version=0",
