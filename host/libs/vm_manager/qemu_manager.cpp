@@ -99,7 +99,7 @@ std::vector<std::string> QemuManager::ConfigureGpuMode(
     // with properities lead to non-deterministic behavior while loading the
     // HALs.
     return {
-        "androidboot.cpuvulkan.version=" + std::to_string(VK_API_VERSION_1_1),
+        "androidboot.cpuvulkan.version=" + std::to_string(VK_API_VERSION_1_2),
         "androidboot.hardware.gralloc=minigbm",
         "androidboot.hardware.hwcomposer=ranchu",
         "androidboot.hardware.egl=swiftshader",
