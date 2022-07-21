@@ -199,6 +199,7 @@ PRODUCT_PACKAGES += \
 
 # GL implementation for virgl
 PRODUCT_PACKAGES += \
+    hwcomposer.drm \
     libGLES_mesa \
 
 #
