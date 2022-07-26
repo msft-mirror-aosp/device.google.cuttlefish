@@ -192,6 +192,9 @@ class CuttlefishConfig {
   void set_setupwizard_mode(const std::string& title);
   std::string setupwizard_mode() const;
 
+  void set_enable_bootanimation(const bool enable_bootanimation);
+  bool enable_bootanimation() const;
+
   void set_qemu_binary(const std::string& qemu_binary);
   std::string qemu_binary() const;
 

@@ -104,6 +104,7 @@ const char* kAdbMode = "adb_mode";
 const char* kHostPort = "host_port";
 const char* kAdbIPAndPort = "adb_ip_and_port";
 const char* kSetupWizardMode = "setupwizard_mode";
+const char* kEnableBootAnimation = "enable_bootanimation";
 
 const char* kQemuBinary = "qemu_binary";
 const char* kCrosvmBinary = "crosvm_binary";
@@ -472,6 +473,14 @@ std::string CuttlefishConfig::setupwizard_mode() const {
 
 void CuttlefishConfig::set_setupwizard_mode(const std::string& mode) {
   (*dictionary_)[kSetupWizardMode] = mode;
+}
+
+bool CuttlefishConfig::enable_bootanimation() const {
+  return (*dictionary_)[kEnableBootAnimation].asBool();
+}
+
+void CuttlefishConfig::set_enable_bootanimation(const bool enable_bootanimation) {
+  (*dictionary_)[kEnableBootAnimation] = enable_bootanimation;
 }
 
 std::string CuttlefishConfig::qemu_binary() const {
