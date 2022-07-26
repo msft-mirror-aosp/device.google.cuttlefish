@@ -100,7 +100,6 @@ cvd_host_shared_libraries := \
     libicuuc-host.so \
     libicui18n-host.so \
     libandroidicu-host.so \
-    libcuttlefish_device_config.so \
     libprotobuf-cpp-full.so \
     libziparchive.so \
     libvpx.so \
