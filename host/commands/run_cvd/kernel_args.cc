@@ -64,6 +64,8 @@ std::vector<std::string> KernelCommandLineFromConfig(const cuttlefish::Cuttlefis
   kernel_cmdline.push_back(concat("androidboot.lcd_density=", config.dpi()));
   kernel_cmdline.push_back(concat(
       "androidboot.setupwizard_mode=", config.setupwizard_mode()));
+  kernel_cmdline.push_back(concat("androidboot.enable_bootanimation=",
+                                  config.enable_bootanimation()));
   if (!config.use_bootloader()) {
     std::string slot_suffix;
     if (config.boot_slot().empty()) {

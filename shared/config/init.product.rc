@@ -1,6 +1,9 @@
 on early-init
     setprop ro.setupwizard.mode ${ro.boot.setupwizard_mode}
 
+on early-init && property:ro.boot.enable_bootanimation=0
+    setprop debug.sf.nobootanimation 1
+
 on property:ro.boot.tombstone_transmit=1
     enable tombstone_transmit
 
