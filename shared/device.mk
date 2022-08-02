@@ -76,7 +76,6 @@ PRODUCT_PRODUCT_PROPERTIES += \
 
 # Explanation of specific properties:
 #   debug.hwui.swap_with_damage avoids boot failure on M http://b/25152138
-#   ro.opengles.version OpenGLES 3.0
 #   ro.hardware.keystore_desede=true needed for CtsKeystoreTestCases
 PRODUCT_VENDOR_PROPERTIES += \
     tombstoned.max_tombstone_count=500 \
@@ -86,7 +85,6 @@ PRODUCT_VENDOR_PROPERTIES += \
     ro.com.android.dataroaming?=false \
     ro.hardware.virtual_device=1 \
     ro.logd.size=1M \
-    ro.opengles.version=196608 \
     wifi.interface=wlan0 \
     persist.sys.zram_enabled=1 \
     ro.hardware.keystore_desede=true \
@@ -204,6 +202,7 @@ PRODUCT_PACKAGES += \
 
 # GL implementation for virgl
 PRODUCT_PACKAGES += \
+    hwcomposer.drm \
     libGLES_mesa \
 
 #
@@ -378,8 +377,6 @@ PRODUCT_PACKAGES += \
 # Hardware Composer HAL
 #
 PRODUCT_PACKAGES += \
-    hwcomposer.drm_minigbm \
-    hwcomposer.cutf \
     hwcomposer-stats \
     android.hardware.graphics.composer@2.4-service
 

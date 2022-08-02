@@ -49,7 +49,8 @@ SharedFD AddTapFdParameter(Command* crosvm_cmd,
                                 const std::string& tap_name) {
   auto tap_fd = OpenTapInterface(tap_name);
   if (tap_fd->IsOpen()) {
-    crosvm_cmd->AddParameter("--tap-fd=", tap_fd);
+    crosvm_cmd->AddParameter("--tap-fd");
+    crosvm_cmd->AddParameter(tap_fd);
   } else {
     LOG(ERROR) << "Unable to connect to " << tap_name << ": "
                << tap_fd->StrError();
@@ -111,26 +112,27 @@ std::vector<std::string> CrosvmManager::ConfigureGpuMode(
         "androidboot.hardware.hwcomposer=ranchu",
         "androidboot.hardware.egl=angle",
         "androidboot.hardware.vulkan=pastel",
-    };
+        "androidboot.opengles.version=196609"};  // OpenGL ES 3.1
   }
 
   if (gpu_mode == kGpuModeDrmVirgl) {
     return {
       "androidboot.cpuvulkan.version=0",
       "androidboot.hardware.gralloc=minigbm",
-      "androidboot.hardware.hwcomposer=drm_minigbm",
+      "androidboot.hardware.hwcomposer=ranchu",
+      "androidboot.hardware.hwcomposer.mode=client",
       "androidboot.hardware.egl=mesa",
-    };
+      // No "hardware" Vulkan support, yet
+      "androidboot.opengles.version=196608"};  // OpenGL ES 3.0
   }
   if (gpu_mode == kGpuModeGfxStream) {
-    return {
-        "androidboot.cpuvulkan.version=0",
-        "androidboot.hardware.gralloc=minigbm",
-        "androidboot.hardware.hwcomposer=ranchu",
-        "androidboot.hardware.egl=emulation",
-        "androidboot.hardware.vulkan=ranchu",
-        "androidboot.hardware.gltransport=virtio-gpu-asg",
-    };
+    return {"androidboot.cpuvulkan.version=0",
+            "androidboot.hardware.gralloc=minigbm",
+            "androidboot.hardware.hwcomposer=ranchu",
+            "androidboot.hardware.egl=emulation",
+            "androidboot.hardware.vulkan=ranchu",
+            "androidboot.hardware.gltransport=virtio-gpu-asg",
+            "androidboot.opengles.version=196608"};  // OpenGL ES 3.0
   }
   return {};
 }
@@ -139,7 +141,7 @@ std::string CrosvmManager::ConfigureBootDevices(int num_disks) {
   // TODO There is no way to control this assignment with crosvm (yet)
   if (HostArch() == Arch::X86_64) {
     // crosvm has an additional PCI device for an ISA bridge
-    return ConfigureMultipleBootDevices("pci0000:00/0000:00:", 1, num_disks);
+    return ConfigureMultipleBootDevices("pci0000:00/0000:00:", 3, num_disks);
   } else {
     // On ARM64 crosvm, block devices are on their own bridge, so we don't
     // need to calculate it, and the path is always the same
@@ -162,42 +164,50 @@ std::vector<Command> CrosvmManager::StartCommands(
   int hvc_num = 0;
   int serial_num = 0;
   auto add_hvc_sink = [&crosvm_cmd, &hvc_num]() {
-    crosvm_cmd.AddParameter("--serial=hardware=virtio-console,num=", ++hvc_num,
+    crosvm_cmd.AddParameter("--serial");
+    crosvm_cmd.AddParameter("hardware=virtio-console,num=", ++hvc_num,
                             ",type=sink");
   };
   auto add_serial_sink = [&crosvm_cmd, &serial_num]() {
-    crosvm_cmd.AddParameter("--serial=hardware=serial,num=", ++serial_num,
+    crosvm_cmd.AddParameter("--serial");
+    crosvm_cmd.AddParameter("hardware=serial,num=", ++serial_num,
                             ",type=sink");
   };
   auto add_hvc_console = [&crosvm_cmd, &hvc_num](const std::string& output) {
-    crosvm_cmd.AddParameter("--serial=hardware=virtio-console,num=", ++hvc_num,
+    crosvm_cmd.AddParameter("--serial");
+    crosvm_cmd.AddParameter("hardware=virtio-console,num=", ++hvc_num,
                             ",type=file,path=", output, ",console=true");
   };
   auto add_serial_console_ro = [&crosvm_cmd,
                                 &serial_num](const std::string& output) {
-    crosvm_cmd.AddParameter("--serial=hardware=serial,num=", ++serial_num,
+    crosvm_cmd.AddParameter("--serial");
+    crosvm_cmd.AddParameter("hardware=serial,num=", ++serial_num,
                             ",type=file,path=", output, ",earlycon=true");
   };
   auto add_serial_console = [&crosvm_cmd, &serial_num](
                                 const std::string& output,
                                 const std::string& input) {
-    crosvm_cmd.AddParameter("--serial=hardware=serial,num=", ++serial_num,
+    crosvm_cmd.AddParameter("--serial");
+    crosvm_cmd.AddParameter("hardware=serial,num=", ++serial_num,
                             ",type=file,path=", output, ",input=", input,
                             ",earlycon=true");
   };
   auto add_hvc_ro = [&crosvm_cmd, &hvc_num](const std::string& output) {
-    crosvm_cmd.AddParameter("--serial=hardware=virtio-console,num=", ++hvc_num,
+    crosvm_cmd.AddParameter("--serial");
+    crosvm_cmd.AddParameter("hardware=virtio-console,num=", ++hvc_num,
                             ",type=file,path=", output);
   };
   auto add_hvc = [&crosvm_cmd, &hvc_num](const std::string& output,
                                          const std::string& input) {
-    crosvm_cmd.AddParameter("--serial=hardware=virtio-console,num=", ++hvc_num,
+    crosvm_cmd.AddParameter("--serial");
+    crosvm_cmd.AddParameter("hardware=virtio-console,num=", ++hvc_num,
                             ",type=file,path=", output, ",input=", input);
   };
   // Deprecated; do not add any more users
   auto add_serial = [&crosvm_cmd, &serial_num](const std::string& output,
                                                const std::string& input) {
-    crosvm_cmd.AddParameter("--serial=hardware=serial,num=", ++serial_num,
+    crosvm_cmd.AddParameter("--serial");
+    crosvm_cmd.AddParameter("hardware=serial,num=", ++serial_num,
                             ",type=file,path=", output, ",input=", input);
   };
 
@@ -217,42 +227,49 @@ std::vector<Command> CrosvmManager::StartCommands(
 
   if (config.gdb_port() > 0) {
     CHECK(config.cpus() == 1) << "CPUs must be 1 for crosvm gdb mode";
-    crosvm_cmd.AddParameter("--gdb=", config.gdb_port());
+    crosvm_cmd.AddParameter("--gdb");
+    crosvm_cmd.AddParameter(config.gdb_port());
   }
 
   auto gpu_mode = config.gpu_mode();
+  crosvm_cmd.AddParameter("--gpu");
   if (gpu_mode == kGpuModeGuestSwiftshader) {
-    crosvm_cmd.AddParameter("--gpu=2D");
+    crosvm_cmd.AddParameter("2D");
   } else if (gpu_mode == kGpuModeDrmVirgl || gpu_mode == kGpuModeGfxStream) {
     crosvm_cmd.AddParameter(gpu_mode == kGpuModeGfxStream ?
-                                "--gpu=gfxstream," : "--gpu=",
+                                "gfxstream," : "",
                             "egl=true,surfaceless=true,glx=false,gles=true");
   }
 
   for (const auto& display_config : config.display_configs()) {
-    crosvm_cmd.AddParameter("--gpu-display=", "width=", display_config.width,
-                            ",", "height=", display_config.height);
+    crosvm_cmd.AddParameter("--gpu-display");
+    crosvm_cmd.AddParameter("width=", display_config.width, ",height=",
+                            display_config.height);
   }
 
-  crosvm_cmd.AddParameter("--wayland-sock=", instance.frames_socket_path());
+  crosvm_cmd.AddParameter("--wayland-sock");
+  crosvm_cmd.AddParameter(instance.frames_socket_path());
 
   // crosvm_cmd.AddParameter("--null-audio");
-  crosvm_cmd.AddParameter("--mem=", config.memory_mb());
-  crosvm_cmd.AddParameter("--cpus=", config.cpus());
+  crosvm_cmd.AddParameter("--mem");
+  crosvm_cmd.AddParameter(config.memory_mb());
+  crosvm_cmd.AddParameter("--cpus");
+  crosvm_cmd.AddParameter(config.cpus());
 
   auto disk_num = instance.virtual_disk_paths().size();
   CHECK_GE(VmManager::kMaxDisks, disk_num)
       << "Provided too many disks (" << disk_num << "), maximum "
       << VmManager::kMaxDisks << "supported";
   for (const auto& disk : instance.virtual_disk_paths()) {
-    crosvm_cmd.AddParameter(config.protected_vm() ? "--disk=" :
-                                                    "--rwdisk=", disk);
+    crosvm_cmd.AddParameter(config.protected_vm() ? "--disk" : "--rwdisk");
+    crosvm_cmd.AddParameter(disk);
   }
-  crosvm_cmd.AddParameter("--socket=", GetControlSocketPath(config));
+  crosvm_cmd.AddParameter("--socket");
+  crosvm_cmd.AddParameter(GetControlSocketPath(config));
 
   if (config.enable_vnc_server() || config.enable_webrtc()) {
     auto touch_type_parameter =
-        config.enable_webrtc() ? "--multi-touch=" : "--single-touch=";
+        config.enable_webrtc() ? "--multi-touch" : "--single-touch";
 
     auto display_configs = config.display_configs();
     CHECK_GE(display_configs.size(), 1);
@@ -260,14 +277,16 @@ std::vector<Command> CrosvmManager::StartCommands(
     for (int i = 0; i < display_configs.size(); ++i) {
       auto display_config = display_configs[i];
 
-      crosvm_cmd.AddParameter(touch_type_parameter,
-                              instance.touch_socket_path(i), ":",
+      crosvm_cmd.AddParameter(touch_type_parameter);
+      crosvm_cmd.AddParameter(instance.touch_socket_path(i), ":",
                               display_config.width, ":", display_config.height);
     }
-    crosvm_cmd.AddParameter("--keyboard=", instance.keyboard_socket_path());
+    crosvm_cmd.AddParameter("--keyboard");
+    crosvm_cmd.AddParameter(instance.keyboard_socket_path());
   }
   if (config.enable_webrtc()) {
-    crosvm_cmd.AddParameter("--switches=", instance.switches_socket_path());
+    crosvm_cmd.AddParameter("--switches");
+    crosvm_cmd.AddParameter(instance.switches_socket_path());
   }
 
   AddTapFdParameter(&crosvm_cmd, instance.mobile_tap_name());
@@ -275,12 +294,13 @@ std::vector<Command> CrosvmManager::StartCommands(
   auto wifi_tap = AddTapFdParameter(&crosvm_cmd, instance.wifi_tap_name());
 
   if (FileExists(instance.access_kregistry_path())) {
-    crosvm_cmd.AddParameter("--rw-pmem-device=",
-                            instance.access_kregistry_path());
+    crosvm_cmd.AddParameter("--rw-pmem-device");
+    crosvm_cmd.AddParameter(instance.access_kregistry_path());
   }
 
   if (FileExists(instance.pstore_path())) {
-    crosvm_cmd.AddParameter("--pstore=path=", instance.pstore_path(),
+    crosvm_cmd.AddParameter("--pstore");
+    crosvm_cmd.AddParameter("path=", instance.pstore_path(),
                             ",size=", FileSize(instance.pstore_path()));
   }
 
@@ -294,13 +314,15 @@ std::vector<Command> CrosvmManager::StartCommands(
                  << " does not exist " << std::endl;
       return {};
     }
-    crosvm_cmd.AddParameter("--seccomp-policy-dir=", config.seccomp_policy_dir());
+    crosvm_cmd.AddParameter("--seccomp-policy-dir");
+    crosvm_cmd.AddParameter(config.seccomp_policy_dir());
   } else {
     crosvm_cmd.AddParameter("--disable-sandbox");
   }
 
   if (instance.vsock_guest_cid() >= 2) {
-    crosvm_cmd.AddParameter("--cid=", instance.vsock_guest_cid());
+    crosvm_cmd.AddParameter("--cid");
+    crosvm_cmd.AddParameter(instance.vsock_guest_cid());
   }
 
   // Use a virtio-console instance for the main kernel console. All
@@ -382,19 +404,21 @@ std::vector<Command> CrosvmManager::StartCommands(
       << VmManager::kMaxDisks + VmManager::kDefaultNumHvcs << " devices";
 
   if (config.enable_audio()) {
-    crosvm_cmd.AddParameter("--sound=",
-                            config.ForDefaultInstance().audio_server_path());
+    crosvm_cmd.AddParameter("--sound");
+    crosvm_cmd.AddParameter(config.ForDefaultInstance().audio_server_path());
   }
 
   // TODO(b/162071003): virtiofs crashes without sandboxing, this should be fixed
   if (config.enable_sandbox()) {
     // Set up directory shared with virtiofs
-    crosvm_cmd.AddParameter("--shared-dir=", instance.PerInstancePath(kSharedDirName),
+    crosvm_cmd.AddParameter("--shared-dir");
+    crosvm_cmd.AddParameter(instance.PerInstancePath(kSharedDirName),
                             ":shared:type=fs");
   }
 
   // This needs to be the last parameter
-  crosvm_cmd.AddParameter("--bios=", config.bootloader());
+  crosvm_cmd.AddParameter("--bios");
+  crosvm_cmd.AddParameter(config.bootloader());
 
   // Only run the leases workaround if we are not using the new network
   // bridge architecture - in that case, we have a wider DHCP address
