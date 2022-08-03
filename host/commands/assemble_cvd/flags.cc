@@ -131,6 +131,10 @@ DEFINE_bool(
     rootcanal_attach_mode, false,
     "Instead of running rootcanal, attach an existing rootcanal instance.");
 
+DEFINE_bool(netsim, false, "[Experimental] Connect all radios to netsim.");
+
+DEFINE_bool(netsim_bt, false, "[Experimental] Connect Bluetooth radio to netsim.");
+
 DEFINE_string(bluetooth_controller_properties_file,
               "etc/rootcanal/data/controller_properties.json",
               "The configuartion file path for root-canal which is a Bluetooth "
@@ -140,25 +144,19 @@ DEFINE_string(
     "The default commands which root-canal executes when it launches.");
 
 /**
- *
  * crosvm sandbox feature requires /var/empty and seccomp directory
  *
- * --enable-sandbox: will enforce the sandbox feature
- *                   failing to meet the requirements result in assembly_cvd termination
- *
- * --enable-sandbox=no, etc: will disable sandbox
- *
- * no option given: it is enabled if /var/empty exists and an empty directory
- *                             or if it does not exist and can be created
- *
- * if seccomp dir doesn't exist, assembly_cvd will terminate
- *
- * See SetDefaultFlagsForCrosvm()
- *
+ * Also see SetDefaultFlagsForCrosvm()
  */
-DEFINE_bool(enable_sandbox,
-            false,
-            "Enable crosvm sandbox. Use this when you are sure about what you are doing.");
+DEFINE_bool(
+    enable_sandbox, false,
+    "Enable crosvm sandbox assuming /var/empty and seccomp directories exist. "
+    "--noenable-sandbox will disable crosvm sandbox. "
+    "When no option is given, sandbox is disabled if Cuttlefish is running "
+    "inside a container, or if GPU is enabled (b/152323505), "
+    "or if the empty /var/empty directory either does not exist and "
+    "cannot be created. Otherwise, sandbox is enabled on the supported "
+    "architecture when no option is given.");
 
 static const std::string kSeccompDir =
     std::string("usr/share/crosvm/") + cuttlefish::HostArchStr() + "-linux-gnu/seccomp";
@@ -256,6 +254,9 @@ DEFINE_string(gem5_binary_dir, HostBinaryPath("gem5"),
               "Path to the gem5 build tree root");
 DEFINE_string(gem5_checkpoint_dir, "",
               "Path to the gem5 restore checkpoint directory");
+DEFINE_string(gem5_debug_file, "", "The file name where gem5 saves debug prints and logs");
+DEFINE_string(gem5_debug_flags, "", "The debug flags gem5 uses to print debugs to file");
+
 DEFINE_bool(restart_subprocesses, true, "Restart any crashed host process");
 DEFINE_bool(enable_vehicle_hal_grpc_server, true, "Enables the vehicle HAL "
             "emulation gRPC server on the host");
@@ -658,6 +659,8 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
 
   tmp_config_obj.set_qemu_binary_dir(FLAGS_qemu_binary_dir);
   tmp_config_obj.set_crosvm_binary(FLAGS_crosvm_binary);
+  tmp_config_obj.set_gem5_debug_flags(FLAGS_gem5_debug_flags);
+  tmp_config_obj.set_gem5_debug_file(FLAGS_gem5_debug_file);
 
   tmp_config_obj.set_seccomp_policy_dir(FLAGS_seccomp_policy_dir);
 
@@ -733,7 +736,20 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
 
   tmp_config_obj.set_record_screen(FLAGS_record_screen);
 
-  tmp_config_obj.set_enable_host_bluetooth(FLAGS_enable_host_bluetooth);
+  // netsim flags allow all radios or selecting a specific radio
+  bool is_any_netsim = FLAGS_netsim || FLAGS_netsim_bt;
+  bool is_bt_netsim = FLAGS_netsim || FLAGS_netsim_bt;
+
+  // crosvm should create fifos for Bluetooth
+  tmp_config_obj.set_enable_host_bluetooth(FLAGS_enable_host_bluetooth || is_bt_netsim);
+
+  // rootcanal and bt_connector should handle Bluetooth (instead of netsim)
+  tmp_config_obj.set_enable_host_bluetooth_connector(FLAGS_enable_host_bluetooth && !is_bt_netsim);
+
+  // These flags inform NetsimServer::ResultSetup which radios it owns.
+  if (is_bt_netsim) {
+    tmp_config_obj.netsim_radio_enable(CuttlefishConfig::NetsimRadio::Bluetooth);
+  }
 
   tmp_config_obj.set_protected_vm(FLAGS_protected_vm);
 
@@ -854,7 +870,7 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
       } else {
         // Gem5 already uses CoW wrappers around disk images
         virtual_disk_paths.insert(virtual_disk_paths.begin(),
-            tmp_config_obj.os_composite_disk_path());
+            const_instance.os_composite_disk_path());
       }
       if (FLAGS_use_sdcard) {
         virtual_disk_paths.push_back(const_instance.sdcard_path());
@@ -914,7 +930,9 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
       instance.set_start_wmediumd(false);
     }
 
-    instance.set_start_rootcanal(is_first_instance &&
+    instance.set_start_netsim(is_first_instance && is_any_netsim);
+
+    instance.set_start_rootcanal(is_first_instance && !is_bt_netsim &&
                                  !FLAGS_rootcanal_attach_mode);
 
     instance.set_start_ap(!FLAGS_ap_rootfs_image.empty() &&
