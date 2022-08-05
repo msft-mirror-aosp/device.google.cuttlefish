@@ -16,6 +16,8 @@
 
 #include "host/commands/run_cvd/server_loop.h"
 
+#include <algorithm>
+
 #include <fruit/fruit.h>
 #include <gflags/gflags.h>
 #include <unistd.h>
@@ -85,6 +87,15 @@ class ServerLoopImpl : public ServerLoop, public SetupFeature {
           }
           case LauncherAction::kPowerwash: {
             LOG(INFO) << "Received a Powerwash request from the monitor socket";
+            const auto& disks = instance_.virtual_disk_paths();
+            auto overlay = instance_.PerInstancePath("overlay.img");
+            if (std::find(disks.begin(), disks.end(), overlay) == disks.end()) {
+              LOG(ERROR) << "Powerwash unsupported with --use_overlay=false";
+              auto response = LauncherResponse::kError;
+              client->Write(&response, sizeof(response));
+              break;
+            }
+
             auto stop = process_monitor.StopMonitoredProcesses();
             if (!stop.ok()) {
               LOG(ERROR) << "Stopping processes failed:\n" << stop.error();
