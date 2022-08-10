@@ -346,6 +346,17 @@ void ServerLoop(cuttlefish::SharedFD server,
         }
         case cuttlefish::LauncherAction::kPowerwash: {
           LOG(INFO) << "Received a Powerwash request from the monitor socket";
+          auto config = cuttlefish::CuttlefishConfig::Get();
+          CHECK(config) << "Could not load the config.";
+          auto instance = config->ForDefaultInstance();
+          const auto& disks = instance.virtual_disk_paths();
+          auto overlay = instance.PerInstancePath("overlay.img");
+          if (std::find(disks.begin(), disks.end(), overlay) == disks.end()) {
+            LOG(ERROR) << "Powerwash unsupported with --use_overlay=false";
+            auto response = cuttlefish::LauncherResponse::kError;
+            client->Write(&response, sizeof(response));
+            break;
+          }
           if (!process_monitor->StopMonitoredProcesses()) {
             LOG(ERROR) << "Stopping processes failed.";
             auto response = cuttlefish::LauncherResponse::kError;
@@ -361,7 +372,6 @@ void ServerLoop(cuttlefish::SharedFD server,
           auto response = cuttlefish::LauncherResponse::kSuccess;
           client->Write(&response, sizeof(response));
 
-          auto config = cuttlefish::CuttlefishConfig::Get();
           auto config_path = config->AssemblyPath("cuttlefish_config.json");
           auto followup_stdin =
               cuttlefish::SharedFD::MemfdCreate("pseudo_stdin");

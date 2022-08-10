@@ -235,6 +235,10 @@ DEFINE_int32(vsock_guest_cid,
              "the vsock cid of the i th instance would be C + i where i is in [1, N]"
              "If --num_instances is not given, the default value of N is used.");
 
+DEFINE_bool(use_overlay, true,
+            "Capture disk writes an overlay. This is a "
+            "prerequisite for powerwash_cvd or multiple instances.");
+
 namespace {
 
 const std::string kKernelDefaultPath = "kernel";
@@ -553,6 +557,9 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
     num_instances.push_back(cuttlefish::GetInstance() + i);
   }
 
+  CHECK(FLAGS_use_overlay || num_instances.size() == 1)
+      << "`--use_overlay=false` is incompatible with multiple instances";
+
   bool is_first_instance = true;
   for (const auto& num : num_instances) {
     auto instance = tmp_config_obj.ForInstance(num);
@@ -601,10 +608,16 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
 
     instance.set_device_title(FLAGS_device_title);
 
+    std::string os_disk;
+    if (FLAGS_use_overlay) {
+      os_disk = const_instance.PerInstancePath("overlay.img");
+    } else {
+      os_disk = const_instance.composite_disk_path();
+    }
     instance.set_virtual_disk_paths({
-      const_instance.PerInstancePath("overlay.img"),
-      const_instance.sdcard_path(),
-      const_instance.factory_reset_protected_path(),
+        os_disk,
+        const_instance.sdcard_path(),
+        const_instance.factory_reset_protected_path(),
     });
 
     std::array<unsigned char, 6> mac_address;
@@ -882,11 +895,13 @@ const cuttlefish::CuttlefishConfig* InitFilesystemAndCreateConfig(
     // disk.
     auto config = InitializeCuttlefishConfiguration(*boot_img_unpacker, fetcher_config);
     std::set<std::string> preserving;
-    if (FLAGS_resume && ShouldCreateAllCompositeDisks(config)) {
+    bool creating_os_disk = ShouldCreateAllCompositeDisks(config);
+    creating_os_disk &= FLAGS_use_overlay;
+    if (FLAGS_resume && creating_os_disk) {
       LOG(INFO) << "Requested resuming a previous session (the default behavior) "
                 << "but the base images have changed under the overlay, making the "
                 << "overlay incompatible. Wiping the overlay files.";
-    } else if (FLAGS_resume && !ShouldCreateAllCompositeDisks(config)) {
+    } else if (FLAGS_resume && !creating_os_disk) {
       preserving.insert("overlay.img");
       preserving.insert("gpt_header.img");
       preserving.insert("gpt_footer.img");

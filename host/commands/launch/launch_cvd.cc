@@ -42,6 +42,9 @@ DEFINE_bool(run_file_discovery, true,
 DEFINE_int32(num_instances, 1, "Number of Android guests to launch");
 DEFINE_string(verbosity, "INFO", "Console logging verbosity. Options are VERBOSE,"
                                  "DEBUG,INFO,WARNING,ERROR");
+DEFINE_bool(use_overlay, true,
+            "Capture disk writes an overlay. This is a "
+            "prerequisite for powerwash_cvd or multiple instances.");
 
 namespace {
 
@@ -99,6 +102,21 @@ int main(int argc, char** argv) {
   gflags::HandleCommandLineHelpFlags();
 
   setenv("CF_CONSOLE_SEVERITY", FLAGS_verbosity.c_str(), /* replace */ false);
+
+  if (cuttlefish::CuttlefishConfig::Get()) {
+    auto previous_config = cuttlefish::CuttlefishConfig::Get();
+    CHECK(previous_config->Instances().size() > 0);
+    auto previous_instance = previous_config->Instances()[0];
+    const auto& disks = previous_instance.virtual_disk_paths();
+    auto overlay = previous_instance.PerInstancePath("overlay.img");
+    auto used_overlay =
+        std::find(disks.begin(), disks.end(), overlay) != disks.end();
+    CHECK(used_overlay == FLAGS_use_overlay)
+        << "Cannot transition between different values of --use_overlay "
+        << "(Previous = " << used_overlay << ", current = " << FLAGS_use_overlay
+        << "). To fix this, delete \"" << previous_config->assembly_dir()
+        << "\", cuttlefish_runtime.# and any image files.";
+  }
 
   cuttlefish::SharedFD assembler_stdout, assembler_stdout_capture;
   cuttlefish::SharedFD::Pipe(&assembler_stdout_capture, &assembler_stdout);
