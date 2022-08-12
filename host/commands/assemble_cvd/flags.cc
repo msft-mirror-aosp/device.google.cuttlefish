@@ -242,6 +242,8 @@ DEFINE_bool(use_overlay, true,
             "Capture disk writes an overlay. This is a "
             "prerequisite for powerwash_cvd or multiple instances.");
 
+DECLARE_string(system_image_dir);
+
 namespace {
 
 const std::string kKernelDefaultPath = "kernel";
@@ -399,14 +401,12 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
   std::string foreign_ramdisk = FLAGS_initramfs_path.size () ? FLAGS_initramfs_path : discovered_ramdisk;
 
   // TODO(rammuthiah) Bootloader boot doesn't work in the following scenarions
-  // 1. QEMU - our config of uboot doesn't currently support QEMU firmware. We need to
-  //    add a new bootloader binary for QEMU.
-  // 2. Arm64 - a arm64 confir of uboot is in progress. This will be fixed when that is
-  //    ready.
-  // 3. If using a ramdisk or kernel besides the one in the boot.img - The boot.img
+  // 1. Arm64 - On QEMU, there are some outstanding bugs in the boot image handling
+  //            to fix. On Crosvm, we have no implementation currently.
+  // 2. If using a ramdisk or kernel besides the one in the boot.img - The boot.img
   //    doesn't get repackaged in this scenario currently. Once it does, bootloader
   //    boot will support runtime selected kernels and/or ramdisks.
-  if (FLAGS_vm_manager == QemuManager::name() || cuttlefish::HostArch() == "aarch64") {
+  if (cuttlefish::HostArch() == "aarch64") {
     SetCommandLineOptionWithMode("use_bootloader", "false",
         google::FlagSettingMode::SET_FLAGS_DEFAULT);
   }
@@ -691,6 +691,10 @@ bool SaveConfig(const cuttlefish::CuttlefishConfig& tmp_config_obj) {
 
 void SetDefaultFlagsForQemu() {
   // for now, we don't set non-default options for QEMU
+  std::string default_bootloader = FLAGS_system_image_dir + "/bootloader.qemu";
+  SetCommandLineOptionWithMode("bootloader",
+                               default_bootloader.c_str(),
+                               google::FlagSettingMode::SET_FLAGS_DEFAULT);
 }
 
 void SetDefaultFlagsForCrosvm() {
@@ -702,6 +706,11 @@ void SetDefaultFlagsForCrosvm() {
   }
   SetCommandLineOptionWithMode("decompress_kernel",
                                (decompress_kernel ? "true" : "false"),
+                               google::FlagSettingMode::SET_FLAGS_DEFAULT);
+
+  std::string default_bootloader = FLAGS_system_image_dir + "/bootloader";
+  SetCommandLineOptionWithMode("bootloader",
+                               default_bootloader.c_str(),
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
 }
 
