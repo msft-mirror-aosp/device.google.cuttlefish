@@ -139,6 +139,9 @@ class DeviceControlApp {
         document.querySelector('#power_btn'),
         evt => this.#onControlPanelButton(evt, 'power'));
     addMouseListeners(
+        document.querySelector('#back_btn'),
+        evt => this.#onControlPanelButton(evt, 'back'));
+    addMouseListeners(
         document.querySelector('#home_btn'),
         evt => this.#onControlPanelButton(evt, 'home'));
     addMouseListeners(
@@ -244,13 +247,7 @@ class DeviceControlApp {
       this.#deviceConnection.getStream(stream_id)
           .then(stream => {
             deviceAudio.srcObject = stream;
-            let playPromise = deviceAudio.play();
-            if (playPromise !== undefined) {
-              playPromise.catch(error => {
-                showWarning(
-                    'Audio playback is disabled, click on the speaker control to activate it');
-              });
-            }
+            deviceAudio.play();
           })
           .catch(e => console.error('Unable to get audio stream: ', e));
     }

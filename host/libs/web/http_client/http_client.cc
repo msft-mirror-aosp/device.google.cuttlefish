@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "host/libs/web/curl_wrapper.h"
+#include "host/libs/web/http_client/http_client.h"
 
 #include <stdio.h>
 
@@ -31,15 +31,15 @@ namespace cuttlefish {
 namespace {
 
 size_t curl_to_function_cb(char* ptr, size_t, size_t nmemb, void* userdata) {
-  CurlWrapper::DataCallback* callback = (CurlWrapper::DataCallback*)userdata;
+  HttpClient::DataCallback* callback = (HttpClient::DataCallback*)userdata;
   if (!(*callback)(ptr, nmemb)) {
     return 0;  // Signals error to curl
   }
   return nmemb;
 }
 
-size_t file_write_callback(char *ptr, size_t, size_t nmemb, void *userdata) {
-  std::stringstream* stream = (std::stringstream*) userdata;
+size_t file_write_callback(char* ptr, size_t, size_t nmemb, void* userdata) {
+  std::stringstream* stream = (std::stringstream*)userdata;
   stream->write(ptr, nmemb);
   return nmemb;
 }
@@ -60,26 +60,39 @@ curl_slist* build_slist(const std::vector<std::string>& strings) {
   return curl_headers;
 }
 
-class CurlWrapperImpl : public CurlWrapper {
+class CurlClient : public HttpClient {
  public:
-  CurlWrapperImpl() {
+  CurlClient() {
     curl_ = curl_easy_init();
     if (!curl_) {
       LOG(ERROR) << "failed to initialize curl";
       return;
     }
   }
-  ~CurlWrapperImpl() { curl_easy_cleanup(curl_); }
+  ~CurlClient() { curl_easy_cleanup(curl_); }
 
-  CurlResponse<std::string> PostToString(
+  Result<HttpResponse<std::string>> GetToString(
+      const std::string& url,
+      const std::vector<std::string>& headers) override {
+    std::stringstream stream;
+    auto callback = [&stream](char* data, size_t size) -> bool {
+      if (data == nullptr) {
+        stream = std::stringstream();
+        return true;
+      }
+      stream.write(data, size);
+      return true;
+    };
+    long http_code = CF_EXPECT(DownloadToCallback(callback, url, headers));
+    return HttpResponse<std::string>{stream.str(), http_code};
+  }
+
+  Result<HttpResponse<std::string>> PostToString(
       const std::string& url, const std::string& data_to_write,
       const std::vector<std::string>& headers) override {
     std::lock_guard<std::mutex> lock(mutex_);
     LOG(INFO) << "Attempting to download \"" << url << "\"";
-    if (!curl_) {
-      LOG(ERROR) << "curl was not initialized\n";
-      return {"", -1};
-    }
+    CF_EXPECT(curl_ != nullptr, "curl was not initialized");
     curl_slist* curl_headers = build_slist(headers);
     curl_easy_reset(curl_);
     curl_easy_setopt(curl_, CURLOPT_CAINFO,
@@ -98,23 +111,20 @@ class CurlWrapperImpl : public CurlWrapper {
     if (curl_headers) {
       curl_slist_free_all(curl_headers);
     }
-    if (res != CURLE_OK) {
-      LOG(ERROR) << "curl_easy_perform() failed. "
-                 << "Code was \"" << res << "\". "
-                 << "Strerror was \"" << curl_easy_strerror(res) << "\". "
-                 << "Error buffer was \"" << error_buf << "\".";
-      return {"", -1};
-    }
+    CF_EXPECT(res == CURLE_OK,
+              "curl_easy_perform() failed. "
+                  << "Code was \"" << res << "\". "
+                  << "Strerror was \"" << curl_easy_strerror(res) << "\". "
+                  << "Error buffer was \"" << error_buf << "\".");
     long http_code = 0;
     curl_easy_getinfo(curl_, CURLINFO_RESPONSE_CODE, &http_code);
-    return {data_to_read.str(), http_code};
+    return HttpResponse<std::string>{data_to_read.str(), http_code};
   }
 
-  CurlResponse<Json::Value> PostToJson(
+  Result<HttpResponse<Json::Value>> PostToJson(
       const std::string& url, const std::string& data_to_write,
       const std::vector<std::string>& headers) override {
-    CurlResponse<std::string> response =
-        PostToString(url, data_to_write, headers);
+    auto response = CF_EXPECT(PostToString(url, data_to_write, headers));
     const std::string& contents = response.data;
     Json::CharReaderBuilder builder;
     std::unique_ptr<Json::CharReader> reader(builder.newCharReader());
@@ -126,10 +136,10 @@ class CurlWrapperImpl : public CurlWrapper {
       json["error"] = "Failed to parse json.";
       json["response"] = contents;
     }
-    return {json, response.http_code};
+    return HttpResponse<Json::Value>{json, response.http_code};
   }
 
-  CurlResponse<Json::Value> PostToJson(
+  Result<HttpResponse<Json::Value>> PostToJson(
       const std::string& url, const Json::Value& data_to_write,
       const std::vector<std::string>& headers) override {
     std::stringstream json_str;
@@ -137,19 +147,13 @@ class CurlWrapperImpl : public CurlWrapper {
     return PostToJson(url, json_str.str(), headers);
   }
 
-  CurlResponse<bool> DownloadToCallback(
-      DataCallback callback, const std::string& url,
-      const std::vector<std::string>& headers) {
+  Result<long> DownloadToCallback(DataCallback callback, const std::string& url,
+                                  const std::vector<std::string>& headers) {
     std::lock_guard<std::mutex> lock(mutex_);
     LOG(INFO) << "Attempting to download \"" << url << "\"";
-    if (!curl_) {
-      LOG(ERROR) << "curl was not initialized\n";
-      return {false, -1};
-    }
-    if (!callback(nullptr, 0)) {  // Signal start of data
-      LOG(ERROR) << "Callback failure\n";
-      return {false, -1};
-    }
+    CF_EXPECT(curl_ != nullptr, "curl was not initialized");
+    CF_EXPECT(callback(nullptr, 0) /* Signal start of data */,
+              "callback failure");
     curl_slist* curl_headers = build_slist(headers);
     curl_easy_reset(curl_);
     curl_easy_setopt(curl_, CURLOPT_CAINFO,
@@ -165,19 +169,17 @@ class CurlWrapperImpl : public CurlWrapper {
     if (curl_headers) {
       curl_slist_free_all(curl_headers);
     }
-    if (res != CURLE_OK) {
-      LOG(ERROR) << "curl_easy_perform() failed. "
-                 << "Code was \"" << res << "\". "
-                 << "Strerror was \"" << curl_easy_strerror(res) << "\". "
-                 << "Error buffer was \"" << error_buf << "\".";
-      return {false, -1};
-    }
+    CF_EXPECT(res == CURLE_OK,
+              "curl_easy_perform() failed. "
+                  << "Code was \"" << res << "\". "
+                  << "Strerror was \"" << curl_easy_strerror(res) << "\". "
+                  << "Error buffer was \"" << error_buf << "\".");
     long http_code = 0;
     curl_easy_getinfo(curl_, CURLINFO_RESPONSE_CODE, &http_code);
-    return {true, http_code};
+    return http_code;
   }
 
-  CurlResponse<std::string> DownloadToFile(
+  Result<HttpResponse<std::string>> DownloadToFile(
       const std::string& url, const std::string& path,
       const std::vector<std::string>& headers) {
     LOG(INFO) << "Attempting to save \"" << url << "\" to \"" << path << "\"";
@@ -190,40 +192,14 @@ class CurlWrapperImpl : public CurlWrapper {
       stream.write(data, size);
       return !stream.fail();
     };
-    auto callback_res = DownloadToCallback(callback, url, headers);
-    if (!callback_res.data) {
-      return {"", callback_res.http_code};
-    }
-    return {path, callback_res.http_code};
-    std::lock_guard<std::mutex> lock(mutex_);
-    if (!curl_) {
-      LOG(ERROR) << "curl was not initialized\n";
-      return {"", -1};
-    }
+    long http_code = CF_EXPECT(DownloadToCallback(callback, url, headers));
+    return HttpResponse<std::string>{path, http_code};
   }
 
-  CurlResponse<std::string> DownloadToString(
+  Result<HttpResponse<Json::Value>> DownloadToJson(
       const std::string& url, const std::vector<std::string>& headers) {
-    std::stringstream stream;
-    auto callback = [&stream](char* data, size_t size) -> bool {
-      if (data == nullptr) {
-        stream = std::stringstream();
-        return true;
-      }
-      stream.write(data, size);
-      return true;
-    };
-    auto callback_res = DownloadToCallback(callback, url, headers);
-    if (!callback_res.data) {
-      return {"", callback_res.http_code};
-    }
-    return {stream.str(), callback_res.http_code};
-  }
-
-  CurlResponse<Json::Value> DownloadToJson(
-      const std::string& url, const std::vector<std::string>& headers) {
-    CurlResponse<std::string> response = DownloadToString(url, headers);
-    const std::string& contents = response.data;
+    auto result = CF_EXPECT(GetToString(url, headers));
+    const std::string& contents = result.data;
     Json::CharReaderBuilder builder;
     std::unique_ptr<Json::CharReader> reader(builder.newCharReader());
     Json::Value json;
@@ -234,18 +210,15 @@ class CurlWrapperImpl : public CurlWrapper {
       json["error"] = "Failed to parse json.";
       json["response"] = contents;
     }
-    return {json, response.http_code};
+    return HttpResponse<Json::Value>{json, result.http_code};
   }
 
-  CurlResponse<Json::Value> DeleteToJson(
+  Result<HttpResponse<Json::Value>> DeleteToJson(
       const std::string& url,
       const std::vector<std::string>& headers) override {
     std::lock_guard<std::mutex> lock(mutex_);
     LOG(INFO) << "Attempting to download \"" << url << "\"";
-    if (!curl_) {
-      LOG(ERROR) << "curl was not initialized\n";
-      return {"", -1};
-    }
+    CF_EXPECT(curl_ != nullptr, "curl was not initialized");
     curl_slist* curl_headers = build_slist(headers);
     curl_easy_reset(curl_);
     curl_easy_setopt(curl_, CURLOPT_CUSTOMREQUEST, "DELETE");
@@ -263,13 +236,11 @@ class CurlWrapperImpl : public CurlWrapper {
     if (curl_headers) {
       curl_slist_free_all(curl_headers);
     }
-    if (res != CURLE_OK) {
-      LOG(ERROR) << "curl_easy_perform() failed. "
-                 << "Code was \"" << res << "\". "
-                 << "Strerror was \"" << curl_easy_strerror(res) << "\". "
-                 << "Error buffer was \"" << error_buf << "\".";
-      return {"", -1};
-    }
+    CF_EXPECT(res == CURLE_OK,
+              "curl_easy_perform() failed. "
+                  << "Code was \"" << res << "\". "
+                  << "Strerror was \"" << curl_easy_strerror(res) << "\". "
+                  << "Error buffer was \"" << error_buf << "\".");
     long http_code = 0;
     curl_easy_getinfo(curl_, CURLINFO_RESPONSE_CODE, &http_code);
 
@@ -284,7 +255,7 @@ class CurlWrapperImpl : public CurlWrapper {
       json["error"] = "Failed to parse json.";
       json["response"] = contents;
     }
-    return {json, http_code};
+    return HttpResponse<Json::Value>{json, http_code};
   }
 
   std::string UrlEscape(const std::string& text) override {
@@ -299,80 +270,93 @@ class CurlWrapperImpl : public CurlWrapper {
   std::mutex mutex_;
 };
 
-class CurlServerErrorRetryingWrapper : public CurlWrapper {
+class ServerErrorRetryClient : public HttpClient {
  public:
-  CurlServerErrorRetryingWrapper(CurlWrapper& inner, int retry_attempts,
-                                 std::chrono::milliseconds retry_delay)
-      : inner_curl_(inner),
+  ServerErrorRetryClient(HttpClient& inner, int retry_attempts,
+                         std::chrono::milliseconds retry_delay)
+      : inner_client_(inner),
         retry_attempts_(retry_attempts),
         retry_delay_(retry_delay) {}
 
-  CurlResponse<std::string> PostToString(
-      const std::string& url, const std::string& data,
-      const std::vector<std::string>& headers) override {
-    return RetryImpl<std::string>(
-        [&, this]() { return inner_curl_.PostToString(url, data, headers); });
+  Result<HttpResponse<std::string>> GetToString(
+      const std::string& url, const std::vector<std::string>& headers) {
+    auto fn = [&, this]() { return inner_client_.GetToString(url, headers); };
+    return CF_EXPECT(RetryImpl<std::string>(fn));
   }
 
-  CurlResponse<Json::Value> PostToJson(
+  Result<HttpResponse<std::string>> PostToString(
+      const std::string& url, const std::string& data,
+      const std::vector<std::string>& headers) override {
+    auto fn = [&, this]() {
+      return inner_client_.PostToString(url, data, headers);
+    };
+    return CF_EXPECT(RetryImpl<std::string>(fn));
+  }
+
+  Result<HttpResponse<Json::Value>> PostToJson(
       const std::string& url, const Json::Value& data,
       const std::vector<std::string>& headers) override {
-    return RetryImpl<Json::Value>(
-        [&, this]() { return inner_curl_.PostToJson(url, data, headers); });
+    auto fn = [&, this]() {
+      return inner_client_.PostToJson(url, data, headers);
+    };
+    return CF_EXPECT(RetryImpl<Json::Value>(fn));
   }
 
-  CurlResponse<Json::Value> PostToJson(
+  Result<HttpResponse<Json::Value>> PostToJson(
       const std::string& url, const std::string& data,
       const std::vector<std::string>& headers) override {
-    return RetryImpl<Json::Value>(
-        [&, this]() { return inner_curl_.PostToJson(url, data, headers); });
+    auto fn = [&, this]() {
+      return inner_client_.PostToJson(url, data, headers);
+    };
+    return CF_EXPECT(RetryImpl<Json::Value>(fn));
   }
 
-  CurlResponse<std::string> DownloadToFile(
+  Result<HttpResponse<std::string>> DownloadToFile(
       const std::string& url, const std::string& path,
       const std::vector<std::string>& headers) {
-    return RetryImpl<std::string>(
-        [&, this]() { return inner_curl_.DownloadToFile(url, path, headers); });
+    auto fn = [&, this]() {
+      return inner_client_.DownloadToFile(url, path, headers);
+    };
+    return CF_EXPECT(RetryImpl<std::string>(fn));
   }
 
-  CurlResponse<std::string> DownloadToString(
+  Result<HttpResponse<Json::Value>> DownloadToJson(
       const std::string& url, const std::vector<std::string>& headers) {
-    return RetryImpl<std::string>(
-        [&, this]() { return inner_curl_.DownloadToString(url, headers); });
+    auto fn = [&, this]() {
+      return inner_client_.DownloadToJson(url, headers);
+    };
+    return CF_EXPECT(RetryImpl<Json::Value>(fn));
   }
 
-  CurlResponse<Json::Value> DownloadToJson(
-      const std::string& url, const std::vector<std::string>& headers) {
-    return RetryImpl<Json::Value>(
-        [&, this]() { return inner_curl_.DownloadToJson(url, headers); });
-  }
-
-  CurlResponse<bool> DownloadToCallback(
+  Result<long> DownloadToCallback(
       DataCallback cb, const std::string& url,
       const std::vector<std::string>& hdrs) override {
-    return RetryImpl<bool>(
-        [&, this]() { return inner_curl_.DownloadToCallback(cb, url, hdrs); });
+    auto fn = [&, this]() { return DownloadToCallbackHelper(cb, url, hdrs); };
+    auto response = CF_EXPECT(RetryImpl<bool>(fn));
+    return response.http_code;
   }
-  CurlResponse<Json::Value> DeleteToJson(
+
+  Result<HttpResponse<Json::Value>> DeleteToJson(
       const std::string& url,
       const std::vector<std::string>& headers) override {
-    return RetryImpl<Json::Value>(
-        [&, this]() { return inner_curl_.DeleteToJson(url, headers); });
+    auto fn = [&, this]() { return inner_client_.DeleteToJson(url, headers); };
+    return CF_EXPECT(RetryImpl<Json::Value>(fn));
   }
 
   std::string UrlEscape(const std::string& text) override {
-    return inner_curl_.UrlEscape(text);
+    return inner_client_.UrlEscape(text);
   }
 
  private:
   template <typename T>
-  CurlResponse<T> RetryImpl(std::function<CurlResponse<T>()> attempt_fn) {
-    CurlResponse<T> response;
+  Result<HttpResponse<T>> RetryImpl(
+      std::function<Result<HttpResponse<T>>()> attempt_fn) {
+    HttpResponse<T> response;
     for (int attempt = 0; attempt != retry_attempts_; ++attempt) {
       if (attempt != 0) {
         std::this_thread::sleep_for(retry_delay_);
       }
-      response = attempt_fn();
+      response = CF_EXPECT(attempt_fn());
       if (!response.HttpServerError()) {
         return response;
       }
@@ -380,24 +364,34 @@ class CurlServerErrorRetryingWrapper : public CurlWrapper {
     return response;
   }
 
+  // Wraps the http_code into an HttpResponse<bool> instance in order to be
+  // reused in the RetryImpl function.
+  Result<HttpResponse<bool>> DownloadToCallbackHelper(
+      DataCallback cb, const std::string& url,
+      const std::vector<std::string>& hdrs) {
+    long http_code = CF_EXPECT(inner_client_.DownloadToCallback(cb, url, hdrs));
+    return HttpResponse<bool>{false /* irrelevant */, http_code};
+  }
+
  private:
-  CurlWrapper& inner_curl_;
+  HttpClient& inner_client_;
   int retry_attempts_;
   std::chrono::milliseconds retry_delay_;
 };
 
 }  // namespace
 
-/* static */ std::unique_ptr<CurlWrapper> CurlWrapper::Create() {
-  return std::unique_ptr<CurlWrapper>(new CurlWrapperImpl());
+/* static */ std::unique_ptr<HttpClient> HttpClient::CurlClient() {
+  return std::unique_ptr<HttpClient>(new class CurlClient());
 }
 
-/* static */ std::unique_ptr<CurlWrapper> CurlWrapper::WithServerErrorRetry(
-    CurlWrapper& inner, int retry_attempts,
+/* static */ std::unique_ptr<HttpClient> HttpClient::ServerErrorRetryClient(
+    HttpClient& inner, int retry_attempts,
     std::chrono::milliseconds retry_delay) {
-  return std::unique_ptr<CurlWrapper>(
-      new CurlServerErrorRetryingWrapper(inner, retry_attempts, retry_delay));
+  return std::unique_ptr<HttpClient>(
+      new class ServerErrorRetryClient(inner, retry_attempts, retry_delay));
 }
 
-CurlWrapper::~CurlWrapper() = default;
-}
+HttpClient::~HttpClient() = default;
+
+}  // namespace cuttlefish

@@ -21,9 +21,11 @@
 #include <curl/curl.h>
 
 #include <fstream>
+#include <future>
 #include <iostream>
 #include <iterator>
 #include <string>
+#include <thread>
 
 #include <android-base/logging.h>
 #include <android-base/strings.h>
@@ -68,6 +70,7 @@ DEFINE_string(directory, CurrentDirectory(), "Target directory to fetch "
 DEFINE_bool(run_next_stage, false, "Continue running the device through the next stage.");
 DEFINE_string(wait_retry_period, "20", "Retry period for pending builds given "
                                        "in seconds. Set to 0 to not wait.");
+DEFINE_bool(keep_downloaded_archives, false, "Keep downloaded zip/tar.");
 
 namespace cuttlefish {
 namespace {
@@ -122,7 +125,7 @@ Result<std::vector<std::string>> DownloadImages(
 
   std::vector<std::string> files = ExtractImages(local_path, target_directory, images);
   CF_EXPECT(!files.empty(), "Could not extract " << local_path);
-  if (unlink(local_path.c_str()) != 0) {
+  if (!FLAGS_keep_downloaded_archives && unlink(local_path.c_str()) != 0) {
     LOG(ERROR) << "Could not delete " << local_path;
     files.push_back(local_path);
   }
@@ -168,7 +171,7 @@ Result<std::vector<std::string>> DownloadHostPackage(
   for (auto& file : files) {
     file = target_directory + "/" + file;
   }
-  if (unlink(local_path.c_str()) != 0) {
+  if (!FLAGS_keep_downloaded_archives && unlink(local_path.c_str()) != 0) {
     LOG(ERROR) << "Could not delete " << local_path;
     files.push_back(local_path);
   }
@@ -243,7 +246,7 @@ Result<std::vector<std::string>> DownloadBoot(
     LOG(INFO) << "No vendor_boot.img in the img zip.";
   }
 
-  if (unlink(img_zip.c_str()) != 0) {
+  if (!FLAGS_keep_downloaded_archives && unlink(img_zip.c_str()) != 0) {
     LOG(ERROR) << "Could not delete " << img_zip;
   }
   return files;
@@ -286,7 +289,7 @@ std::string USAGE_MESSAGE =
     "\"build_id\" - build \"build_id\" for \"aosp_cf_x86_phone-userdebug\"\n";
 
 std::unique_ptr<CredentialSource> TryOpenServiceAccountFile(
-    CurlWrapper& curl, const std::string& path) {
+    HttpClient& http_client, const std::string& path) {
   LOG(VERBOSE) << "Attempting to open service account file \"" << path << "\"";
   Json::CharReaderBuilder builder;
   std::ifstream ifs(path);
@@ -299,8 +302,8 @@ std::unique_ptr<CredentialSource> TryOpenServiceAccountFile(
   }
   static constexpr char BUILD_SCOPE[] =
       "https://www.googleapis.com/auth/androidbuild.internal";
-  auto result =
-      ServiceAccountOauthCredentialSource::FromJson(curl, content, BUILD_SCOPE);
+  auto result = ServiceAccountOauthCredentialSource::FromJson(
+      http_client, content, BUILD_SCOPE);
   if (!result.ok()) {
     LOG(VERBOSE) << "Failed to load service account json file: \n"
                  << result.error();
@@ -308,6 +311,18 @@ std::unique_ptr<CredentialSource> TryOpenServiceAccountFile(
   }
   return std::unique_ptr<CredentialSource>(
       new ServiceAccountOauthCredentialSource(std::move(*result)));
+}
+
+Result<void> ProcessHostPackage(BuildApi& build_api, const Build& default_build,
+                                const std::string& target_dir,
+                                FetcherConfig* config) {
+  std::vector<std::string> host_package_files =
+      CF_EXPECT(DownloadHostPackage(build_api, default_build, target_dir));
+  CF_EXPECT(!host_package_files.empty(),
+            "Could not download host package for " << default_build);
+  CF_EXPECT(AddFilesToConfig(FileSource::DEFAULT_BUILD, default_build,
+                             host_package_files, config, target_dir));
+  return {};
 }
 
 } // namespace
@@ -330,14 +345,15 @@ Result<void> FetchCvdMain(int argc, char** argv) {
 
   curl_global_init(CURL_GLOBAL_DEFAULT);
   {
-    auto curl = CurlWrapper::Create();
-    auto retrying_curl = CurlWrapper::WithServerErrorRetry(
+    auto curl = HttpClient::CurlClient();
+    auto retrying_http_client = HttpClient::ServerErrorRetryClient(
         *curl, 10, std::chrono::milliseconds(5000));
     std::unique_ptr<CredentialSource> credential_source;
     if (auto crds = TryOpenServiceAccountFile(*curl, FLAGS_credential_source)) {
       credential_source = std::move(crds);
     } else if (FLAGS_credential_source == "gce") {
-      credential_source = GceMetadataCredentialSource::make(*retrying_curl);
+      credential_source =
+          GceMetadataCredentialSource::make(*retrying_http_client);
     } else if (FLAGS_credential_source == "") {
       std::string file = StringFromEnv("HOME", ".") + "/.acloud_oauth2.dat";
       LOG(VERBOSE) << "Probing acloud credentials at " << file;
@@ -358,17 +374,15 @@ Result<void> FetchCvdMain(int argc, char** argv) {
     } else {
       credential_source = FixedCredentialSource::make(FLAGS_credential_source);
     }
-    BuildApi build_api(*retrying_curl, credential_source.get(), FLAGS_api_key);
+    BuildApi build_api(*retrying_http_client, credential_source.get(),
+                       FLAGS_api_key);
 
     auto default_build = CF_EXPECT(ArgumentToBuild(
         build_api, FLAGS_default_build, DEFAULT_BUILD_TARGET, retry_period));
 
-    std::vector<std::string> host_package_files =
-        CF_EXPECT(DownloadHostPackage(build_api, default_build, target_dir));
-    CF_EXPECT(!host_package_files.empty(),
-              "Could not download host package for " << default_build);
-    CF_EXPECT(AddFilesToConfig(FileSource::DEFAULT_BUILD, default_build,
-                               host_package_files, &config, target_dir));
+    auto process_pkg_ret =
+        std::async(std::launch::async, ProcessHostPackage, std::ref(build_api),
+                   std::cref(default_build), std::cref(target_dir), &config);
 
     if (FLAGS_system_build != "" || FLAGS_kernel_build != "" || FLAGS_otatools_build != "") {
       auto ota_build = default_build;
@@ -418,10 +432,9 @@ Result<void> FetchCvdMain(int argc, char** argv) {
           build_api, FLAGS_system_build, DEFAULT_BUILD_TARGET, retry_period));
       bool system_in_img_zip = true;
       if (FLAGS_download_img_zip) {
-        std::vector<std::string> image_files =
-            CF_EXPECT(DownloadImages(build_api, system_build, target_dir,
-                                     {"system.img", "product.img"}));
-        if (image_files.empty()) {
+        auto image_files = DownloadImages(build_api, system_build, target_dir,
+                                          {"system.img", "product.img"});
+        if (!image_files.ok() || image_files->empty()) {
           LOG(INFO) << "Could not find system image for " << system_build
                     << "in the img zip. Assuming a super image build, which will "
                     << "get the system image from the target zip.";
@@ -429,7 +442,7 @@ Result<void> FetchCvdMain(int argc, char** argv) {
         } else {
           LOG(INFO) << "Adding img-zip files for system build";
           CF_EXPECT(AddFilesToConfig(FileSource::SYSTEM_BUILD, system_build,
-                                     image_files, &config, target_dir, true));
+                                     *image_files, &config, target_dir, true));
         }
       }
       std::string system_target_dir = target_dir + "/system";
@@ -547,6 +560,10 @@ Result<void> FetchCvdMain(int argc, char** argv) {
       CF_EXPECT(AddFilesToConfig(FileSource::BOOTLOADER_BUILD, bootloader_build,
                                  {local_path}, &config, target_dir, true));
     }
+
+    // Wait for ProcessHostPackage to return.
+    CF_EXPECT(process_pkg_ret.get(),
+              "Could not download host package for " << default_build);
   }
   curl_global_cleanup();
 

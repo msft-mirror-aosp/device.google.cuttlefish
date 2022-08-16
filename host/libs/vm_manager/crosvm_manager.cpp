@@ -79,7 +79,8 @@ std::vector<std::string> CrosvmManager::ConfigureGraphics(
       "androidboot.hardware.gralloc=minigbm",
       "androidboot.hardware.hwcomposer=drm",
       "androidboot.hardware.egl=mesa",
-    };
+      // No "hardware" Vulkan support, yet
+      "androidboot.opengles.version=196608"};  // OpenGL ES 3.0
   }
   if (config.gpu_mode() == kGpuModeGfxStream) {
     std::string gles_impl = config.enable_gpu_angle() ? "angle" : "emulation";
@@ -140,17 +141,28 @@ Result<std::vector<Command>> CrosvmManager::StartCommands(
     crosvm_cmd.Cmd().AddParameter("--gdb=", config.gdb_port());
   }
 
-  auto gpu_capture_enabled = !config.gpu_capture_binary().empty();
-  auto gpu_mode = config.gpu_mode();
-  auto udmabuf_string = config.enable_gpu_udmabuf() ? "true" : "false";
-  auto angle_string = config.enable_gpu_angle() ? ",angle=true" : "";
+  const auto gpu_capture_enabled = !config.gpu_capture_binary().empty();
+  const auto gpu_mode = config.gpu_mode();
+
+  const std::string gpu_angle_string =
+      config.enable_gpu_angle() ? ",angle=true" : "";
+  // 256MB so it is small enough for a 32-bit kernel.
+  const std::string gpu_pci_bar_size = ",pci-bar-size=268435456";
+  const std::string gpu_udmabuf_string =
+      config.enable_gpu_udmabuf() ? ",udmabuf=true" : "";
+
+  const std::string gpu_common_string = gpu_udmabuf_string + gpu_pci_bar_size;
+  const std::string gpu_common_3d_string =
+      gpu_common_string + ",egl=true,surfaceless=true,glx=false,gles=true";
+
   if (gpu_mode == kGpuModeGuestSwiftshader) {
-    crosvm_cmd.Cmd().AddParameter("--gpu=2D,udmabuf=", udmabuf_string);
-  } else if (gpu_mode == kGpuModeDrmVirgl || gpu_mode == kGpuModeGfxStream) {
-    crosvm_cmd.Cmd().AddParameter(
-        gpu_mode == kGpuModeGfxStream ? "--gpu=gfxstream," : "--gpu=",
-        "egl=true,surfaceless=true,glx=false,gles=true,udmabuf=", udmabuf_string,
-        angle_string);
+    crosvm_cmd.Cmd().AddParameter("--gpu=backend=2D", gpu_common_string);
+  } else if (gpu_mode == kGpuModeDrmVirgl) {
+    crosvm_cmd.Cmd().AddParameter("--gpu=backend=virglrenderer",
+                                  gpu_common_3d_string);
+  } else if (gpu_mode == kGpuModeGfxStream) {
+    crosvm_cmd.Cmd().AddParameter("--gpu=backend=gfxstream",
+                                  gpu_common_3d_string, gpu_angle_string);
   }
 
   for (const auto& display_config : config.display_configs()) {
@@ -258,12 +270,12 @@ Result<std::vector<Command>> CrosvmManager::StartCommands(
   crosvm_cmd.AddHvcReadOnly(instance.kernel_log_pipe_name(),
                             config.enable_kernel_log());
 
-  if (config.console()) {
+  if (instance.console()) {
     // stdin is the only currently supported way to write data to a serial port in
     // crosvm. A file (named pipe) is used here instead of stdout to ensure only
     // the serial port output is received by the console forwarder as crosvm may
     // print other messages to stdout.
-    if (config.kgdb() || config.use_bootloader()) {
+    if (instance.kgdb() || instance.use_bootloader()) {
       crosvm_cmd.AddSerialConsoleReadWrite(instance.console_out_pipe_name(),
                                            instance.console_in_pipe_name(),
                                            config.enable_kernel_log());
@@ -284,7 +296,7 @@ Result<std::vector<Command>> CrosvmManager::StartCommands(
     // In kgdb mode, earlycon is an interactive console, and so early
     // dmesg will go there instead of the kernel.log
     if (config.enable_kernel_log() &&
-        (config.kgdb() || config.use_bootloader())) {
+        (instance.kgdb() || instance.use_bootloader())) {
       crosvm_cmd.AddSerialConsoleReadOnly(instance.kernel_log_pipe_name());
     }
 
@@ -349,8 +361,7 @@ Result<std::vector<Command>> CrosvmManager::StartCommands(
                           << " devices");
 
   if (config.enable_audio()) {
-    crosvm_cmd.Cmd().AddParameter(
-        "--sound=", config.ForDefaultInstance().audio_server_path());
+    crosvm_cmd.Cmd().AddParameter("--sound=", instance.audio_server_path());
   }
 
   // TODO(b/162071003): virtiofs crashes without sandboxing, this should be fixed
@@ -448,5 +459,4 @@ Result<std::vector<Command>> CrosvmManager::StartCommands(
 }
 
 } // namespace vm_manager
-} // namespace cuttlefish
-
+}  // namespace cuttlefish

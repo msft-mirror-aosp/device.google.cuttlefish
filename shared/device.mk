@@ -183,6 +183,7 @@ PRODUCT_PACKAGES += \
     tombstone_producer \
     suspend_blocker \
     vsoc_input_service \
+    metrics_helper \
 
 $(call soong_config_append,cvd,launch_configs,cvd_config_auto.json cvd_config_foldable.json cvd_config_go.json cvd_config_phone.json cvd_config_slim.json cvd_config_tablet.json cvd_config_tv.json cvd_config_wear.json)
 $(call soong_config_append,cvd,grub_config,grub.cfg)
@@ -206,6 +207,11 @@ PRODUCT_PACKAGES += \
     libEGL_angle \
     libGLESv1_CM_angle \
     libGLESv2_angle
+
+# Enable the ANGLE feature to prefer linear filtering for YUV AHBs
+# to pass android.media.decoder.cts.DecodeAccuracyTest.
+PRODUCT_VENDOR_PROPERTIES += \
+    debug.angle.feature_overrides_enabled=preferLinearFilterForYUV
 
 # GL implementation for virgl
 PRODUCT_PACKAGES += \
@@ -468,18 +474,6 @@ PRODUCT_COPY_FILES += $(LOCAL_AUDIO_PRODUCT_COPY_FILES)
 DEVICE_PACKAGE_OVERLAYS += $(LOCAL_AUDIO_DEVICE_PACKAGE_OVERLAYS)
 
 #
-# BiometricsFace HAL (HIDL)
-#
-PRODUCT_PACKAGES += \
-    android.hardware.biometrics.face@1.0-service.example
-
-#
-# BiometricsFingerprint HAL (HIDL)
-#
-PRODUCT_PACKAGES += \
-    android.hardware.biometrics.fingerprint@2.2-service.example
-
-#
 # BiometricsFace HAL (AIDL)
 #
 PRODUCT_PACKAGES += \
@@ -670,9 +664,7 @@ endif
 
 # BootControl HAL
 PRODUCT_PACKAGES += \
-    android.hardware.boot@1.2-impl \
-    android.hardware.boot@1.2-impl.recovery \
-    android.hardware.boot@1.2-service
+    android.hardware.boot-service.default
 
 # RebootEscrow HAL
 PRODUCT_PACKAGES += \

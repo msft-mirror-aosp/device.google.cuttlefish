@@ -94,8 +94,6 @@ class CuttlefishConfig {
   std::string assembly_dir() const;
   std::string AssemblyPath(const std::string&) const;
 
-  std::string os_composite_disk_path() const;
-
   std::string vm_manager() const;
   void set_vm_manager(const std::string& name);
 
@@ -145,14 +143,20 @@ class CuttlefishConfig {
   void set_setupwizard_mode(const std::string& title);
   std::string setupwizard_mode() const;
 
+  void set_enable_bootanimation(const bool enable_bootanimation);
+  bool enable_bootanimation() const;
+
   void set_qemu_binary_dir(const std::string& qemu_binary_dir);
   std::string qemu_binary_dir() const;
 
   void set_crosvm_binary(const std::string& crosvm_binary);
   std::string crosvm_binary() const;
 
-  void set_gem5_binary_dir(const std::string& gem5_binary_dir);
-  std::string gem5_binary_dir() const;
+  void set_gem5_debug_file(const std::string& gem5_debug_file);
+  std::string gem5_debug_file() const;
+
+  void set_gem5_debug_flags(const std::string& gem5_debug_flags);
+  std::string gem5_debug_flags() const;
 
   void set_enable_sandbox(const bool enable_sandbox);
   bool enable_sandbox() const;
@@ -190,12 +194,6 @@ class CuttlefishConfig {
   void set_bootloader(const std::string& bootloader_path);
   std::string bootloader() const;
 
-  // TODO (b/163575714) add virtio console support to the bootloader so the
-  // virtio console path for the console device can be taken again. When that
-  // happens, this function can be deleted along with all the code paths it
-  // forces.
-  bool use_bootloader() const { return true; };
-
   void set_boot_slot(const std::string& boot_slot);
   std::string boot_slot() const;
 
@@ -204,6 +202,20 @@ class CuttlefishConfig {
 
   void set_enable_host_bluetooth(bool enable_host_bluetooth);
   bool enable_host_bluetooth() const;
+
+  // Bluetooth is enabled by bt_connector and rootcanal
+  void set_enable_host_bluetooth_connector(bool enable_host_bluetooth);
+  bool enable_host_bluetooth_connector() const;
+
+  // Flags for the set of radios that are connected to netsim
+  enum NetsimRadio {
+    Bluetooth = 0b00000001,
+    Wifi      = 0b00000010,
+    Uwb       = 0b00000100,
+  };
+
+  void netsim_radio_enable(NetsimRadio flag);
+  bool netsim_radio_enabled(NetsimRadio flag) const;
 
   enum Answer {
     kUnknown = 0,
@@ -267,15 +279,6 @@ class CuttlefishConfig {
   // The dns address of mobile network (RIL)
   void set_ril_dns(const std::string& ril_dns);
   std::string ril_dns() const;
-
-  // KGDB configuration for kernel debugging
-  void set_kgdb(bool kgdb);
-  bool kgdb() const;
-
-  // Serial console
-  void set_console(bool console);
-  bool console() const;
-  std::string console_dev() const;
 
   // Kernel and bootloader logging
   void set_enable_kernel_log(bool enable_kernel_log);
@@ -342,9 +345,6 @@ class CuttlefishConfig {
 
   void set_protected_vm(bool protected_vm);
   bool protected_vm() const;
-
-  void set_target_arch(Arch target_arch);
-  Arch target_arch() const;
 
   void set_bootconfig_supported(bool bootconfig_supported);
   bool bootconfig_supported() const;
@@ -442,8 +442,6 @@ class CuttlefishConfig {
     std::string switches_socket_path() const;
     std::string frames_socket_path() const;
 
-    int confui_host_vsock_port() const;
-
     std::string access_kregistry_path() const;
 
     std::string hwcomposer_pmem_path() const;
@@ -474,6 +472,8 @@ class CuttlefishConfig {
 
     std::string persistent_composite_disk_path() const;
 
+    std::string os_composite_disk_path() const;
+
     std::string uboot_env_image_path() const;
 
     std::string audio_server_path() const;
@@ -498,6 +498,9 @@ class CuttlefishConfig {
     // Whether this instance should start a rootcanal instance
     bool start_rootcanal() const;
 
+    // Whether this instance should start a netsim instance
+    bool start_netsim() const;
+
     // Whether this instance should start an ap instance
     bool start_ap() const;
 
@@ -511,6 +514,25 @@ class CuttlefishConfig {
     std::string vbmeta_path() const;
 
     std::string id() const;
+
+    std::string gem5_binary_dir() const;
+
+    std::string gem5_checkpoint_dir() const;
+
+    // Serial console
+    bool console() const;
+    std::string console_dev() const;
+
+    // KGDB configuration for kernel debugging
+    bool kgdb() const;
+
+    // TODO (b/163575714) add virtio console support to the bootloader so the
+    // virtio console path for the console device can be taken again. When that
+    // happens, this function can be deleted along with all the code paths it
+    // forces.
+    bool use_bootloader() const;
+
+    Arch target_arch() const;
   };
 
   // A view into an existing CuttlefishConfig object for a particular instance.
@@ -537,7 +559,6 @@ class CuttlefishConfig {
     void set_adb_host_port(int adb_host_port);
     void set_modem_simulator_host_id(int modem_simulator_id);
     void set_adb_ip_and_port(const std::string& ip_port);
-    void set_confui_host_vsock_port(int confui_host_port);
     void set_camera_server_port(int camera_server_port);
     void set_mobile_bridge_name(const std::string& mobile_bridge_name);
     void set_mobile_tap_name(const std::string& mobile_tap_name);
@@ -555,6 +576,7 @@ class CuttlefishConfig {
     void set_start_webrtc_sig_server_proxy(bool start);
     void set_start_wmediumd(bool start);
     void set_start_rootcanal(bool start);
+    void set_start_netsim(bool start);
     void set_start_ap(bool start);
     // Wifi MAC address inside the guest
     void set_wifi_mac_prefix(const int wifi_mac_prefix);
@@ -564,6 +586,12 @@ class CuttlefishConfig {
     void set_gnss_file_path(const std::string &gnss_file_path);
     void set_fixed_location_file_path(
         const std::string& fixed_location_file_path);
+    void set_gem5_binary_dir(const std::string& gem5_binary_dir);
+    void set_gem5_checkpoint_dir(const std::string& gem5_checkpoint_dir);
+    // Serial console
+    void set_console(bool console);
+    void set_kgdb(bool kgdb);
+    void set_target_arch(Arch target_arch);
   };
 
  private:
