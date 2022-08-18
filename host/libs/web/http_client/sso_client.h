@@ -16,7 +16,7 @@
 #pragma once
 
 #include "common/libs/utils/subprocess.h"
-#include "host/libs/web/http_client.h"
+#include "host/libs/web/http_client/http_client.h"
 
 namespace cuttlefish {
 namespace http_client {
@@ -37,35 +37,31 @@ class SsoClient : public HttpClient {
       const std::string& url,
       const std::vector<std::string>& headers = {}) override;
 
-  HttpResponse<std::string> PostToString(
+  Result<HttpResponse<std::string>> PostToString(
       const std::string&, const std::string&,
       const std::vector<std::string>& headers = {}) override;
 
-  HttpResponse<Json::Value> PostToJson(
+  Result<HttpResponse<Json::Value>> PostToJson(
       const std::string&, const std::string&,
       const std::vector<std::string>& headers = {}) override;
 
-  HttpResponse<Json::Value> PostToJson(
+  Result<HttpResponse<Json::Value>> PostToJson(
       const std::string&, const Json::Value&,
       const std::vector<std::string>& headers = {}) override;
 
-  HttpResponse<std::string> DownloadToFile(
+  Result<HttpResponse<std::string>> DownloadToFile(
       const std::string&, const std::string&,
       const std::vector<std::string>& headers = {}) override;
 
-  HttpResponse<std::string> DownloadToString(
+  Result<HttpResponse<Json::Value>> DownloadToJson(
       const std::string&,
       const std::vector<std::string>& headers = {}) override;
 
-  HttpResponse<Json::Value> DownloadToJson(
-      const std::string&,
-      const std::vector<std::string>& headers = {}) override;
-
-  HttpResponse<bool> DownloadToCallback(
+  Result<long> DownloadToCallback(
       DataCallback, const std::string&,
       const std::vector<std::string>& headers = {}) override;
 
-  HttpResponse<Json::Value> DeleteToJson(
+  Result<HttpResponse<Json::Value>> DeleteToJson(
       const std::string&,
       const std::vector<std::string>& headers = {}) override;
 
