@@ -24,7 +24,6 @@ cc_library {
         "-Wno-unused-parameter",
     ],
     srcs: [
-        "RefRadioNetwork.cpp",
         "ril.cpp",
         "RilSapSocket.cpp",
         "ril_config.cpp",

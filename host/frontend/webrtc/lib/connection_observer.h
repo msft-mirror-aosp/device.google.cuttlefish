@@ -60,7 +60,6 @@ class ConnectionObserver {
   virtual void OnLidStateChange(bool lid_open) = 0;
   virtual void OnHingeAngleChange(int hinge_angle) = 0;
   virtual void OnPowerButton(bool button_down) = 0;
-  virtual void OnBackButton(bool button_down) = 0;
   virtual void OnHomeButton(bool button_down) = 0;
   virtual void OnMenuButton(bool button_down) = 0;
   virtual void OnVolumeDownButton(bool button_down) = 0;

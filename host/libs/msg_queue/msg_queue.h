@@ -21,16 +21,14 @@ namespace cuttlefish {
 class SysVMessageQueue {
  public:
   static std::unique_ptr<SysVMessageQueue> Create(const std::string& path,
-                                                  char proj_id,
-                                                  bool auto_close = true);
+                                                  char proj_id);
   ~SysVMessageQueue();
 
   int Send(void* data, size_t size, bool block);
   ssize_t Receive(void* data, size_t size, long msgtyp, bool block);
 
  private:
-  SysVMessageQueue(int msgid, bool auto_close);
-  int msgid_;
-  bool auto_close_;
+  SysVMessageQueue(int msgid);
+  int msgid;
 };
 }  // namespace cuttlefish

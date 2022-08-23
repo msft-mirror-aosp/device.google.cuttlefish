@@ -29,7 +29,6 @@ import android.net.ConnectivityManager;
 import android.util.Log;
 import android.os.IBinder;
 import android.view.Display;
-import android.view.Surface;
 import android.view.WindowManager;
 import java.io.FileDescriptor;
 import java.io.PrintWriter;
@@ -130,18 +129,7 @@ public class GceService extends Service {
     }
 
     private int getRotation() {
-      int rot = mWindowManager.getDefaultDisplay().getRotation();
-      switch (rot) {
-        case Surface.ROTATION_0:
-          return 0;
-        case Surface.ROTATION_90:
-          return 90;
-        case Surface.ROTATION_180:
-          return 180;
-        case Surface.ROTATION_270:
-          return 270;
-      }
-      throw new IllegalStateException("Rotation should be one of 0,90,180,270");
+      return mWindowManager.getDefaultDisplay().getRotation();
     }
 
     @Override

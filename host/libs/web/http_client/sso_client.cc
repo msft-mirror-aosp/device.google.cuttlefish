@@ -66,39 +66,44 @@ Result<HttpResponse<std::string>> SsoClient::GetToString(
   return HttpResponse<std::string>{body, status_code};
 }
 
-Result<HttpResponse<std::string>> SsoClient::PostToString(
+HttpResponse<std::string> SsoClient::PostToString(
     const std::string&, const std::string&, const std::vector<std::string>&) {
-  return CF_ERR("Not implemented");
+  return {"", 400};
 };
 
-Result<HttpResponse<Json::Value>> SsoClient::PostToJson(
+HttpResponse<Json::Value> SsoClient::PostToJson(
     const std::string&, const std::string&, const std::vector<std::string>&) {
-  return CF_ERR("Not implemented");
+  return {Json::Value(), 400};
 }
 
-Result<HttpResponse<Json::Value>> SsoClient::PostToJson(
+HttpResponse<Json::Value> SsoClient::PostToJson(
     const std::string&, const Json::Value&, const std::vector<std::string>&) {
-  return CF_ERR("Not implemented");
+  return {Json::Value(), 400};
 }
 
-Result<HttpResponse<std::string>> SsoClient::DownloadToFile(
+HttpResponse<std::string> SsoClient::DownloadToFile(
     const std::string&, const std::string&, const std::vector<std::string>&) {
-  return CF_ERR("Not implemented");
+  return {"", 400};
 }
 
-Result<HttpResponse<Json::Value>> SsoClient::DownloadToJson(
+HttpResponse<std::string> SsoClient::DownloadToString(
     const std::string&, const std::vector<std::string>&) {
-  return CF_ERR("Not implemented");
+  return {"", 400};
 }
 
-Result<long> SsoClient::DownloadToCallback(DataCallback, const std::string&,
-                                           const std::vector<std::string>&) {
-  return CF_ERR("Not implemented");
-}
-
-Result<HttpResponse<Json::Value>> SsoClient::DeleteToJson(
+HttpResponse<Json::Value> SsoClient::DownloadToJson(
     const std::string&, const std::vector<std::string>&) {
-  return CF_ERR("Not implemented");
+  return {Json::Value(), 400};
+}
+
+HttpResponse<bool> SsoClient::DownloadToCallback(
+    DataCallback, const std::string&, const std::vector<std::string>&) {
+  return {false, 400};
+}
+
+HttpResponse<Json::Value> SsoClient::DeleteToJson(
+    const std::string&, const std::vector<std::string>&) {
+  return {Json::Value(), 400};
 }
 
 std::string SsoClient::UrlEscape(const std::string&) { return ""; }

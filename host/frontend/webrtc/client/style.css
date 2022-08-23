@@ -72,12 +72,7 @@ body {
 }
 
 #error-message-div {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  z-index: 999;
-  opacity: 0.97;
+  flex-grow: 1;
 }
 #error-message {
   color: white;
@@ -281,8 +276,6 @@ body {
   max-height: 100vh;
   /* Allows child elements to be positioned relative to this element. */
   position: relative;
-  display: flex;
-  flex-direction: row;
 }
 
 /*
@@ -291,17 +284,8 @@ body {
  * rotating.
  */
 .device-display {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  flex-grow: 1;
-  margin: 10px;
-  visibility: hidden;
-}
-
-.device-video-container {
-  flex-grow: 1;
-  overflow: hidden;
+  /* Prevents #device-displays from using this element when computing flex size. */
+  position: absolute;
 }
 
 /* Container <div> to show info about the individual display. */
@@ -314,14 +298,12 @@ body {
   border-radius: 10px;
   padding: 10px;
   margin-bottom: 10px;
-  flex-grow: 0;
-  flex-shrink: 0;
 }
 
 /* The actual <video> element for each display. */
 .device-display-video {
-  position: relative;
-  max-width: 100%;
-  max-height: 100%;
+  position: absolute;
+  left:  0px;
   touch-action: none;
+  object-fit: cover;
 }
