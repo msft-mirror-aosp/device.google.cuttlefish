@@ -74,10 +74,10 @@ DEFINE_string(display3, "", kDisplayHelp);
 
 // TODO(b/171305898): mark these as deprecated after multi-display is fully
 // enabled.
-DEFINE_int32(x_res, 0, "Width of the screen in pixels");
-DEFINE_int32(y_res, 0, "Height of the screen in pixels");
-DEFINE_int32(dpi, 0, "Pixels per inch for the screen");
-DEFINE_int32(refresh_rate_hz, 60, "Screen refresh rate in Hertz");
+DEFINE_string(x_res, "0", "Width of the screen in pixels");
+DEFINE_string(y_res, "0", "Height of the screen in pixels");
+DEFINE_string(dpi, "0", "Pixels per inch for the screen");
+DEFINE_string(refresh_rate_hz, "60", "Screen refresh rate in Hertz");
 DEFINE_string(kernel_path, "",
               "Path to the kernel. Overrides the one from the boot image");
 DEFINE_string(initramfs_path, "", "Path to the initramfs");
@@ -347,6 +347,10 @@ DEFINE_uint32(camera_server_port, 0, "camera vsock port");
 
 DEFINE_string(userdata_format, "f2fs", "The userdata filesystem format");
 
+DEFINE_bool(use_overlay, true,
+            "Capture disk writes an overlay. This is a "
+            "prerequisite for powerwash_cvd or multiple instances.");
+
 DECLARE_string(assembly_dir);
 DECLARE_string(boot_image);
 DECLARE_string(system_image_dir);
@@ -509,40 +513,6 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
   }
   tmp_config_obj.set_vm_manager(FLAGS_vm_manager);
 
-  std::vector<CuttlefishConfig::DisplayConfig> display_configs;
-
-  auto display0 = ParseDisplayConfig(FLAGS_display0);
-  if (display0) {
-    display_configs.push_back(*display0);
-  }
-  auto display1 = ParseDisplayConfig(FLAGS_display1);
-  if (display1) {
-    display_configs.push_back(*display1);
-  }
-  auto display2 = ParseDisplayConfig(FLAGS_display2);
-  if (display2) {
-    display_configs.push_back(*display2);
-  }
-  auto display3 = ParseDisplayConfig(FLAGS_display3);
-  if (display3) {
-    display_configs.push_back(*display3);
-  }
-
-  if (FLAGS_x_res > 0 && FLAGS_y_res > 0) {
-    if (display_configs.empty()) {
-      display_configs.push_back({
-          .width = FLAGS_x_res,
-          .height = FLAGS_y_res,
-          .dpi = FLAGS_dpi,
-          .refresh_rate_hz = FLAGS_refresh_rate_hz,
-      });
-    } else {
-      LOG(WARNING) << "Ignoring --x_res and --y_res when --displayN specified.";
-    }
-  }
-
-  tmp_config_obj.set_display_configs(display_configs);
-
   const GraphicsAvailability graphics_availability =
     GetGraphicsAvailabilityWithSubprocessCheck();
 
@@ -612,6 +582,15 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
       }
   }
 
+  // The device needs to avoid having both hwcomposer2.4 and hwcomposer3
+  // services running at the same time so warn the user to manually build
+  // in drm_hwcomposer when needed.
+  if (tmp_config_obj.hwcomposer() == kHwComposerAuto) {
+    LOG(WARNING) << "In order to run with --hwcomposer=drm. Please make sure "
+                    "Cuttlefish was built with "
+                    "TARGET_ENABLE_DRMHWCOMPOSER=true.";
+  }
+
   tmp_config_obj.set_enable_gpu_udmabuf(FLAGS_enable_gpu_udmabuf);
   tmp_config_obj.set_enable_gpu_angle(FLAGS_enable_gpu_angle);
 
@@ -629,7 +608,6 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
 
   CHECK(!FLAGS_smt || FLAGS_cpus % 2 == 0)
       << "CPUs must be a multiple of 2 in SMT mode";
-  tmp_config_obj.set_cpus(FLAGS_cpus);
   tmp_config_obj.set_smt(FLAGS_smt);
 
   tmp_config_obj.set_memory_mb(FLAGS_memory_mb);
@@ -640,8 +618,6 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
   auto secure_hals = android::base::Split(FLAGS_secure_hals, ",");
   tmp_config_obj.set_secure_hals(
       std::set<std::string>(secure_hals.begin(), secure_hals.end()));
-
-  tmp_config_obj.set_gdb_port(FLAGS_gdb_port);
 
   tmp_config_obj.set_guest_enforce_security(FLAGS_guest_enforce_security);
   tmp_config_obj.set_extra_kernel_cmdline(FLAGS_extra_kernel_cmdline);
@@ -755,9 +731,15 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
 
   tmp_config_obj.set_userdata_format(FLAGS_userdata_format);
 
+  // old flags but vectorized for multi-device instances
   std::vector<std::string> gnss_file_paths = android::base::Split(FLAGS_gnss_file_path, ",");
   std::vector<std::string> fixed_location_file_paths =
       android::base::Split(FLAGS_fixed_location_file_path, ",");
+  std::vector<std::string> x_res_vec = android::base::Split(FLAGS_x_res, ",");
+  std::vector<std::string> y_res_vec = android::base::Split(FLAGS_y_res, ",");
+  std::vector<std::string> dpi_vec = android::base::Split(FLAGS_dpi, ",");
+  std::vector<std::string> refresh_rate_hz_vec =
+      android::base::Split(FLAGS_refresh_rate_hz, ",");
 
   // new instance specific flags (moved from common flags)
   std::vector<std::string> gem5_binary_dirs =
@@ -767,6 +749,9 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
 
   auto instance_nums = InstanceNumsCalculator().FromGlobalGflags().Calculate();
   CHECK(instance_nums.ok()) << instance_nums.error();
+
+  CHECK(FLAGS_use_overlay || instance_nums->size() == 1)
+      << "`--use_overlay=false` is incompatible with multiple instances";
 
   bool is_first_instance = true;
   int instance_index = 0;
@@ -805,6 +790,88 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
     instance.set_target_arch(kernel_config.target_arch);
     instance.set_console(FLAGS_console);
     instance.set_kgdb(FLAGS_console && FLAGS_kgdb);
+    instance.set_cpus(FLAGS_cpus);
+    instance.set_gdb_port(FLAGS_gdb_port);
+
+    std::vector<CuttlefishConfig::DisplayConfig> display_configs;
+    auto display0 = ParseDisplayConfig(FLAGS_display0);
+    if (display0) {
+      display_configs.push_back(*display0);
+    }
+    auto display1 = ParseDisplayConfig(FLAGS_display1);
+    if (display1) {
+      display_configs.push_back(*display1);
+    }
+    auto display2 = ParseDisplayConfig(FLAGS_display2);
+    if (display2) {
+      display_configs.push_back(*display2);
+    }
+    auto display3 = ParseDisplayConfig(FLAGS_display3);
+    if (display3) {
+      display_configs.push_back(*display3);
+    }
+
+    int x_res = 0;
+    if (instance_index < x_res_vec.size()) {
+      if (!android::base::ParseInt(x_res_vec[instance_index].c_str(), &x_res)) {
+        LOG(ERROR) << "Failed to parse value \"" << x_res_vec[instance_index]
+                   << "\" for x_res";
+      }
+    } else if (x_res_vec.size() == 1) {
+      if (!android::base::ParseInt(x_res_vec[0].c_str(), &x_res)) {
+        LOG(ERROR) << "Failed to parse value \"" << x_res_vec[0]
+                   << "\" for x_res";
+      }
+    }
+    int y_res = 0;
+    if (instance_index < y_res_vec.size()) {
+      if (!android::base::ParseInt(y_res_vec[instance_index].c_str(), &y_res)) {
+        LOG(ERROR) << "Failed to parse value \"" << y_res_vec[instance_index]
+                   << "\" for y_res";
+      }
+    } else if (y_res_vec.size() == 1) {
+      if (!android::base::ParseInt(y_res_vec[0].c_str(), &y_res)) {
+        LOG(ERROR) << "Failed to parse value \"" << y_res_vec[0]
+                   << "\" for y_res";
+      }
+    }
+    int dpi = 0;
+    if (instance_index < dpi_vec.size()) {
+      if (!android::base::ParseInt(dpi_vec[instance_index].c_str(), &dpi)) {
+        LOG(ERROR) << "Failed to parse value \"" << dpi_vec[instance_index]
+                   << "\" for dpi";
+      }
+    } else if (dpi_vec.size() == 1) {
+      if (!android::base::ParseInt(dpi_vec[0].c_str(), &dpi)) {
+        LOG(ERROR) << "Failed to parse value \"" << dpi_vec[0]
+                   << "\" for dpi";
+      }
+    }
+    int refresh_rate_hz = 0;
+    if (instance_index < refresh_rate_hz_vec.size()) {
+      if (!android::base::ParseInt(refresh_rate_hz_vec[instance_index].c_str(), &refresh_rate_hz)) {
+        LOG(ERROR) << "Failed to parse value \"" << refresh_rate_hz_vec[instance_index]
+                   << "\" for refresh_rate_hz";
+      }
+    } else if (refresh_rate_hz_vec.size() == 1) {
+      if (!android::base::ParseInt(refresh_rate_hz_vec[0].c_str(), &refresh_rate_hz)) {
+        LOG(ERROR) << "Failed to parse value \"" << refresh_rate_hz_vec[0]
+                   << "\" for refresh_rate_hz";
+      }
+    }
+    if (x_res > 0 && y_res > 0) {
+      if (display_configs.empty()) {
+        display_configs.push_back({
+            .width = x_res,
+            .height = y_res,
+            .dpi = dpi,
+            .refresh_rate_hz = refresh_rate_hz,
+          });
+      } else {
+        LOG(WARNING) << "Ignoring --x_res and --y_res when --displayN specified.";
+      }
+    }
+    instance.set_display_configs(display_configs);
 
     if (instance_index < gem5_binary_dirs.size()) {
       instance.set_gem5_binary_dir(gem5_binary_dirs[instance_index]);
@@ -857,26 +924,36 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
 
     instance.set_camera_server_port(FLAGS_camera_server_port);
 
-    if (FLAGS_protected_vm) {
-      instance.set_virtual_disk_paths(
-          {const_instance.PerInstancePath("os_composite.img")});
+    std::vector<std::string> virtual_disk_paths;
+
+    bool os_overlay = true;
+    os_overlay &= !FLAGS_protected_vm;
+    // Gem5 already uses CoW wrappers around disk images
+    os_overlay &= FLAGS_vm_manager != Gem5Manager::name();
+    os_overlay &= FLAGS_use_overlay;
+    if (os_overlay) {
+      auto path = const_instance.PerInstancePath("overlay.img");
+      virtual_disk_paths.push_back(path);
     } else {
-      std::vector<std::string> virtual_disk_paths = {
-          const_instance.PerInstancePath("persistent_composite.img"),
-      };
-      if (FLAGS_vm_manager != Gem5Manager::name()) {
-        virtual_disk_paths.insert(virtual_disk_paths.begin(),
-            const_instance.PerInstancePath("overlay.img"));
-      } else {
-        // Gem5 already uses CoW wrappers around disk images
-        virtual_disk_paths.insert(virtual_disk_paths.begin(),
-            const_instance.os_composite_disk_path());
-      }
-      if (FLAGS_use_sdcard) {
-        virtual_disk_paths.push_back(const_instance.sdcard_path());
-      }
-      instance.set_virtual_disk_paths(virtual_disk_paths);
+      virtual_disk_paths.push_back(const_instance.os_composite_disk_path());
     }
+
+    bool persistent_disk = true;
+    persistent_disk &= !FLAGS_protected_vm;
+    persistent_disk &= FLAGS_vm_manager != Gem5Manager::name();
+    if (persistent_disk) {
+      auto path = const_instance.PerInstancePath("persistent_composite.img");
+      virtual_disk_paths.push_back(path);
+    }
+
+    bool sdcard = true;
+    sdcard &= FLAGS_use_sdcard;
+    sdcard &= !FLAGS_protected_vm;
+    if (sdcard) {
+      virtual_disk_paths.push_back(const_instance.sdcard_path());
+    }
+
+    instance.set_virtual_disk_paths(virtual_disk_paths);
 
     // We'd like to set mac prefix to be 5554, 5555, 5556, ... in normal cases.
     // When --base_instance_num=3, this might be 5556, 5557, 5558, ... (skipping
