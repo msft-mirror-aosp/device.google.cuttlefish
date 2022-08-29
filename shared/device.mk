@@ -285,7 +285,8 @@ DEVICE_MANIFEST_FILE += device/google/cuttlefish/shared/config/manifest.xml
 
 
 ifneq ($(LOCAL_SENSOR_FILE_OVERRIDES),true)
-ifneq ($(LOCAL_PREFER_VENDOR_APEX),true)
+# TODO(b/244221334): Enable cuttlefish sensor vendor apex
+#ifneq ($(LOCAL_PREFER_VENDOR_APEX),true)
     PRODUCT_COPY_FILES += \
         frameworks/native/data/etc/android.hardware.sensor.ambient_temperature.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.sensor.ambient_temperature.xml \
         frameworks/native/data/etc/android.hardware.sensor.barometer.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.sensor.barometer.xml \
@@ -294,7 +295,7 @@ ifneq ($(LOCAL_PREFER_VENDOR_APEX),true)
         frameworks/native/data/etc/android.hardware.sensor.light.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.sensor.light.xml \
         frameworks/native/data/etc/android.hardware.sensor.proximity.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.sensor.proximity.xml \
         frameworks/native/data/etc/android.hardware.sensor.relative_humidity.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.sensor.relative_humidity.xml
-endif
+#endif
 endif
 
 ifneq ($(LOCAL_PREFER_VENDOR_APEX),true)
