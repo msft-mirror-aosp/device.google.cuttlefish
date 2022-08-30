@@ -390,20 +390,8 @@ PRODUCT_PACKAGES += \
 #
 # Hardware Composer HAL
 #
-# The device needs to avoid having both hwcomposer2.4 and hwcomposer3
-# services running at the same time so make the user manually enables
-# in order to run with --gpu_mode=drm.
-ifeq ($(TARGET_ENABLE_DRMHWCOMPOSER),true)
-DEVICE_MANIFEST_FILE += \
-    device/google/cuttlefish/shared/config/manifest_android.hardware.graphics.composer@2.4-service.xml
-
-PRODUCT_PACKAGES += \
-    android.hardware.graphics.composer@2.4-service \
-    hwcomposer.drm
-else
 PRODUCT_PACKAGES += \
     android.hardware.graphics.composer3-service.ranchu
-endif
 
 #
 # Gralloc HAL
@@ -591,7 +579,8 @@ PRODUCT_PACKAGES += \
 # KeyMint HAL
 #
 ifeq ($(LOCAL_KEYMINT_PRODUCT_PACKAGE),)
-       LOCAL_KEYMINT_PRODUCT_PACKAGE := android.hardware.security.keymint-service.remote
+       LOCAL_KEYMINT_PRODUCT_PACKAGE := android.hardware.security.keymint-service.remote \
+                                        RemoteProvisioner
 # Indicate that this KeyMint includes support for the ATTEST_KEY key purpose.
 PRODUCT_COPY_FILES += \
     frameworks/native/data/etc/android.hardware.keystore.app_attest_key.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.keystore.app_attest_key.xml
