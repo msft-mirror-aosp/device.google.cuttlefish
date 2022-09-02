@@ -16,22 +16,36 @@
 
 #include "common/libs/utils/files.h"
 
-#include <android-base/logging.h>
-
 #include <dirent.h>
+#include <fcntl.h>
 #include <ftw.h>
 #include <libgen.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
+
 #include <array>
+#include <cerrno>
+#include <chrono>
 #include <climits>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <fstream>
+#include <ios>
+#include <iosfwd>
+#include <istream>
+#include <memory>
+#include <ostream>
+#include <ratio>
+#include <string>
 #include <vector>
 
+#include <android-base/logging.h>
+#include <android-base/macros.h>
+
 #include "common/libs/fs/shared_fd.h"
+#include "common/libs/utils/result.h"
 
 namespace cuttlefish {
 
@@ -66,6 +80,18 @@ bool DirectoryExists(const std::string& path, bool follow_symlinks) {
     return false;
   }
   return true;
+}
+
+Result<void> EnsureDirectoryExists(const std::string& directory_path) {
+  if (!DirectoryExists(directory_path)) {
+    LOG(DEBUG) << "Setting up " << directory_path;
+    if (mkdir(directory_path.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) <
+            0 &&
+        errno != EEXIST) {
+      return CF_ERRNO("Failed to create dir: \"" << directory_path);
+    }
+  }
+  return {};
 }
 
 bool IsDirectoryEmpty(const std::string& path) {
@@ -186,6 +212,10 @@ std::string ReadFile(const std::string& file) {
   std::string contents;
   std::ifstream in(file, std::ios::in | std::ios::binary);
   in.seekg(0, std::ios::end);
+  if (in.fail()) {
+    // TODO(schuffelen): Return a failing Result instead
+    return "";
+  }
   contents.resize(in.tellg());
   in.seekg(0, std::ios::beg);
   in.read(&contents[0], contents.size());
@@ -195,6 +225,10 @@ std::string ReadFile(const std::string& file) {
 
 std::string CurrentDirectory() {
   char* path = getcwd(nullptr, 0);
+  if (path == nullptr) {
+    PLOG(ERROR) << "`getcwd(nullptr, 0)` failed";
+    return "";
+  }
   std::string ret(path);
   free(path);
   return ret;

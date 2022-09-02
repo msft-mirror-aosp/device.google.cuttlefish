@@ -85,8 +85,7 @@ bool Stop() {
   return true;
 }
 
-std::pair<int,int> GetQemuVersion(const std::string& qemu_binary)
-{
+Result<std::pair<int, int>> GetQemuVersion(const std::string& qemu_binary) {
   Command qemu_version_cmd(qemu_binary);
   qemu_version_cmd.AddParameter("-version");
 
@@ -98,11 +97,10 @@ std::pair<int,int> GetQemuVersion(const std::string& qemu_binary)
                                       &qemu_version_input,
                                       &qemu_version_output,
                                       &qemu_version_error, options);
-  if (qemu_version_ret != 0) {
-    LOG(FATAL) << qemu_binary << " -version returned unexpected response "
-               << qemu_version_output << ". Stderr was " << qemu_version_error;
-    return { 0, 0 };
-  }
+  CF_EXPECT(qemu_version_ret == 0,
+            qemu_binary << " -version returned unexpected response "
+                        << qemu_version_output << ". Stderr was "
+                        << qemu_version_error);
 
   // Snip around the extra text we don't care about
   qemu_version_output.erase(0, std::string("QEMU emulator version ").length());
@@ -112,7 +110,7 @@ std::pair<int,int> GetQemuVersion(const std::string& qemu_binary)
   }
 
   auto qemu_version_bits = android::base::Split(qemu_version_output, ".");
-  return { std::stoi(qemu_version_bits[0]), std::stoi(qemu_version_bits[1]) };
+  return {{std::stoi(qemu_version_bits[0]), std::stoi(qemu_version_bits[1])}};
 }
 
 }  // namespace
@@ -131,21 +129,23 @@ std::vector<std::string> QemuManager::ConfigureGraphics(
     // with properities lead to non-deterministic behavior while loading the
     // HALs.
     return {
-        "androidboot.cpuvulkan.version=" + std::to_string(VK_API_VERSION_1_1),
+        "androidboot.cpuvulkan.version=" + std::to_string(VK_API_VERSION_1_2),
         "androidboot.hardware.gralloc=minigbm",
         "androidboot.hardware.hwcomposer=" + config.hwcomposer(),
         "androidboot.hardware.egl=angle",
         "androidboot.hardware.vulkan=pastel",
-    };
+        "androidboot.opengles.version=196609"};  // OpenGL ES 3.1
   }
 
   if (config.gpu_mode() == kGpuModeDrmVirgl) {
     return {
       "androidboot.cpuvulkan.version=0",
       "androidboot.hardware.gralloc=minigbm",
-      "androidboot.hardware.hwcomposer=drm",
+      "androidboot.hardware.hwcomposer=ranchu",
+      "androidboot.hardware.hwcomposer.mode=client",
       "androidboot.hardware.egl=mesa",
-    };
+      // No "hardware" Vulkan support, yet
+      "androidboot.opengles.version=196608"};  // OpenGL ES 3.0
   }
 
   return {};
@@ -166,7 +166,7 @@ std::string QemuManager::ConfigureBootDevices(int num_disks) {
   }
 }
 
-std::vector<Command> QemuManager::StartCommands(
+Result<std::vector<Command>> QemuManager::StartCommands(
     const CuttlefishConfig& config) {
   auto instance = config.ForDefaultInstance();
 
@@ -197,7 +197,7 @@ std::vector<Command> QemuManager::StartCommands(
       break;
   }
 
-  auto qemu_version = GetQemuVersion(qemu_binary);
+  auto qemu_version = CF_EXPECT(GetQemuVersion(qemu_binary));
   Command qemu_cmd(qemu_binary, stop);
 
   int hvc_num = 0;
@@ -270,25 +270,27 @@ std::vector<Command> QemuManager::StartCommands(
   auto access_kregistry_size_bytes = 0;
   if (FileExists(instance.access_kregistry_path())) {
     access_kregistry_size_bytes = FileSize(instance.access_kregistry_path());
-    CHECK((access_kregistry_size_bytes & (1024 * 1024 - 1)) == 0)
-        << instance.access_kregistry_path() <<  " file size ("
-        << access_kregistry_size_bytes << ") not a multiple of 1MB";
+    CF_EXPECT((access_kregistry_size_bytes & (1024 * 1024 - 1)) == 0,
+              instance.access_kregistry_path()
+                  << " file size (" << access_kregistry_size_bytes
+                  << ") not a multiple of 1MB");
   }
 
   auto hwcomposer_pmem_size_bytes = 0;
   if (FileExists(instance.hwcomposer_pmem_path())) {
     hwcomposer_pmem_size_bytes = FileSize(instance.hwcomposer_pmem_path());
-    CHECK((hwcomposer_pmem_size_bytes & (1024 * 1024 - 1)) == 0)
-        << instance.hwcomposer_pmem_path() << " file size ("
-        << hwcomposer_pmem_size_bytes << ") not a multiple of 1MB";
+    CF_EXPECT((hwcomposer_pmem_size_bytes & (1024 * 1024 - 1)) == 0,
+              instance.hwcomposer_pmem_path()
+                  << " file size (" << hwcomposer_pmem_size_bytes
+                  << ") not a multiple of 1MB");
   }
 
   auto pstore_size_bytes = 0;
   if (FileExists(instance.pstore_path())) {
     pstore_size_bytes = FileSize(instance.pstore_path());
-    CHECK((pstore_size_bytes & (1024 * 1024 - 1)) == 0)
-        << instance.pstore_path() <<  " file size ("
-        << pstore_size_bytes << ") not a multiple of 1MB";
+    CF_EXPECT((pstore_size_bytes & (1024 * 1024 - 1)) == 0,
+              instance.pstore_path() << " file size (" << pstore_size_bytes
+                                     << ") not a multiple of 1MB");
   }
 
   qemu_cmd.AddParameter("-name");
@@ -309,7 +311,7 @@ std::vector<Command> QemuManager::StartCommands(
       // devices with KVM and MTE, so MTE will always require TCG
       machine += ",mte=on";
     }
-    CHECK(config.cpus() <= 8) << "CPUs must be no more than 8 with GICv2";
+    CF_EXPECT(instance.cpus() <= 8, "CPUs must be no more than 8 with GICv2");
   }
   qemu_cmd.AddParameter(machine, ",usb=off,dump-guest-core=off");
 
@@ -329,13 +331,13 @@ std::vector<Command> QemuManager::StartCommands(
   // today is configured, and the way crosvm does it
   qemu_cmd.AddParameter("-smp");
   if (config.smt()) {
-    CHECK(config.cpus() % 2 == 0)
-        << "CPUs must be a multiple of 2 in SMT mode";
-    qemu_cmd.AddParameter(config.cpus(), ",cores=",
-                          config.cpus() / 2, ",threads=2");
+    CF_EXPECT(instance.cpus() % 2 == 0,
+              "CPUs must be a multiple of 2 in SMT mode");
+    qemu_cmd.AddParameter(instance.cpus(), ",cores=",
+                          instance.cpus() / 2, ",threads=2");
   } else {
-    qemu_cmd.AddParameter(config.cpus(), ",cores=",
-                          config.cpus(), ",threads=1");
+    qemu_cmd.AddParameter(instance.cpus(), ",cores=",
+                          instance.cpus(), ",threads=1");
   }
 
   qemu_cmd.AddParameter("-uuid");
@@ -369,8 +371,8 @@ std::vector<Command> QemuManager::StartCommands(
     qemu_cmd.AddParameter("none");
   }
 
-  auto display_configs = config.display_configs();
-  CHECK_GE(display_configs.size(), 1);
+  auto display_configs = instance.display_configs();
+  CF_EXPECT(display_configs.size() >= 1);
   auto display_config = display_configs[0];
 
   qemu_cmd.AddParameter("-device");
@@ -382,21 +384,31 @@ std::vector<Command> QemuManager::StartCommands(
                         ",xres=", display_config.width,
                         ",yres=", display_config.height);
 
-  // In kgdb mode, earlycon is an interactive console, and so early
-  // dmesg will go there instead of the kernel.log. On QEMU, we do this
-  // bit of logic up before the hvc console is set up, so the command line
-  // flags appear in the right order and "append=on" does the right thing
-  if (!config.console() && (config.kgdb() || config.use_bootloader())) {
-    add_serial_console_ro(instance.kernel_log_pipe_name());
+  if (!instance.console()) {
+    // In kgdb mode, earlycon is an interactive console, and so early
+    // dmesg will go there instead of the kernel.log. On QEMU, we do this
+    // bit of logic up before the hvc console is set up, so the command line
+    // flags appear in the right order and "append=on" does the right thing
+    if (config.enable_kernel_log() &&
+        (instance.kgdb() || instance.use_bootloader())) {
+      add_serial_console_ro(instance.kernel_log_pipe_name());
+    }
   }
 
-  // Use a virtio-console instance for the main kernel console. All
-  // messages will switch from earlycon to virtio-console after the driver
-  // is loaded, and QEMU will append to the kernel log automatically
+  // If kernel log is enabled, the virtio-console port will be specified as
+  // a true console for Linux, and kernel messages will be printed there.
+  // Otherwise, the port will still be set up for bootloader and userspace
+  // messages, but the kernel will not print anything here. This keeps our
+  // kernel log event features working. If an alternative "earlycon" boot
+  // console is configured above on a legacy serial port, it will control
+  // the main log until the virtio-console takes over.
+  // (Note that QEMU does not automatically generate console= parameters for
+  //  the bootloader/kernel cmdline, so the control of whether this pipe is
+  //  actually managed by the kernel as a console is handled elsewhere.)
   add_hvc_ro(instance.kernel_log_pipe_name());
 
-  if (config.console()) {
-    if (config.kgdb() || config.use_bootloader()) {
+  if (instance.console()) {
+    if (instance.kgdb() || instance.use_bootloader()) {
       add_serial_console(instance.console_pipe_prefix());
 
       // In kgdb mode, we have the interactive console on ttyS0 (both Android's
@@ -410,7 +422,7 @@ std::vector<Command> QemuManager::StartCommands(
       add_hvc(instance.console_pipe_prefix());
     }
   } else {
-    if (config.kgdb() || config.use_bootloader()) {
+    if (instance.kgdb() || instance.use_bootloader()) {
       // The add_serial_console_ro() call above was applied by the time we reach
       // this code, so we don't need another add_serial_*() call
     }
@@ -441,20 +453,35 @@ std::vector<Command> QemuManager::StartCommands(
     }
   }
 
+  /* Added one for confirmation UI.
+   *
+   * b/237452165
+   *
+   * Confirmation UI is not supported with QEMU for now. In order
+   * to not conflict with confirmation UI-related configurations used
+   * w/ Crosvm, we should add one generic avc.
+   *
+   * confui_fifo_vm.{in/out} are created along with the streamer process,
+   * which is not created w/ QEMU.
+   */
+  add_hvc_sink();
+
   auto disk_num = instance.virtual_disk_paths().size();
 
   for (auto i = 0; i < VmManager::kMaxDisks - disk_num; i++) {
     add_hvc_sink();
   }
 
-  CHECK(hvc_num + disk_num == VmManager::kMaxDisks + VmManager::kDefaultNumHvcs)
-      << "HVC count (" << hvc_num << ") + disk count (" << disk_num << ") "
-      << "is not the expected total of "
-      << VmManager::kMaxDisks + VmManager::kDefaultNumHvcs << " devices";
+  CF_EXPECT(
+      hvc_num + disk_num == VmManager::kMaxDisks + VmManager::kDefaultNumHvcs,
+      "HVC count (" << hvc_num << ") + disk count (" << disk_num << ") "
+                    << "is not the expected total of "
+                    << VmManager::kMaxDisks + VmManager::kDefaultNumHvcs
+                    << " devices");
 
-  CHECK_GE(VmManager::kMaxDisks, disk_num)
-      << "Provided too many disks (" << disk_num << "), maximum "
-      << VmManager::kMaxDisks << "supported";
+  CF_EXPECT(VmManager::kMaxDisks >= disk_num,
+            "Provided too many disks (" << disk_num << "), maximum "
+                                        << VmManager::kMaxDisks << "supported");
   auto readonly = config.protected_vm() ? ",readonly" : "";
   for (size_t i = 0; i < disk_num; i++) {
     auto bootindex = i == 0 ? ",bootindex=1" : "";
@@ -569,10 +596,10 @@ std::vector<Command> QemuManager::StartCommands(
   qemu_cmd.AddParameter("-bios");
   qemu_cmd.AddParameter(config.bootloader());
 
-  if (config.gdb_port() > 0) {
+  if (instance.gdb_port() > 0) {
     qemu_cmd.AddParameter("-S");
     qemu_cmd.AddParameter("-gdb");
-    qemu_cmd.AddParameter("tcp::", config.gdb_port());
+    qemu_cmd.AddParameter("tcp::", instance.gdb_port());
   }
 
   LogAndSetEnv("QEMU_AUDIO_DRV", "none");
@@ -583,5 +610,4 @@ std::vector<Command> QemuManager::StartCommands(
 }
 
 } // namespace vm_manager
-} // namespace cuttlefish
-
+}  // namespace cuttlefish

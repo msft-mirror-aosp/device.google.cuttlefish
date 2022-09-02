@@ -22,10 +22,13 @@
 
 namespace cuttlefish {
 
-class KernelLogPipeProvider : public virtual Feature {
+class KernelLogPipeProvider : public virtual SetupFeature {
  public:
   virtual ~KernelLogPipeProvider() = default;
   virtual SharedFD KernelLogPipe() = 0;
 };
+
+/** Parent class tag for classes that inject KernelLogPipe. */
+class KernelLogPipeConsumer {};
 
 }  // namespace cuttlefish

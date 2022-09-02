@@ -18,8 +18,11 @@ PRODUCT_MANIFEST_FILES += device/google/cuttlefish/shared/config/product_manifes
 SYSTEM_EXT_MANIFEST_FILES += device/google/cuttlefish/shared/config/system_ext_manifest.xml
 
 $(call inherit-product, device/google/atv/products/atv_vendor.mk)
-$(call inherit-product, device/google/cuttlefish/shared/device.mk)
+
 $(call inherit-product, frameworks/native/build/phone-xhdpi-2048-dalvik-heap.mk)
+$(call inherit-product, device/google/cuttlefish/shared/swiftshader/device_vendor.mk)
+$(call inherit-product, device/google/cuttlefish/shared/camera/device_vendor.mk)
+$(call inherit-product, device/google/cuttlefish/shared/device.mk)
 
 # Extend cuttlefish common sepolicy with tv-specific functionality
 BOARD_SEPOLICY_DIRS += device/google/cuttlefish/shared/tv/sepolicy/vendor
@@ -29,8 +32,10 @@ PRODUCT_COPY_FILES += \
     frameworks/native/data/etc/android.hardware.hdmi.cec.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.hdmi.cec.xml \
     frameworks/native/data/etc/android.hardware.sensor.accelerometer.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.sensor.accelerometer.xml \
     frameworks/native/data/etc/android.hardware.sensor.compass.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.sensor.compass.xml \
+    frameworks/native/data/etc/android.hardware.tv.tuner.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.tv.tuner.xml \
     hardware/interfaces/tv/tuner/config/sample_tuner_vts_config_1_0.xml:$(TARGET_COPY_OUT_VENDOR)/etc/tuner_vts_config_1_0.xml \
     hardware/interfaces/tv/tuner/config/sample_tuner_vts_config_1_1.xml:$(TARGET_COPY_OUT_VENDOR)/etc/tuner_vts_config_1_1.xml \
+    hardware/interfaces/tv/tuner/config/sample_tuner_vts_config_aidl_V1.xml:$(TARGET_COPY_OUT_VENDOR)/etc/tuner_vts_config_aidl_V1.xml
 
 # HDMI CEC HAL
 PRODUCT_PACKAGES += android.hardware.tv.cec@1.1-service
@@ -39,10 +44,13 @@ PRODUCT_PACKAGES += android.hardware.tv.cec@1.1-service
 PRODUCT_PROPERTY_OVERRIDES += ro.hdmi.device_type=4
 
 # Tuner HAL
-PRODUCT_PACKAGES += android.hardware.tv.tuner@1.1-service
+PRODUCT_PACKAGES += android.hardware.tv.tuner-service.example
+
+# Sample Tuner Input for testing
+#PRODUCT_PACKAGES += LiveTv sampletunertvinput
 
 # Fallback IME and Home apps
-PRODUCT_PACKAGES += LeanbackIME TvSampleLeanbackLauncher TvProvision
+PRODUCT_PACKAGES += LeanbackIME TvSampleLeanbackLauncher
 
 # Enabling managed profiles
 DEVICE_PACKAGE_OVERLAYS += device/google/cuttlefish/shared/tv/overlay

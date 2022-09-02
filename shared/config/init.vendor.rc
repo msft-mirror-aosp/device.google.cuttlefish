@@ -6,11 +6,13 @@ on early-init
     setprop debug.sf.vsync_reactor_ignore_present_fences true
     setprop ro.hardware.gralloc ${ro.boot.hardware.gralloc}
     setprop ro.hardware.hwcomposer ${ro.boot.hardware.hwcomposer}
+    setprop ro.vendor.hwcomposer.mode ${ro.boot.hardware.hwcomposer.mode}
     setprop ro.hardware.vulkan ${ro.boot.hardware.vulkan}
     setprop ro.cpuvulkan.version ${ro.boot.cpuvulkan.version}
     setprop ro.hw_timeout_multiplier ${ro.boot.hw_timeout_multiplier}
     setprop ro.opengles.version ${ro.boot.opengles.version}
 
+    start metrics_helper
     # start module load in the background
     start vendor.dlkm_loader
 
@@ -79,7 +81,7 @@ on post-fs-data && property:ro.vendor.wifi_impl=mac8011_hwsim_virtio
     start init_wifi_sh
 
 on boot
-    chmod 0660 /dev/cpuctl
+    chmod 0770 /dev/cpuctl
     mkdir /data/vendor/wifi 0770 wifi wifi
     mkdir /data/vendor/wifi/wpa 0770 wifi wifi
     mkdir /data/vendor/wifi/wpa/sockets 0770 wifi wifi
@@ -104,6 +106,9 @@ service vendor.dlkm_loader /vendor/bin/dlkm_loader
     group root system
     disabled
     oneshot
+
+service metrics_helper /vendor/bin/metrics_helper
+    group system
 
 service socket_vsock_proxy /vendor/bin/socket_vsock_proxy -server=vsock -tcp_port=5555 -vsock_port=6520
 
@@ -135,3 +140,7 @@ service suspend_blocker /vendor/bin/suspend_blocker
     class early_hal # Start together with system_suspend HAL
     group system
     user root
+
+on boot && property:ro.boot.enable_confirmationui=*
+   enable confirmationui-1-0
+   start confirmationui-1-0

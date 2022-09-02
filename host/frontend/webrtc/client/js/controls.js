@@ -14,39 +14,44 @@
  * limitations under the License.
  */
 
-function createToggleControl(elm, iconName, onChangeCb) {
-  let icon = document.createElement('span');
-  icon.classList.add('toggle-control-icon');
-  icon.classList.add('material-icons-outlined');
-  if (iconName) {
-    icon.appendChild(document.createTextNode(iconName));
-  }
-  elm.appendChild(icon);
-  let toggle = document.createElement('label');
-  toggle.classList.add('toggle-control-switch');
-  let input = document.createElement('input');
-  input.type = 'checkbox';
-  toggle.appendChild(input);
-  let slider = document.createElement('span');
-  slider.classList.add('toggle-control-slider');
-  toggle.appendChild(slider);
+// Creates a "toggle control". The onToggleCb callback is called every time the
+// control changes state with the new toggle position (true for ON) and is
+// expected to return a promise of the new toggle position which can resolve to
+// the opposite position of the one received if there was error.
+function createToggleControl(elm, onToggleCb, initialState = false) {
   elm.classList.add('toggle-control');
-  elm.appendChild(toggle);
-  return {
-    // A callback can later be associated with the toggle element by calling
-    // .OnClick(onChangeCb) on the returned object. The callback should accept a
-    // boolean parameter indicating whether the toggle is in ON position and
-    // return a promise of the new position.
-    OnClick: cb => input.onchange =
-        e => {
-          let nextPr = cb(e.target.checked);
-          if (nextPr && 'then' in nextPr) {
-            nextPr.then(checked => {
-              e.target.checked = !!checked;
-            });
-          }
-        },
+  let offClass = 'toggle-off';
+  let onClass = 'toggle-on';
+  let state = !!initialState;
+  let toggle = {
+    // Sets the state of the toggle control. This only affects the
+    // visible state of the control in the UI, it doesn't affect the
+    // state of the underlying resources. It's most useful to make
+    // changes of said resources visible to the user.
+    Set: enabled => {
+      state = enabled;
+      if (enabled) {
+        elm.classList.remove(offClass);
+        elm.classList.add(onClass);
+      } else {
+        elm.classList.add(offClass);
+        elm.classList.remove(onClass);
+      }
+    }
   };
+  toggle.Set(initialState);
+  addMouseListeners(elm, e => {
+    if (e.type != 'mousedown') {
+      return;
+    }
+    // Enable it if it's currently disabled
+    let enableNow = !state;
+    let nextPr = onToggleCb(enableNow);
+    if (nextPr && 'then' in nextPr) {
+      nextPr.then(enabled => toggle.Set(enabled));
+    }
+  });
+  return toggle;
 }
 
 function createButtonListener(button_id_class, func,
@@ -195,20 +200,22 @@ function btUpdateDeviceList(devices) {
   return -1;
 }
 
-function createControlPanelButton(
-    command, title, icon_name, listener,
-    parent_id = 'control-panel-default-buttons') {
-  let button = document.createElement('button');
-  document.getElementById(parent_id).appendChild(button);
-  button.title = title;
-  button.dataset.command = command;
-  button.disabled = true;
+function addMouseListeners(button, listener) {
   // Capture mousedown/up/out commands instead of click to enable
   // hold detection. mouseout is used to catch if the user moves the
   // mouse outside the button while holding down.
   button.addEventListener('mousedown', listener);
   button.addEventListener('mouseup', listener);
   button.addEventListener('mouseout', listener);
+}
+
+function createControlPanelButton(
+    title, icon_name, listener, parent_id = 'control-panel-default-buttons') {
+  let button = document.createElement('button');
+  document.getElementById(parent_id).appendChild(button);
+  button.title = title;
+  button.disabled = true;
+  addMouseListeners(button, listener);
   // Set the button image using Material Design icons.
   // See http://google.github.io/material-design-icons
   // and https://material.io/resources/icons

@@ -42,9 +42,9 @@ PRODUCT_ARTIFACT_PATH_REQUIREMENT_ALLOWED_LIST += \
     system/apex/com.android.tethering.inprocess.apex \
     system/apex/com.android.tethering.inprocess.capex \
     system/app/PlatformCaptivePortalLogin/PlatformCaptivePortalLogin.apk \
+    system/etc/permissions/platform_privapp_allowlist_com.android.cellbroadcastservice.xml \
     system/priv-app/CellBroadcastServiceModulePlatform/CellBroadcastServiceModulePlatform.apk \
     system/priv-app/InProcessNetworkStack/InProcessNetworkStack.apk \
-    system/priv-app/PlatformNetworkPermissionConfig/PlatformNetworkPermissionConfig.apk \
 
 #
 # All components inherited here go to vendor image

@@ -23,6 +23,9 @@ __TARGET_NO_BOOTLOADER := $(TARGET_NO_BOOTLOADER)
 include build/make/target/board/BoardConfigMainlineCommon.mk
 TARGET_NO_BOOTLOADER := $(__TARGET_NO_BOOTLOADER)
 
+BOARD_VENDOR_RAMDISK_KERNEL_MODULES_BLOCKLIST_FILE := \
+    device/google/cuttlefish/shared/modules.blocklist
+
 TARGET_BOOTLOADER_BOARD_NAME := cutf
 
 BOARD_SYSTEMIMAGE_FILE_SYSTEM_TYPE := $(TARGET_RO_FILE_SYSTEM_TYPE)
@@ -246,6 +249,11 @@ BOARD_KERNEL_CMDLINE += firmware_class.path=/vendor/etc/
 # Needed to boot Android
 BOARD_KERNEL_CMDLINE += loop.max_part=7
 BOARD_KERNEL_CMDLINE += init=/init
+
+# Enable KUnit for userdebug and eng builds
+ifneq (,$(filter userdebug eng, $(TARGET_BUILD_VARIANT)))
+  BOARD_KERNEL_CMDLINE += kunit.enable=1
+endif
 
 BOARD_BOOTCONFIG += androidboot.hardware=cutf_cvm
 

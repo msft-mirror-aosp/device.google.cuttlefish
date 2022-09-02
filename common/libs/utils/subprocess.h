@@ -15,18 +15,25 @@
  */
 #pragma once
 
-#include <android-base/logging.h>
-#include <android-base/strings.h>
-#include <common/libs/fs/shared_fd.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 
+#include <android-base/logging.h>
+#include <android-base/strings.h>
+
+#include <cstdio>
+#include <cstring>
 #include <functional>
 #include <map>
+#include <optional>
+#include <ostream>
 #include <sstream>
 #include <string>
-#include <unordered_set>
+#include <type_traits>
+#include <utility>
 #include <vector>
+
+#include "common/libs/fs/shared_fd.h"
 
 namespace cuttlefish {
 
@@ -36,9 +43,7 @@ enum class StopperResult {
   kStopSuccess, /* The subprocess exited in the expected way. */
 };
 
-class Command;
 class Subprocess;
-class SubprocessOptions;
 using SubprocessStopper = std::function<StopperResult(Subprocess*)>;
 // Kills a process by sending it the SIGKILL signal.
 StopperResult KillSubprocess(Subprocess* subprocess);
@@ -130,8 +135,7 @@ class Command {
   // Constructs a command object from the path to an executable binary and an
   // optional subprocess stopper. When not provided, stopper defaults to sending
   // SIGKILL to the subprocess.
-  Command(const std::string& executable,
-          SubprocessStopper stopper = KillSubprocess);
+  Command(std::string executable, SubprocessStopper stopper = KillSubprocess);
   Command(Command&&) = default;
   // The default copy constructor is unsafe because it would mean multiple
   // closing of the inherited file descriptors. If needed it can be implemented
@@ -142,33 +146,46 @@ class Command {
 
   const std::string& Executable() const { return command_[0]; }
 
-  Command& SetExecutable(const std::string& executable) & {
-    command_[0] = executable;
+  Command& SetExecutable(std::string executable) & {
+    executable_ = std::move(executable);
     return *this;
   }
-  Command SetExecutable(const std::string& executable) && {
-    SetExecutable(executable);
-    return std::move(*this);
+  Command SetExecutable(std::string executable) && {
+    return std::move(SetExecutable(executable));
+  }
+
+  Command& SetName(std::string name) & {
+    command_[0] = std::move(name);
+    return *this;
+  }
+  Command SetName(std::string name) && {
+    return std::move(SetName(std::move(name)));
+  }
+
+  Command& SetExecutableAndName(std::string name) & {
+    return SetExecutable(name).SetName(std::move(name));
+  }
+
+  Command SetExecutableAndName(std::string name) && {
+    return std::move(SetExecutableAndName(std::move(name)));
   }
 
   Command& SetStopper(SubprocessStopper stopper) & {
-    subprocess_stopper_ = stopper;
+    subprocess_stopper_ = std::move(stopper);
     return *this;
   }
   Command SetStopper(SubprocessStopper stopper) && {
-    SetStopper(stopper);
-    return std::move(*this);
+    return std::move(SetStopper(std::move(stopper)));
   }
 
   // Specify the environment for the subprocesses to be started. By default
   // subprocesses inherit the parent's environment.
-  Command& SetEnvironment(const std::vector<std::string>& env) & {
-    env_ = env;
+  Command& SetEnvironment(std::vector<std::string> env) & {
+    env_ = std::move(env);
     return *this;
   }
-  Command SetEnvironment(const std::vector<std::string>& env) && {
-    SetEnvironment(env);
-    return std::move(*this);
+  Command SetEnvironment(std::vector<std::string> env) && {
+    return std::move(SetEnvironment(std::move(env)));
   }
 
   Command& AddEnvironmentVariable(const std::string& env_var,
@@ -181,13 +198,12 @@ class Command {
     return std::move(*this);
   }
 
-  Command& AddEnvironmentVariable(const std::string& env_var) & {
-    env_.push_back(env_var);
+  Command& AddEnvironmentVariable(std::string env_var) & {
+    env_.emplace_back(std::move(env_var));
     return *this;
   }
-  Command AddEnvironmentVariable(const std::string& env_var) && {
-    AddEnvironmentVariable(env_var);
-    return std::move(*this);
+  Command AddEnvironmentVariable(std::string env_var) && {
+    return std::move(AddEnvironmentVariable(std::move(env_var)));
   }
 
   // Specify an environment variable to be unset from the parent's
@@ -204,8 +220,7 @@ class Command {
     return *this;
   }
   Command UnsetFromEnvironment(const std::string& env_var) && {
-    UnsetFromEnvironment(env_var);
-    return std::move(*this);
+    return std::move(UnsetFromEnvironment(env_var));
   }
 
   // Adds a single parameter to the command. All arguments are concatenated into
@@ -222,8 +237,7 @@ class Command {
   }
   template <typename... Args>
   Command AddParameter(Args... args) && {
-    AddParameter(std::forward<Args>(args)...);
-    return std::move(*this);
+    return std::move(AddParameter(std::forward<Args>(args)...));
   }
   // Similar to AddParameter, except the args are appended to the last (most
   // recently-added) parameter in the command.
@@ -237,8 +251,7 @@ class Command {
   }
   template <typename... Args>
   Command AppendToLastParameter(Args... args) && {
-    AppendToLastParameter(std::forward<Args>(args)...);
-    return std::move(*this);
+    return std::move(AppendToLastParameter(std::forward<Args>(args)...));
   }
 
   // Redirects the standard IO of the command.
@@ -250,6 +263,11 @@ class Command {
                          Subprocess::StdIOChannel parent_channel) &;
   Command RedirectStdIO(Subprocess::StdIOChannel subprocess_channel,
                         Subprocess::StdIOChannel parent_channel) &&;
+
+  Command& SetWorkingDirectory(const std::string& path) &;
+  Command SetWorkingDirectory(const std::string& path) &&;
+  Command& SetWorkingDirectory(SharedFD dirfd) &;
+  Command SetWorkingDirectory(SharedFD dirfd) &&;
 
   // Starts execution of the command. This method can be called multiple times,
   // effectively staring multiple (possibly concurrent) instances.
@@ -268,11 +286,13 @@ class Command {
   std::string AsBashScript(const std::string& redirected_stdio_path = "") const;
 
  private:
+  std::optional<std::string> executable_;  // When unset, use command_[0]
   std::vector<std::string> command_;
   std::map<SharedFD, int> inherited_fds_{};
   std::map<Subprocess::StdIOChannel, int> redirects_{};
   std::vector<std::string> env_{};
   SubprocessStopper subprocess_stopper_;
+  SharedFD working_directory_;
 };
 
 /*

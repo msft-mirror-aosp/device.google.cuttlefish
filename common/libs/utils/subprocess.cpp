@@ -16,8 +16,7 @@
 
 #include "common/libs/utils/subprocess.h"
 
-#include <android-base/logging.h>
-#include <errno.h>
+#include <fcntl.h>
 #include <signal.h>
 #include <stdlib.h>
 #include <sys/prctl.h>
@@ -25,10 +24,22 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-#include <stdio.h>
+#include <cerrno>
+#include <cstring>
 #include <map>
+#include <memory>
+#include <optional>
+#include <ostream>
 #include <set>
+#include <sstream>
+#include <string>
 #include <thread>
+#include <type_traits>
+#include <utility>
+#include <vector>
+
+#include <android-base/logging.h>
+#include <android-base/strings.h>
 
 #include "common/libs/fs/shared_buf.h"
 #include "common/libs/utils/files.h"
@@ -196,12 +207,12 @@ StopperResult KillSubprocess(Subprocess* subprocess) {
   return StopperResult::kStopSuccess;
 }
 
-Command::Command(const std::string& executable, SubprocessStopper stopper)
+Command::Command(std::string executable, SubprocessStopper stopper)
     : subprocess_stopper_(stopper) {
   for (char** env = environ; *env; env++) {
     env_.emplace_back(*env);
   }
-  command_.push_back(executable);
+  command_.emplace_back(std::move(executable));
 }
 
 Command::~Command() {
@@ -255,6 +266,24 @@ Command Command::RedirectStdIO(Subprocess::StdIOChannel subprocess_channel,
   return std::move(*this);
 }
 
+Command& Command::SetWorkingDirectory(const std::string& path) & {
+  auto fd = SharedFD::Open(path, O_RDONLY | O_PATH | O_DIRECTORY);
+  CHECK(fd->IsOpen()) << "Could not open \"" << path
+                      << "\" dir fd: " << fd->StrError();
+  return SetWorkingDirectory(fd);
+}
+Command Command::SetWorkingDirectory(const std::string& path) && {
+  return std::move(SetWorkingDirectory(path));
+}
+Command& Command::SetWorkingDirectory(SharedFD dirfd) & {
+  CHECK(dirfd->IsOpen()) << "Dir fd invalid: " << dirfd->StrError();
+  working_directory_ = std::move(dirfd);
+  return *this;
+}
+Command Command::SetWorkingDirectory(SharedFD dirfd) && {
+  return std::move(SetWorkingDirectory(std::move(dirfd)));
+}
+
 Subprocess Command::Start(SubprocessOptions options) const {
   auto cmd = ToCharPointers(command_);
 
@@ -282,9 +311,15 @@ Subprocess Command::Start(SubprocessOptions options) const {
         LOG(ERROR) << "fcntl failed: " << strerror(error_num);
       }
     }
+    if (working_directory_->IsOpen()) {
+      if (SharedFD::Fchdir(working_directory_) != 0) {
+        LOG(ERROR) << "Fchdir failed: " << working_directory_->StrError();
+      }
+    }
     int rval;
     auto envp = ToCharPointers(env_);
-    rval = execvpe(cmd[0], const_cast<char* const*>(cmd.data()),
+    const char* executable = executable_ ? executable_->c_str() : cmd[0];
+    rval = execvpe(executable, const_cast<char* const*>(cmd.data()),
                    const_cast<char* const*>(envp.data()));
     // No need for an if: if exec worked it wouldn't have returned
     LOG(ERROR) << "exec of " << cmd[0] << " failed (" << strerror(errno)

@@ -30,10 +30,13 @@
 #include "common/libs/fs/epoll.h"
 #include "common/libs/fs/shared_fd.h"
 #include "common/libs/utils/result.h"
+#include "common/libs/utils/subprocess.h"
 #include "common/libs/utils/unix_sockets.h"
 #include "host/commands/cvd/epoll_loop.h"
 #include "host/commands/cvd/instance_manager.h"
 #include "host/commands/cvd/server_client.h"
+#include "host/libs/config/inject.h"
+#include "host/libs/web/build_api.h"
 
 namespace cuttlefish {
 
@@ -48,10 +51,12 @@ class CvdServerHandler {
 
 class CvdServer {
  public:
-  INJECT(CvdServer(EpollPool&, InstanceManager&));
+  INJECT(CvdServer(BuildApi&, EpollPool&, InstanceManager&));
   ~CvdServer();
 
   Result<void> StartServer(SharedFD server);
+  Result<void> Exec(SharedFD new_exe, SharedFD client);
+  Result<void> AcceptCarryoverClient(SharedFD client);
   void Stop();
   void Join();
 
@@ -62,11 +67,16 @@ class CvdServer {
     std::thread::id thread_id;
   };
 
+  /* this has to be static due to the way fruit includes components */
+  static fruit::Component<> RequestComponent(CvdServer*);
+
   Result<void> AcceptClient(EpollEvent);
   Result<void> HandleMessage(EpollEvent);
   Result<cvd::Response> HandleRequest(RequestWithStdio, SharedFD client);
   Result<void> BestEffortWakeup();
 
+  SharedFD server_fd_;
+  BuildApi& build_api_;
   EpollPool& epoll_pool_;
   InstanceManager& instance_manager_;
   std::atomic_bool running_ = true;
@@ -78,11 +88,16 @@ class CvdServer {
   std::vector<std::thread> threads_;
 };
 
+Result<CvdServerHandler*> RequestHandler(
+    const RequestWithStdio& request,
+    const std::vector<CvdServerHandler*>& handlers);
+
 fruit::Component<fruit::Required<InstanceManager>> cvdCommandComponent();
+fruit::Component<fruit::Required<BuildApi, CvdServer, InstanceManager>>
+CvdRestartComponent();
 fruit::Component<fruit::Required<CvdServer, InstanceManager>>
 cvdShutdownComponent();
 fruit::Component<> cvdVersionComponent();
-fruit::Component<> AcloudCommandComponent();
 
 struct CommandInvocation {
   std::string command;
@@ -90,5 +105,7 @@ struct CommandInvocation {
 };
 
 CommandInvocation ParseInvocation(const cvd::Request& request);
+
+Result<int> CvdServerMain(SharedFD server_fd, SharedFD carryover_client);
 
 }  // namespace cuttlefish

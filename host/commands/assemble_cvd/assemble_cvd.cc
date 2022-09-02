@@ -33,6 +33,7 @@
 #include "host/libs/config/config_flag.h"
 #include "host/libs/config/custom_actions.h"
 #include "host/libs/config/fetcher_config.h"
+#include "host/libs/config/inject.h"
 
 using cuttlefish::StringFromEnv;
 
@@ -48,6 +49,8 @@ DEFINE_bool(resume, true, "Resume using the disk from the last session, if "
                           "images have been updated since the first launch.");
 DEFINE_int32(modem_simulator_count, 1,
              "Modem simulator count corresponding to maximum sim number");
+
+DECLARE_bool(use_overlay);
 
 namespace cuttlefish {
 namespace {
@@ -96,10 +99,13 @@ Result<void> SaveConfig(const CuttlefishConfig& tmp_config_obj) {
 
 Result<void> CreateLegacySymlinks(
     const CuttlefishConfig::InstanceSpecific& instance) {
-  std::string log_files[] = {
-      "kernel.log",  "launcher.log",        "logcat",
-      "metrics.log", "modem_simulator.log", "crosvm_openwrt.log",
-  };
+  std::string log_files[] = {"kernel.log",
+                             "launcher.log",
+                             "logcat",
+                             "metrics.log",
+                             "modem_simulator.log",
+                             "crosvm_openwrt.log",
+                             "crosvm_openwrt_boot.log"};
   for (const auto& log_file : log_files) {
     auto symlink_location = instance.PerInstancePath(log_file.c_str());
     auto log_target = "logs/" + log_file;  // Relative path
@@ -162,12 +168,24 @@ Result<const CuttlefishConfig*> InitFilesystemAndCreateConfig(
                                                     FLAGS_modem_simulator_count,
                                                     kernel_config, injector);
     std::set<std::string> preserving;
-    bool create_os_composite_disk = ShouldCreateOsCompositeDisk(config);
-    if (FLAGS_resume && create_os_composite_disk) {
+    bool creating_os_disk = false;
+    // if any device needs to rebuild its composite disk,
+    // then don't preserve any files and delete everything."
+    for (const auto& instance : config.Instances()) {
+      auto os_builder = OsCompositeDiskBuilder(config, instance);
+      creating_os_disk |= CF_EXPECT(os_builder.WillRebuildCompositeDisk());
+    }
+    // TODO(schuffelen): Add smarter decision for when to delete runtime files.
+    // Files like NVChip are tightly bound to Android keymint and should be
+    // deleted when userdata is reset. However if the user has ever run without
+    // the overlay, then we want to keep this until userdata.img was externally
+    // replaced.
+    creating_os_disk &= FLAGS_use_overlay;
+    if (FLAGS_resume && creating_os_disk) {
       LOG(INFO) << "Requested resuming a previous session (the default behavior) "
                 << "but the base images have changed under the overlay, making the "
                 << "overlay incompatible. Wiping the overlay files.";
-    } else if (FLAGS_resume && !create_os_composite_disk) {
+    } else if (FLAGS_resume && !creating_os_disk) {
       preserving.insert("overlay.img");
       preserving.insert("ap_overlay.img");
       preserving.insert("os_composite_disk_config.txt");
@@ -347,11 +365,14 @@ Result<int> AssembleCvdMain(int argc, char** argv) {
   }
 
   fruit::Injector<> injector(FlagsComponent);
-  auto flag_features = injector.getMultibindings<FlagFeature>();
-  if (!FlagFeature::ProcessFlags(flag_features, args)) {
-    LOG(ERROR) << "Failed to parse flags.";
-    return 1;
+
+  for (auto& late_injected : injector.getMultibindings<LateInjected>()) {
+    CF_EXPECT(late_injected->LateInject(injector));
   }
+
+  auto flag_features = injector.getMultibindings<FlagFeature>();
+  CF_EXPECT(FlagFeature::ProcessFlags(flag_features, args),
+            "Failed to parse flags.");
 
   if (help || help_str != "") {
     LOG(WARNING) << "TODO(schuffelen): Implement `--help` for assemble_cvd.";

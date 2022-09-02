@@ -26,6 +26,8 @@
 #include <stdio.h>
 
 #include <algorithm>
+#include <atomic>
+#include <future>
 #include <thread>
 
 #include <android-base/logging.h>
@@ -35,89 +37,13 @@
 
 namespace cuttlefish {
 
+namespace {
+
 struct ParentToChildMessage {
   bool stop;
 };
 
-ProcessMonitor::ProcessMonitor(bool restart_subprocesses)
-    : restart_subprocesses_(restart_subprocesses), monitor_(-1) {
-}
-
-void ProcessMonitor::AddCommand(Command cmd) {
-  CHECK(monitor_ == -1) << "The monitor process is already running.";
-  CHECK(!monitor_socket_->IsOpen()) << "The monitor socket is already open.";
-
-  monitored_processes_.push_back(MonitorEntry());
-  auto& entry = monitored_processes_.back();
-  entry.cmd.reset(new Command(std::move(cmd)));
-}
-
-bool ProcessMonitor::StopMonitoredProcesses() {
-  if (monitor_ == -1) {
-    LOG(ERROR) << "The monitor process is already dead.";
-    return false;
-  }
-  if (!monitor_socket_->IsOpen()) {
-    LOG(ERROR) << "The monitor socket is already closed.";
-    return false;
-  }
-  ParentToChildMessage message;
-  message.stop = true;
-  if (WriteAllBinary(monitor_socket_, &message) != sizeof(message)) {
-    LOG(ERROR) << "Failed to communicate with monitor socket: "
-                << monitor_socket_->StrError();
-    return false;
-  }
-  pid_t last_monitor = monitor_;
-  monitor_ = -1;
-  monitor_socket_->Close();
-  int wstatus;
-  if (waitpid(last_monitor, &wstatus, 0) != last_monitor) {
-    LOG(ERROR) << "Failed to wait for monitor process";
-    return false;
-  }
-  if (WIFSIGNALED(wstatus)) {
-    LOG(ERROR) << "Monitor process exited due to a signal";
-    return false;
-  }
-  if (!WIFEXITED(wstatus)) {
-    LOG(ERROR) << "Monitor process exited for unknown reasons";
-    return false;
-  }
-  if (WEXITSTATUS(wstatus) != 0) {
-    LOG(ERROR) << "Monitor process exited with code " << WEXITSTATUS(wstatus);
-    return false;
-  }
-  return true;
-}
-
-bool ProcessMonitor::StartAndMonitorProcesses() {
-  if (monitor_ != -1) {
-    LOG(ERROR) << "The monitor process was already started";
-    return false;
-  }
-  if (monitor_socket_->IsOpen()) {
-    LOG(ERROR) << "The monitor socket was already opened.";
-    return false;
-  }
-  SharedFD client_pipe, host_pipe;
-  if (!SharedFD::Pipe(&client_pipe, &host_pipe)) {
-    LOG(ERROR) << "Could not create the monitor socket.";
-    return false;
-  }
-  monitor_ = fork();
-  if (monitor_ == 0) {
-    monitor_socket_ = client_pipe;
-    host_pipe->Close();
-    std::exit(MonitorRoutine() ? 0 : 1);
-  } else {
-    client_pipe->Close();
-    monitor_socket_ = host_pipe;
-    return true;
-  }
-}
-
-static void LogSubprocessExit(const std::string& name, pid_t pid, int wstatus) {
+void LogSubprocessExit(const std::string& name, pid_t pid, int wstatus) {
   LOG(INFO) << "Detected unexpected exit of monitored subprocess " << name;
   if (WIFEXITED(wstatus)) {
     LOG(INFO) << "Subprocess " << name << " (" << pid
@@ -131,7 +57,7 @@ static void LogSubprocessExit(const std::string& name, pid_t pid, int wstatus) {
   }
 }
 
-static void LogSubprocessExit(const std::string& name, const siginfo_t& infop) {
+void LogSubprocessExit(const std::string& name, const siginfo_t& infop) {
   LOG(INFO) << "Detected unexpected exit of monitored subprocess " << name;
   if (infop.si_code == CLD_EXITED) {
     LOG(INFO) << "Subprocess " << name << " (" << infop.si_pid
@@ -146,50 +72,49 @@ static void LogSubprocessExit(const std::string& name, const siginfo_t& infop) {
   }
 }
 
-bool ProcessMonitor::MonitorRoutine() {
-  // Make this process a subreaper to reliably catch subprocess exits.
-  // See https://man7.org/linux/man-pages/man2/prctl.2.html
-  prctl(PR_SET_CHILD_SUBREAPER, 1);
-  prctl(PR_SET_PDEATHSIG, SIGHUP); // Die when parent dies
-
-  LOG(DEBUG) << "Starting monitoring subprocesses";
-  for (auto& monitored : monitored_processes_) {
+Result<void> StartSubprocesses(std::vector<MonitorEntry>& entries) {
+  LOG(DEBUG) << "Starting monitored subprocesses";
+  for (auto& monitored : entries) {
+    LOG(INFO) << monitored.cmd->GetShortName();
     auto options = SubprocessOptions().InGroup(true);
     monitored.proc.reset(new Subprocess(monitored.cmd->Start(options)));
-    CHECK(monitored.proc->Started()) << "Failed to start process";
+    CF_EXPECT(monitored.proc->Started(), "Failed to start subprocess");
   }
+  return {};
+}
 
-  bool running = true;
-  std::thread parent_comms_thread([&running, this]() {
-    LOG(DEBUG) << "Waiting for a `stop` message from the parent.";
-    while (running) {
-      ParentToChildMessage message;
-      CHECK(ReadExactBinary(monitor_socket_, &message) == sizeof(message))
-          << "Could not read message from parent.";
-      if (message.stop) {
-        running = false;
-        // Wake up the wait() loop by giving it an exited child process
-        if (fork() == 0) {
-          std::exit(0);
-        }
+Result<void> ReadMonitorSocketLoopForStop(std::atomic_bool& running,
+                                          SharedFD& monitor_socket) {
+  LOG(DEBUG) << "Waiting for a `stop` message from the parent";
+  while (running.load()) {
+    ParentToChildMessage message;
+    CF_EXPECT(ReadExactBinary(monitor_socket, &message) == sizeof(message),
+              "Could not read message from parent");
+    if (message.stop) {
+      running.store(false);
+      // Wake up the wait() loop by giving it an exited child process
+      if (fork() == 0) {
+        std::exit(0);
       }
     }
-  });
+  }
+  return {};
+}
 
-  auto& monitored = monitored_processes_;
-
-  LOG(DEBUG) << "Monitoring subprocesses";
-  while(running) {
+Result<void> MonitorLoop(const std::atomic_bool& running,
+                         const bool restart_subprocesses,
+                         std::vector<MonitorEntry>& monitored) {
+  while (running.load()) {
     int wstatus;
     pid_t pid = wait(&wstatus);
     int error_num = errno;
-    CHECK(pid != -1) << "Wait failed: " << strerror(error_num);
+    CF_EXPECT(pid != -1, "Wait failed: " << strerror(error_num));
     if (!WIFSIGNALED(wstatus) && !WIFEXITED(wstatus)) {
       LOG(DEBUG) << "Unexpected status from wait: " << wstatus
                   << " for pid " << pid;
       continue;
     }
-    if (!running) { // Avoid extra restarts near the end
+    if (!running.load()) {  // Avoid extra restarts near the end
       break;
     }
     auto matches = [pid](const auto& it) { return it.proc->pid() == pid; };
@@ -198,16 +123,19 @@ bool ProcessMonitor::MonitorRoutine() {
       LogSubprocessExit("(unknown)", pid, wstatus);
     } else {
       LogSubprocessExit(it->cmd->GetShortName(), it->proc->pid(), wstatus);
-      if (restart_subprocesses_) {
+      if (restart_subprocesses) {
         auto options = SubprocessOptions().InGroup(true);
         it->proc.reset(new Subprocess(it->cmd->Start(options)));
       } else {
-        monitored_processes_.erase(it);
+        monitored.erase(it);
       }
     }
   }
+  return {};
+}
 
-  parent_comms_thread.join(); // Should have exited if `running` is false
+Result<void> StopSubprocesses(std::vector<MonitorEntry>& monitored) {
+  LOG(DEBUG) << "Stoppping monitored subprocesses";
   auto stop = [](const auto& it) {
     auto stop_result = it.proc->Stop();
     if (stop_result == StopperResult::kStopFailure) {
@@ -228,8 +156,104 @@ bool ProcessMonitor::MonitorRoutine() {
   // Processes were started in the order they appear in the vector, stop them in
   // reverse order for symmetry.
   size_t stopped = std::count_if(monitored.rbegin(), monitored.rend(), stop);
-  LOG(DEBUG) << "Done monitoring subprocesses";
-  return stopped == monitored.size();
+  CF_EXPECT(stopped == monitored.size(), "Didn't stop all subprocesses");
+  return {};
+}
+}  // namespace
+
+ProcessMonitor::Properties& ProcessMonitor::Properties::RestartSubprocesses(
+    bool r) & {
+  restart_subprocesses_ = r;
+  return *this;
 }
 
+ProcessMonitor::Properties ProcessMonitor::Properties::RestartSubprocesses(
+    bool r) && {
+  restart_subprocesses_ = r;
+  return std::move(*this);
+}
+
+ProcessMonitor::Properties& ProcessMonitor::Properties::AddCommand(
+    Command cmd) & {
+  auto& entry = entries_.emplace_back();
+  entry.cmd.reset(new Command(std::move(cmd)));
+  return *this;
+}
+
+ProcessMonitor::Properties ProcessMonitor::Properties::AddCommand(
+    Command cmd) && {
+  auto& entry = entries_.emplace_back();
+  entry.cmd.reset(new Command(std::move(cmd)));
+  return std::move(*this);
+}
+
+ProcessMonitor::ProcessMonitor(ProcessMonitor::Properties&& properties)
+    : properties_(std::move(properties)), monitor_(-1) {}
+
+Result<void> ProcessMonitor::StopMonitoredProcesses() {
+  CF_EXPECT(monitor_ != -1, "The monitor process has already exited.");
+  CF_EXPECT(monitor_socket_->IsOpen(), "The monitor socket is already closed");
+  ParentToChildMessage message;
+  message.stop = true;
+  CF_EXPECT(WriteAllBinary(monitor_socket_, &message) == sizeof(message),
+            "Failed to communicate with monitor socket: "
+                << monitor_socket_->StrError());
+
+  pid_t last_monitor = monitor_;
+  monitor_ = -1;
+  monitor_socket_->Close();
+  int wstatus;
+  CF_EXPECT(waitpid(last_monitor, &wstatus, 0) == last_monitor,
+            "Failed to wait for monitor process");
+  CF_EXPECT(!WIFSIGNALED(wstatus), "Monitor process exited due to a signal");
+  CF_EXPECT(WIFEXITED(wstatus), "Monitor process exited for unknown reasons");
+  CF_EXPECT(WEXITSTATUS(wstatus) == 0,
+            "Monitor process exited with code " << WEXITSTATUS(wstatus));
+  return {};
+}
+
+Result<void> ProcessMonitor::StartAndMonitorProcesses() {
+  CF_EXPECT(monitor_ == -1, "The monitor process was already started");
+  CF_EXPECT(!monitor_socket_->IsOpen(), "Monitor socket was already opened");
+
+  SharedFD client_pipe, host_pipe;
+  CF_EXPECT(SharedFD::Pipe(&client_pipe, &host_pipe),
+            "Could not create the monitor socket.");
+  monitor_ = fork();
+  if (monitor_ == 0) {
+    monitor_socket_ = client_pipe;
+    host_pipe->Close();
+    auto monitor_result = MonitorRoutine();
+    if (!monitor_result.ok()) {
+      LOG(ERROR) << "Monitoring processes failed:\n" << monitor_result.error();
+    }
+    std::exit(monitor_result.ok() ? 0 : 1);
+  } else {
+    client_pipe->Close();
+    monitor_socket_ = host_pipe;
+    return {};
+  }
+}
+
+Result<void> ProcessMonitor::MonitorRoutine() {
+  // Make this process a subreaper to reliably catch subprocess exits.
+  // See https://man7.org/linux/man-pages/man2/prctl.2.html
+  prctl(PR_SET_CHILD_SUBREAPER, 1);
+  prctl(PR_SET_PDEATHSIG, SIGHUP);  // Die when parent dies
+
+  LOG(DEBUG) << "Monitoring subprocesses";
+  StartSubprocesses(properties_.entries_);
+
+  std::atomic_bool running(true);
+  auto parent_comms =
+      std::async(std::launch::async, ReadMonitorSocketLoopForStop,
+                 std::ref(running), std::ref(monitor_socket_));
+
+  MonitorLoop(running, properties_.restart_subprocesses_, properties_.entries_);
+  CF_EXPECT(parent_comms.get(), "Should have exited if monitoring stopped");
+
+  StopSubprocesses(properties_.entries_);
+  LOG(DEBUG) << "Done monitoring subprocesses";
+  return {};
+}
 }  // namespace cuttlefish

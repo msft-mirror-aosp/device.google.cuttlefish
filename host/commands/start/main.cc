@@ -17,8 +17,9 @@
 #include <sstream>
 #include <fstream>
 
-#include <gflags/gflags.h>
 #include <android-base/logging.h>
+#include <android-base/parseint.h>
+#include <gflags/gflags.h>
 
 #include "common/libs/fs/shared_buf.h"
 #include "common/libs/fs/shared_fd.h"
@@ -26,8 +27,9 @@
 #include "host/commands/start/filesystem_explorer.h"
 #include "host/commands/start/flag_forwarder.h"
 #include "host/libs/config/cuttlefish_config.h"
-#include "host/libs/config/host_tools_version.h"
 #include "host/libs/config/fetcher_config.h"
+#include "host/libs/config/host_tools_version.h"
+#include "host/libs/config/instance_nums.h"
 
 /**
  * If stdin is a tty, that means a user is invoking launch_cvd on the command
@@ -48,11 +50,17 @@ DEFINE_int32(base_instance_num,
              cuttlefish::GetInstance(),
              "The instance number of the device created. When `-num_instances N`"
              " is used, N instance numbers are claimed starting at this number.");
+DEFINE_string(instance_nums, "",
+              "A comma-separated list of instance numbers "
+              "to use. Mutually exclusive with base_instance_num.");
 DEFINE_string(verbosity, "INFO", "Console logging verbosity. Options are VERBOSE,"
                                  "DEBUG,INFO,WARNING,ERROR");
 DEFINE_string(file_verbosity, "DEBUG",
               "Log file logging verbosity. Options are VERBOSE,DEBUG,INFO,"
               "WARNING,ERROR");
+DEFINE_bool(use_overlay, true,
+            "Capture disk writes an overlay. This is a "
+            "prerequisite for powerwash_cvd or multiple instances.");
 
 namespace {
 
@@ -109,19 +117,31 @@ std::string ValidateMetricsConfirmation(std::string use_metrics) {
       }
     }
   }
+
+  std::cout << "===================================================================\n";
+  std::cout << "NOTICE:\n\n";
+  std::cout << "By using this Android Virtual Device, you agree to\n";
+  std::cout << "Google Terms of Service (https://policies.google.com/terms).\n";
+  std::cout << "The Google Privacy Policy (https://policies.google.com/privacy)\n";
+  std::cout << "describes how Google handles information generated as you use\n";
+  std::cout << "Google Services.";
   char ch = !use_metrics.empty() ? tolower(use_metrics.at(0)) : -1;
   if (ch != 'n') {
-    std::cout << "===================================================================\n";
-    std::cout << "NOTICE:\n\n";
-    std::cout << "We collect usage statistics in accordance with our\n"
-                 "Content Licenses (https://source.android.com/setup/start/licenses),\n"
-                 "Contributor License Agreement (https://cla.developers.google.com/),\n"
-                 "Privacy Policy (https://policies.google.com/privacy) and\n"
-                 "Terms of Service (https://policies.google.com/terms).\n";
-    std::cout << "===================================================================\n\n";
     if (use_metrics.empty()) {
-      std::cout << "Do you accept anonymous usage statistics reporting (Y/n)?: ";
+      std::cout << "\n===================================================================\n";
+      std::cout << "Automatically send diagnostic information to Google, such as crash\n";
+      std::cout << "reports and usage data from this Android Virtual Device. You can\n";
+      std::cout << "adjust this permission at any time by running\n";
+      std::cout << "\"launch_cvd -report_anonymous_usage_stats=n\". (Y/n)?:";
+    } else {
+      std::cout << " You can adjust the permission for sending\n";
+      std::cout << "diagnostic information to Google, such as crash reports and usage\n";
+      std::cout << "data from this Android Virtual Device, at any time by running\n";
+      std::cout << "\"launch_cvd -report_anonymous_usage_stats=n\"\n";
+      std::cout << "===================================================================\n\n";
     }
+  } else {
+    std::cout << "\n===================================================================\n\n";
   }
   for (;;) {
     switch (ch) {
@@ -191,7 +211,28 @@ int main(int argc, char** argv) {
     cuttlefish::SharedFD::Pipe(&assembler_stdin, &launcher_report);
   }
 
-  auto instance_num_str = std::to_string(FLAGS_base_instance_num);
+  auto instance_nums =
+      cuttlefish::InstanceNumsCalculator().FromGlobalGflags().Calculate();
+  CHECK(instance_nums.ok()) << instance_nums.error();
+
+  if (cuttlefish::CuttlefishConfig::ConfigExists()) {
+    auto previous_config = cuttlefish::CuttlefishConfig::Get();
+    CHECK(previous_config);
+    CHECK(previous_config->Instances().size() > 0);
+    auto previous_instance = previous_config->Instances()[0];
+    const auto& disks = previous_instance.virtual_disk_paths();
+    auto overlay = previous_instance.PerInstancePath("overlay.img");
+    auto used_overlay =
+        std::find(disks.begin(), disks.end(), overlay) != disks.end();
+    CHECK(used_overlay == FLAGS_use_overlay)
+        << "Cannot transition between different values of --use_overlay "
+        << "(Previous = " << used_overlay << ", current = " << FLAGS_use_overlay
+        << "). To fix this, delete \"" << previous_config->root_dir()
+        << "\" and any image files.";
+  }
+
+  CHECK(instance_nums->size() > 0) << "Expected at least one instance";
+  auto instance_num_str = std::to_string(*instance_nums->begin());
   setenv("CUTTLEFISH_INSTANCE", instance_num_str.c_str(), /* overwrite */ 1);
 
 #if defined(__BIONIC__)
@@ -228,11 +269,11 @@ int main(int argc, char** argv) {
   }
 
   std::vector<cuttlefish::Subprocess> runners;
-  for (int i = 0; i < FLAGS_num_instances; i++) {
+  for (const auto& instance_num : *instance_nums) {
     cuttlefish::SharedFD runner_stdin_in, runner_stdin_out;
     cuttlefish::SharedFD::Pipe(&runner_stdin_out, &runner_stdin_in);
-    std::string instance_name = std::to_string(i + FLAGS_base_instance_num);
-    setenv("CUTTLEFISH_INSTANCE", instance_name.c_str(), /* overwrite */ 1);
+    std::string instance_num_str = std::to_string(instance_num);
+    setenv("CUTTLEFISH_INSTANCE", instance_num_str.c_str(), /* overwrite */ 1);
 
     auto run_proc = StartRunner(std::move(runner_stdin_out),
                                 forwarder.ArgvForSubprocess(kRunnerBin));

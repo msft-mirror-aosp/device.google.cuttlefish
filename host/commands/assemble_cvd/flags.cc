@@ -26,10 +26,10 @@
 #include "common/libs/utils/flag_parser.h"
 #include "host/commands/assemble_cvd/alloc.h"
 #include "host/commands/assemble_cvd/boot_config.h"
-#include "host/commands/assemble_cvd/clean.h"
 #include "host/commands/assemble_cvd/disk_flags.h"
 #include "host/libs/config/config_flag.h"
 #include "host/libs/config/host_tools_version.h"
+#include "host/libs/config/instance_nums.h"
 #include "host/libs/graphics_detector/graphics_detector.h"
 #include "host/libs/vm_manager/crosvm_manager.h"
 #include "host/libs/vm_manager/gem5_manager.h"
@@ -74,10 +74,10 @@ DEFINE_string(display3, "", kDisplayHelp);
 
 // TODO(b/171305898): mark these as deprecated after multi-display is fully
 // enabled.
-DEFINE_int32(x_res, 0, "Width of the screen in pixels");
-DEFINE_int32(y_res, 0, "Height of the screen in pixels");
-DEFINE_int32(dpi, 0, "Pixels per inch for the screen");
-DEFINE_int32(refresh_rate_hz, 60, "Screen refresh rate in Hertz");
+DEFINE_string(x_res, "0", "Width of the screen in pixels");
+DEFINE_string(y_res, "0", "Height of the screen in pixels");
+DEFINE_string(dpi, "0", "Pixels per inch for the screen");
+DEFINE_string(refresh_rate_hz, "60", "Screen refresh rate in Hertz");
 DEFINE_string(kernel_path, "",
               "Path to the kernel. Overrides the one from the boot image");
 DEFINE_string(initramfs_path, "", "Path to the initramfs");
@@ -127,6 +127,16 @@ DEFINE_bool(pause_in_bootloader, false,
             "to the device console and typing in \"boot\".");
 DEFINE_bool(enable_host_bluetooth, true,
             "Enable the root-canal which is Bluetooth emulator in the host.");
+DEFINE_bool(rootcanal_attach_mode, false,
+            "[DEPRECATED] Ignored, use rootcanal_instance_num instead");
+DEFINE_int32(
+    rootcanal_instance_num, 0,
+    "If it is greater than 0, use an existing rootcanal instance which is "
+    "launched from cuttlefish instance "
+    "with rootcanal_instance_num. Else, launch a new rootcanal instance");
+DEFINE_bool(netsim, false, "[Experimental] Connect all radios to netsim.");
+
+DEFINE_bool(netsim_bt, false, "[Experimental] Connect Bluetooth radio to netsim.");
 
 DEFINE_string(bluetooth_controller_properties_file,
               "etc/rootcanal/data/controller_properties.json",
@@ -137,25 +147,19 @@ DEFINE_string(
     "The default commands which root-canal executes when it launches.");
 
 /**
- *
  * crosvm sandbox feature requires /var/empty and seccomp directory
  *
- * --enable-sandbox: will enforce the sandbox feature
- *                   failing to meet the requirements result in assembly_cvd termination
- *
- * --enable-sandbox=no, etc: will disable sandbox
- *
- * no option given: it is enabled if /var/empty exists and an empty directory
- *                             or if it does not exist and can be created
- *
- * if seccomp dir doesn't exist, assembly_cvd will terminate
- *
- * See SetDefaultFlagsForCrosvm()
- *
+ * Also see SetDefaultFlagsForCrosvm()
  */
-DEFINE_bool(enable_sandbox,
-            false,
-            "Enable crosvm sandbox. Use this when you are sure about what you are doing.");
+DEFINE_bool(
+    enable_sandbox, false,
+    "Enable crosvm sandbox assuming /var/empty and seccomp directories exist. "
+    "--noenable-sandbox will disable crosvm sandbox. "
+    "When no option is given, sandbox is disabled if Cuttlefish is running "
+    "inside a container, or if GPU is enabled (b/152323505), "
+    "or if the empty /var/empty directory either does not exist and "
+    "cannot be created. Otherwise, sandbox is enabled on the supported "
+    "architecture when no option is given.");
 
 static const std::string kSeccompDir =
     std::string("usr/share/crosvm/") + cuttlefish::HostArchStr() + "-linux-gnu/seccomp";
@@ -242,6 +246,8 @@ DEFINE_bool(daemon, false,
 
 DEFINE_string(setupwizard_mode, "DISABLED",
             "One of DISABLED,OPTIONAL,REQUIRED");
+DEFINE_bool(enable_bootanimation, true,
+            "Whether to enable the boot animation.");
 
 DEFINE_string(qemu_binary_dir, "/usr/bin",
               "Path to the directory containing the qemu binary to use");
@@ -249,6 +255,11 @@ DEFINE_string(crosvm_binary, HostBinaryPath("crosvm"),
               "The Crosvm binary to use");
 DEFINE_string(gem5_binary_dir, HostBinaryPath("gem5"),
               "Path to the gem5 build tree root");
+DEFINE_string(gem5_checkpoint_dir, "",
+              "Path to the gem5 restore checkpoint directory");
+DEFINE_string(gem5_debug_file, "", "The file name where gem5 saves debug prints and logs");
+DEFINE_string(gem5_debug_flags, "", "The debug flags gem5 uses to print debugs to file");
+
 DEFINE_bool(restart_subprocesses, true, "Restart any crashed host process");
 DEFINE_bool(enable_vehicle_hal_grpc_server, true, "Enables the vehicle HAL "
             "emulation gRPC server on the host");
@@ -258,6 +269,9 @@ DEFINE_string(boot_slot, "", "Force booting into the given slot. If empty, "
              "bootloader. It will default to 'a' if empty and not using a "
              "bootloader.");
 DEFINE_int32(num_instances, 1, "Number of Android guests to launch");
+DEFINE_string(instance_nums, "",
+              "A comma-separated list of instance numbers "
+              "to use. Mutually exclusive with base_instance_num.");
 DEFINE_string(report_anonymous_usage_stats, "", "Report anonymous usage "
             "statistics for metrics collection and analysis.");
 DEFINE_string(ril_dns, "8.8.8.8", "DNS address of mobile network (RIL)");
@@ -265,10 +279,13 @@ DEFINE_bool(kgdb, false, "Configure the virtual device for debugging the kernel 
                          "with kgdb/kdb. The kernel must have been built with "
                          "kgdb support, and serial console must be enabled.");
 
-DEFINE_bool(start_gnss_proxy, false, "Whether to start the gnss proxy.");
+DEFINE_bool(start_gnss_proxy, true, "Whether to start the gnss proxy.");
 
 DEFINE_string(gnss_file_path, "",
-              "Local gnss file path for the gnss proxy");
+              "Local gnss raw measurement file path for the gnss proxy");
+
+DEFINE_string(fixed_location_file_path, "",
+              "Local fixed location file path for the gnss proxy");
 
 // by default, this modem-simulator is disabled
 DEFINE_bool(enable_modem_simulator, true,
@@ -278,6 +295,8 @@ DEFINE_int32(modem_simulator_sim_type, 1,
              "Sim type: 1 for normal, 2 for CtsCarrierApiTestCases");
 
 DEFINE_bool(console, false, "Enable the serial console");
+
+DEFINE_bool(enable_kernel_log, true, "Enable kernel console/dmesg logging");
 
 DEFINE_bool(vhost_net, false, "Enable vhost acceleration of networking");
 
@@ -325,12 +344,15 @@ DEFINE_bool(use_sdcard, true, "Create blank SD-Card image and expose to guest");
 
 DEFINE_bool(protected_vm, false, "Boot in Protected VM mode");
 
-DEFINE_bool(enable_audio, cuttlefish::HostArch() != cuttlefish::Arch::Arm64,
-            "Whether to play or capture audio");
+DEFINE_bool(enable_audio, true, "Whether to play or capture audio");
 
 DEFINE_uint32(camera_server_port, 0, "camera vsock port");
 
 DEFINE_string(userdata_format, "f2fs", "The userdata filesystem format");
+
+DEFINE_bool(use_overlay, true,
+            "Capture disk writes an overlay. This is a "
+            "prerequisite for powerwash_cvd or multiple instances.");
 
 DECLARE_string(assembly_dir);
 DECLARE_string(boot_image);
@@ -487,47 +509,12 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
 
   tmp_config_obj.set_root_dir(root_dir);
 
-  tmp_config_obj.set_target_arch(kernel_config.target_arch);
   tmp_config_obj.set_bootconfig_supported(kernel_config.bootconfig_supported);
   auto vmm = GetVmManager(FLAGS_vm_manager, kernel_config.target_arch);
   if (!vmm) {
     LOG(FATAL) << "Invalid vm_manager: " << FLAGS_vm_manager;
   }
   tmp_config_obj.set_vm_manager(FLAGS_vm_manager);
-
-  std::vector<CuttlefishConfig::DisplayConfig> display_configs;
-
-  auto display0 = ParseDisplayConfig(FLAGS_display0);
-  if (display0) {
-    display_configs.push_back(*display0);
-  }
-  auto display1 = ParseDisplayConfig(FLAGS_display1);
-  if (display1) {
-    display_configs.push_back(*display1);
-  }
-  auto display2 = ParseDisplayConfig(FLAGS_display2);
-  if (display2) {
-    display_configs.push_back(*display2);
-  }
-  auto display3 = ParseDisplayConfig(FLAGS_display3);
-  if (display3) {
-    display_configs.push_back(*display3);
-  }
-
-  if (FLAGS_x_res > 0 && FLAGS_y_res > 0) {
-    if (display_configs.empty()) {
-      display_configs.push_back({
-          .width = FLAGS_x_res,
-          .height = FLAGS_y_res,
-          .dpi = FLAGS_dpi,
-          .refresh_rate_hz = FLAGS_refresh_rate_hz,
-      });
-    } else {
-      LOG(WARNING) << "Ignoring --x_res and --y_res when --displayN specified.";
-    }
-  }
-
-  tmp_config_obj.set_display_configs(display_configs);
 
   const GraphicsAvailability graphics_availability =
     GetGraphicsAvailabilityWithSubprocessCheck();
@@ -615,18 +602,16 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
 
   CHECK(!FLAGS_smt || FLAGS_cpus % 2 == 0)
       << "CPUs must be a multiple of 2 in SMT mode";
-  tmp_config_obj.set_cpus(FLAGS_cpus);
   tmp_config_obj.set_smt(FLAGS_smt);
 
   tmp_config_obj.set_memory_mb(FLAGS_memory_mb);
 
   tmp_config_obj.set_setupwizard_mode(FLAGS_setupwizard_mode);
+  tmp_config_obj.set_enable_bootanimation(FLAGS_enable_bootanimation);
 
   auto secure_hals = android::base::Split(FLAGS_secure_hals, ",");
   tmp_config_obj.set_secure_hals(
       std::set<std::string>(secure_hals.begin(), secure_hals.end()));
-
-  tmp_config_obj.set_gdb_port(FLAGS_gdb_port);
 
   tmp_config_obj.set_guest_enforce_security(FLAGS_guest_enforce_security);
   tmp_config_obj.set_extra_kernel_cmdline(FLAGS_extra_kernel_cmdline);
@@ -636,8 +621,7 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
     SetCommandLineOptionWithMode("enable_sandbox", "false", SET_FLAGS_DEFAULT);
   }
 
-  tmp_config_obj.set_console(FLAGS_console);
-  tmp_config_obj.set_kgdb(FLAGS_console && FLAGS_kgdb);
+  tmp_config_obj.set_enable_kernel_log(FLAGS_enable_kernel_log);
 
   tmp_config_obj.set_host_tools_version(HostToolsCrc());
 
@@ -645,7 +629,8 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
 
   tmp_config_obj.set_qemu_binary_dir(FLAGS_qemu_binary_dir);
   tmp_config_obj.set_crosvm_binary(FLAGS_crosvm_binary);
-  tmp_config_obj.set_gem5_binary_dir(FLAGS_gem5_binary_dir);
+  tmp_config_obj.set_gem5_debug_flags(FLAGS_gem5_debug_flags);
+  tmp_config_obj.set_gem5_debug_file(FLAGS_gem5_debug_file);
 
   tmp_config_obj.set_seccomp_policy_dir(FLAGS_seccomp_policy_dir);
 
@@ -711,9 +696,6 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
 
   tmp_config_obj.set_wmediumd_config(FLAGS_wmediumd_config);
 
-  tmp_config_obj.set_rootcanal_hci_port(7300);
-  tmp_config_obj.set_rootcanal_link_port(7400);
-  tmp_config_obj.set_rootcanal_test_port(7500);
   tmp_config_obj.set_rootcanal_config_file(
       FLAGS_bluetooth_controller_properties_file);
   tmp_config_obj.set_rootcanal_default_commands_file(
@@ -721,20 +703,59 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
 
   tmp_config_obj.set_record_screen(FLAGS_record_screen);
 
-  tmp_config_obj.set_enable_host_bluetooth(FLAGS_enable_host_bluetooth);
+  // netsim flags allow all radios or selecting a specific radio
+  bool is_any_netsim = FLAGS_netsim || FLAGS_netsim_bt;
+  bool is_bt_netsim = FLAGS_netsim || FLAGS_netsim_bt;
+
+  // crosvm should create fifos for Bluetooth
+  tmp_config_obj.set_enable_host_bluetooth(FLAGS_enable_host_bluetooth || is_bt_netsim);
+
+  // rootcanal and bt_connector should handle Bluetooth (instead of netsim)
+  tmp_config_obj.set_enable_host_bluetooth_connector(FLAGS_enable_host_bluetooth && !is_bt_netsim);
+
+  // These flags inform NetsimServer::ResultSetup which radios it owns.
+  if (is_bt_netsim) {
+    tmp_config_obj.netsim_radio_enable(CuttlefishConfig::NetsimRadio::Bluetooth);
+  }
 
   tmp_config_obj.set_protected_vm(FLAGS_protected_vm);
 
   tmp_config_obj.set_userdata_format(FLAGS_userdata_format);
 
-  std::vector<int> num_instances;
-  for (int i = 0; i < FLAGS_num_instances; i++) {
-    num_instances.push_back(GetInstance() + i);
-  }
+  // old flags but vectorized for multi-device instances
   std::vector<std::string> gnss_file_paths = android::base::Split(FLAGS_gnss_file_path, ",");
+  std::vector<std::string> fixed_location_file_paths =
+      android::base::Split(FLAGS_fixed_location_file_path, ",");
+  std::vector<std::string> x_res_vec = android::base::Split(FLAGS_x_res, ",");
+  std::vector<std::string> y_res_vec = android::base::Split(FLAGS_y_res, ",");
+  std::vector<std::string> dpi_vec = android::base::Split(FLAGS_dpi, ",");
+  std::vector<std::string> refresh_rate_hz_vec =
+      android::base::Split(FLAGS_refresh_rate_hz, ",");
 
+  // new instance specific flags (moved from common flags)
+  std::vector<std::string> gem5_binary_dirs =
+      android::base::Split(FLAGS_gem5_binary_dir, ",");
+  std::vector<std::string> gem5_checkpoint_dirs =
+      android::base::Split(FLAGS_gem5_checkpoint_dir, ",");
+
+  auto instance_nums = InstanceNumsCalculator().FromGlobalGflags().Calculate();
+  CHECK(instance_nums.ok()) << instance_nums.error();
+
+  CHECK(FLAGS_use_overlay || instance_nums->size() == 1)
+      << "`--use_overlay=false` is incompatible with multiple instances";
+  CHECK(instance_nums->size() > 0) << "Require at least one instance.";
+  auto rootcanal_instance_num = *instance_nums->begin() - 1;
+  if (FLAGS_rootcanal_instance_num > 0) {
+    rootcanal_instance_num = FLAGS_rootcanal_instance_num - 1;
+  }
+  tmp_config_obj.set_rootcanal_hci_port(7300 + rootcanal_instance_num);
+  tmp_config_obj.set_rootcanal_link_port(7400 + rootcanal_instance_num);
+  tmp_config_obj.set_rootcanal_test_port(7500 + rootcanal_instance_num);
+  LOG(DEBUG) << "rootcanal_instance_num: " << rootcanal_instance_num;
+  LOG(DEBUG) << "launch rootcanal: " << (FLAGS_rootcanal_instance_num <= 0);
   bool is_first_instance = true;
-  for (const auto& num : num_instances) {
+  int instance_index = 0;
+  for (const auto& num : *instance_nums) {
     IfaceConfig iface_config;
     if (FLAGS_use_allocd) {
       auto iface_opt = AllocateNetworkInterfaces();
@@ -765,6 +786,106 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
     };
     instance.set_session_id(iface_config.mobile_tap.session_id);
 
+    // new instance specific flags (moved from common flags)
+    instance.set_target_arch(kernel_config.target_arch);
+    instance.set_console(FLAGS_console);
+    instance.set_kgdb(FLAGS_console && FLAGS_kgdb);
+    instance.set_cpus(FLAGS_cpus);
+    instance.set_gdb_port(FLAGS_gdb_port);
+
+    std::vector<CuttlefishConfig::DisplayConfig> display_configs;
+    auto display0 = ParseDisplayConfig(FLAGS_display0);
+    if (display0) {
+      display_configs.push_back(*display0);
+    }
+    auto display1 = ParseDisplayConfig(FLAGS_display1);
+    if (display1) {
+      display_configs.push_back(*display1);
+    }
+    auto display2 = ParseDisplayConfig(FLAGS_display2);
+    if (display2) {
+      display_configs.push_back(*display2);
+    }
+    auto display3 = ParseDisplayConfig(FLAGS_display3);
+    if (display3) {
+      display_configs.push_back(*display3);
+    }
+
+    int x_res = 0;
+    if (instance_index < x_res_vec.size()) {
+      if (!android::base::ParseInt(x_res_vec[instance_index].c_str(), &x_res)) {
+        LOG(ERROR) << "Failed to parse value \"" << x_res_vec[instance_index]
+                   << "\" for x_res";
+      }
+    } else if (x_res_vec.size() == 1) {
+      if (!android::base::ParseInt(x_res_vec[0].c_str(), &x_res)) {
+        LOG(ERROR) << "Failed to parse value \"" << x_res_vec[0]
+                   << "\" for x_res";
+      }
+    }
+    int y_res = 0;
+    if (instance_index < y_res_vec.size()) {
+      if (!android::base::ParseInt(y_res_vec[instance_index].c_str(), &y_res)) {
+        LOG(ERROR) << "Failed to parse value \"" << y_res_vec[instance_index]
+                   << "\" for y_res";
+      }
+    } else if (y_res_vec.size() == 1) {
+      if (!android::base::ParseInt(y_res_vec[0].c_str(), &y_res)) {
+        LOG(ERROR) << "Failed to parse value \"" << y_res_vec[0]
+                   << "\" for y_res";
+      }
+    }
+    int dpi = 0;
+    if (instance_index < dpi_vec.size()) {
+      if (!android::base::ParseInt(dpi_vec[instance_index].c_str(), &dpi)) {
+        LOG(ERROR) << "Failed to parse value \"" << dpi_vec[instance_index]
+                   << "\" for dpi";
+      }
+    } else if (dpi_vec.size() == 1) {
+      if (!android::base::ParseInt(dpi_vec[0].c_str(), &dpi)) {
+        LOG(ERROR) << "Failed to parse value \"" << dpi_vec[0]
+                   << "\" for dpi";
+      }
+    }
+    int refresh_rate_hz = 0;
+    if (instance_index < refresh_rate_hz_vec.size()) {
+      if (!android::base::ParseInt(refresh_rate_hz_vec[instance_index].c_str(), &refresh_rate_hz)) {
+        LOG(ERROR) << "Failed to parse value \"" << refresh_rate_hz_vec[instance_index]
+                   << "\" for refresh_rate_hz";
+      }
+    } else if (refresh_rate_hz_vec.size() == 1) {
+      if (!android::base::ParseInt(refresh_rate_hz_vec[0].c_str(), &refresh_rate_hz)) {
+        LOG(ERROR) << "Failed to parse value \"" << refresh_rate_hz_vec[0]
+                   << "\" for refresh_rate_hz";
+      }
+    }
+    if (x_res > 0 && y_res > 0) {
+      if (display_configs.empty()) {
+        display_configs.push_back({
+            .width = x_res,
+            .height = y_res,
+            .dpi = dpi,
+            .refresh_rate_hz = refresh_rate_hz,
+          });
+      } else {
+        LOG(WARNING) << "Ignoring --x_res and --y_res when --displayN specified.";
+      }
+    }
+    instance.set_display_configs(display_configs);
+
+    if (instance_index < gem5_binary_dirs.size()) {
+      instance.set_gem5_binary_dir(gem5_binary_dirs[instance_index]);
+    } else if (gem5_binary_dirs.size() == 1) {
+      // support legacy flag input in multi-device which set one and same flag to all instances
+      instance.set_gem5_binary_dir(gem5_binary_dirs[0]);
+    }
+    if (instance_index < gem5_checkpoint_dirs.size()) {
+      instance.set_gem5_checkpoint_dir(gem5_checkpoint_dirs[instance_index]);
+    } else if (gem5_checkpoint_dirs.size() == 1) {
+      // support legacy flag input in multi-device which set one and same flag to all instances
+      instance.set_gem5_checkpoint_dir(gem5_checkpoint_dirs[0]);
+    }
+
     instance.set_mobile_bridge_name(StrForInstance("cvd-mbr-", num));
     instance.set_mobile_tap_name(iface_config.mobile_tap.name);
     instance.set_wifi_tap_name(iface_config.wireless_tap.name);
@@ -777,7 +898,6 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
     instance.set_qemu_vnc_server_port(544 + num - 1);
     instance.set_adb_host_port(6520 + num - 1);
     instance.set_adb_ip_and_port("0.0.0.0:" + std::to_string(6520 + num - 1));
-    instance.set_confui_host_vsock_port(7700 + num - 1);
     instance.set_tombstone_receiver_port(calc_vsock_port(6600));
     instance.set_vehicle_hal_server_port(9300 + num - 1);
     instance.set_audiocontrol_server_port(9410);  /* OK to use the same port number across instances */
@@ -794,31 +914,46 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
     instance.set_gnss_grpc_proxy_server_port(7200 + num -1);
 
     if (num <= gnss_file_paths.size()) {
-      instance.set_gnss_file_path(gnss_file_paths[num-1]);
+      instance.set_gnss_file_path(gnss_file_paths[instance_index]);
     }
+    if (num <= fixed_location_file_paths.size()) {
+      instance.set_fixed_location_file_path(
+          fixed_location_file_paths[instance_index]);
+    }
+    instance_index++;
 
     instance.set_camera_server_port(FLAGS_camera_server_port);
 
-    if (FLAGS_protected_vm) {
-      instance.set_virtual_disk_paths(
-          {const_instance.PerInstancePath("os_composite.img")});
+    std::vector<std::string> virtual_disk_paths;
+
+    bool os_overlay = true;
+    os_overlay &= !FLAGS_protected_vm;
+    // Gem5 already uses CoW wrappers around disk images
+    os_overlay &= FLAGS_vm_manager != Gem5Manager::name();
+    os_overlay &= FLAGS_use_overlay;
+    if (os_overlay) {
+      auto path = const_instance.PerInstancePath("overlay.img");
+      virtual_disk_paths.push_back(path);
     } else {
-      std::vector<std::string> virtual_disk_paths = {
-          const_instance.PerInstancePath("persistent_composite.img"),
-      };
-      if (FLAGS_vm_manager != Gem5Manager::name()) {
-        virtual_disk_paths.insert(virtual_disk_paths.begin(),
-            const_instance.PerInstancePath("overlay.img"));
-      } else {
-        // Gem5 already uses CoW wrappers around disk images
-        virtual_disk_paths.insert(virtual_disk_paths.begin(),
-            tmp_config_obj.os_composite_disk_path());
-      }
-      if (FLAGS_use_sdcard) {
-        virtual_disk_paths.push_back(const_instance.sdcard_path());
-      }
-      instance.set_virtual_disk_paths(virtual_disk_paths);
+      virtual_disk_paths.push_back(const_instance.os_composite_disk_path());
     }
+
+    bool persistent_disk = true;
+    persistent_disk &= !FLAGS_protected_vm;
+    persistent_disk &= FLAGS_vm_manager != Gem5Manager::name();
+    if (persistent_disk) {
+      auto path = const_instance.PerInstancePath("persistent_composite.img");
+      virtual_disk_paths.push_back(path);
+    }
+
+    bool sdcard = true;
+    sdcard &= FLAGS_use_sdcard;
+    sdcard &= !FLAGS_protected_vm;
+    if (sdcard) {
+      virtual_disk_paths.push_back(const_instance.sdcard_path());
+    }
+
+    instance.set_virtual_disk_paths(virtual_disk_paths);
 
     // We'd like to set mac prefix to be 5554, 5555, 5556, ... in normal cases.
     // When --base_instance_num=3, this might be 5556, 5557, 5558, ... (skipping
@@ -872,10 +1007,13 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
       instance.set_start_wmediumd(false);
     }
 
-    instance.set_start_rootcanal(is_first_instance);
+    instance.set_start_netsim(is_first_instance && is_any_netsim);
+
+    instance.set_start_rootcanal(is_first_instance && !is_bt_netsim &&
+                                 (FLAGS_rootcanal_instance_num <= 0));
 
     instance.set_start_ap(!FLAGS_ap_rootfs_image.empty() &&
-                          !FLAGS_ap_kernel_image.empty() && is_first_instance);
+                          !FLAGS_ap_kernel_image.empty() && start_wmediumd);
 
     is_first_instance = false;
 
@@ -893,7 +1031,7 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
     } else {
       instance.set_modem_simulator_ports("");
     }
-  } // end of num_instances loop
+  }  // end of num_instances loop
 
   std::vector<std::string> names;
   for (const auto& instance : tmp_config_obj.Instances()) {
@@ -903,11 +1041,6 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
 
   tmp_config_obj.set_enable_sandbox(FLAGS_enable_sandbox);
 
-  // Audio is not available for Arm64
-  SetCommandLineOptionWithMode(
-      "enable_audio",
-      (cuttlefish::HostArch() == cuttlefish::Arch::Arm64) ? "false" : "true",
-      SET_FLAGS_DEFAULT);
   tmp_config_obj.set_enable_audio(FLAGS_enable_audio);
 
   return tmp_config_obj;

@@ -47,8 +47,12 @@ function setupMessages() {
   });
 }
 
-function showMessage(msg, className) {
+function showMessage(msg, className, duration) {
   let element = document.getElementById('error-message');
+  let previousTimeout = element.dataset.timeout;
+  if (previousTimeout !== undefined) {
+    clearTimeout(previousTimeout);
+  }
   if (element.childNodes.length < 2) {
     // First time, no text node yet
     element.insertAdjacentText('afterBegin', msg);
@@ -56,14 +60,24 @@ function showMessage(msg, className) {
     element.childNodes[0].data = msg;
   }
   element.className = className;
+
+  if (duration !== undefined) {
+    element.dataset.timeout = setTimeout(() => {
+      element.className = 'hidden';
+    }, duration);
+  }
 }
 
-function showWarning(msg) {
-  showMessage(msg, 'warning');
+function showInfo(msg, duration) {
+  showMessage(msg, 'info', duration);
 }
 
-function showError(msg) {
-  showMessage(msg, 'error');
+function showWarning(msg, duration) {
+  showMessage(msg, 'warning', duration);
+}
+
+function showError(msg, duration) {
+  showMessage(msg, 'error', duration);
 }
 
 
@@ -97,11 +111,13 @@ class DeviceDetailsUpdater {
 class DeviceControlApp {
   #deviceConnection = {};
   #currentRotation = 0;
+  #currentScreenStyles = {};
   #displayDescriptions = [];
-  #buttons = {};
   #recording = {};
   #phys = {};
   #deviceCount = 0;
+  #micActive = false;
+  #adbConnected = false;
 
   constructor(deviceConnection) {
     this.#deviceConnection = deviceConnection;
@@ -110,58 +126,62 @@ class DeviceControlApp {
   start() {
     console.debug('Device description: ', this.#deviceConnection.description);
     this.#deviceConnection.onControlMessage(msg => this.#onControlMessage(msg));
-    let keyboardCaptureCtrl = createToggleControl(
-        document.getElementById('keyboard-capture-control'), 'keyboard');
-    let micCaptureCtrl = createToggleControl(
-        document.getElementById('mic-capture-control'), 'mic');
-    let cameraCtrl = createToggleControl(
-        document.getElementById('camera-control'), 'videocam');
-    let videoCaptureCtrl = createToggleControl(
-        document.getElementById('record-video-control'), 'movie_creation');
+    createToggleControl(
+        document.getElementById('camera_off_btn'),
+        enabled => this.#onCameraCaptureToggle(enabled));
+    createToggleControl(
+        document.getElementById('record_video_btn'),
+        enabled => this.#onVideoCaptureToggle(enabled));
+    const audioElm = document.getElementById('device-audio');
 
-    keyboardCaptureCtrl.OnClick(
-        enabled => this.#onKeyboardCaptureToggle(enabled));
-    micCaptureCtrl.OnClick(enabled => this.#onMicCaptureToggle(enabled));
-    cameraCtrl.OnClick(enabled => this.#onCameraCaptureToggle(enabled));
-    videoCaptureCtrl.OnClick(enabled => this.#onVideoCaptureToggle(enabled));
+    let audioPlaybackCtrl = createToggleControl(
+        document.getElementById('volume_off_btn'),
+        enabled => this.#onAudioPlaybackToggle(enabled), !audioElm.paused);
+    // The audio element may start or stop playing at any time, this ensures the
+    // audio control always show the right state.
+    audioElm.onplay = () => audioPlaybackCtrl.Set(true);
+    audioElm.onpause = () => audioPlaybackCtrl.Set(false);
 
     this.#showDeviceUI();
   }
 
   #showDeviceUI() {
-    window.onresize = evt => this.#resizeDeviceDisplays();
     // Set up control panel buttons
-    this.#buttons = {};
-    this.#buttons['power'] = createControlPanelButton(
-        'power', 'Power', 'power_settings_new',
-        evt => this.#onControlPanelButton(evt));
-    this.#buttons['home'] = createControlPanelButton(
-        'home', 'Home', 'home', evt => this.#onControlPanelButton(evt));
-    this.#buttons['menu'] = createControlPanelButton(
-        'menu', 'Menu', 'menu', evt => this.#onControlPanelButton(evt));
-    this.#buttons['rotate'] = createControlPanelButton(
-        'rotate', 'Rotate', 'screen_rotation',
-        evt => this.#onRotateButton(evt));
-    this.#buttons['rotate'].adb = true;
-    this.#buttons['volumemute'] = createControlPanelButton(
-        'volumemute', 'Volume Mute', 'volume_mute',
-        evt => this.#onControlPanelButton(evt));
-    this.#buttons['volumedown'] = createControlPanelButton(
-        'volumedown', 'Volume Down', 'volume_down',
-        evt => this.#onControlPanelButton(evt));
-    this.#buttons['volumeup'] = createControlPanelButton(
-        'volumeup', 'Volume Up', 'volume_up',
-        evt => this.#onControlPanelButton(evt));
+    addMouseListeners(
+        document.querySelector('#power_btn'),
+        evt => this.#onControlPanelButton(evt, 'power'));
+    addMouseListeners(
+        document.querySelector('#back_btn'),
+        evt => this.#onControlPanelButton(evt, 'back'));
+    addMouseListeners(
+        document.querySelector('#home_btn'),
+        evt => this.#onControlPanelButton(evt, 'home'));
+    addMouseListeners(
+        document.querySelector('#menu_btn'),
+        evt => this.#onControlPanelButton(evt, 'menu'));
+    addMouseListeners(
+        document.querySelector('#rotate_left_btn'),
+        evt => this.#onRotateLeftButton(evt, 'rotate'));
+    addMouseListeners(
+        document.querySelector('#rotate_right_btn'),
+        evt => this.#onRotateRightButton(evt, 'rotate'));
+    addMouseListeners(
+        document.querySelector('#volume_up_btn'),
+        evt => this.#onControlPanelButton(evt, 'volumeup'));
+    addMouseListeners(
+        document.querySelector('#volume_down_btn'),
+        evt => this.#onControlPanelButton(evt, 'volumedown'));
+    addMouseListeners(
+        document.querySelector('#mic_btn'), evt => this.#onMicButton(evt));
 
     createModalButton(
         'device-details-button', 'device-details-modal',
         'device-details-close');
     createModalButton(
-        'bluetooth-modal-button', 'bluetooth-prompt',
-        'bluetooth-prompt-close');
+        'bluetooth-modal-button', 'bluetooth-prompt', 'bluetooth-prompt-close');
     createModalButton(
-        'bluetooth-prompt-wizard', 'bluetooth-wizard',
-        'bluetooth-wizard-close', 'bluetooth-prompt');
+        'bluetooth-prompt-wizard', 'bluetooth-wizard', 'bluetooth-wizard-close',
+        'bluetooth-prompt');
     createModalButton(
         'bluetooth-wizard-device', 'bluetooth-wizard-confirm',
         'bluetooth-wizard-confirm-close', 'bluetooth-wizard');
@@ -169,14 +189,14 @@ class DeviceControlApp {
         'bluetooth-wizard-another', 'bluetooth-wizard',
         'bluetooth-wizard-close', 'bluetooth-wizard-confirm');
     createModalButton(
-        'bluetooth-prompt-list', 'bluetooth-list',
-        'bluetooth-list-close', 'bluetooth-prompt');
+        'bluetooth-prompt-list', 'bluetooth-list', 'bluetooth-list-close',
+        'bluetooth-prompt');
     createModalButton(
         'bluetooth-prompt-console', 'bluetooth-console',
         'bluetooth-console-close', 'bluetooth-prompt');
     createModalButton(
-        'bluetooth-wizard-cancel', 'bluetooth-prompt',
-        'bluetooth-wizard-close', 'bluetooth-wizard');
+        'bluetooth-wizard-cancel', 'bluetooth-prompt', 'bluetooth-wizard-close',
+        'bluetooth-wizard');
 
     positionModal('device-details-button', 'bluetooth-modal');
     positionModal('device-details-button', 'bluetooth-prompt');
@@ -204,29 +224,29 @@ class DeviceControlApp {
                .custom_control_panel_buttons) {
         if (button.shell_command) {
           // This button's command is handled by sending an ADB shell command.
-          this.#buttons[button.command] = createControlPanelButton(
-              button.command, button.title, button.icon_name,
+          let element = createControlPanelButton(
+              button.title, button.icon_name,
               e => this.#onCustomShellButton(button.shell_command, e),
               'control-panel-custom-buttons');
-          this.#buttons[button.command].adb = true;
+          element.dataset.adb = true;
         } else if (button.device_states) {
           // This button corresponds to variable hardware device state(s).
-          this.#buttons[button.command] = createControlPanelButton(
-              button.command, button.title, button.icon_name,
+          let element = createControlPanelButton(
+              button.title, button.icon_name,
               this.#getCustomDeviceStateButtonCb(button.device_states),
               'control-panel-custom-buttons');
           for (const device_state of button.device_states) {
             // hinge_angle is currently injected via an adb shell command that
             // triggers a guest binary.
             if ('hinge_angle_value' in device_state) {
-              this.#buttons[button.command].adb = true;
+              element.dataset.adb = true;
             }
           }
         } else {
           // This button's command is handled by custom action server.
-          this.#buttons[button.command] = createControlPanelButton(
-              button.command, button.title, button.icon_name,
-              evt => this.#onControlPanelButton(evt),
+          createControlPanelButton(
+              button.title, button.icon_name,
+              evt => this.#onControlPanelButton(evt, button.command),
               'control-panel-custom-buttons');
         }
       }
@@ -242,19 +262,16 @@ class DeviceControlApp {
       this.#deviceConnection.getStream(stream_id)
           .then(stream => {
             deviceAudio.srcObject = stream;
-            let playPromise = deviceAudio.play();
-            if (playPromise !== undefined) {
-              playPromise.catch(error => {
-                showWarning(
-                    'Audio failed to play automatically, click on the play button to activate it');
-              });
-            }
+            deviceAudio.play();
           })
           .catch(e => console.error('Unable to get audio stream: ', e));
     }
 
     // Set up touch input
     this.#startMouseTracking();
+
+    // Set up keyboard capture
+    this.#startKeyboardCapture();
 
     this.#updateDeviceHardwareDetails(
         this.#deviceConnection.description.hardware);
@@ -323,16 +340,17 @@ class DeviceControlApp {
   }
 
   #showWebrtcError() {
-    document.getElementById('status-message').className = 'error';
-    document.getElementById('status-message').textContent =
-        'No connection to the guest device. ' +
-        'Please ensure the WebRTC process on the host machine is active.';
-    document.getElementById('status-message').style.visibility = 'visible';
+    showError(
+        'No connection to the guest device.  Please ensure the WebRTC' +
+        'process on the host machine is active.');
     const deviceDisplays = document.getElementById('device-displays');
     deviceDisplays.style.display = 'none';
-    for (const [_, button] of Object.entries(this.#buttons)) {
-      button.disabled = true;
-    }
+    this.#getControlPanelButtons().forEach(b => b.disabled = true);
+  }
+
+  #getControlPanelButtons(f) {
+    return [...document.querySelectorAll(
+        '#control-panel-default-buttons button')];
   }
 
   #takePhoto() {
@@ -384,108 +402,45 @@ class DeviceControlApp {
     }
   }
 
-  #resizeDeviceDisplays() {
-    // Padding between displays.
-    const deviceDisplayWidthPadding = 10;
-    // Padding for the display info above each display video.
-    const deviceDisplayHeightPadding = 38;
-
-    let deviceDisplayList = document.getElementsByClassName('device-display');
-    let deviceDisplayVideoList =
-        document.getElementsByClassName('device-display-video');
-    let deviceDisplayInfoList =
-        document.getElementsByClassName('device-display-info');
-
-    const deviceDisplays = document.getElementById('device-displays');
-    const rotationDegrees = this.#getTransformRotation(deviceDisplays);
-    const rotationRadians = rotationDegrees * Math.PI / 180;
-
-    // Auto-scale the screen based on window size.
-    let availableWidth = deviceDisplays.clientWidth;
-    let availableHeight = deviceDisplays.clientHeight - deviceDisplayHeightPadding;
-
-    // Reserve space for padding between the displays.
-    availableWidth = availableWidth -
-        (this.#displayDescriptions.length * deviceDisplayWidthPadding);
-
-    // Loop once over all of the displays to compute the total space needed.
-    let neededWidth = 0;
-    let neededHeight = 0;
-    for (let i = 0; i < deviceDisplayList.length; i++) {
-      let deviceDisplayDescription = this.#displayDescriptions[i];
-      let deviceDisplayVideo = deviceDisplayVideoList[i];
-
-      const originalDisplayWidth = deviceDisplayDescription.x_res;
-      const originalDisplayHeight = deviceDisplayDescription.y_res;
-
-      const neededBoundingBoxWidth =
-          Math.abs(Math.cos(rotationRadians) * originalDisplayWidth) +
-          Math.abs(Math.sin(rotationRadians) * originalDisplayHeight);
-      const neededBoundingBoxHeight =
-          Math.abs(Math.sin(rotationRadians) * originalDisplayWidth) +
-          Math.abs(Math.cos(rotationRadians) * originalDisplayHeight);
-
-      neededWidth = neededWidth + neededBoundingBoxWidth;
-      neededHeight = Math.max(neededHeight, neededBoundingBoxHeight);
+  #rotateDisplays(rotation) {
+    if ((rotation - this.#currentRotation) % 360 == 0) {
+      return;
     }
 
-    const scaling =
-        Math.min(availableWidth / neededWidth, availableHeight / neededHeight);
+    document.querySelectorAll('.device-display-video').forEach((v, i) => {
+      let displayDesc = this.#displayDescriptions[i];
+      let aspectRatio = displayDesc.x_res / displayDesc.y_res;
 
-    // Loop again over all of the displays to set the sizes and positions.
-    let deviceDisplayLeftOffset = 0;
-    for (let i = 0; i < deviceDisplayList.length; i++) {
-      let deviceDisplay = deviceDisplayList[i];
-      let deviceDisplayVideo = deviceDisplayVideoList[i];
-      let deviceDisplayInfo = deviceDisplayInfoList[i];
-      let deviceDisplayDescription = this.#displayDescriptions[i];
+      let keyFrames = [];
+      let from = this.#currentScreenStyles[v.id];
+      if (from) {
+        // If the screen was already rotated, use that state as starting point,
+        // otherwise the animation will start at the element's default state.
+        keyFrames.push(from);
+      }
+      let to = getStyleAfterRotation(rotation, aspectRatio);
+      keyFrames.push(to);
+      v.animate(keyFrames, {duration: 400 /*ms*/, fill: 'forwards'});
+      this.#currentScreenStyles[v.id] = to;
+    });
 
-      let rotated = this.#currentRotation == 1 ? ' (Rotated)' : '';
-      deviceDisplayInfo.textContent = `Display ${i} - ` +
-          `${deviceDisplayDescription.x_res}x` +
-          `${deviceDisplayDescription.y_res} ` +
-          `(${deviceDisplayDescription.dpi} DPI)${rotated}`;
-
-      const originalDisplayWidth = deviceDisplayDescription.x_res;
-      const originalDisplayHeight = deviceDisplayDescription.y_res;
-
-      const scaledDisplayWidth = originalDisplayWidth * scaling;
-      const scaledDisplayHeight = originalDisplayHeight * scaling;
-
-      const neededBoundingBoxWidth =
-          Math.abs(Math.cos(rotationRadians) * originalDisplayWidth) +
-          Math.abs(Math.sin(rotationRadians) * originalDisplayHeight);
-      const neededBoundingBoxHeight =
-          Math.abs(Math.sin(rotationRadians) * originalDisplayWidth) +
-          Math.abs(Math.cos(rotationRadians) * originalDisplayHeight);
-
-      const scaledBoundingBoxWidth = neededBoundingBoxWidth * scaling;
-      const scaledBoundingBoxHeight = neededBoundingBoxHeight * scaling;
-
-      const offsetX = (scaledBoundingBoxWidth - scaledDisplayWidth) / 2;
-      const offsetY = (scaledBoundingBoxHeight - scaledDisplayHeight) / 2;
-
-      deviceDisplayVideo.style.width = scaledDisplayWidth;
-      deviceDisplayVideo.style.height = scaledDisplayHeight;
-      deviceDisplayVideo.style.transform = `translateX(${offsetX}px) ` +
-          `translateY(${offsetY}px) ` +
-          `rotateZ(${rotationDegrees}deg) `;
-
-      deviceDisplay.style.left = `${deviceDisplayLeftOffset}px`;
-      deviceDisplay.style.width = scaledBoundingBoxWidth;
-      deviceDisplay.style.height = scaledBoundingBoxHeight;
-
-      deviceDisplayLeftOffset = deviceDisplayLeftOffset + deviceDisplayWidthPadding +
-          scaledBoundingBoxWidth;
-    }
+    this.#currentRotation = rotation;
+    this.#updateDeviceDisplaysInfo();
   }
 
-  #getTransformRotation(element) {
-    if (!element.style.textIndent) {
-      return 0;
-    }
-    // Remove 'px' and convert to float.
-    return parseFloat(element.style.textIndent.slice(0, -2));
+  #updateDeviceDisplaysInfo() {
+    let labels = document.querySelectorAll('.device-display-info');
+    labels.forEach((l, i) => {
+      let deviceDisplayDescription = this.#displayDescriptions[i];
+      let text = `Display ${i} - ` +
+          `${deviceDisplayDescription.x_res}x` +
+          `${deviceDisplayDescription.y_res} ` +
+          `(${deviceDisplayDescription.dpi} DPI)`;
+      if (this.#currentRotation != 0) {
+        text += ` (Rotated ${this.#currentRotation}deg)`
+      }
+      l.textContent = text;
+    });
   }
 
   #onControlMessage(message) {
@@ -499,24 +454,7 @@ class DeviceControlApp {
       this.#initializeAdb();
     }
     if (message_data.event == 'VIRTUAL_DEVICE_SCREEN_CHANGED') {
-      if (metadata.rotation != this.#currentRotation) {
-        // Animate the screen rotation.
-        const targetRotation = metadata.rotation == 0 ? 0 : -90;
-
-        $('#device-displays')
-            .animate(
-                {
-                  textIndent: targetRotation,
-                },
-                {
-                  duration: 1000,
-                  step: (now, tween) => {
-                    this.#resizeDeviceDisplays();
-                  },
-                });
-      }
-
-      this.#currentRotation = metadata.rotation;
+      this.#rotateDisplays(+metadata.rotation);
     }
     if (message_data.event == 'VIRTUAL_DEVICE_CAPTURE_IMAGE') {
       if (this.#deviceConnection.cameraEnabled) {
@@ -568,30 +506,23 @@ class DeviceControlApp {
     let anyDisplayLoaded = false;
     const deviceDisplays = document.getElementById('device-displays');
     for (const deviceDisplayDescription of this.#displayDescriptions) {
-      let deviceDisplay = document.createElement('div');
-      deviceDisplay.classList.add('device-display');
-      // Start the screen as hidden. Only show when data is ready.
-      deviceDisplay.style.visibility = 'hidden';
+      let displayFragment =
+          document.querySelector('#display-template').content.cloneNode(true);
 
-      let deviceDisplayInfo = document.createElement("div");
-      deviceDisplayInfo.classList.add("device-display-info");
+      let deviceDisplayInfo =
+          displayFragment.querySelector('.device-display-info');
       deviceDisplayInfo.id = deviceDisplayDescription.stream_id + '_info';
-      deviceDisplay.appendChild(deviceDisplayInfo);
 
-      let deviceDisplayVideo = document.createElement('video');
-      deviceDisplayVideo.autoplay = true;
-      deviceDisplayVideo.muted = true;
+      let deviceDisplayVideo = displayFragment.querySelector('video');
       deviceDisplayVideo.id = deviceDisplayDescription.stream_id;
-      deviceDisplayVideo.classList.add('device-display-video');
       deviceDisplayVideo.addEventListener('loadeddata', (evt) => {
         if (!anyDisplayLoaded) {
           anyDisplayLoaded = true;
           this.#onDeviceDisplayLoaded();
         }
       });
-      deviceDisplay.appendChild(deviceDisplayVideo);
 
-      deviceDisplays.appendChild(deviceDisplay);
+      deviceDisplays.appendChild(displayFragment);
 
       let stream_id = deviceDisplayDescription.stream_id;
       this.#deviceConnection.getStream(stream_id)
@@ -612,35 +543,26 @@ class DeviceControlApp {
     // Screen changed messages are not reported until after boot has completed.
     // Certain default adb buttons change screen state, so wait for boot
     // completion before enabling these buttons.
-    document.getElementById('status-message').className = 'connected';
-    document.getElementById('status-message').textContent =
-        'adb connection established successfully.';
-    setTimeout(() => {
-      document.getElementById('status-message').style.visibility = 'hidden';
-    }, 5000);
-    for (const [_, button] of Object.entries(this.#buttons)) {
-      if (button.adb) {
-        button.disabled = false;
-      }
-    }
+    showInfo('adb connection established successfully.', 5000);
+    this.#adbConnected = true;
+    this.#getControlPanelButtons()
+        .filter(b => b.dataset.adb)
+        .forEach(b => b.disabled = false);
   }
 
   #showAdbError() {
-    document.getElementById('status-message').className = 'error';
-    document.getElementById('status-message').textContent =
-        'adb connection failed.';
-    document.getElementById('status-message').style.visibility = 'visible';
-    for (const [_, button] of Object.entries(this.#buttons)) {
-      if (button.adb) {
-        button.disabled = true;
-      }
-    }
+    showError('adb connection failed.');
+    this.#getControlPanelButtons()
+        .filter(b => b.dataset.adb)
+        .forEach(b => b.disabled = true);
   }
 
   #onDeviceDisplayLoaded() {
-    document.getElementById('status-message').textContent =
-        'Awaiting bootup and adb connection. Please wait...';
-    this.#resizeDeviceDisplays();
+    if (!this.#adbConnected) {
+      // ADB may have connected before, don't show this message in that case
+      showInfo('Awaiting bootup and adb connection. Please wait...', 10000);
+    }
+    this.#updateDeviceDisplaysInfo();
 
     let deviceDisplayList = document.getElementsByClassName('device-display');
     for (const deviceDisplay of deviceDisplayList) {
@@ -648,49 +570,51 @@ class DeviceControlApp {
     }
 
     // Enable the buttons after the screen is visible.
-    for (const [key, button] of Object.entries(this.#buttons)) {
-      if (!button.adb) {
-        button.disabled = false;
-      }
-    }
+    this.#getControlPanelButtons()
+        .filter(b => !b.dataset.adb)
+        .forEach(b => b.disabled = false);
     // Start the adb connection if it is not already started.
     this.#initializeAdb();
   }
 
-  #onRotateButton(e) {
-    // Attempt to init adb again, in case the initial connection failed.
-    // This succeeds immediately if already connected.
-    this.#initializeAdb();
+  #onRotateLeftButton(e) {
     if (e.type == 'mousedown') {
-      adbShell(
-          '/vendor/bin/cuttlefish_sensor_injection rotate ' +
-          (this.#currentRotation == 0 ? 'landscape' : 'portrait'))
+      this.#onRotateButton(this.#currentRotation + 90);
     }
   }
 
-  #onControlPanelButton(e) {
+  #onRotateRightButton(e) {
+    if (e.type == 'mousedown') {
+      this.#onRotateButton(this.#currentRotation - 90);
+    }
+  }
+
+  #onRotateButton(rotation) {
+    // Attempt to init adb again, in case the initial connection failed.
+    // This succeeds immediately if already connected.
+    this.#initializeAdb();
+    this.#rotateDisplays(rotation);
+    adbShell(`/vendor/bin/cuttlefish_sensor_injection rotate ${rotation}`);
+  }
+
+  #onControlPanelButton(e, command) {
     if (e.type == 'mouseout' && e.which == 0) {
       // Ignore mouseout events if no mouse button is pressed.
       return;
     }
     this.#deviceConnection.sendControlMessage(JSON.stringify({
-      command: e.target.dataset.command,
+      command: command,
       button_state: e.type == 'mousedown' ? 'down' : 'up',
     }));
   }
 
-  #onKeyboardCaptureToggle(enabled) {
-    if (enabled) {
-      document.addEventListener('keydown', evt => this.#onKeyEvent(evt));
-      document.addEventListener('keyup', evt => this.#onKeyEvent(evt));
-    } else {
-      document.removeEventListener('keydown', evt => this.#onKeyEvent(evt));
-      document.removeEventListener('keyup', evt => this.#onKeyEvent(evt));
-    }
+  #startKeyboardCapture() {
+    const deviceArea = document.querySelector('#device-displays');
+    deviceArea.addEventListener('keydown', evt => this.#onKeyEvent(evt));
+    deviceArea.addEventListener('keyup', evt => this.#onKeyEvent(evt));
   }
 
   #onKeyEvent(e) {
-    e.preventDefault();
     this.#deviceConnection.sendKeyEvent(e.code, e.type);
   }
 
@@ -703,8 +627,8 @@ class DeviceControlApp {
       touchSlots: [],
     };
     function onStartDrag(e) {
-      e.preventDefault();
-
+      // Can't prevent event default behavior to allow the element gain focus
+      // when touched and start capturing keyboard input in the parent.
       // console.debug("mousedown at " + e.pageX + " / " + e.pageY);
       mouseCtx.down = true;
 
@@ -712,8 +636,8 @@ class DeviceControlApp {
     }
 
     function onEndDrag(e) {
-      e.preventDefault();
-
+      // Can't prevent event default behavior to allow the element gain focus
+      // when touched and start capturing keyboard input in the parent.
       // console.debug("mouseup at " + e.pageX + " / " + e.pageY);
       mouseCtx.down = false;
 
@@ -721,8 +645,8 @@ class DeviceControlApp {
     }
 
     function onContinueDrag(e) {
-      e.preventDefault();
-
+      // Can't prevent event default behavior to allow the element gain focus
+      // when touched and start capturing keyboard input in the parent.
       // console.debug("mousemove at " + e.pageX + " / " + e.pageY + ", down=" +
       // mouseIsDown);
       if (mouseCtx.down) {
@@ -730,7 +654,7 @@ class DeviceControlApp {
       }
     }
 
-    let deviceDisplayList = document.getElementsByClassName('device-display');
+    let deviceDisplayList = document.getElementsByClassName('device-display-video');
     if (window.PointerEvent) {
       for (const deviceDisplay of deviceDisplayList) {
         deviceDisplay.addEventListener('pointerdown', onStartDrag);
@@ -763,50 +687,9 @@ class DeviceControlApp {
     // A click at that position is not more dangerous than anywhere else since
     // the user is clicking blind anyways.
     const videoWidth = deviceDisplay.videoWidth ? deviceDisplay.videoWidth : 1;
-    const videoHeight =
-        deviceDisplay.videoHeight ? deviceDisplay.videoHeight : 1;
     const elementWidth =
         deviceDisplay.offsetWidth ? deviceDisplay.offsetWidth : 1;
-    const elementHeight =
-        deviceDisplay.offsetHeight ? deviceDisplay.offsetHeight : 1;
-
-    // vh*ew > eh*vw? then scale h instead of w
-    const scaleHeight = videoHeight * elementWidth > videoWidth * elementHeight;
-    let elementScaling = 0, videoScaling = 0;
-    if (scaleHeight) {
-      elementScaling = elementHeight;
-      videoScaling = videoHeight;
-    } else {
-      elementScaling = elementWidth;
-      videoScaling = videoWidth;
-    }
-
-    // The screen uses the 'object-fit: cover' property in order to completely
-    // fill the element while maintaining the screen content's aspect ratio.
-    // Therefore:
-    // - If vh*ew > eh*vw, w is scaled so that content width == element width
-    // - Otherwise,        h is scaled so that content height == element height
-    const scaleWidth = videoHeight * elementWidth > videoWidth * elementHeight;
-
-    // Convert to coordinates relative to the video by scaling.
-    // (This matches the scaling used by 'object-fit: cover'.)
-    //
-    // This scaling is needed to translate from the in-browser x/y to the
-    // on-device x/y.
-    //   - When the device screen has not been resized, this is simple: scale
-    //     the coordinates based on the ratio between the input video size and
-    //     the in-browser size.
-    //   - When the device screen has been resized, this scaling is still needed
-    //     even though the in-browser size and device size are identical. This
-    //     is due to the way WindowManager handles a resized screen, resized via
-    //     `adb shell wm size`:
-    //       - The ABS_X and ABS_Y max values of the screen retain their
-    //         original values equal to the value set when launching the device
-    //         (which equals the video size here).
-    //       - The sent ABS_X and ABS_Y values need to be scaled based on the
-    //         ratio between the max size (video size) and in-browser size.
-    const scaling =
-        scaleWidth ? videoWidth / elementWidth : videoHeight / elementHeight;
+    const scaling = videoWidth / elementWidth;
 
     let xArr = [];
     let yArr = [];
@@ -879,21 +762,8 @@ class DeviceControlApp {
     }
 
     for (let i = 0; i < xArr.length; i++) {
-      xArr[i] = xArr[i] * scaling;
-      yArr[i] = yArr[i] * scaling;
-
-      // Substract the offset produced by the difference in aspect ratio, if
-      // any.
-      if (scaleWidth) {
-        // Width was scaled, leaving excess content height, so subtract from y.
-        yArr[i] -= (elementHeight * scaling - videoHeight) / 2;
-      } else {
-        // Height was scaled, leaving excess content width, so subtract from x.
-        xArr[i] -= (elementWidth * scaling - videoWidth) / 2;
-      }
-
-      xArr[i] = Math.trunc(xArr[i]);
-      yArr[i] = Math.trunc(yArr[i]);
+      xArr[i] = Math.trunc(xArr[i] * scaling);
+      yArr[i] = Math.trunc(yArr[i] * scaling);
     }
 
     // NOTE: Rotation is handled automatically because the CSS rotation through
@@ -924,8 +794,13 @@ class DeviceControlApp {
     }
   }
 
-  #onMicCaptureToggle(enabled) {
-    return this.#deviceConnection.useMic(enabled);
+  #onMicButton(evt) {
+    let nextState = evt.type == 'mousedown';
+    if (this.#micActive == nextState) {
+      return;
+    }
+    this.#micActive = nextState;
+    this.#deviceConnection.useMic(nextState);
   }
 
   #onCameraCaptureToggle(enabled) {
@@ -989,6 +864,15 @@ class DeviceControlApp {
     return Promise.resolve(enabled);
   }
 
+  #onAudioPlaybackToggle(enabled) {
+    const audioElem = document.getElementById('device-audio');
+    if (enabled) {
+      audioElem.play();
+    } else {
+      audioElem.pause();
+    }
+  }
+
   #onCustomShellButton(shell_command, e) {
     // Attempt to init adb again, in case the initial connection failed.
     // This succeeds immediately if already connected.
@@ -1003,8 +887,10 @@ window.addEventListener("load", async evt => {
   try {
     setupMessages();
     let connectorModule = await import('./server_connector.js');
-    let deviceConnection = await ConnectDevice(
-        connectorModule.deviceId(), await connectorModule.createConnector());
+    let deviceId = connectorModule.deviceId();
+    document.title = deviceId;
+    let deviceConnection =
+        await ConnectDevice(deviceId, await connectorModule.createConnector());
     let deviceControlApp = new DeviceControlApp(deviceConnection);
     deviceControlApp.start();
     document.getElementById('device-connection').style.display = 'block';
@@ -1016,3 +902,56 @@ window.addEventListener("load", async evt => {
   }
   document.getElementById('loader').style.display = 'none';
 });
+
+// The formulas in this function are derived from the following facts:
+// * The video element's aspect ratio (ar) is fixed.
+// * CSS rotations are centered on the geometrical center of the element.
+// * The aspect ratio is the tangent of the angle between the left-top to
+// right-bottom diagonal (d) and the left side.
+// * d = w/sin(arctan(ar)) = h/cos(arctan(ar)), with w = width and h = height.
+// * After any rotation, the element's total width is the maximum size of the
+// projection of the diagonals on the X axis (Y axis for height).
+// Deriving the formulas is left as an exercise to the reader.
+function getStyleAfterRotation(rotationDeg, ar) {
+  // Convert the rotation angle to radians
+  let r = Math.PI * rotationDeg / 180;
+
+  // width <= parent_with / abs(cos(r) + sin(r)/ar)
+  // and
+  // width <= parent_with / abs(cos(r) - sin(r)/ar)
+  let den1 = Math.abs((Math.sin(r) / ar) + Math.cos(r));
+  let den2 = Math.abs((Math.sin(r) / ar) - Math.cos(r));
+  let denominator = Math.max(den1, den2);
+  let maxWidth = `calc(100% / ${denominator})`;
+
+  // height <= parent_height / abs(cos(r) + sin(r)*ar)
+  // and
+  // height <= parent_height / abs(cos(r) - sin(r)*ar)
+  den1 = Math.abs(Math.cos(r) - (Math.sin(r) * ar));
+  den2 = Math.abs(Math.cos(r) + (Math.sin(r) * ar));
+  denominator = Math.max(den1, den2);
+  let maxHeight = `calc(100% / ${denominator})`;
+
+  // rotated_left >= left * (abs(cos(r)+sin(r)/ar)-1)/2
+  // and
+  // rotated_left >= left * (abs(cos(r)-sin(r)/ar)-1)/2
+  let tmp1 = Math.max(
+      Math.abs(Math.cos(r) + (Math.sin(r) / ar)),
+      Math.abs(Math.cos(r) - (Math.sin(r) / ar)));
+  let leftFactor = (tmp1 - 1) / 2;
+  // rotated_top >= top * (abs(cos(r)+sin(r)*ar)-1)/2
+  // and
+  // rotated_top >= top * (abs(cos(r)-sin(r)*ar)-1)/2
+  let tmp2 = Math.max(
+      Math.abs(Math.cos(r) - (Math.sin(r) * ar)),
+      Math.abs(Math.cos(r) + (Math.sin(r) * ar)));
+  let rightFactor = (tmp2 - 1) / 2;
+
+  // CSS rotations are in the opposite direction as Android screen rotations
+  rotationDeg = -rotationDeg;
+
+  let transform = `translate(calc(100% * ${leftFactor}), calc(100% * ${
+      rightFactor})) rotate(${rotationDeg}deg)`;
+
+  return {transform, maxWidth, maxHeight};
+}

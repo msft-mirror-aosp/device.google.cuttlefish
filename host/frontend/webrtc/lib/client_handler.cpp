@@ -177,8 +177,8 @@ class ControlChannelHandler : public webrtc::DataChannelObserver {
   void OnStateChange() override;
   void OnMessage(const webrtc::DataBuffer &msg) override;
 
-  void Send(const Json::Value &message);
-  void Send(const uint8_t *msg, size_t size, bool binary);
+  bool Send(const Json::Value &message);
+  bool Send(const uint8_t *msg, size_t size, bool binary);
 
  private:
   rtc::scoped_refptr<webrtc::DataChannelInterface> control_channel_;
@@ -343,8 +343,7 @@ void AdbChannelHandler::OnMessage(const webrtc::DataBuffer &msg) {
       // messages are buffered up to 16MB, when the buffer is full the channel
       // is abruptly closed. Keep track of the buffered data to avoid losing the
       // adb data channel.
-      adb_channel_->Send(buffer);
-      return true;
+      return adb_channel_->Send(buffer);
     });
     channel_open_reported_ = true;
   }
@@ -356,10 +355,6 @@ ControlChannelHandler::ControlChannelHandler(
     std::shared_ptr<ConnectionObserver> observer)
     : control_channel_(control_channel), observer_(observer) {
   control_channel->RegisterObserver(this);
-  observer_->OnControlChannelOpen([this](const Json::Value& message) {
-    this->Send(message);
-    return true;
-  });
 }
 
 ControlChannelHandler::~ControlChannelHandler() {
@@ -367,25 +362,85 @@ ControlChannelHandler::~ControlChannelHandler() {
 }
 
 void ControlChannelHandler::OnStateChange() {
+  auto state = control_channel_->state();
   LOG(VERBOSE) << "Control channel state changed to "
-               << webrtc::DataChannelInterface::DataStateString(
-                      control_channel_->state());
+               << webrtc::DataChannelInterface::DataStateString(state);
+  if (state == webrtc::DataChannelInterface::kOpen) {
+    observer_->OnControlChannelOpen(
+        [this](const Json::Value &message) { return this->Send(message); });
+  }
 }
 
 void ControlChannelHandler::OnMessage(const webrtc::DataBuffer &msg) {
-  observer_->OnControlMessage(msg.data.cdata(), msg.size());
+  auto msg_str = msg.data.cdata<char>();
+  auto size = msg.size();
+  Json::Value evt;
+  Json::CharReaderBuilder builder;
+  std::unique_ptr<Json::CharReader> json_reader(builder.newCharReader());
+  std::string errorMessage;
+  if (!json_reader->parse(msg_str, msg_str + size, &evt, &errorMessage)) {
+    LOG(ERROR) << "Received invalid JSON object over control channel: "
+               << errorMessage;
+    return;
+  }
+
+  auto result = ValidationResult::ValidateJsonObject(
+      evt, "command",
+      /*required_fields=*/{{"command", Json::ValueType::stringValue}},
+      /*optional_fields=*/
+      {
+          {"button_state", Json::ValueType::stringValue},
+          {"lid_switch_open", Json::ValueType::booleanValue},
+          {"hinge_angle_value", Json::ValueType::intValue},
+      });
+  if (!result.ok()) {
+    LOG(ERROR) << result.error();
+    return;
+  }
+  auto command = evt["command"].asString();
+
+  if (command == "device_state") {
+    if (evt.isMember("lid_switch_open")) {
+      observer_->OnLidStateChange(evt["lid_switch_open"].asBool());
+    }
+    if (evt.isMember("hinge_angle_value")) {
+      observer_->OnHingeAngleChange(evt["hinge_angle_value"].asInt());
+    }
+    return;
+  } else if (command.rfind("camera_", 0) == 0) {
+    observer_->OnCameraControlMsg(evt);
+    return;
+  }
+
+  auto button_state = evt["button_state"].asString();
+  LOG(VERBOSE) << "Control command: " << command << " (" << button_state << ")";
+  if (command == "power") {
+    observer_->OnPowerButton(button_state == "down");
+  } else if (command == "back") {
+    observer_->OnBackButton(button_state == "down");
+  } else if (command == "home") {
+    observer_->OnHomeButton(button_state == "down");
+  } else if (command == "menu") {
+    observer_->OnMenuButton(button_state == "down");
+  } else if (command == "volumedown") {
+    observer_->OnVolumeDownButton(button_state == "down");
+  } else if (command == "volumeup") {
+    observer_->OnVolumeUpButton(button_state == "down");
+  } else {
+    observer_->OnCustomActionButton(command, button_state);
+  }
 }
 
-void ControlChannelHandler::Send(const Json::Value& message) {
+bool ControlChannelHandler::Send(const Json::Value& message) {
   Json::StreamWriterBuilder factory;
   std::string message_string = Json::writeString(factory, message);
-  Send(reinterpret_cast<const uint8_t*>(message_string.c_str()),
+  return Send(reinterpret_cast<const uint8_t*>(message_string.c_str()),
        message_string.size(), /*binary=*/false);
 }
 
-void ControlChannelHandler::Send(const uint8_t *msg, size_t size, bool binary) {
+bool ControlChannelHandler::Send(const uint8_t *msg, size_t size, bool binary) {
   webrtc::DataBuffer buffer(rtc::CopyOnWriteBuffer(msg, size), binary);
-  control_channel_->Send(buffer);
+  return control_channel_->Send(buffer);
 }
 
 BluetoothChannelHandler::BluetoothChannelHandler(
@@ -418,8 +473,7 @@ void BluetoothChannelHandler::OnMessage(const webrtc::DataBuffer &msg) {
       // messages are buffered up to 16MB, when the buffer is full the channel
       // is abruptly closed. Keep track of the buffered data to avoid losing the
       // adb data channel.
-      bluetooth_channel_->Send(buffer);
-      return true;
+      return bluetooth_channel_->Send(buffer);
     });
   }
 
@@ -457,22 +511,65 @@ void CameraChannelHandler::OnMessage(const webrtc::DataBuffer &msg) {
                          msg_data + msg.size());
 }
 
+std::vector<webrtc::PeerConnectionInterface::IceServer>
+ClientHandler::ParseIceServersMessage(const Json::Value &message) {
+  std::vector<webrtc::PeerConnectionInterface::IceServer> ret;
+  if (!message.isMember("ice_servers") || !message["ice_servers"].isArray()) {
+    // Log as verbose since the ice_servers field is optional in some messages
+    LOG(VERBOSE) << "ice_servers field not present in json object or not an array";
+    return ret;
+  }
+  auto& servers = message["ice_servers"];
+  for (const auto& server: servers) {
+    webrtc::PeerConnectionInterface::IceServer ice_server;
+    if (!server.isMember("urls") || !server["urls"].isArray()) {
+      // The urls field is required
+      LOG(WARNING)
+          << "ICE server specification missing urls field or not an array: "
+          << server.toStyledString();
+      continue;
+    }
+    auto urls = server["urls"];
+    for (int url_idx = 0; url_idx < urls.size(); url_idx++) {
+      auto url = urls[url_idx];
+      if (!url.isString()) {
+        LOG(WARNING) << "Non string 'urls' field in ice server: "
+                     << url.toStyledString();
+        continue;
+      }
+      ice_server.urls.push_back(url.asString());
+    }
+    if (server.isMember("credential") && server["credential"].isString()) {
+      ice_server.password = server["credential"].asString();
+    }
+    if (server.isMember("username") && server["username"].isString()) {
+      ice_server.username = server["username"].asString();
+    }
+    ret.push_back(ice_server);
+  }
+  return ret;
+}
+
 std::shared_ptr<ClientHandler> ClientHandler::Create(
     int client_id, std::shared_ptr<ConnectionObserver> observer,
+    PeerConnectionBuilder &connection_builder,
     std::function<void(const Json::Value &)> send_to_client_cb,
     std::function<void(bool)> on_connection_changed_cb) {
-  return std::shared_ptr<ClientHandler>(new ClientHandler(
-      client_id, observer, send_to_client_cb, on_connection_changed_cb));
+  return std::shared_ptr<ClientHandler>(
+      new ClientHandler(client_id, observer, connection_builder,
+                        send_to_client_cb, on_connection_changed_cb));
 }
 
 ClientHandler::ClientHandler(
     int client_id, std::shared_ptr<ConnectionObserver> observer,
+    PeerConnectionBuilder &connection_builder,
     std::function<void(const Json::Value &)> send_to_client_cb,
     std::function<void(bool)> on_connection_changed_cb)
     : client_id_(client_id),
       observer_(observer),
       send_to_client_(send_to_client_cb),
       on_connection_changed_cb_(on_connection_changed_cb),
+      connection_builder_(connection_builder),
       camera_track_(new ClientVideoTrackImpl()) {}
 
 ClientHandler::~ClientHandler() {
@@ -481,54 +578,37 @@ ClientHandler::~ClientHandler() {
   }
 }
 
-bool ClientHandler::SetPeerConnection(
-    rtc::scoped_refptr<webrtc::PeerConnectionInterface> peer_connection) {
-  peer_connection_ = peer_connection;
-
-  // libwebrtc configures the video encoder with a start bitrate of just 300kbs
-  // which causes it to drop the first 4 frames it receives. Any value over 2Mbs
-  // will be capped at 2Mbs when passed to the encoder by the peer_connection
-  // object, so we pass the maximum possible value here.
-  webrtc::BitrateSettings bitrate_settings;
-  bitrate_settings.start_bitrate_bps = 2000000; // 2Mbs
-  peer_connection_->SetBitrate(bitrate_settings);
-  // At least one data channel needs to be created on the side that makes the
-  // SDP offer (the device) for data channels to be enabled at all.
-  // This channel is meant to carry control commands from the client.
-  auto control_channel = peer_connection_->CreateDataChannel(
-      "device-control", nullptr /* config */);
-  if (!control_channel) {
-    LOG(ERROR) << "Failed to create control data channel";
-    return false;
-  }
-  control_handler_.reset(new ControlChannelHandler(control_channel, observer_));
-  return true;
-}
-
 bool ClientHandler::AddDisplay(
     rtc::scoped_refptr<webrtc::VideoTrackInterface> video_track,
     const std::string &label) {
-  // Send each track as part of a different stream with the label as id
-  auto err_or_sender =
-      peer_connection_->AddTrack(video_track, {label} /* stream_id */);
-  if (!err_or_sender.ok()) {
-    LOG(ERROR) << "Failed to add video track to the peer connection";
-    return false;
+  displays_.emplace_back(video_track, label);
+  if (peer_connection_) {
+    // Send each track as part of a different stream with the label as id
+    auto err_or_sender =
+        peer_connection_->AddTrack(video_track, {label} /* stream_id */);
+    if (!err_or_sender.ok()) {
+      LOG(ERROR) << "Failed to add video track to the peer connection";
+      return false;
+    }
+    // TODO (b/154138394): use the returned sender (err_or_sender.value()) to
+    // remove the display from the connection.
   }
-  // TODO (b/154138394): use the returned sender (err_or_sender.value()) to
-  // remove the display from the connection.
   return true;
 }
 
 bool ClientHandler::AddAudio(
     rtc::scoped_refptr<webrtc::AudioTrackInterface> audio_track,
     const std::string &label) {
-  // Send each track as part of a different stream with the label as id
-  auto err_or_sender =
-      peer_connection_->AddTrack(audio_track, {label} /* stream_id */);
-  if (!err_or_sender.ok()) {
-    LOG(ERROR) << "Failed to add video track to the peer connection";
-    return false;
+  // Store the audio track for when the peer connection is created
+  audio_streams_.emplace_back(audio_track, label);
+  if (peer_connection_) {
+    // Send each track as part of a different stream with the label as id
+    auto err_or_sender =
+        peer_connection_->AddTrack(audio_track, {label} /* stream_id */);
+    if (!err_or_sender.ok()) {
+      LOG(ERROR) << "Failed to add video track to the peer connection";
+      return false;
+    }
   }
   return true;
 }
@@ -556,6 +636,56 @@ void ClientHandler::AddPendingIceCandidates() {
                                       });
   }
   pending_ice_candidates_.clear();
+}
+
+bool ClientHandler::BuildPeerConnection(const Json::Value &message) {
+  auto ice_servers = ParseIceServersMessage(message);
+  peer_connection_ = connection_builder_.Build(this, ice_servers);
+  if (!peer_connection_) {
+    return false;
+  }
+
+  // Re-add the video and audio tracks after the peer connection has been
+  // created
+  decltype(displays_) tmp_displays;
+  tmp_displays.swap(displays_);
+  for (auto &pair : tmp_displays) {
+    auto &video_track = pair.first;
+    auto &label = pair.second;
+    if (!AddDisplay(video_track, label)) {
+      return false;
+    }
+  }
+  decltype(audio_streams_) tmp_audio_streams;
+  tmp_audio_streams.swap(audio_streams_);
+  for (auto &pair : tmp_audio_streams) {
+    auto &audio_track = pair.first;
+    auto &label = pair.second;
+    if (!AddAudio(audio_track, label)) {
+      return false;
+    }
+  }
+
+  // libwebrtc configures the video encoder with a start bitrate of just 300kbs
+  // which causes it to drop the first 4 frames it receives. Any value over 2Mbs
+  // will be capped at 2Mbs when passed to the encoder by the peer_connection
+  // object, so we pass the maximum possible value here.
+  webrtc::BitrateSettings bitrate_settings;
+  bitrate_settings.start_bitrate_bps = 2000000;  // 2Mbs
+  peer_connection_->SetBitrate(bitrate_settings);
+
+  // At least one data channel needs to be created on the side that makes the
+  // SDP offer (the device) for data channels to be enabled at all.
+  // This channel is meant to carry control commands from the client.
+  auto control_channel = peer_connection_->CreateDataChannel(
+      "device-control", nullptr /* config */);
+  if (!control_channel) {
+    LOG(ERROR) << "Failed to create control data channel";
+    return false;
+  }
+  control_handler_.reset(new ControlChannelHandler(control_channel, observer_));
+
+  return true;
 }
 
 void ClientHandler::OnCreateSDPSuccess(
@@ -607,9 +737,15 @@ void ClientHandler::HandleMessage(const Json::Value &message) {
   }
   auto type = message["type"].asString();
   if (type == "request-offer") {
-    // Can't check for state being different that kNew because renegotiation can
-    // start in any state after the answer is returned.
-    if (state_ == State::kCreatingOffer) {
+    if (state_ == State::kNew) {
+      // The peer connection must be created on the first request-offer
+      if (!BuildPeerConnection(message)) {
+        LogAndReplyError("Failed to create peer connection");
+        return;
+      }
+      // Renegotiation can start in any state after the answer is returned, not
+      // just kNew.
+    } else if (state_ == State::kCreatingOffer) {
       // An offer has been requested already
       LogAndReplyError("Multiple requests for offer received from single client");
       return;

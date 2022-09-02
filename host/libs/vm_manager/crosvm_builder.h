@@ -31,14 +31,16 @@ class CrosvmBuilder {
   void AddControlSocket(const std::string&);
 
   void AddHvcSink();
-  void AddHvcConsoleReadOnly(const std::string& output);
-  void AddHvcReadOnly(const std::string& output);
+  void AddHvcReadOnly(const std::string& output, bool console = false);
   void AddHvcReadWrite(const std::string& output, const std::string& input);
+
+  void AddReadOnlyDisk(const std::string& path);
+  void AddReadWriteDisk(const std::string& path);
 
   void AddSerialSink();
   void AddSerialConsoleReadOnly(const std::string& output);
   void AddSerialConsoleReadWrite(const std::string& output,
-                                 const std::string& input);
+                                 const std::string& input, bool earlycon);
   // [[deprecated("do not add any more users")]]
   void AddSerial(const std::string& output, const std::string& input);
 

@@ -16,18 +16,23 @@
 
 #include "host/commands/run_cvd/server_loop.h"
 
+#include <unistd.h>
+
+#include <algorithm>
+#include <string>
+
 #include <fruit/fruit.h>
 #include <gflags/gflags.h>
-#include <unistd.h>
-#include <string>
 
 #include "common/libs/fs/shared_buf.h"
 #include "common/libs/utils/files.h"
 #include "common/libs/utils/subprocess.h"
 #include "host/commands/run_cvd/runner_defs.h"
+#include "host/libs/config/command_source.h"
 #include "host/libs/config/cuttlefish_config.h"
 #include "host/libs/config/data_image.h"
 #include "host/libs/config/feature.h"
+#include "host/libs/config/inject.h"
 
 namespace cuttlefish {
 
@@ -38,7 +43,8 @@ bool CreateQcowOverlay(const std::string& crosvm_path,
                        const std::string& output_overlay_path) {
   Command crosvm_qcow2_cmd(crosvm_path);
   crosvm_qcow2_cmd.AddParameter("create_qcow2");
-  crosvm_qcow2_cmd.AddParameter("--backing_file=", backing_file);
+  crosvm_qcow2_cmd.AddParameter("--backing-file");
+  crosvm_qcow2_cmd.AddParameter(backing_file);
   crosvm_qcow2_cmd.AddParameter(output_overlay_path);
   int success = crosvm_qcow2_cmd.Start().Wait();
   if (success != 0) {
@@ -49,30 +55,56 @@ bool CreateQcowOverlay(const std::string& crosvm_path,
   return true;
 }
 
-class ServerLoopImpl : public ServerLoop, public Feature {
+class ServerLoopImpl : public ServerLoop,
+                       public SetupFeature,
+                       public LateInjected {
  public:
   INJECT(ServerLoopImpl(const CuttlefishConfig& config,
                         const CuttlefishConfig::InstanceSpecific& instance))
       : config_(config), instance_(instance) {}
 
+  Result<void> LateInject(fruit::Injector<>& injector) override {
+    command_sources_ = injector.getMultibindings<CommandSource>();
+    return {};
+  }
+
   // ServerLoop
-  void Run(ProcessMonitor& process_monitor) override {
+  Result<void> Run() override {
+    // Monitor and restart host processes supporting the CVD
+    ProcessMonitor::Properties process_monitor_properties;
+    process_monitor_properties.RestartSubprocesses(
+        config_.restart_subprocesses());
+
+    for (auto& command_source : command_sources_) {
+      if (command_source->Enabled()) {
+        auto commands = CF_EXPECT(command_source->Commands());
+        process_monitor_properties.AddCommands(std::move(commands));
+      }
+    }
+
+    ProcessMonitor process_monitor(std::move(process_monitor_properties));
+
+    CF_EXPECT(process_monitor.StartAndMonitorProcesses());
+
     while (true) {
       // TODO: use select to handle simultaneous connections.
       auto client = SharedFD::Accept(*server_);
       LauncherAction action;
       while (client->IsOpen() && client->Read(&action, sizeof(action)) > 0) {
         switch (action) {
-          case LauncherAction::kStop:
-            if (process_monitor.StopMonitoredProcesses()) {
+          case LauncherAction::kStop: {
+            auto stop = process_monitor.StopMonitoredProcesses();
+            if (stop.ok()) {
               auto response = LauncherResponse::kSuccess;
               client->Write(&response, sizeof(response));
               std::exit(0);
             } else {
+              LOG(ERROR) << "Failed to stop subprocesses:\n" << stop.error();
               auto response = LauncherResponse::kError;
               client->Write(&response, sizeof(response));
             }
             break;
+          }
           case LauncherAction::kStatus: {
             // TODO(schuffelen): Return more information on a side channel
             auto response = LauncherResponse::kSuccess;
@@ -81,8 +113,18 @@ class ServerLoopImpl : public ServerLoop, public Feature {
           }
           case LauncherAction::kPowerwash: {
             LOG(INFO) << "Received a Powerwash request from the monitor socket";
-            if (!process_monitor.StopMonitoredProcesses()) {
-              LOG(ERROR) << "Stopping processes failed.";
+            const auto& disks = instance_.virtual_disk_paths();
+            auto overlay = instance_.PerInstancePath("overlay.img");
+            if (std::find(disks.begin(), disks.end(), overlay) == disks.end()) {
+              LOG(ERROR) << "Powerwash unsupported with --use_overlay=false";
+              auto response = LauncherResponse::kError;
+              client->Write(&response, sizeof(response));
+              break;
+            }
+
+            auto stop = process_monitor.StopMonitoredProcesses();
+            if (!stop.ok()) {
+              LOG(ERROR) << "Stopping processes failed:\n" << stop.error();
               auto response = LauncherResponse::kError;
               client->Write(&response, sizeof(response));
               break;
@@ -104,8 +146,9 @@ class ServerLoopImpl : public ServerLoop, public Feature {
             break;
           }
           case LauncherAction::kRestart: {
-            if (!process_monitor.StopMonitoredProcesses()) {
-              LOG(ERROR) << "Stopping processes failed.";
+            auto stop = process_monitor.StopMonitoredProcesses();
+            if (!stop.ok()) {
+              LOG(ERROR) << "Stopping processes failed:\n" << stop.error();
               auto response = LauncherResponse::kError;
               client->Write(&response, sizeof(response));
               break;
@@ -131,12 +174,12 @@ class ServerLoopImpl : public ServerLoop, public Feature {
     }
   }
 
-  // Feature
+  // SetupFeature
   std::string Name() const override { return "ServerLoop"; }
 
  private:
   bool Enabled() const override { return true; }
-  std::unordered_set<Feature*> Dependencies() const override { return {}; }
+  std::unordered_set<SetupFeature*> Dependencies() const override { return {}; }
   bool Setup() {
     auto launcher_monitor_path = instance_.launcher_monitor_socket_path();
     server_ = SharedFD::SocketLocalServer(launcher_monitor_path.c_str(), false,
@@ -166,6 +209,8 @@ class ServerLoopImpl : public ServerLoop, public Feature {
         instance_.PerInstanceInternalPath("gnsshvc_fifo_vm.out"),
         instance_.PerInstanceInternalPath("locationhvc_fifo_vm.in"),
         instance_.PerInstanceInternalPath("locationhvc_fifo_vm.out"),
+        instance_.PerInstanceInternalPath("confui_fifo_vm.in"),
+        instance_.PerInstanceInternalPath("confui_fifo_vm.out"),
     };
     for (const auto& pipe : pipes) {
       unlink(pipe.c_str());
@@ -205,7 +250,7 @@ class ServerLoopImpl : public ServerLoop, public Feature {
       auto overlay_path = instance_.PerInstancePath(overlay_file);
       unlink(overlay_path.c_str());
       if (!CreateQcowOverlay(config_.crosvm_binary(),
-                             config_.os_composite_disk_path(), overlay_path)) {
+                             instance_.os_composite_disk_path(), overlay_path)) {
         LOG(ERROR) << "CreateQcowOverlay failed";
         return false;
       }
@@ -238,6 +283,7 @@ class ServerLoopImpl : public ServerLoop, public Feature {
 
   const CuttlefishConfig& config_;
   const CuttlefishConfig::InstanceSpecific& instance_;
+  std::vector<CommandSource*> command_sources_;
   SharedFD server_;
 };
 
@@ -251,7 +297,8 @@ fruit::Component<fruit::Required<const CuttlefishConfig,
 serverLoopComponent() {
   return fruit::createComponent()
       .bind<ServerLoop, ServerLoopImpl>()
-      .addMultibinding<Feature, ServerLoopImpl>();
+      .addMultibinding<LateInjected, ServerLoopImpl>()
+      .addMultibinding<SetupFeature, ServerLoopImpl>();
 }
 
 }  // namespace cuttlefish

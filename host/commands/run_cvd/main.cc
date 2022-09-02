@@ -34,7 +34,7 @@
 #include "common/libs/utils/subprocess.h"
 #include "common/libs/utils/tee_logging.h"
 #include "host/commands/run_cvd/boot_state_machine.h"
-#include "host/commands/run_cvd/launch.h"
+#include "host/commands/run_cvd/launch/launch.h"
 #include "host/commands/run_cvd/process_monitor.h"
 #include "host/commands/run_cvd/reporting.h"
 #include "host/commands/run_cvd/runner_defs.h"
@@ -45,13 +45,16 @@
 #include "host/libs/config/config_fragment.h"
 #include "host/libs/config/custom_actions.h"
 #include "host/libs/config/cuttlefish_config.h"
+#include "host/libs/config/inject.h"
+#include "host/libs/metrics/metrics_receiver.h"
 #include "host/libs/vm_manager/vm_manager.h"
 
 namespace cuttlefish {
 
 namespace {
 
-class CuttlefishEnvironment : public Feature, public DiagnosticInformation {
+class CuttlefishEnvironment : public SetupFeature,
+                              public DiagnosticInformation {
  public:
   INJECT(
       CuttlefishEnvironment(const CuttlefishConfig& config,
@@ -68,12 +71,12 @@ class CuttlefishEnvironment : public Feature, public DiagnosticInformation {
     };
   }
 
-  // Feature
+  // SetupFeature
   std::string Name() const override { return "CuttlefishEnvironment"; }
   bool Enabled() const override { return true; }
 
  private:
-  std::unordered_set<Feature*> Dependencies() const override { return {}; }
+  std::unordered_set<SetupFeature*> Dependencies() const override { return {}; }
   bool Setup() override {
     auto env =
         SharedFD::Open(config_.cuttlefish_env_path(), O_CREAT | O_RDWR, 0755);
@@ -99,12 +102,50 @@ class CuttlefishEnvironment : public Feature, public DiagnosticInformation {
   const CuttlefishConfig::InstanceSpecific& instance_;
 };
 
-fruit::Component<ServerLoop> runCvdComponent(
+class InstanceLifecycle : public LateInjected {
+ public:
+  INJECT(InstanceLifecycle(const CuttlefishConfig& config,
+                           ServerLoop& server_loop))
+      : config_(config), server_loop_(server_loop) {}
+
+  Result<void> LateInject(fruit::Injector<>& injector) override {
+    config_fragments_ = injector.getMultibindings<ConfigFragment>();
+    setup_features_ = injector.getMultibindings<SetupFeature>();
+    diagnostics_ = injector.getMultibindings<DiagnosticInformation>();
+    return {};
+  }
+
+  Result<void> Run() {
+    for (auto& fragment : config_fragments_) {
+      CF_EXPECT(config_.LoadFragment(*fragment));
+    }
+
+    // One of the setup features can consume most output, so print this early.
+    DiagnosticInformation::PrintAll(diagnostics_);
+
+    CF_EXPECT(SetupFeature::RunSetup(setup_features_));
+
+    CF_EXPECT(server_loop_.Run());
+
+    return {};
+  }
+
+ private:
+  const CuttlefishConfig& config_;
+  ServerLoop& server_loop_;
+  std::vector<ConfigFragment*> config_fragments_;
+  std::vector<SetupFeature*> setup_features_;
+  std::vector<DiagnosticInformation*> diagnostics_;
+};
+
+fruit::Component<> runCvdComponent(
     const CuttlefishConfig* config,
     const CuttlefishConfig::InstanceSpecific* instance) {
   return fruit::createComponent()
       .addMultibinding<DiagnosticInformation, CuttlefishEnvironment>()
-      .addMultibinding<Feature, CuttlefishEnvironment>()
+      .addMultibinding<SetupFeature, CuttlefishEnvironment>()
+      .addMultibinding<InstanceLifecycle, InstanceLifecycle>()
+      .addMultibinding<LateInjected, InstanceLifecycle>()
       .bindInstance(*config)
       .bindInstance(*instance)
       .install(AdbConfigComponent)
@@ -113,7 +154,20 @@ fruit::Component<ServerLoop> runCvdComponent(
       .install(ConfigFlagPlaceholder)
       .install(CustomActionsComponent)
       .install(LaunchAdbComponent)
-      .install(launchComponent)
+      .install(BluetoothConnectorComponent)
+      .install(ConfigServerComponent)
+      .install(ConsoleForwarderComponent)
+      .install(GnssGrpcProxyServerComponent)
+      .install(LogcatReceiverComponent)
+      .install(KernelLogMonitorComponent)
+      .install(MetricsServiceComponent)
+      .install(OpenWrtComponent)
+      .install(RootCanalComponent)
+      .install(NetsimServerComponent)
+      .install(SecureEnvComponent)
+      .install(TombstoneReceiverComponent)
+      .install(VehicleHalServerComponent)
+      .install(WmediumdServerComponent)
       .install(launchModemComponent)
       .install(launchStreamerComponent)
       .install(serverLoopComponent)
@@ -121,44 +175,32 @@ fruit::Component<ServerLoop> runCvdComponent(
       .install(vm_manager::VmManagerComponent);
 }
 
-bool IsStdinValid() {
-  if (isatty(0)) {
-    LOG(ERROR) << "stdin was a tty, expected to be passed the output of a "
-                  "previous stage. "
-               << "Did you mean to run launch_cvd?";
-    return false;
-  } else {
-    int error_num = errno;
-    if (error_num == EBADF) {
-      LOG(ERROR) << "stdin was not a valid file descriptor, expected to be "
-                    "passed the output "
-                 << "of assemble_cvd. Did you mean to run launch_cvd?";
-      return false;
-    }
-  }
-  return true;
+Result<void> StdinValid() {
+  CF_EXPECT(!isatty(0),
+            "stdin was a tty, expected to be passed the output of a"
+            " previous stage. Did you mean to run launch_cvd?");
+  CF_EXPECT(errno != EBADF,
+            "stdin was not a valid file descriptor, expected to be passed the "
+            "output of assemble_cvd. Did you mean to run launch_cvd?");
+  return {};
 }
 
-const CuttlefishConfig* FindConfigFromStdin() {
+Result<const CuttlefishConfig*> FindConfigFromStdin() {
   std::string input_files_str;
   {
     auto input_fd = SharedFD::Dup(0);
     auto bytes_read = ReadAll(input_fd, &input_files_str);
-    if (bytes_read < 0) {
-      LOG(ERROR) << "Failed to read input files. Error was \""
-                 << input_fd->StrError() << "\"";
-      return nullptr;
-    }
+    CF_EXPECT(bytes_read >= 0, "Failed to read input files. Error was \""
+                                   << input_fd->StrError() << "\"");
   }
-  std::vector<std::string> input_files = android::base::Split(input_files_str, "\n");
-  bool found_config = false;
+  std::vector<std::string> input_files =
+      android::base::Split(input_files_str, "\n");
   for (const auto& file : input_files) {
     if (file.find("cuttlefish_config.json") != std::string::npos) {
-      found_config = true;
       setenv(kCuttlefishConfigEnvVarName, file.c_str(), /* overwrite */ false);
     }
   }
-  return CuttlefishConfig::Get();
+  return CF_EXPECT(CuttlefishConfig::Get());  // Null check
 }
 
 void ConfigureLogs(const CuttlefishConfig& config,
@@ -179,68 +221,51 @@ void ConfigureLogs(const CuttlefishConfig& config,
   ::android::base::SetLogger(LogToStderrAndFiles({log_path}, prefix));
 }
 
-bool ChdirIntoRuntimeDir(const CuttlefishConfig::InstanceSpecific& instance) {
+Result<void> ChdirIntoRuntimeDir(
+    const CuttlefishConfig::InstanceSpecific& instance) {
   // Change working directory to the instance directory as early as possible to
   // ensure all host processes have the same working dir. This helps stop_cvd
   // find the running processes when it can't establish a communication with the
   // launcher.
-  auto chdir_ret = chdir(instance.instance_dir().c_str());
-  if (chdir_ret != 0) {
-    PLOG(ERROR) << "Unable to change dir into instance directory ("
-                << instance.instance_dir() << "): ";
-    return false;
-  }
-  return true;
+  CF_EXPECT(chdir(instance.instance_dir().c_str()) == 0,
+            "Unable to change dir into instance directory \""
+                << instance.instance_dir() << "\": " << strerror(errno));
+  return {};
 }
 
 }  // namespace
 
-int RunCvdMain(int argc, char** argv) {
+Result<void> RunCvdMain(int argc, char** argv) {
   setenv("ANDROID_LOG_TAGS", "*:v", /* overwrite */ 0);
   ::android::base::InitLogging(argv, android::base::StderrLogger);
   google::ParseCommandLineFlags(&argc, &argv, false);
 
-  CHECK(IsStdinValid()) << "Invalid stdin";
-  auto config = FindConfigFromStdin();
-  CHECK(config) << "Could not find config";
+  CF_EXPECT(StdinValid(), "Invalid stdin");
+  auto config = CF_EXPECT(FindConfigFromStdin());
   auto instance = config->ForDefaultInstance();
 
   ConfigureLogs(*config, instance);
-  CHECK(ChdirIntoRuntimeDir(instance)) << "Could not enter runtime dir";
+  CF_EXPECT(ChdirIntoRuntimeDir(instance));
 
-  fruit::Injector<ServerLoop> injector(runCvdComponent, config, &instance);
+  fruit::Injector<> injector(runCvdComponent, config, &instance);
 
-  for (auto& fragment : injector.getMultibindings<ConfigFragment>()) {
-    CHECK(config->LoadFragment(*fragment)) << "Failed to load config fragment";
+  for (auto& late_injected : injector.getMultibindings<LateInjected>()) {
+    CF_EXPECT(late_injected->LateInject(injector));
   }
 
-  // One of the setup features can consume most output, so print this early.
-  DiagnosticInformation::PrintAll(
-      injector.getMultibindings<DiagnosticInformation>());
+  MetricsReceiver::LogMetricsVMStart();
 
-  const auto& features = injector.getMultibindings<Feature>();
-  CHECK(Feature::RunSetup(features)) << "Failed to run feature setup.";
+  auto instance_bindings = injector.getMultibindings<InstanceLifecycle>();
+  CF_EXPECT(instance_bindings.size() == 1);
+  CF_EXPECT(instance_bindings[0]->Run());  // Should not return
 
-  // Monitor and restart host processes supporting the CVD
-  ProcessMonitor process_monitor(config->restart_subprocesses());
-
-  for (auto& command_source : injector.getMultibindings<CommandSource>()) {
-    if (command_source->Enabled()) {
-      process_monitor.AddCommands(command_source->Commands());
-    }
-  }
-
-  CHECK(process_monitor.StartAndMonitorProcesses())
-      << "Could not start subprocesses";
-
-  injector.get<ServerLoop&>().Run(process_monitor);  // Should not return
-  LOG(ERROR) << "The server loop returned, it should never happen!!";
-
-  return RunnerExitCodes::kServerError;
+  return CF_ERR("The server loop returned, it should never happen!!");
 }
 
 } // namespace cuttlefish
 
 int main(int argc, char** argv) {
-  return cuttlefish::RunCvdMain(argc, argv);
+  auto result = cuttlefish::RunCvdMain(argc, argv);
+  CHECK(result.ok()) << result.error();
+  return 0;
 }
