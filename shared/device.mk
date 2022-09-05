@@ -448,7 +448,8 @@ ifndef LOCAL_AUDIO_PRODUCT_PACKAGE
 LOCAL_AUDIO_PRODUCT_PACKAGE := \
     android.hardware.audio.service \
     android.hardware.audio@7.1-impl.ranchu \
-    android.hardware.audio.effect@7.0-impl
+    android.hardware.audio.effect@7.0-impl \
+    android.hardware.audio.effect.service-aidl.example
 endif
 
 ifndef LOCAL_AUDIO_PRODUCT_COPY_FILES
@@ -730,7 +731,7 @@ PRODUCT_PACKAGES += \
     mac80211_create_radios \
     hostapd \
     android.hardware.wifi@1.0-service \
-    init.wifi.sh
+    init.wifi
 
 PRODUCT_VENDOR_PROPERTIES += ro.vendor.wifi_impl=mac8011_hwsim_virtio
 
