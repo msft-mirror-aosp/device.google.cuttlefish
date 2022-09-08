@@ -154,6 +154,7 @@ endif
 
 # GL/Vk implementation for gfxstream
 PRODUCT_PACKAGES += \
+    hwcomposer.ranchu \
     libandroidemu \
     libOpenglCodecCommon \
     libOpenglSystemCommon \
@@ -256,11 +257,9 @@ PRODUCT_PACKAGES += \
 # Hardware Composer HAL
 #
 PRODUCT_PACKAGES += \
-    hwcomposer.drm_minigbm \
-    hwcomposer.cutf \
     hwcomposer-stats \
-    android.hardware.graphics.composer@2.2-impl \
-    android.hardware.graphics.composer@2.2-service
+    android.hardware.graphics.composer@2.4-impl \
+    android.hardware.graphics.composer@2.4-service
 
 #
 # Gralloc HAL
