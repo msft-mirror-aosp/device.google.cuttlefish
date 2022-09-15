@@ -1,5 +1,4 @@
-//
-// Copyright (C) 2021 The Android Open Source Project
+// Copyright (C) 2022 The Android Open Source Project
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,23 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#pragma once
 
-#include <memory>
-#include <string>
+package {
+    default_applicable_licenses: ["Android-Apache-2.0"],
+}
 
-#include "common/libs/utils/result.h"
-
-namespace cuttlefish {
-
-struct KeyPair {
- public:
-  static Result<std::unique_ptr<KeyPair>> CreateRsa(size_t bytes);
-  virtual ~KeyPair() = default;
-
-  virtual Result<std::string> PemPrivateKey() const = 0;
-  virtual Result<std::string> PemPublicKey() const = 0;
-  virtual Result<std::string> OpenSshPublicKey() const = 0;
-};
-
-};  // namespace cuttlefish
+cc_binary_host {
+    name: "process_restarter",
+    defaults: ["cuttlefish_host",],
+    srcs: ["main.cc",],
+    shared_libs: [
+        "libbase",
+        "libcuttlefish_utils",
+        "libjsoncpp",
+    ],
+    static_libs: [
+        "libcuttlefish_host_config",
+    ],
+}
