@@ -115,6 +115,7 @@ x86_64_seccomp_files := \
     battery.policy \
     block_device.policy \
     coiommu.policy \
+    coiommu_device.policy \
     cras_audio_device.policy \
     cras_snd_device.policy \
     fs_device.policy \
@@ -127,6 +128,7 @@ x86_64_seccomp_files := \
     pmem_device.policy \
     rng_device.policy \
     serial.policy \
+    serial_device.policy \
     tpm_device.policy \
     vfio_device.policy \
     vhost_net_device.policy \
@@ -137,6 +139,7 @@ x86_64_seccomp_files := \
     vvu_proxy_device.policy \
     wl_device.policy \
     xhci.policy \
+    xhci_device.policy \
 
 cvd_host_webrtc_files := \
     $(addprefix assets/,$(webrtc_assets)) \
