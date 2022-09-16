@@ -104,7 +104,7 @@ std::vector<std::string> QemuManager::ConfigureGpuMode(
         "androidboot.hardware.hwcomposer=ranchu", // FIXME: Broken, no output
         "androidboot.hardware.egl=swiftshader",
         "androidboot.hardware.vulkan=pastel",
-        "androidboot.opengles.version=196609"};  // OpenGL ES 3.1
+        "androidboot.opengles.version=196608"};  // OpenGL ES 3.0
   }
 
   if (gpu_mode == kGpuModeDrmVirgl) {
