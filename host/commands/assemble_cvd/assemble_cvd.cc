@@ -31,8 +31,7 @@ std::string kFetcherConfigFile = "fetcher_config.json";
 cuttlefish::FetcherConfig FindFetcherConfig(const std::vector<std::string>& files) {
   cuttlefish::FetcherConfig fetcher_config;
   for (const auto& file : files) {
-    auto expected_pos = file.size() - kFetcherConfigFile.size();
-    if (file.rfind(kFetcherConfigFile) == expected_pos) {
+    if (android::base::EndsWith(file, kFetcherConfigFile)) {
       if (fetcher_config.LoadFromFile(file)) {
         return fetcher_config;
       }
