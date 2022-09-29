@@ -324,7 +324,7 @@ DEFINE_bool(use_sdcard, true, "Create blank SD-Card image and expose to guest");
 
 DEFINE_bool(protected_vm, false, "Boot in Protected VM mode");
 
-DEFINE_bool(enable_audio, cuttlefish::HostArch() != cuttlefish::Arch::Arm64,
+DEFINE_bool(enable_audio, false,
             "Whether to play or capture audio");
 
 DEFINE_uint32(camera_server_port, 0, "camera vsock port");
