@@ -902,11 +902,6 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
 
   tmp_config_obj.set_enable_sandbox(FLAGS_enable_sandbox);
 
-  // Audio is not available for Arm64
-  SetCommandLineOptionWithMode(
-      "enable_audio",
-      (cuttlefish::HostArch() == cuttlefish::Arch::Arm64) ? "false" : "true",
-      SET_FLAGS_DEFAULT);
   tmp_config_obj.set_enable_audio(FLAGS_enable_audio);
 
   return tmp_config_obj;
