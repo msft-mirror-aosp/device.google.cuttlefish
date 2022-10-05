@@ -21,20 +21,31 @@
 #include "host/commands/remote/remote.h"
 #include "host/libs/web/http_client/sso_client.h"
 
-DEFINE_string(service_url, "", "cloud orchestration service url");
-DEFINE_string(zone, "us-central1-b", "cloud zone");
+DEFINE_string(service_url, "", "Cloud orchestration service url.");
+DEFINE_string(zone, "us-central1-b", "Cloud zone.");
+DEFINE_string(host, "", "If empty, a new host will be created.");
 DEFINE_bool(use_sso_client, false,
-            "communicates with cloud orchestration using sso_client_binary");
+            "Communicates with cloud orchestration using sso_client_binary");
+DEFINE_string(build_id, "", "Android build identifier.");
+DEFINE_string(target, "aosp_cf_x86_64_phone-userdebug",
+              "Android build target.");
 
 namespace cuttlefish {
 namespace {
 
 int Main(int argc, char** argv) {
   gflags::ParseCommandLineFlags(&argc, &argv, true);
-  ::android::base::InitLogging(argv, android::base::StderrLogger);
-
   if (FLAGS_service_url == "") {
     LOG(ERROR) << "Missing host-url flag";
+    return -1;
+  }
+  if (FLAGS_host == "") {
+    LOG(ERROR)
+        << "Creating a cvd instance without a host is not implemented yet.";
+    return -1;
+  }
+  if (FLAGS_build_id == "") {
+    LOG(ERROR) << "Missing --build_id flag.";
     return -1;
   }
   auto http_client =
@@ -42,19 +53,18 @@ int Main(int argc, char** argv) {
           ? std::unique_ptr<HttpClient>(new http_client::SsoClient())
           : HttpClient::CurlClient();
   CloudOrchestratorApi api(FLAGS_service_url, FLAGS_zone, *http_client);
-  auto hosts = api.ListHosts();
-  if (!hosts.ok()) {
-    LOG(ERROR) << hosts.error().Message();
-    LOG(DEBUG) << hosts.error().Trace();
+  CreateCVDRequest request{
+    build_info : BuildInfo{
+      build_id : FLAGS_build_id,
+      target : FLAGS_target,
+    },
+  };
+  auto result = api.CreateCVD(FLAGS_host, request);
+  if (!result.ok()) {
+    LOG(ERROR) << result.error().Message();
     return -1;
   }
-  if ((*hosts).empty()) {
-    std::cerr << "~ No hosts found ~" << std::endl;
-    return 0;
-  }
-  for (auto host : *hosts) {
-    std::cout << host << std::endl;
-  }
+  std::cout << *result << std::endl;
   return 0;
 }
 

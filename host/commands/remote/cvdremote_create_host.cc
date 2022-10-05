@@ -21,18 +21,21 @@
 #include "host/commands/remote/remote.h"
 #include "host/libs/web/http_client/sso_client.h"
 
-DEFINE_string(service_url, "", "cloud orchestration service url");
-DEFINE_string(zone, "us-central1-b", "cloud zone");
+DEFINE_string(service_url, "", "Cloud orchestration service url.");
+DEFINE_string(zone, "us-central1-b", "Cloud zone.");
 DEFINE_bool(use_sso_client, false,
-            "communicates with cloud orchestration using sso_client_binary");
+            "Communicates with cloud orchestration using sso_client_binary.");
+DEFINE_int32(disk_size_gb, 30, "Specifies the size of the disk in GB.");
+DEFINE_string(machine_type, "zones/us-central1-b/machineTypes/n1-standard-4",
+              "Full or partial URL of the machine type resource.");
+DEFINE_string(min_cpu_platform, "Intel Haswell",
+              "Specifies a minimum CPU platform for the VM instance.");
 
 namespace cuttlefish {
 namespace {
 
 int Main(int argc, char** argv) {
   gflags::ParseCommandLineFlags(&argc, &argv, true);
-  ::android::base::InitLogging(argv, android::base::StderrLogger);
-
   if (FLAGS_service_url == "") {
     LOG(ERROR) << "Missing host-url flag";
     return -1;
@@ -42,19 +45,18 @@ int Main(int argc, char** argv) {
           ? std::unique_ptr<HttpClient>(new http_client::SsoClient())
           : HttpClient::CurlClient();
   CloudOrchestratorApi api(FLAGS_service_url, FLAGS_zone, *http_client);
-  auto hosts = api.ListHosts();
-  if (!hosts.ok()) {
-    LOG(ERROR) << hosts.error().Message();
-    LOG(DEBUG) << hosts.error().Trace();
+  GCPInstance gcp;
+  gcp.disk_size_gb = FLAGS_disk_size_gb;
+  gcp.machine_type = FLAGS_machine_type.c_str();
+  gcp.min_cpu_platform = FLAGS_min_cpu_platform.c_str();
+  CreateHostInstanceRequest request;
+  request.gcp = &gcp;
+  auto result = api.CreateHost(request);
+  if (!result.ok()) {
+    LOG(ERROR) << result.error().Message();
     return -1;
   }
-  if ((*hosts).empty()) {
-    std::cerr << "~ No hosts found ~" << std::endl;
-    return 0;
-  }
-  for (auto host : *hosts) {
-    std::cout << host << std::endl;
-  }
+  std::cout << *result << std::endl;
   return 0;
 }
 
