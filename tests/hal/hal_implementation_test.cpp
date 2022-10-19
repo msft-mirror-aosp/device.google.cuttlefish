@@ -83,6 +83,7 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hardware.light@2.0",
     "android.hardware.media.bufferpool@1.0",
     "android.hardware.media.bufferpool@2.0",
+    "android.hardware.media.omx@1.0", // deprecated b/205761766
     "android.hardware.memtrack@1.0",
     "android.hardware.neuralnetworks@1.3", // converted to AIDL, see b/161428342
     "android.hardware.nfc@1.2",
@@ -193,6 +194,10 @@ static const std::set<VersionedAidlPackage> kKnownMissingAidl = {
 
     // No implementation on cuttlefish for fastboot AIDL hal
     {"android.hardware.fastboot.", 1},
+
+    // These types are only used in TV.
+    {"android.hardware.tv.cec.", 1},
+    {"android.hardware.tv.hdmi.", 1},
 
     // These types are only used in Automotive.
     {"android.automotive.computepipe.registry.", 1},

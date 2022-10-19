@@ -179,16 +179,16 @@ Result<std::vector<Command>> CrosvmManager::StartCommands(
   }
 
   for (const auto& display_config : instance.display_configs()) {
-    crosvm_cmd.Cmd().AddParameter(
-        "--gpu-display=", "width=", display_config.width, ",",
-        "height=", display_config.height);
+    crosvm_cmd.Cmd().AddParameter("--gpu-display=", "mode=windowed[",
+                                  display_config.width, ",",
+                                  display_config.height, "]");
   }
 
   crosvm_cmd.Cmd().AddParameter("--wayland-sock=",
                                 instance.frames_socket_path());
 
   // crosvm_cmd.Cmd().AddParameter("--null-audio");
-  crosvm_cmd.Cmd().AddParameter("--mem=", config.memory_mb());
+  crosvm_cmd.Cmd().AddParameter("--mem=", instance.memory_mb());
   crosvm_cmd.Cmd().AddParameter("--cpus=", instance.cpus());
 
   auto disk_num = instance.virtual_disk_paths().size();
