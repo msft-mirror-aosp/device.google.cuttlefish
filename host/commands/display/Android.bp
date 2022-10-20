@@ -17,22 +17,20 @@ package {
     default_applicable_licenses: ["Android-Apache-2.0"],
 }
 
-cc_library_host_static {
-    name: "libcvd_selector_frontend",
+cc_binary {
+    name: "cvd_internal_display",
     srcs: [
-        "selector_cmdline_parser.cpp",
+        "main.cpp",
     ],
-    defaults: ["cvd_lib_defaults"],
-}
-
-cc_library_host_static {
-    name: "libcvd_instance_db",
-    srcs: [
-        "instance_database.cpp",
-        "instance_database_impl.cpp",
-        "instance_database_utils.cpp",
-        "instance_group_record.cpp",
-        "instance_record.cpp",
+    shared_libs: [
+        "libbase",
+        "libcuttlefish_fs",
+        "libcuttlefish_utils",
+        "libjsoncpp",
     ],
-    defaults: ["cvd_lib_defaults"],
+    static_libs: [
+        "libcuttlefish_host_config",
+        "libgflags",
+    ],
+    defaults: ["cuttlefish_host"],
 }
