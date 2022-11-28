@@ -150,8 +150,6 @@ ifeq ($(TARGET_USERDATAIMAGE_FILE_SYSTEM_TYPE),ext4)
 TARGET_USERIMAGES_USE_EXT4 := true
 endif
 
-BOARD_GPU_DRIVERS := virgl
-
 # Enable goldfish's encoder.
 # TODO(b/113617962) Remove this if we decide to use
 # device/generic/opengl-transport to generate the encoder
