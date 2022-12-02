@@ -45,7 +45,6 @@ apex {
         "rename_netiface",
         "wpa_supplicant_cf",
         "hostapd_cf",
-        "android.hardware.wifi@1.0-service",
     ],
     sh_binaries: ["init.wifi_apex"],
     prebuilts: [
@@ -57,6 +56,8 @@ apex {
         "wpa_supplicant.conf.cf",
         "wpa_supplicant_overlay.conf.cf",
     ],
-    // TODO(b/202992812): Use the vintf_fragment from the wpa_supplicant project.
-    vintf_fragments: ["com.google.cf.wifi_hwsim.xml"],
+    vintf_fragments: [
+        ":android.hardware.wifi.supplicant.xml",
+        ":android.hardware.wifi.hostapd.xml",
+    ],
 }

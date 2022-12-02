@@ -17,8 +17,14 @@
 PRODUCT_VENDOR_PROPERTIES += \
     ro.camerax.extensions.enabled=true
 
-# Enable CameraX extension sample
+# Enable Camera Extension sample
+ifeq ($(TARGET_USE_CAMERA_ADVANCED_EXTENSION_SAMPLE),true)
+PRODUCT_PACKAGES += \
+    androidx.camera.extensions.impl.advanced advancedSample_camera_extensions.xml \
+    libencoderjpeg_jni
+else
 PRODUCT_PACKAGES += androidx.camera.extensions.impl sample_camera_extensions.xml
+endif
 
 PRODUCT_SOONG_NAMESPACES += hardware/google/camera
 PRODUCT_SOONG_NAMESPACES += hardware/google/camera/devices/EmulatedCamera
@@ -40,12 +46,6 @@ PRODUCT_PACKAGES += \
 DEVICE_MANIFEST_FILE += \
     device/google/cuttlefish/guest/hals/camera/manifest.xml
 else
-ifeq ($(LOCAL_PREFER_VENDOR_APEX),true)
 PRODUCT_PACKAGES += com.google.emulated.camera.provider.hal
 PRODUCT_PACKAGES += com.google.emulated.camera.provider.hal.fastscenecycle
-endif
-PRODUCT_PACKAGES += \
-    android.hardware.camera.provider@2.7-service-google \
-    libgooglecamerahwl_impl \
-    android.hardware.camera.provider@2.7-impl-google
 endif

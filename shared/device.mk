@@ -38,7 +38,7 @@ PRODUCT_VENDOR_PROPERTIES += \
 PRODUCT_SOONG_NAMESPACES += device/generic/goldfish-opengl # for vulkan
 PRODUCT_SOONG_NAMESPACES += device/generic/goldfish # for audio and wifi
 
-PRODUCT_SHIPPING_API_LEVEL := 33
+PRODUCT_SHIPPING_API_LEVEL := 34
 PRODUCT_USE_DYNAMIC_PARTITIONS := true
 DISABLE_RILD_OEM_HOOK := true
 
@@ -60,22 +60,6 @@ TARGET_VULKAN_SUPPORT ?= true
 TARGET_ENABLE_HOST_BLUETOOTH_EMULATION ?= true
 TARGET_USE_BTLINUX_HAL_IMPL ?= true
 
-AB_OTA_UPDATER := true
-AB_OTA_PARTITIONS += \
-    boot \
-    init_boot \
-    odm \
-    odm_dlkm \
-    product \
-    system \
-    system_dlkm \
-    system_ext \
-    vbmeta \
-    vbmeta_system \
-    vendor \
-    vendor_boot \
-    vendor_dlkm \
-
 # Enable Virtual A/B
 $(call inherit-product, $(SRC_TARGET_DIR)/product/virtual_ab_ota/android_t_baseline.mk)
 PRODUCT_VIRTUAL_AB_COMPRESSION_METHOD := gz
@@ -91,6 +75,7 @@ PRODUCT_PRODUCT_PROPERTIES += \
     ro.com.google.locationfeatures=1 \
     persist.sys.fuse.passthrough.enable=true \
     persist.sys.fuse.bpf.enable=false \
+    remote_provisioning.tee.rkp_only=1 \
 
 # Until we support adb keys on user builds, and fix logcat over serial,
 # spawn adbd by default without authorization for "adb logcat"
@@ -127,12 +112,6 @@ PRODUCT_VENDOR_PROPERTIES += \
 # Below is a list of properties we probably should get rid of.
 PRODUCT_VENDOR_PROPERTIES += \
     wlan.driver.status=ok
-
-ifneq ($(LOCAL_DISABLE_OMX),true)
-# Codec 1.0 requires the OMX services
-DEVICE_MANIFEST_FILE += \
-    device/google/cuttlefish/shared/config/android.hardware.media.omx@1.0.xml
-endif
 
 PRODUCT_VENDOR_PROPERTIES += \
     debug.stagefright.c2inputsurface=-1
@@ -190,33 +169,6 @@ PRODUCT_PACKAGES += \
     sleep \
     tcpdump \
     wificond \
-
-#
-# Packages for the OpenGL implementation
-#
-
-# ANGLE provides an OpenGL implementation built on top of Vulkan.
-PRODUCT_PACKAGES += \
-    libEGL_angle \
-    libGLESv1_CM_angle \
-    libGLESv2_angle
-
-# ANGLE options:
-#
-# * preferLinearFilterForYUV
-#     Prefer linear filtering for YUV AHBs to pass
-#     android.media.decoder.cts.DecodeAccuracyTest.
-#
-# * mapUnspecifiedColorSpaceToPassThrough
-#     Map unspecified color spaces to PASS_THROUGH to pass
-#     android.media.codec.cts.DecodeEditEncodeTest and
-#     android.media.codec.cts.EncodeDecodeTest.
-PRODUCT_VENDOR_PROPERTIES += \
-    debug.angle.feature_overrides_enabled=preferLinearFilterForYUV:mapUnspecifiedColorSpaceToPassThrough
-
-# GL implementation for virgl
-PRODUCT_PACKAGES += \
-    libGLES_mesa \
 
 #
 # Packages for the Vulkan implementation
@@ -312,6 +264,7 @@ PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/config/media_profiles.xml:$(TARGET_COPY_OUT_VENDOR)/etc/media_profiles_V1_0.xml \
     device/google/cuttlefish/shared/permissions/privapp-permissions-cuttlefish.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/privapp-permissions-cuttlefish.xml \
     frameworks/av/media/libeffects/data/audio_effects.xml:$(TARGET_COPY_OUT_VENDOR)/etc/audio_effects.xml \
+    hardware/interfaces/audio/aidl/default/audio_effects_config.xml:$(TARGET_COPY_OUT_VENDOR)/etc/audio_effects_config.xml \
     frameworks/av/media/libstagefright/data/media_codecs_google_audio.xml:$(TARGET_COPY_OUT_VENDOR)/etc/media_codecs_google_audio.xml \
     frameworks/av/media/libstagefright/data/media_codecs_google_telephony.xml:$(TARGET_COPY_OUT_VENDOR)/etc/media_codecs_google_telephony.xml \
     frameworks/av/services/audiopolicy/config/a2dp_in_audio_policy_configuration_7_0.xml:$(TARGET_COPY_OUT_VENDOR)/etc/a2dp_in_audio_policy_configuration_7_0.xml \
@@ -332,13 +285,15 @@ PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/config/input/Crosvm_Virtio_Multitouch_Touchscreen_3.idc:$(TARGET_COPY_OUT_VENDOR)/usr/idc/Crosvm_Virtio_Multitouch_Touchscreen_3.idc
 endif
 
-PRODUCT_COPY_FILES += \
-    device/google/cuttlefish/shared/config/fstab.f2fs:$(TARGET_COPY_OUT_VENDOR_RAMDISK)/first_stage_ramdisk/fstab.f2fs \
-    device/google/cuttlefish/shared/config/fstab.f2fs:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.f2fs \
-    device/google/cuttlefish/shared/config/fstab.f2fs:$(TARGET_COPY_OUT_RECOVERY)/root/first_stage_ramdisk/fstab.f2fs \
-    device/google/cuttlefish/shared/config/fstab.ext4:$(TARGET_COPY_OUT_VENDOR_RAMDISK)/first_stage_ramdisk/fstab.ext4 \
-    device/google/cuttlefish/shared/config/fstab.ext4:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.ext4 \
-    device/google/cuttlefish/shared/config/fstab.ext4:$(TARGET_COPY_OUT_RECOVERY)/root/first_stage_ramdisk/fstab.ext4
+PRODUCT_PACKAGES += \
+    fstab.cf.f2fs.hctr2 \
+    fstab.cf.f2fs.hctr2.vendor_ramdisk \
+    fstab.cf.f2fs.cts \
+    fstab.cf.f2fs.cts.vendor_ramdisk \
+    fstab.cf.ext4.hctr2 \
+    fstab.cf.ext4.hctr2.vendor_ramdisk \
+    fstab.cf.ext4.cts \
+    fstab.cf.ext4.cts.vendor_ramdisk \
 
 ifeq ($(TARGET_VULKAN_SUPPORT),true)
 ifneq ($(LOCAL_PREFER_VENDOR_APEX),true)
@@ -397,8 +352,9 @@ PRODUCT_PACKAGES += \
 # Gralloc HAL
 #
 PRODUCT_PACKAGES += \
-    android.hardware.graphics.allocator-V1-service.minigbm \
-    android.hardware.graphics.mapper@4.0-impl.minigbm
+    android.hardware.graphics.allocator-service.minigbm \
+    android.hardware.graphics.mapper@4.0-impl.minigbm \
+    mapper.minigbm
 
 #
 # Bluetooth HAL and Compatibility Bluetooth library (for older revs).
@@ -459,7 +415,8 @@ LOCAL_AUDIO_PRODUCT_COPY_FILES := \
     frameworks/av/services/audiopolicy/config/r_submix_audio_policy_configuration.xml:$(TARGET_COPY_OUT_VENDOR)/etc/r_submix_audio_policy_configuration.xml \
     frameworks/av/services/audiopolicy/config/audio_policy_volumes.xml:$(TARGET_COPY_OUT_VENDOR)/etc/audio_policy_volumes.xml \
     frameworks/av/services/audiopolicy/config/default_volume_tables.xml:$(TARGET_COPY_OUT_VENDOR)/etc/default_volume_tables.xml \
-    frameworks/av/media/libeffects/data/audio_effects.xml:$(TARGET_COPY_OUT_VENDOR)/etc/audio_effects.xml
+    frameworks/av/media/libeffects/data/audio_effects.xml:$(TARGET_COPY_OUT_VENDOR)/etc/audio_effects.xml \
+    hardware/interfaces/audio/aidl/default/audio_effects_config.xml:$(TARGET_COPY_OUT_VENDOR)/etc/audio_effects_config.xml
 endif
 
 PRODUCT_PACKAGES += $(LOCAL_AUDIO_PRODUCT_PACKAGE)
@@ -495,7 +452,7 @@ PRODUCT_PACKAGES += \
 # Confirmation UI HAL
 #
 ifeq ($(LOCAL_CONFIRMATIONUI_PRODUCT_PACKAGE),)
-    LOCAL_CONFIRMATIONUI_PRODUCT_PACKAGE := android.hardware.confirmationui@1.0-service.cuttlefish
+    LOCAL_CONFIRMATIONUI_PRODUCT_PACKAGE := android.hardware.confirmationui-service.cuttlefish
 endif
 PRODUCT_PACKAGES += $(LOCAL_CONFIRMATIONUI_PRODUCT_PACKAGE)
 
@@ -511,7 +468,7 @@ PRODUCT_PACKAGES += $(LOCAL_DUMPSTATE_PRODUCT_PACKAGE)
 # Gatekeeper
 #
 ifeq ($(LOCAL_GATEKEEPER_PRODUCT_PACKAGE),)
-       LOCAL_GATEKEEPER_PRODUCT_PACKAGE := android.hardware.gatekeeper@1.0-service.remote
+       LOCAL_GATEKEEPER_PRODUCT_PACKAGE := android.hardware.gatekeeper-service.remote
 endif
 PRODUCT_PACKAGES += \
     $(LOCAL_GATEKEEPER_PRODUCT_PACKAGE)
@@ -561,14 +518,6 @@ ifeq ($(LOCAL_SENSOR_PRODUCT_PACKAGE),)
 endif
 PRODUCT_PACKAGES += \
     $(LOCAL_SENSOR_PRODUCT_PACKAGE)
-#
-# Thermal (mock)
-#
-ifeq ($(LOCAL_PREFER_VENDOR_APEX),true)
-PRODUCT_PACKAGES += com.android.hardware.thermal.mock
-else
-PRODUCT_PACKAGES += android.hardware.thermal@2.0-service.mock
-endif
 
 #
 # Lights
@@ -589,12 +538,6 @@ endif
  PRODUCT_PACKAGES += \
     $(LOCAL_KEYMINT_PRODUCT_PACKAGE)
 
-# Keymint configuration
-ifneq ($(LOCAL_PREFER_VENDOR_APEX),true)
-PRODUCT_COPY_FILES += \
-    frameworks/native/data/etc/android.software.device_id_attestation.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.device_id_attestation.xml
-endif
-
 #
 # Dice HAL
 #
@@ -614,6 +557,12 @@ PRODUCT_PACKAGES += \
 endif
 
 #
+# Thermal HAL
+#
+PRODUCT_PACKAGES += \
+    android.hardware.thermal-service.example
+
+#
 # NeuralNetworks HAL
 #
 PRODUCT_PACKAGES += \
@@ -621,16 +570,9 @@ PRODUCT_PACKAGES += \
     android.hardware.neuralnetworks-service-sample-limited \
     android.hardware.neuralnetworks-shim-service-sample
 
-#
 # USB
-# TODO(b/227791019): Convert USB AIDL HAL to APEX
-# ifeq ($(LOCAL_PREFER_VENDOR_APEX),true)
-# PRODUCT_PACKAGES += \
-#    com.android.hardware.usb
-#else
 PRODUCT_PACKAGES += \
-    android.hardware.usb-service.example
-#endif
+    com.android.hardware.usb
 
 # Vibrator HAL
 ifeq ($(LOCAL_PREFER_VENDOR_APEX),true)
@@ -642,7 +584,9 @@ endif
 
 # BootControl HAL
 PRODUCT_PACKAGES += \
-    android.hardware.boot-service.default
+    android.hardware.boot-service.default \
+    android.hardware.boot-service.default_recovery
+
 
 # RebootEscrow HAL
 PRODUCT_PACKAGES += \
@@ -699,6 +643,7 @@ PRODUCT_VENDOR_PROPERTIES += ro.vendor.wifi_impl=virt_wifi
 else
 PRODUCT_SOONG_NAMESPACES += device/google/cuttlefish/apex/com.google.cf.wifi_hwsim
 PRODUCT_PACKAGES += com.google.cf.wifi_hwsim
+PRODUCT_PACKAGES += com.android.hardware.wifi
 $(call add_soong_config_namespace, wpa_supplicant)
 $(call add_soong_config_var_value, wpa_supplicant, platform_version, $(PLATFORM_VERSION))
 $(call add_soong_config_var_value, wpa_supplicant, nl80211_driver, CONFIG_DRIVER_NL80211_QCA)
@@ -713,6 +658,12 @@ PRODUCT_PACKAGES += \
     wpa_supplicant
 PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/config/wpa_supplicant.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/wpa_supplicant.rc
+
+# VirtWifi interface configuration
+ifeq ($(DEVICE_VIRTWIFI_PORT),)
+    DEVICE_VIRTWIFI_PORT := eth2
+endif
+PRODUCT_VENDOR_PROPERTIES += ro.vendor.virtwifi.port=${DEVICE_VIRTWIFI_PORT}
 
 # WLAN driver configuration files
 ifndef LOCAL_WPA_SUPPLICANT_OVERLAY
@@ -758,10 +709,6 @@ endif
 # Host packages to install
 PRODUCT_HOST_PACKAGES += socket_vsock_proxy
 
-PRODUCT_EXTRA_VNDK_VERSIONS := 28 29 30 31
-
-PRODUCT_SOONG_NAMESPACES += external/mesa3d
-
 #for Confirmation UI
 PRODUCT_SOONG_NAMESPACES += vendor/google_devices/common/proprietary/confirmatioui_hal
 
@@ -793,6 +740,10 @@ PRODUCT_PACKAGES += \
 # NFC AIDL HAL
 PRODUCT_PACKAGES += \
     android.hardware.nfc-service.cuttlefish
+
+# CAS AIDL HAL
+PRODUCT_PACKAGES += \
+    android.hardware.cas-service.example
 
 PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/config/pci.ids:$(TARGET_COPY_OUT_VENDOR)/pci.ids

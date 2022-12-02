@@ -19,8 +19,6 @@
    - When running on an ARM machine, the most direct way is to check
    for the existence of `/dev/kvm`. Note that this method can also be used to
    confirm support of KVM on any environment.
-   - Before proceeding to the next step, please first follow
-   [the guide](multiarch-howto.md) to adjust APT sources.
 ***
 
 2. Download, build, and install the host debian packages:
@@ -89,5 +87,5 @@ WebRTC on Cuttlefish
 You will need to stop the virtual device within the same directory as you used
 to launch the device.
 
-    `$ HOME=$PWD ./bin/stop_cvd`
+   `$ HOME=$PWD ./bin/stop_cvd`
 

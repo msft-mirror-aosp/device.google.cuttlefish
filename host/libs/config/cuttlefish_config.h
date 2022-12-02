@@ -26,6 +26,7 @@
 #include <vector>
 
 #include "common/libs/utils/environment.h"
+#include "common/libs/utils/result.h"
 #include "host/libs/config/config_fragment.h"
 
 namespace Json {
@@ -38,6 +39,7 @@ constexpr char kLogcatVsockMode[] = "vsock";
 
 constexpr char kDefaultUuidPrefix[] = "699acfc4-c8c4-11e7-882b-5065f31dc1";
 constexpr char kCuttlefishConfigEnvVarName[] = "CUTTLEFISH_CONFIG_FILE";
+constexpr char kCuttlefishInstanceEnvVarName[] = "CUTTLEFISH_INSTANCE";
 constexpr char kVsocUserPrefix[] = "vsoc-";
 constexpr char kCvdNamePrefix[] = "cvd-";
 constexpr char kBootStartedMessage[] ="VIRTUAL_DEVICE_BOOT_STARTED";
@@ -97,24 +99,6 @@ class CuttlefishConfig {
   std::string vm_manager() const;
   void set_vm_manager(const std::string& name);
 
-  std::string gpu_mode() const;
-  void set_gpu_mode(const std::string& name);
-
-  std::string gpu_capture_binary() const;
-  void set_gpu_capture_binary(const std::string&);
-
-  std::string hwcomposer() const;
-  void set_hwcomposer(const std::string&);
-
-  void set_enable_gpu_udmabuf(const bool enable_gpu_udmabuf);
-  bool enable_gpu_udmabuf() const;
-
-  void set_enable_gpu_angle(const bool enable_gpu_angle);
-  bool enable_gpu_angle() const;
-
-  int memory_mb() const;
-  void set_memory_mb(int memory_mb);
-
   struct DisplayConfig {
     int width;
     int height;
@@ -122,20 +106,11 @@ class CuttlefishConfig {
     int refresh_rate_hz;
   };
 
-  bool deprecated_boot_completed() const;
-  void set_deprecated_boot_completed(bool deprecated_boot_completed);
-
   void set_cuttlefish_env_path(const std::string& path);
   std::string cuttlefish_env_path() const;
 
   void set_secure_hals(const std::set<std::string>& hals);
   std::set<SecureHal> secure_hals() const;
-
-  void set_setupwizard_mode(const std::string& title);
-  std::string setupwizard_mode() const;
-
-  void set_enable_bootanimation(const bool enable_bootanimation);
-  bool enable_bootanimation() const;
 
   void set_qemu_binary_dir(const std::string& qemu_binary_dir);
   std::string qemu_binary_dir() const;
@@ -143,14 +118,8 @@ class CuttlefishConfig {
   void set_crosvm_binary(const std::string& crosvm_binary);
   std::string crosvm_binary() const;
 
-  void set_gem5_debug_file(const std::string& gem5_debug_file);
-  std::string gem5_debug_file() const;
-
   void set_gem5_debug_flags(const std::string& gem5_debug_flags);
   std::string gem5_debug_flags() const;
-
-  void set_enable_sandbox(const bool enable_sandbox);
-  bool enable_sandbox() const;
 
   void set_seccomp_policy_dir(const std::string& seccomp_policy_dir);
   std::string seccomp_policy_dir() const;
@@ -160,36 +129,6 @@ class CuttlefishConfig {
 
   void set_webrtc_assets_dir(const std::string& webrtc_assets_dir);
   std::string webrtc_assets_dir() const;
-
-  void set_webrtc_enable_adb_websocket(bool enable);
-  bool webrtc_enable_adb_websocket() const;
-
-  void set_enable_vehicle_hal_grpc_server(bool enable_vhal_server);
-  bool enable_vehicle_hal_grpc_server() const;
-
-  void set_restart_subprocesses(bool restart_subprocesses);
-  bool restart_subprocesses() const;
-
-  void set_enable_gnss_grpc_proxy(const bool enable_gnss_grpc_proxy);
-  bool enable_gnss_grpc_proxy() const;
-
-  void set_run_as_daemon(bool run_as_daemon);
-  bool run_as_daemon() const;
-
-  void set_data_policy(const std::string& data_policy);
-  std::string data_policy() const;
-
-  void set_blank_data_image_mb(int blank_data_image_mb);
-  int blank_data_image_mb() const;
-
-  void set_bootloader(const std::string& bootloader_path);
-  std::string bootloader() const;
-
-  void set_boot_slot(const std::string& boot_slot);
-  std::string boot_slot() const;
-
-  void set_guest_enforce_security(bool guest_enforce_security);
-  bool guest_enforce_security() const;
 
   void set_enable_host_bluetooth(bool enable_host_bluetooth);
   bool enable_host_bluetooth() const;
@@ -271,23 +210,6 @@ class CuttlefishConfig {
   void set_ril_dns(const std::string& ril_dns);
   std::string ril_dns() const;
 
-  // Kernel and bootloader logging
-  void set_enable_kernel_log(bool enable_kernel_log);
-  bool enable_kernel_log() const;
-
-  // Configuration flags for a minimal device
-  bool enable_minimal_mode() const;
-  void set_enable_minimal_mode(bool enable_minimal_mode);
-
-  void set_enable_modem_simulator(bool enable_modem_simulator);
-  bool enable_modem_simulator() const;
-
-  void set_modem_simulator_instance_number(int instance_numbers);
-  int modem_simulator_instance_number() const;
-
-  void set_modem_simulator_sim_type(int sim_type);
-  int modem_simulator_sim_type() const;
-
   void set_host_tools_version(const std::map<std::string, uint32_t>&);
   std::map<std::string, uint32_t> host_tools_version() const;
 
@@ -300,6 +222,9 @@ class CuttlefishConfig {
   void set_wmediumd_api_server_socket(const std::string& path);
   std::string wmediumd_api_server_socket() const;
 
+  void set_ap_esp_image(const std::string& otheros_ap_image);
+  std::string ap_esp_image() const;
+
   void set_ap_rootfs_image(const std::string& path);
   std::string ap_rootfs_image() const;
 
@@ -309,11 +234,17 @@ class CuttlefishConfig {
   void set_wmediumd_config(const std::string& path);
   std::string wmediumd_config() const;
 
+  void set_rootcanal_args(const std::string& rootcanal_args);
+  std::vector<std::string> rootcanal_args() const;
+
   void set_rootcanal_hci_port(int rootcanal_hci_port);
   int rootcanal_hci_port() const;
 
   void set_rootcanal_link_port(int rootcanal_link_port);
   int rootcanal_link_port() const;
+
+  void set_rootcanal_link_ble_port(int rootcanal_link_ble_port);
+  int rootcanal_link_ble_port() const;
 
   void set_rootcanal_test_port(int rootcanal_test_port);
   int rootcanal_test_port() const;
@@ -325,23 +256,14 @@ class CuttlefishConfig {
       const std::string& rootcanal_default_commands_file);
   std::string rootcanal_default_commands_file() const;
 
-  void set_record_screen(bool record_screen);
-  bool record_screen() const;
-
   void set_smt(bool smt);
   bool smt() const;
-
-  void set_enable_audio(bool enable);
-  bool enable_audio() const;
-
-  void set_protected_vm(bool protected_vm);
-  bool protected_vm() const;
 
   void set_bootconfig_supported(bool bootconfig_supported);
   bool bootconfig_supported() const;
 
-  void set_userdata_format(const std::string& userdata_format);
-  std::string userdata_format() const;
+  void set_filename_encryption_mode(const std::string& userdata_format);
+  std::string filename_encryption_mode() const;
 
   // The path of an AP image in composite disk
   std::string ap_image_dev_path() const;
@@ -463,11 +385,25 @@ class CuttlefishConfig {
 
     std::string persistent_composite_disk_path() const;
 
+    std::string persistent_ap_composite_disk_path() const;
+
     std::string os_composite_disk_path() const;
+
+    std::string ap_composite_disk_path() const;
 
     std::string uboot_env_image_path() const;
 
+    std::string ap_uboot_env_image_path() const;
+
     std::string audio_server_path() const;
+
+    enum class BootFlow {
+      Android,
+      Linux,
+      Fuchsia
+    };
+
+    BootFlow boot_flow() const;
 
     // modem simulator related
     std::string modem_simulator_ports() const;
@@ -492,8 +428,22 @@ class CuttlefishConfig {
     // Whether this instance should start a netsim instance
     bool start_netsim() const;
 
-    // Whether this instance should start an ap instance
-    bool start_ap() const;
+    enum class APBootFlow {
+      // Not starting AP at all (for example not the 1st instance)
+      None,
+      // Generating ESP and using U-BOOT to boot AP
+      Grub,
+      // Using legacy way to boot AP in case we cannot generate ESP image.
+      // Currently we have only one case when we cannot do it. When users
+      // have ubuntu bionic which doesn't have monolith binaris in the
+      // grub-efi-arm64-bin (for arm64) and grub-efi-ia32-bin (x86) deb packages.
+      // TODO(b/260337906): check is it possible to add grub binaries into the AOSP
+      // to deliver the proper grub environment
+      // TODO(b/260338443): use grub-mkimage from grub-common in case we cannot overcome
+      // legal issues
+      LegacyDirect
+    };
+    APBootFlow ap_boot_flow() const;
 
     // Wifi MAC address inside the guest
     int wifi_mac_prefix() const;
@@ -504,6 +454,8 @@ class CuttlefishConfig {
 
     std::string vbmeta_path() const;
 
+    std::string ap_vbmeta_path() const;
+
     std::string id() const;
 
     std::string gem5_binary_dir() const;
@@ -513,6 +465,7 @@ class CuttlefishConfig {
     // Serial console
     bool console() const;
     std::string console_dev() const;
+    bool enable_sandbox() const;
 
     // KGDB configuration for kernel debugging
     bool kgdb() const;
@@ -527,9 +480,81 @@ class CuttlefishConfig {
 
     int cpus() const;
 
+    std::string data_policy() const;
+
+    int blank_data_image_mb() const;
+
     int gdb_port() const;
 
     std::vector<DisplayConfig> display_configs() const;
+
+    int memory_mb() const;
+    int ddr_mem_mb() const;
+    std::string setupwizard_mode() const;
+    std::string userdata_format() const;
+    bool guest_enforce_security() const;
+    bool use_sdcard() const;
+    bool pause_in_bootloader() const;
+    bool run_as_daemon() const;
+    bool enable_audio() const;
+    bool enable_vehicle_hal_grpc_server() const;
+    bool enable_gnss_grpc_proxy() const;
+    bool enable_bootanimation() const;
+    bool record_screen() const;
+    std::string gem5_debug_file() const;
+    bool protected_vm() const;
+    std::string boot_slot() const;
+
+    // Kernel and bootloader logging
+    bool enable_kernel_log() const;
+
+    // Configuration flags for a minimal device
+    bool enable_minimal_mode() const;
+    bool enable_modem_simulator() const;
+    int modem_simulator_instance_number() const;
+    int modem_simulator_sim_type() const;
+
+    std::string gpu_mode() const;
+    std::string gpu_capture_binary() const;
+    bool restart_subprocesses() const;
+    std::string hwcomposer() const;
+    bool enable_gpu_udmabuf() const;
+    bool enable_gpu_angle() const;
+
+    // android artifacts
+    std::string boot_image() const;
+    std::string new_boot_image() const;
+    std::string init_boot_image() const;
+    std::string data_image() const;
+    std::string super_image() const;
+    std::string misc_image() const;
+    std::string new_misc_image() const;
+    std::string metadata_image() const;
+    std::string new_metadata_image() const;
+    std::string vendor_boot_image() const;
+    std::string new_vendor_boot_image() const;
+    std::string vbmeta_image() const;
+    std::string vbmeta_system_image() const;
+
+    // otheros artifacts
+    std::string otheros_esp_image() const;
+
+    // linux artifacts for otheros flow
+    std::string linux_kernel_path() const;
+    std::string linux_initramfs_path() const;
+    std::string linux_root_image() const;
+
+    std::string fuchsia_zedboot_path() const;
+    std::string fuchsia_multiboot_bin_path() const;
+    std::string fuchsia_root_image() const;
+
+    std::string custom_partition_path() const;
+
+    int blank_metadata_image_mb() const;
+    int blank_sdcard_image_mb() const;
+    std::string bootloader() const;
+    std::string initramfs_path() const;
+    std::string kernel_path() const;
   };
 
   // A view into an existing CuttlefishConfig object for a particular instance.
@@ -574,7 +599,7 @@ class CuttlefishConfig {
     void set_start_wmediumd(bool start);
     void set_start_rootcanal(bool start);
     void set_start_netsim(bool start);
-    void set_start_ap(bool start);
+    void set_ap_boot_flow(InstanceSpecific::APBootFlow flow);
     // Wifi MAC address inside the guest
     void set_wifi_mac_prefix(const int wifi_mac_prefix);
     // Gnss grpc proxy server port inside the host
@@ -587,11 +612,74 @@ class CuttlefishConfig {
     void set_gem5_checkpoint_dir(const std::string& gem5_checkpoint_dir);
     // Serial console
     void set_console(bool console);
+    void set_enable_sandbox(const bool enable_sandbox);
     void set_kgdb(bool kgdb);
     void set_target_arch(Arch target_arch);
     void set_cpus(int cpus);
+    void set_data_policy(const std::string& data_policy);
+    void set_blank_data_image_mb(int blank_data_image_mb);
     void set_gdb_port(int gdb_port);
     void set_display_configs(const std::vector<DisplayConfig>& display_configs);
+    void set_memory_mb(int memory_mb);
+    void set_ddr_mem_mb(int ddr_mem_mb);
+    Result<void> set_setupwizard_mode(const std::string& title);
+    void set_userdata_format(const std::string& userdata_format);
+    void set_guest_enforce_security(bool guest_enforce_security);
+    void set_use_sdcard(bool use_sdcard);
+    void set_pause_in_bootloader(bool pause_in_bootloader);
+    void set_run_as_daemon(bool run_as_daemon);
+    void set_enable_audio(bool enable);
+    void set_enable_vehicle_hal_grpc_server(bool enable_vhal_server);
+    void set_enable_gnss_grpc_proxy(const bool enable_gnss_grpc_proxy);
+    void set_enable_bootanimation(const bool enable_bootanimation);
+    void set_record_screen(bool record_screen);
+    void set_gem5_debug_file(const std::string& gem5_debug_file);
+    void set_protected_vm(bool protected_vm);
+    void set_boot_slot(const std::string& boot_slot);
+
+    // Kernel and bootloader logging
+    void set_enable_kernel_log(bool enable_kernel_log);
+
+    // Configuration flags for a minimal device
+    void set_enable_minimal_mode(bool enable_minimal_mode);
+    void set_enable_modem_simulator(bool enable_modem_simulator);
+    void set_modem_simulator_instance_number(int instance_numbers);
+    void set_modem_simulator_sim_type(int sim_type);
+
+    void set_gpu_mode(const std::string& name);
+    void set_gpu_capture_binary(const std::string&);
+    void set_restart_subprocesses(bool restart_subprocesses);
+    void set_hwcomposer(const std::string&);
+    void set_enable_gpu_udmabuf(const bool enable_gpu_udmabuf);
+    void set_enable_gpu_angle(const bool enable_gpu_angle);
+
+    // system image files
+    void set_boot_image(const std::string& boot_image);
+    void set_new_boot_image(const std::string& new_boot_image);
+    void set_init_boot_image(const std::string& init_boot_image);
+    void set_data_image(const std::string& data_image);
+    void set_super_image(const std::string& super_image);
+    void set_misc_image(const std::string& misc_image);
+    void set_new_misc_image(const std::string& new_misc_image);
+    void set_metadata_image(const std::string& metadata_image);
+    void set_new_metadata_image(const std::string& new_metadata_image);
+    void set_vendor_boot_image(const std::string& vendor_boot_image);
+    void set_new_vendor_boot_image(const std::string& new_vendor_boot_image);
+    void set_vbmeta_image(const std::string& vbmeta_image);
+    void set_vbmeta_system_image(const std::string& vbmeta_system_image);
+    void set_otheros_esp_image(const std::string& otheros_esp_image);
+    void set_linux_kernel_path(const std::string& linux_kernel_path);
+    void set_linux_initramfs_path(const std::string& linux_initramfs_path);
+    void set_linux_root_image(const std::string& linux_root_image);
+    void set_fuchsia_zedboot_path(const std::string& fuchsia_zedboot_path);
+    void set_fuchsia_multiboot_bin_path(const std::string& fuchsia_multiboot_bin_path);
+    void set_fuchsia_root_image(const std::string& fuchsia_root_image);
+    void set_custom_partition_path(const std::string& custom_partition_path);
+    void set_blank_metadata_image_mb(int blank_metadata_image_mb);
+    void set_blank_sdcard_image_mb(int blank_sdcard_image_mb);
+    void set_bootloader(const std::string& bootloader);
+    void set_initramfs_path(const std::string& initramfs_path);
+    void set_kernel_path(const std::string& kernel_path);
   };
 
  private:
@@ -605,8 +693,8 @@ class CuttlefishConfig {
   CuttlefishConfig& operator=(const CuttlefishConfig&) = delete;
 };
 
-// Returns the instance number as obtained from the CUTTLEFISH_INSTANCE
-// environment variable or the username.
+// Returns the instance number as obtained from the
+// *kCuttlefishInstanceEnvVarName environment variable or the username.
 int GetInstance();
 
 // Returns default Vsock CID, which is

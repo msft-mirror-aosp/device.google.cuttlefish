@@ -37,7 +37,6 @@ PRODUCT_PACKAGES += FakeSystemApp
 #
 # All components inherited here go to vendor image
 #
-LOCAL_DISABLE_OMX := true
 LOCAL_PREFER_VENDOR_APEX := true
 $(call inherit-product, device/google/cuttlefish/shared/slim/device_vendor.mk)
 $(call inherit-product, device/google/cuttlefish/shared/camera/device_vendor.mk)
@@ -45,7 +44,6 @@ $(call inherit-product, device/google/cuttlefish/shared/camera/device_vendor.mk)
 #
 # Special settings for the target
 #
-$(call inherit-product, device/google/cuttlefish/vsoc_x86_64/kernel.mk)
 $(call inherit-product, device/google/cuttlefish/vsoc_x86_64/bootloader.mk)
 
 # Exclude features that are not available on AOSP devices.

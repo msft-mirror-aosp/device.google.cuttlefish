@@ -35,13 +35,15 @@ class CrosvmManager : public VmManager {
 
   bool IsSupported() override;
   std::vector<std::string> ConfigureGraphics(
-      const CuttlefishConfig& config) override;
+      const CuttlefishConfig::InstanceSpecific& instance) override;
   std::string ConfigureBootDevices(int num_disks) override;
 
   Result<std::vector<cuttlefish::Command>> StartCommands(
       const CuttlefishConfig& config) override;
+
+ private:
+  static constexpr int kCrosvmVmResetExitCode = 32;
 };
 
 } // namespace vm_manager
 } // namespace cuttlefish
-

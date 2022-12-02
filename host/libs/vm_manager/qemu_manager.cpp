@@ -122,8 +122,8 @@ bool QemuManager::IsSupported() {
 }
 
 std::vector<std::string> QemuManager::ConfigureGraphics(
-    const CuttlefishConfig& config) {
-  if (config.gpu_mode() == kGpuModeGuestSwiftshader) {
+    const CuttlefishConfig::InstanceSpecific& instance) {
+  if (instance.gpu_mode() == kGpuModeGuestSwiftshader) {
     // Override the default HAL search paths in all cases. We do this because
     // the HAL search path allows for fallbacks, and fallbacks in conjunction
     // with properities lead to non-deterministic behavior while loading the
@@ -131,13 +131,13 @@ std::vector<std::string> QemuManager::ConfigureGraphics(
     return {
         "androidboot.cpuvulkan.version=" + std::to_string(VK_API_VERSION_1_2),
         "androidboot.hardware.gralloc=minigbm",
-        "androidboot.hardware.hwcomposer=" + config.hwcomposer(),
+        "androidboot.hardware.hwcomposer=" + instance.hwcomposer(),
         "androidboot.hardware.egl=angle",
         "androidboot.hardware.vulkan=pastel",
         "androidboot.opengles.version=196609"};  // OpenGL ES 3.1
   }
 
-  if (config.gpu_mode() == kGpuModeDrmVirgl) {
+  if (instance.gpu_mode() == kGpuModeDrmVirgl) {
     return {
       "androidboot.cpuvulkan.version=0",
       "androidboot.hardware.gralloc=minigbm",
@@ -316,12 +316,12 @@ Result<std::vector<Command>> QemuManager::StartCommands(
   qemu_cmd.AddParameter(machine, ",usb=off,dump-guest-core=off");
 
   qemu_cmd.AddParameter("-m");
-  auto maxmem = config.memory_mb() +
+  auto maxmem = instance.memory_mb() +
                 (access_kregistry_size_bytes / 1024 / 1024) +
                 (hwcomposer_pmem_size_bytes / 1024 / 1024) +
                 (is_arm ? 0 : pstore_size_bytes / 1024 / 1024);
   auto slots = is_arm ? "" : ",slots=2";
-  qemu_cmd.AddParameter("size=", config.memory_mb(), "M",
+  qemu_cmd.AddParameter("size=", instance.memory_mb(), "M",
                         ",maxmem=", maxmem, "M", slots);
 
   qemu_cmd.AddParameter("-overcommit");
@@ -360,7 +360,7 @@ Result<std::vector<Command>> QemuManager::StartCommands(
   qemu_cmd.AddParameter("-mon");
   qemu_cmd.AddParameter("chardev=charmonitor,id=monitor,mode=control");
 
-  if (config.gpu_mode() == kGpuModeDrmVirgl) {
+  if (instance.gpu_mode() == kGpuModeDrmVirgl) {
     qemu_cmd.AddParameter("-display");
     qemu_cmd.AddParameter("egl-headless");
 
@@ -378,7 +378,7 @@ Result<std::vector<Command>> QemuManager::StartCommands(
   qemu_cmd.AddParameter("-device");
 
   bool use_gpu_gl = qemu_version.first >= 6 &&
-                    config.gpu_mode() != kGpuModeGuestSwiftshader;
+                    instance.gpu_mode() != kGpuModeGuestSwiftshader;
   qemu_cmd.AddParameter(use_gpu_gl ?
                             "virtio-gpu-gl-pci" : "virtio-gpu-pci", ",id=gpu0",
                         ",xres=", display_config.width,
@@ -389,7 +389,7 @@ Result<std::vector<Command>> QemuManager::StartCommands(
     // dmesg will go there instead of the kernel.log. On QEMU, we do this
     // bit of logic up before the hvc console is set up, so the command line
     // flags appear in the right order and "append=on" does the right thing
-    if (config.enable_kernel_log() &&
+    if (instance.enable_kernel_log() &&
         (instance.kgdb() || instance.use_bootloader())) {
       add_serial_console_ro(instance.kernel_log_pipe_name());
     }
@@ -444,7 +444,7 @@ Result<std::vector<Command>> QemuManager::StartCommands(
     add_hvc_sink();
   }
 
-  if (config.enable_gnss_grpc_proxy()) {
+  if (instance.enable_gnss_grpc_proxy()) {
     add_hvc(instance.PerInstanceInternalPath("gnsshvc_fifo_vm"));
     add_hvc(instance.PerInstanceInternalPath("locationhvc_fifo_vm"));
   } else {
@@ -482,7 +482,7 @@ Result<std::vector<Command>> QemuManager::StartCommands(
   CF_EXPECT(VmManager::kMaxDisks >= disk_num,
             "Provided too many disks (" << disk_num << "), maximum "
                                         << VmManager::kMaxDisks << "supported");
-  auto readonly = config.protected_vm() ? ",readonly" : "";
+  auto readonly = instance.protected_vm() ? ",readonly" : "";
   for (size_t i = 0; i < disk_num; i++) {
     auto bootindex = i == 0 ? ",bootindex=1" : "";
     auto format = i == 0 ? "" : ",format=raw";
@@ -594,7 +594,7 @@ Result<std::vector<Command>> QemuManager::StartCommands(
   qemu_cmd.AddParameter("qemu-xhci,id=xhci");
 
   qemu_cmd.AddParameter("-bios");
-  qemu_cmd.AddParameter(config.bootloader());
+  qemu_cmd.AddParameter(instance.bootloader());
 
   if (instance.gdb_port() > 0) {
     qemu_cmd.AddParameter("-S");

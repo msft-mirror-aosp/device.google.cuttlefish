@@ -27,8 +27,8 @@ class CrosvmBuilder {
  public:
   CrosvmBuilder();
 
-  void SetBinary(const std::string&);
-  void AddControlSocket(const std::string&);
+  void ApplyProcessRestarter(const std::string& crosvm_binary, int exit_code);
+  void AddControlSocket(const std::string&, const std::string&);
 
   void AddHvcSink();
   void AddHvcReadOnly(const std::string& output, bool console = false);

@@ -21,22 +21,26 @@
 
 #include "common/libs/utils/network.h"
 #include "common/libs/utils/subprocess.h"
+#include "host/libs/config/cuttlefish_config.h"
 
 namespace cuttlefish {
 
-CrosvmBuilder::CrosvmBuilder() : command_("crosvm") {
-  command_.AddParameter("run");
+CrosvmBuilder::CrosvmBuilder() : command_("crosvm") {}
+
+void CrosvmBuilder::ApplyProcessRestarter(const std::string& crosvm_binary,
+                                          int exit_code) {
+  constexpr auto process_restarter = "process_restarter";
+  command_.SetExecutableAndName(HostBinaryPath(process_restarter));
+  command_.AddParameter(exit_code);
+  command_.AddParameter(crosvm_binary);
+  // Flag allows exit codes other than 0 or 1, must be before command argument
+  command_.AddParameter("--extended-status");
 }
 
-void CrosvmBuilder::SetBinary(const std::string& binary) {
-  command_.SetExecutableAndName(binary);
-}
-
-void CrosvmBuilder::AddControlSocket(const std::string& control_socket) {
-  // Store this value so it persists after std::move(this->Cmd())
-  auto crosvm = command_.Executable();
-  command_.SetStopper([crosvm, control_socket](Subprocess* proc) {
-    Command stop_cmd(crosvm);
+void CrosvmBuilder::AddControlSocket(const std::string& control_socket,
+                                     const std::string& executable_path) {
+  command_.SetStopper([executable_path, control_socket](Subprocess* proc) {
+    Command stop_cmd(executable_path);
     stop_cmd.AddParameter("stop");
     stop_cmd.AddParameter(control_socket);
     if (stop_cmd.Start().Wait() == 0) {

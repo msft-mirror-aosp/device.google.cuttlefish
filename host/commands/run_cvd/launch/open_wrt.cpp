@@ -24,6 +24,8 @@
 namespace cuttlefish {
 namespace {
 
+using APBootFlow = CuttlefishConfig::InstanceSpecific::APBootFlow;
+
 class OpenWrt : public CommandSource {
  public:
   INJECT(OpenWrt(const CuttlefishConfig& config,
@@ -36,9 +38,12 @@ class OpenWrt : public CommandSource {
     constexpr auto crosvm_for_ap_socket = "ap_control.sock";
 
     CrosvmBuilder ap_cmd;
-    ap_cmd.SetBinary(config_.crosvm_binary());
+    ap_cmd.ApplyProcessRestarter(config_.crosvm_binary(),
+                                 kOpenwrtVmResetExitCode);
+    ap_cmd.Cmd().AddParameter("run");
     ap_cmd.AddControlSocket(
-        instance_.PerInstanceInternalPath(crosvm_for_ap_socket));
+        instance_.PerInstanceInternalPath(crosvm_for_ap_socket),
+        config_.crosvm_binary());
 
     if (!config_.vhost_user_mac80211_hwsim().empty()) {
       ap_cmd.Cmd().AddParameter("--vhost-user-mac80211-hwsim=",
@@ -63,18 +68,13 @@ class OpenWrt : public CommandSource {
             << "network may not work.";
       }
     }
-    if (config_.enable_sandbox()) {
+    if (instance_.enable_sandbox()) {
       ap_cmd.Cmd().AddParameter("--seccomp-policy-dir=",
                                 config_.seccomp_policy_dir());
     } else {
       ap_cmd.Cmd().AddParameter("--disable-sandbox");
     }
     ap_cmd.AddReadWriteDisk(instance_.PerInstancePath("ap_overlay.img"));
-    ap_cmd.AddReadOnlyDisk(
-        instance_.PerInstancePath("persistent_composite.img"));
-
-    ap_cmd.Cmd().AddParameter("--params=\"root=" + config_.ap_image_dev_path() +
-                              "\"");
 
     auto boot_logs_path =
         instance_.PerInstanceLogPath("crosvm_openwrt_boot.log");
@@ -82,7 +82,19 @@ class OpenWrt : public CommandSource {
     ap_cmd.AddSerialConsoleReadOnly(boot_logs_path);
     ap_cmd.AddHvcReadOnly(logs_path);
 
-    ap_cmd.Cmd().AddParameter(config_.ap_kernel_image());
+    switch (instance_.ap_boot_flow()) {
+      case APBootFlow::Grub:
+        ap_cmd.AddReadWriteDisk(instance_.persistent_ap_composite_disk_path());
+        ap_cmd.Cmd().AddParameter("--bios=", instance_.bootloader());
+        break;
+      case APBootFlow::LegacyDirect:
+        ap_cmd.Cmd().AddParameter("--params=\"root=/dev/vda1\"");
+        ap_cmd.Cmd().AddParameter(config_.ap_kernel_image());
+        break;
+      default:
+        // must not be happened
+        break;
+    }
 
     std::vector<Command> commands;
     commands.emplace_back(log_tee_.CreateLogTee(ap_cmd.Cmd(), "openwrt"));
@@ -93,12 +105,8 @@ class OpenWrt : public CommandSource {
   // SetupFeature
   std::string Name() const override { return "OpenWrt"; }
   bool Enabled() const override {
-#ifndef ENFORCE_MAC80211_HWSIM
-    return false;
-#else
-    return instance_.start_ap() &&
+    return instance_.ap_boot_flow() != APBootFlow::None &&
            config_.vm_manager() == vm_manager::CrosvmManager::name();
-#endif
   }
 
  private:
@@ -108,6 +116,8 @@ class OpenWrt : public CommandSource {
   const CuttlefishConfig& config_;
   const CuttlefishConfig::InstanceSpecific& instance_;
   LogTeeCreator& log_tee_;
+
+  static constexpr int kOpenwrtVmResetExitCode = 32;
 };
 
 }  // namespace

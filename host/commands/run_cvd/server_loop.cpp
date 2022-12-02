@@ -19,6 +19,7 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <memory>
 #include <string>
 
 #include <fruit/fruit.h>
@@ -73,7 +74,7 @@ class ServerLoopImpl : public ServerLoop,
     // Monitor and restart host processes supporting the CVD
     ProcessMonitor::Properties process_monitor_properties;
     process_monitor_properties.RestartSubprocesses(
-        config_.restart_subprocesses());
+        instance_.restart_subprocesses());
 
     for (auto& command_source : command_sources_) {
       if (command_source->Enabled()) {
@@ -99,7 +100,10 @@ class ServerLoopImpl : public ServerLoop,
               client->Write(&response, sizeof(response));
               std::exit(0);
             } else {
-              LOG(ERROR) << "Failed to stop subprocesses:\n" << stop.error();
+              LOG(ERROR) << "Failed to stop subprocesses:\n"
+                         << stop.error().Message();
+              LOG(DEBUG) << "Failed to stop subprocesses:\n"
+                         << stop.error().Trace();
               auto response = LauncherResponse::kError;
               client->Write(&response, sizeof(response));
             }
@@ -124,7 +128,10 @@ class ServerLoopImpl : public ServerLoop,
 
             auto stop = process_monitor.StopMonitoredProcesses();
             if (!stop.ok()) {
-              LOG(ERROR) << "Stopping processes failed:\n" << stop.error();
+              LOG(ERROR) << "Stopping processes failed:\n"
+                         << stop.error().Message();
+              LOG(DEBUG) << "Stopping processes failed:\n"
+                         << stop.error().Trace();
               auto response = LauncherResponse::kError;
               client->Write(&response, sizeof(response));
               break;
@@ -148,7 +155,10 @@ class ServerLoopImpl : public ServerLoop,
           case LauncherAction::kRestart: {
             auto stop = process_monitor.StopMonitoredProcesses();
             if (!stop.ok()) {
-              LOG(ERROR) << "Stopping processes failed:\n" << stop.error();
+              LOG(ERROR) << "Stopping processes failed:\n"
+                         << stop.error().Message();
+              LOG(DEBUG) << "Stopping processes failed:\n"
+                         << stop.error().Trace();
               auto response = LauncherResponse::kError;
               client->Write(&response, sizeof(response));
               break;
@@ -242,15 +252,27 @@ class ServerLoopImpl : public ServerLoop,
     auto sdcard_mb_size = (sdcard_size + (1 << 20) - 1) / (1 << 20);
     LOG(DEBUG) << "Size in mb is " << sdcard_mb_size;
     CreateBlankImage(sdcard_path, sdcard_mb_size, "sdcard");
-    std::vector<std::string> overlay_files{"overlay.img"};
-    if (instance_.start_ap()) {
-      overlay_files.emplace_back("ap_overlay.img");
+
+    struct OverlayFile {
+      std::string name;
+      std::string composite_disk_path;
+
+      OverlayFile(std::string name, std::string composite_disk_path)
+          : name(std::move(name)), composite_disk_path(std::move(composite_disk_path)) {}
+    };
+    std::vector<OverlayFile> overlay_files{
+      OverlayFile("overlay.img", instance_.os_composite_disk_path())
+    };
+    if (instance_.ap_boot_flow() != CuttlefishConfig::InstanceSpecific::APBootFlow::None) {
+      overlay_files.emplace_back(
+        OverlayFile("ap_overlay.img", instance_.ap_composite_disk_path()));
     }
-    for (auto overlay_file : {"overlay.img", "ap_overlay.img"}) {
-      auto overlay_path = instance_.PerInstancePath(overlay_file);
+    for (const auto& overlay_file : overlay_files) {
+      auto overlay_path = instance_.PerInstancePath(overlay_file.name.c_str());
+      auto composite_disk_path = overlay_file.composite_disk_path.c_str();
+
       unlink(overlay_path.c_str());
-      if (!CreateQcowOverlay(config_.crosvm_binary(),
-                             instance_.os_composite_disk_path(), overlay_path)) {
+      if (!CreateQcowOverlay(config_.crosvm_binary(), composite_disk_path, overlay_path)) {
         LOG(ERROR) << "CreateQcowOverlay failed";
         return false;
       }
@@ -266,7 +288,7 @@ class ServerLoopImpl : public ServerLoop,
     followup_stdin->UNMANAGED_Dup2(0);
 
     auto argv_vec = gflags::GetArgvs();
-    char** argv = new char*[argv_vec.size() + 2];
+    std::unique_ptr<char*[]> argv(new char*[argv_vec.size() + 2]);
     for (size_t i = 0; i < argv_vec.size(); i++) {
       argv[i] = argv_vec[i].data();
     }
@@ -276,7 +298,7 @@ class ServerLoopImpl : public ServerLoop,
     argv[argv_vec.size()] = reboot_notification.data();
     argv[argv_vec.size() + 1] = nullptr;
 
-    execv("/proc/self/exe", argv);
+    execv("/proc/self/exe", argv.get());
     // execve should not return, so something went wrong.
     PLOG(ERROR) << "execv returned: ";
   }

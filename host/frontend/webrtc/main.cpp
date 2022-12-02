@@ -34,10 +34,10 @@
 #include "host/frontend/webrtc/connection_observer.h"
 #include "host/frontend/webrtc/display_handler.h"
 #include "host/frontend/webrtc/kernel_log_events_handler.h"
-#include "host/frontend/webrtc/lib/camera_controller.h"
-#include "host/frontend/webrtc/lib/local_recorder.h"
-#include "host/frontend/webrtc/lib/streamer.h"
-#include "host/frontend/webrtc/lib/video_sink.h"
+#include "host/frontend/webrtc/libdevice/camera_controller.h"
+#include "host/frontend/webrtc/libdevice/local_recorder.h"
+#include "host/frontend/webrtc/libdevice/streamer.h"
+#include "host/frontend/webrtc/libdevice/video_sink.h"
 #include "host/libs/audio_connector/server.h"
 #include "host/libs/config/cuttlefish_config.h"
 #include "host/libs/config/logging.h"
@@ -256,21 +256,8 @@ int main(int argc, char** argv) {
   auto streamer = Streamer::Create(streamer_config, observer_factory);
   CHECK(streamer) << "Could not create streamer";
 
-  uint32_t display_index = 0;
-  std::vector<std::shared_ptr<VideoSink>> displays;
-  for (const auto& display_config : instance.display_configs()) {
-    const std::string display_id = "display_" + std::to_string(display_index);
-
-    auto display =
-        streamer->AddDisplay(display_id, display_config.width,
-                             display_config.height, display_config.dpi, true);
-    displays.push_back(display);
-
-    ++display_index;
-  }
-
   auto display_handler =
-      std::make_shared<DisplayHandler>(std::move(displays), screen_connector);
+      std::make_shared<DisplayHandler>(*streamer, screen_connector);
 
   if (instance.camera_server_port()) {
     auto camera_controller = streamer->AddCamera(instance.camera_server_port(),
@@ -279,7 +266,7 @@ int main(int argc, char** argv) {
   }
 
   std::unique_ptr<cuttlefish::webrtc_streaming::LocalRecorder> local_recorder;
-  if (cvd_config->record_screen()) {
+  if (instance.record_screen()) {
     int recording_num = 0;
     std::string recording_path;
     do {
@@ -297,22 +284,22 @@ int main(int argc, char** argv) {
   observer_factory->SetDisplayHandler(display_handler);
 
   streamer->SetHardwareSpec("CPUs", instance.cpus());
-  streamer->SetHardwareSpec("RAM", std::to_string(cvd_config->memory_mb()) + " mb");
+  streamer->SetHardwareSpec("RAM", std::to_string(instance.memory_mb()) + " mb");
 
   std::string user_friendly_gpu_mode;
-  if (cvd_config->gpu_mode() == cuttlefish::kGpuModeGuestSwiftshader) {
+  if (instance.gpu_mode() == cuttlefish::kGpuModeGuestSwiftshader) {
     user_friendly_gpu_mode = "SwiftShader (Guest CPU Rendering)";
-  } else if (cvd_config->gpu_mode() == cuttlefish::kGpuModeDrmVirgl) {
+  } else if (instance.gpu_mode() == cuttlefish::kGpuModeDrmVirgl) {
     user_friendly_gpu_mode = "VirglRenderer (Accelerated Host GPU Rendering)";
-  } else if (cvd_config->gpu_mode() == cuttlefish::kGpuModeGfxStream) {
+  } else if (instance.gpu_mode() == cuttlefish::kGpuModeGfxStream) {
     user_friendly_gpu_mode = "Gfxstream (Accelerated Host GPU Rendering)";
   } else {
-    user_friendly_gpu_mode = cvd_config->gpu_mode();
+    user_friendly_gpu_mode = instance.gpu_mode();
   }
   streamer->SetHardwareSpec("GPU Mode", user_friendly_gpu_mode);
 
   std::shared_ptr<AudioHandler> audio_handler;
-  if (cvd_config->enable_audio()) {
+  if (instance.enable_audio()) {
     auto audio_stream = streamer->AddAudioStream("audio");
     auto audio_server = CreateAudioServer();
     auto audio_source = streamer->GetAudioSource();

@@ -22,10 +22,8 @@
 #include <vector>
 
 #include "common/libs/utils/environment.h"
-#include "common/libs/utils/files.h"
 #include "host/libs/config/cuttlefish_config.h"
 #include "host/libs/vm_manager/qemu_manager.h"
-#include "host/libs/vm_manager/vm_manager.h"
 
 namespace cuttlefish {
 
@@ -47,7 +45,7 @@ std::vector<std::string> VmManagerKernelCmdline(
   if (config.vm_manager() == QemuManager::name()) {
     Arch target_arch = instance.target_arch();
     if (target_arch == Arch::Arm64 || target_arch == Arch::Arm) {
-      if (config.enable_kernel_log()) {
+      if (instance.enable_kernel_log()) {
         vm_manager_cmdline.push_back("console=hvc0");
 
         // To update the pl011 address:
@@ -57,7 +55,7 @@ std::vector<std::string> VmManagerKernelCmdline(
         vm_manager_cmdline.push_back("earlycon=pl011,mmio32,0x9000000");
       }
     } else {
-      if (config.enable_kernel_log()) {
+      if (instance.enable_kernel_log()) {
         vm_manager_cmdline.push_back("console=hvc0");
 
         // To update the uart8250 address:

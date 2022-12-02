@@ -1,6 +1,7 @@
 #include "host/commands/assemble_cvd/flags.h"
 
 #include <android-base/logging.h>
+#include <android-base/parsebool.h>
 #include <android-base/parseint.h>
 #include <android-base/strings.h>
 #include <gflags/gflags.h>
@@ -21,13 +22,16 @@
 
 #include <fruit/fruit.h>
 
-#include "common/libs/utils/environment.h"
+#include "common/libs/utils/contains.h"
 #include "common/libs/utils/files.h"
 #include "common/libs/utils/flag_parser.h"
+#include "flags.h"
+#include "flags_defaults.h"
 #include "host/commands/assemble_cvd/alloc.h"
 #include "host/commands/assemble_cvd/boot_config.h"
 #include "host/commands/assemble_cvd/disk_flags.h"
 #include "host/libs/config/config_flag.h"
+#include "host/libs/config/esp.h"
 #include "host/libs/config/host_tools_version.h"
 #include "host/libs/config/instance_nums.h"
 #include "host/libs/graphics_detector/graphics_detector.h"
@@ -43,13 +47,18 @@ using cuttlefish::vm_manager::CrosvmManager;
 using google::FlagSettingMode::SET_FLAGS_DEFAULT;
 using google::FlagSettingMode::SET_FLAGS_VALUE;
 
-DEFINE_int32(cpus, 2, "Virtual CPU count.");
-DEFINE_string(data_policy, "use_existing", "How to handle userdata partition."
-            " Either 'use_existing', 'create_if_missing', 'resize_up_to', or "
-            "'always_create'.");
-DEFINE_int32(blank_data_image_mb, 0,
+#define DEFINE_vec DEFINE_string
+
+DEFINE_vec(cpus, std::to_string(CF_DEFAULTS_CPUS),
+              "Virtual CPU count.");
+DEFINE_vec(data_policy, CF_DEFAULTS_DATA_POLICY,
+              "How to handle userdata partition."
+              " Either 'use_existing', 'create_if_missing', 'resize_up_to', or "
+              "'always_create'.");
+DEFINE_vec(blank_data_image_mb,
+              std::to_string(CF_DEFAULTS_BLANK_DATA_IMAGE_MB),
              "The size of the blank data image to generate, MB.");
-DEFINE_int32(gdb_port, 0,
+DEFINE_vec(gdb_port, std::to_string(CF_DEFAULTS_GDB_PORT),
              "Port number to spawn kernel gdb on e.g. -gdb_port=1234. The"
              "kernel must have been built with CONFIG_RANDOMIZE_BASE "
              "disabled.");
@@ -67,10 +76,10 @@ constexpr const char kDisplayHelp[] =
 
 // TODO(b/192495477): combine these into a single repeatable '--display' flag
 // when assemble_cvd switches to using the new flag parsing library.
-DEFINE_string(display0, "", kDisplayHelp);
-DEFINE_string(display1, "", kDisplayHelp);
-DEFINE_string(display2, "", kDisplayHelp);
-DEFINE_string(display3, "", kDisplayHelp);
+DEFINE_string(display0, CF_DEFAULTS_DISPLAY0, kDisplayHelp);
+DEFINE_string(display1, CF_DEFAULTS_DISPLAY1, kDisplayHelp);
+DEFINE_string(display2, CF_DEFAULTS_DISPLAY2, kDisplayHelp);
+DEFINE_string(display3, CF_DEFAULTS_DISPLAY3, kDisplayHelp);
 
 // TODO(b/171305898): mark these as deprecated after multi-display is fully
 // enabled.
@@ -78,72 +87,75 @@ DEFINE_string(x_res, "0", "Width of the screen in pixels");
 DEFINE_string(y_res, "0", "Height of the screen in pixels");
 DEFINE_string(dpi, "0", "Pixels per inch for the screen");
 DEFINE_string(refresh_rate_hz, "60", "Screen refresh rate in Hertz");
-DEFINE_string(kernel_path, "",
+DEFINE_vec(kernel_path, CF_DEFAULTS_KERNEL_PATH,
               "Path to the kernel. Overrides the one from the boot image");
-DEFINE_string(initramfs_path, "", "Path to the initramfs");
-DEFINE_string(extra_kernel_cmdline, "",
+DEFINE_vec(initramfs_path, CF_DEFAULTS_INITRAMFS_PATH,
+              "Path to the initramfs");
+DEFINE_string(extra_kernel_cmdline, CF_DEFAULTS_EXTRA_KERNEL_CMDLINE,
               "Additional flags to put on the kernel command line");
-DEFINE_string(extra_bootconfig_args, "",
+DEFINE_string(extra_bootconfig_args, CF_DEFAULTS_EXTRA_BOOTCONFIG_ARGS,
               "Space-separated list of extra bootconfig args. "
               "Note: overwriting an existing bootconfig argument "
               "requires ':=' instead of '='.");
-DEFINE_bool(guest_enforce_security, true,
+DEFINE_vec(guest_enforce_security,
+              cuttlefish::BoolToString(CF_DEFAULTS_GUEST_ENFORCE_SECURITY),
             "Whether to run in enforcing mode (non permissive).");
-DEFINE_int32(memory_mb, 0, "Total amount of memory available for guest, MB.");
-DEFINE_string(serial_number, cuttlefish::ForCurrentInstance("CUTTLEFISHCVD"),
+DEFINE_vec(memory_mb, std::to_string(CF_DEFAULTS_MEMORY_MB),
+             "Total amount of memory available for guest, MB.");
+DEFINE_vec(serial_number, CF_DEFAULTS_SERIAL_NUMBER,
               "Serial number to use for the device");
-DEFINE_bool(use_random_serial, false,
+DEFINE_vec(use_random_serial, cuttlefish::BoolToString(CF_DEFAULTS_USE_RANDOM_SERIAL),
             "Whether to use random serial for the device.");
-DEFINE_string(vm_manager, "",
+DEFINE_vec(vm_manager, CF_DEFAULTS_VM_MANAGER,
               "What virtual machine manager to use, one of {qemu_cli, crosvm}");
-DEFINE_string(gpu_mode, cuttlefish::kGpuModeAuto,
+DEFINE_vec(gpu_mode, CF_DEFAULTS_GPU_MODE,
               "What gpu configuration to use, one of {auto, drm_virgl, "
               "gfxstream, guest_swiftshader}");
-DEFINE_string(hwcomposer, cuttlefish::kHwComposerAuto,
+DEFINE_vec(hwcomposer, CF_DEFAULTS_HWCOMPOSER,
               "What hardware composer to use, one of {auto, drm, ranchu} ");
-DEFINE_string(gpu_capture_binary, "",
+DEFINE_vec(gpu_capture_binary, CF_DEFAULTS_GPU_CAPTURE_BINARY,
               "Path to the GPU capture binary to use when capturing GPU traces"
               "(ngfx, renderdoc, etc)");
-DEFINE_bool(enable_gpu_udmabuf,
-            false,
+DEFINE_vec(enable_gpu_udmabuf, cuttlefish::BoolToString(CF_DEFAULTS_ENABLE_GPU_UDMABUF),
             "Use the udmabuf driver for zero-copy virtio-gpu");
+DEFINE_vec(enable_gpu_angle,
+           cuttlefish::BoolToString(CF_DEFAULTS_ENABLE_GPU_ANGLE),
+           "Use ANGLE to provide GLES implementation (always true for"
+           " guest_swiftshader");
 
-DEFINE_bool(enable_gpu_angle,
-            false,
-            "Use ANGLE to provide GLES implementation (always true for"
-            " guest_swiftshader");
-DEFINE_bool(deprecated_boot_completed, false, "Log boot completed message to"
-            " host kernel. This is only used during transition of our clients."
-            " Will be deprecated soon.");
-
-DEFINE_bool(use_allocd, false,
+DEFINE_vec(use_allocd, CF_DEFAULTS_USE_ALLOCD?"true":"false",
             "Acquire static resources from the resource allocator daemon.");
-DEFINE_bool(enable_minimal_mode, false,
-            "Only enable the minimum features to boot a cuttlefish device and "
-            "support minimal UI interactions.\nNote: Currently only supports "
-            "handheld/phone targets");
-DEFINE_bool(pause_in_bootloader, false,
-            "Stop the bootflow in u-boot. You can continue the boot by connecting "
-            "to the device console and typing in \"boot\".");
-DEFINE_bool(enable_host_bluetooth, true,
+DEFINE_vec(
+    enable_minimal_mode, CF_DEFAULTS_ENABLE_MINIMAL_MODE ? "true" : "false",
+    "Only enable the minimum features to boot a cuttlefish device and "
+    "support minimal UI interactions.\nNote: Currently only supports "
+    "handheld/phone targets");
+DEFINE_vec(
+    pause_in_bootloader, CF_DEFAULTS_PAUSE_IN_BOOTLOADER?"true":"false",
+    "Stop the bootflow in u-boot. You can continue the boot by connecting "
+    "to the device console and typing in \"boot\".");
+DEFINE_bool(enable_host_bluetooth, CF_DEFAULTS_ENABLE_HOST_BLUETOOTH,
             "Enable the root-canal which is Bluetooth emulator in the host.");
-DEFINE_bool(rootcanal_attach_mode, false,
-            "[DEPRECATED] Ignored, use rootcanal_instance_num instead");
 DEFINE_int32(
-    rootcanal_instance_num, 0,
+    rootcanal_instance_num, CF_DEFAULTS_ENABLE_ROOTCANAL_INSTANCE_NUM,
     "If it is greater than 0, use an existing rootcanal instance which is "
     "launched from cuttlefish instance "
     "with rootcanal_instance_num. Else, launch a new rootcanal instance");
-DEFINE_bool(netsim, false, "[Experimental] Connect all radios to netsim.");
+DEFINE_string(rootcanal_args, CF_DEFAULTS_ROOTCANAL_ARGS,
+              "Space-separated list of rootcanal args. ");
+DEFINE_bool(netsim, CF_DEFAULTS_NETSIM,
+            "[Experimental] Connect all radios to netsim.");
 
-DEFINE_bool(netsim_bt, false, "[Experimental] Connect Bluetooth radio to netsim.");
+DEFINE_bool(netsim_bt, CF_DEFAULTS_NETSIM_BT,
+            "[Experimental] Connect Bluetooth radio to netsim.");
 
 DEFINE_string(bluetooth_controller_properties_file,
-              "etc/rootcanal/data/controller_properties.json",
+              CF_DEFAULTS_BLUETOOTH_CONTROLLER_PROPERTIES_FILE,
               "The configuartion file path for root-canal which is a Bluetooth "
               "emulator.");
 DEFINE_string(
-    bluetooth_default_commands_file, "etc/rootcanal/data/default_commands",
+    bluetooth_default_commands_file,
+    CF_DEFAULTS_BLUETOOTH_DEFAULT_COMMANDS_FILE,
     "The default commands which root-canal executes when it launches.");
 
 /**
@@ -151,8 +163,8 @@ DEFINE_string(
  *
  * Also see SetDefaultFlagsForCrosvm()
  */
-DEFINE_bool(
-    enable_sandbox, false,
+DEFINE_vec(
+    enable_sandbox, cuttlefish::BoolToString(CF_DEFAULTS_ENABLE_SANDBOX),
     "Enable crosvm sandbox assuming /var/empty and seccomp directories exist. "
     "--noenable-sandbox will disable crosvm sandbox. "
     "When no option is given, sandbox is disabled if Cuttlefish is running "
@@ -161,198 +173,228 @@ DEFINE_bool(
     "cannot be created. Otherwise, sandbox is enabled on the supported "
     "architecture when no option is given.");
 
-static const std::string kSeccompDir =
-    std::string("usr/share/crosvm/") + cuttlefish::HostArchStr() + "-linux-gnu/seccomp";
-DEFINE_string(seccomp_policy_dir, DefaultHostArtifactsPath(kSeccompDir),
-              "With sandbox'ed crosvm, overrieds the security comp policy directory");
-
-DEFINE_bool(start_webrtc, false, "Whether to start the webrtc process.");
-
 DEFINE_string(
-        webrtc_assets_dir, DefaultHostArtifactsPath("usr/share/webrtc/assets"),
-        "[Experimental] Path to WebRTC webpage assets.");
+    seccomp_policy_dir, CF_DEFAULTS_SECCOMP_POLICY_DIR,
+    "With sandbox'ed crosvm, overrieds the security comp policy directory");
 
-DEFINE_string(
-        webrtc_certs_dir, DefaultHostArtifactsPath("usr/share/webrtc/certs"),
-        "[Experimental] Path to WebRTC certificates directory.");
+DEFINE_bool(start_webrtc, CF_DEFAULTS_START_WEBRTC,
+            "Whether to start the webrtc process.");
 
-DEFINE_string(
-        webrtc_public_ip,
-        "0.0.0.0",
-        "[Deprecated] Ignored, webrtc can figure out its IP address");
+DEFINE_string(webrtc_assets_dir, CF_DEFAULTS_WEBRTC_ASSETS_DIR,
+              "[Experimental] Path to WebRTC webpage assets.");
 
-DEFINE_bool(
-        webrtc_enable_adb_websocket,
-        false,
-        "[Experimental] If enabled, exposes local adb service through a websocket.");
+DEFINE_string(webrtc_certs_dir, CF_DEFAULTS_WEBRTC_CERTS_DIR,
+              "[Experimental] Path to WebRTC certificates directory.");
 
 static constexpr auto HOST_OPERATOR_SOCKET_PATH = "/run/cuttlefish/operator";
 
 DEFINE_bool(
     // The actual default for this flag is set with SetCommandLineOption() in
     // GetKernelConfigsAndSetDefaults() at the end of this file.
-    start_webrtc_sig_server, true,
+    start_webrtc_sig_server, CF_DEFAULTS_START_WEBRTC_SIG_SERVER,
     "Whether to start the webrtc signaling server. This option only applies to "
     "the first instance, if multiple instances are launched they'll share the "
     "same signaling server, which is owned by the first one.");
 
-DEFINE_string(webrtc_sig_server_addr, "",
+DEFINE_string(webrtc_sig_server_addr, CF_DEFAULTS_WEBRTC_SIG_SERVER_ADDR,
               "The address of the webrtc signaling server.");
 
 DEFINE_int32(
-    webrtc_sig_server_port, 443,
+    webrtc_sig_server_port, CF_DEFAULTS_WEBRTC_SIG_SERVER_PORT,
     "The port of the signaling server if started outside of this launch. If "
     "-start_webrtc_sig_server is given it will choose 8443+instance_num1-1 and "
     "this parameter is ignored.");
 
 // TODO (jemoreira): We need a much bigger range to reliably support several
 // simultaneous connections.
-DEFINE_string(tcp_port_range, "15550:15558",
+DEFINE_string(tcp_port_range, CF_DEFAULTS_TCP_PORT_RANGE,
               "The minimum and maximum TCP port numbers to allocate for ICE "
               "candidates as 'min:max'. To use any port just specify '0:0'");
 
-DEFINE_string(udp_port_range, "15550:15558",
+DEFINE_string(udp_port_range, CF_DEFAULTS_UDP_PORT_RANGE,
               "The minimum and maximum UDP port numbers to allocate for ICE "
               "candidates as 'min:max'. To use any port just specify '0:0'");
 
-DEFINE_string(webrtc_sig_server_path, "/register_device",
+DEFINE_string(webrtc_sig_server_path, CF_DEFAULTS_WEBRTC_SIG_SERVER_PATH,
               "The path section of the URL where the device should be "
               "registered with the signaling server.");
 
-DEFINE_bool(webrtc_sig_server_secure, true,
-            "Whether the WebRTC signaling server uses secure protocols (WSS vs WS).");
+DEFINE_bool(
+    webrtc_sig_server_secure, CF_DEFAULTS_WEBRTC_SIG_SERVER_SECURE,
+    "Whether the WebRTC signaling server uses secure protocols (WSS vs WS).");
 
-DEFINE_bool(verify_sig_server_certificate, false,
+DEFINE_bool(verify_sig_server_certificate,
+            CF_DEFAULTS_VERIFY_SIG_SERVER_CERTIFICATE,
             "Whether to verify the signaling server's certificate with a "
             "trusted signing authority (Disallow self signed certificates). "
             "This is ignored if an insecure server is configured.");
 
-DEFINE_string(sig_server_headers_file, "",
+DEFINE_string(sig_server_headers_file, CF_DEFAULTS_SIG_SERVER_HEADERS_FILE,
               "Path to a file containing HTTP headers to be included in the "
               "connection to the signaling server. Each header should be on a "
               "line by itself in the form <name>: <value>");
 
 DEFINE_string(
-    webrtc_device_id, "cvd-{num}",
+    webrtc_device_id, CF_DEFAULTS_WEBRTC_DEVICE_ID,
     "The for the device to register with the signaling server. Every "
     "appearance of the substring '{num}' in the device id will be substituted "
     "with the instance number to support multiple instances");
 
-DEFINE_string(uuid, cuttlefish::ForCurrentInstance(cuttlefish::kDefaultUuidPrefix),
+DEFINE_vec(uuid, CF_DEFAULTS_UUID,
               "UUID to use for the device. Random if not specified");
-DEFINE_bool(daemon, false,
+DEFINE_vec(daemon, CF_DEFAULTS_DAEMON?"true":"false",
             "Run cuttlefish in background, the launcher exits on boot "
             "completed/failed");
 
-DEFINE_string(setupwizard_mode, "DISABLED",
-            "One of DISABLED,OPTIONAL,REQUIRED");
-DEFINE_bool(enable_bootanimation, true,
-            "Whether to enable the boot animation.");
+DEFINE_vec(setupwizard_mode, CF_DEFAULTS_SETUPWIZARD_MODE,
+              "One of DISABLED,OPTIONAL,REQUIRED");
+DEFINE_vec(enable_bootanimation,
+           cuttlefish::BoolToString(CF_DEFAULTS_ENABLE_BOOTANIMATION),
+           "Whether to enable the boot animation.");
 
-DEFINE_string(qemu_binary_dir, "/usr/bin",
+DEFINE_string(qemu_binary_dir, CF_DEFAULTS_QEMU_BINARY_DIR,
               "Path to the directory containing the qemu binary to use");
-DEFINE_string(crosvm_binary, HostBinaryPath("crosvm"),
+DEFINE_string(crosvm_binary, CF_DEFAULTS_CROSVM_BINARY,
               "The Crosvm binary to use");
-DEFINE_string(gem5_binary_dir, HostBinaryPath("gem5"),
+DEFINE_vec(gem5_binary_dir, CF_DEFAULTS_GEM5_BINARY_DIR,
               "Path to the gem5 build tree root");
-DEFINE_string(gem5_checkpoint_dir, "",
+DEFINE_vec(gem5_checkpoint_dir, CF_DEFAULTS_GEM5_CHECKPOINT_DIR,
               "Path to the gem5 restore checkpoint directory");
-DEFINE_string(gem5_debug_file, "", "The file name where gem5 saves debug prints and logs");
-DEFINE_string(gem5_debug_flags, "", "The debug flags gem5 uses to print debugs to file");
+DEFINE_vec(gem5_debug_file, CF_DEFAULTS_GEM5_DEBUG_FILE,
+              "The file name where gem5 saves debug prints and logs");
+DEFINE_string(gem5_debug_flags, CF_DEFAULTS_GEM5_DEBUG_FLAGS,
+              "The debug flags gem5 uses to print debugs to file");
 
-DEFINE_bool(restart_subprocesses, true, "Restart any crashed host process");
-DEFINE_bool(enable_vehicle_hal_grpc_server, true, "Enables the vehicle HAL "
+DEFINE_vec(restart_subprocesses,
+              cuttlefish::BoolToString(CF_DEFAULTS_RESTART_SUBPROCESSES),
+              "Restart any crashed host process");
+DEFINE_vec(enable_vehicle_hal_grpc_server,
+            cuttlefish::BoolToString(CF_DEFAULTS_ENABLE_VEHICLE_HAL_GRPC_SERVER),
+            "Enables the vehicle HAL "
             "emulation gRPC server on the host");
-DEFINE_string(bootloader, "", "Bootloader binary path");
-DEFINE_string(boot_slot, "", "Force booting into the given slot. If empty, "
-             "the slot will be chosen based on the misc partition if using a "
-             "bootloader. It will default to 'a' if empty and not using a "
-             "bootloader.");
-DEFINE_int32(num_instances, 1, "Number of Android guests to launch");
-DEFINE_string(instance_nums, "",
+DEFINE_vec(bootloader, CF_DEFAULTS_BOOTLOADER, "Bootloader binary path");
+DEFINE_vec(boot_slot, CF_DEFAULTS_BOOT_SLOT,
+              "Force booting into the given slot. If empty, "
+              "the slot will be chosen based on the misc partition if using a "
+              "bootloader. It will default to 'a' if empty and not using a "
+              "bootloader.");
+DEFINE_int32(num_instances, CF_DEFAULTS_NUM_INSTANCES,
+             "Number of Android guests to launch");
+DEFINE_string(instance_nums, CF_DEFAULTS_INSTANCE_NUMS,
               "A comma-separated list of instance numbers "
               "to use. Mutually exclusive with base_instance_num.");
-DEFINE_string(report_anonymous_usage_stats, "", "Report anonymous usage "
-            "statistics for metrics collection and analysis.");
-DEFINE_string(ril_dns, "8.8.8.8", "DNS address of mobile network (RIL)");
-DEFINE_bool(kgdb, false, "Configure the virtual device for debugging the kernel "
-                         "with kgdb/kdb. The kernel must have been built with "
-                         "kgdb support, and serial console must be enabled.");
+DEFINE_string(report_anonymous_usage_stats,
+              CF_DEFAULTS_REPORT_ANONYMOUS_USAGE_STATS,
+              "Report anonymous usage "
+              "statistics for metrics collection and analysis.");
+DEFINE_string(ril_dns, CF_DEFAULTS_RIL_DNS,
+              "DNS address of mobile network (RIL)");
+DEFINE_vec(kgdb, cuttlefish::BoolToString(CF_DEFAULTS_KGDB),
+            "Configure the virtual device for debugging the kernel "
+            "with kgdb/kdb. The kernel must have been built with "
+            "kgdb support, and serial console must be enabled.");
 
-DEFINE_bool(start_gnss_proxy, true, "Whether to start the gnss proxy.");
+DEFINE_vec(start_gnss_proxy, cuttlefish::BoolToString(CF_DEFAULTS_START_GNSS_PROXY),
+            "Whether to start the gnss proxy.");
 
-DEFINE_string(gnss_file_path, "",
+DEFINE_vec(gnss_file_path, CF_DEFAULTS_GNSS_FILE_PATH,
               "Local gnss raw measurement file path for the gnss proxy");
 
-DEFINE_string(fixed_location_file_path, "",
+DEFINE_vec(fixed_location_file_path, CF_DEFAULTS_FIXED_LOCATION_FILE_PATH,
               "Local fixed location file path for the gnss proxy");
 
 // by default, this modem-simulator is disabled
-DEFINE_bool(enable_modem_simulator, true,
-            "Enable the modem simulator to process RILD AT commands");
+DEFINE_vec(enable_modem_simulator,
+              CF_DEFAULTS_ENABLE_MODEM_SIMULATOR ? "true" : "false",
+              "Enable the modem simulator to process RILD AT commands");
 // modem_simulator_sim_type=2 for test CtsCarrierApiTestCases
-DEFINE_int32(modem_simulator_sim_type, 1,
-             "Sim type: 1 for normal, 2 for CtsCarrierApiTestCases");
+DEFINE_vec(modem_simulator_sim_type,
+              std::to_string(CF_DEFAULTS_MODEM_SIMULATOR_SIM_TYPE),
+              "Sim type: 1 for normal, 2 for CtsCarrierApiTestCases");
 
-DEFINE_bool(console, false, "Enable the serial console");
+DEFINE_vec(console, cuttlefish::BoolToString(CF_DEFAULTS_CONSOLE),
+              "Enable the serial console");
 
-DEFINE_bool(enable_kernel_log, true, "Enable kernel console/dmesg logging");
+DEFINE_vec(enable_kernel_log,
+           cuttlefish::BoolToString(CF_DEFAULTS_ENABLE_KERNEL_LOG),
+            "Enable kernel console/dmesg logging");
 
-DEFINE_bool(vhost_net, false, "Enable vhost acceleration of networking");
+DEFINE_bool(vhost_net, CF_DEFAULTS_VHOST_NET,
+            "Enable vhost acceleration of networking");
 
 DEFINE_string(
-    vhost_user_mac80211_hwsim, "",
+    vhost_user_mac80211_hwsim, CF_DEFAULTS_VHOST_USER_MAC80211_HWSIM,
     "Unix socket path for vhost-user of mac80211_hwsim, typically served by "
     "wmediumd. You can set this when using an external wmediumd instance.");
-DEFINE_string(wmediumd_config, "",
+DEFINE_string(wmediumd_config, CF_DEFAULTS_WMEDIUMD_CONFIG,
               "Path to the wmediumd config file. When missing, the default "
               "configuration is used which adds MAC addresses for up to 16 "
               "cuttlefish instances including AP.");
-DEFINE_string(ap_rootfs_image,
-              DefaultHostArtifactsPath("etc/openwrt/images/openwrt_rootfs"),
+
+DEFINE_string(ap_esp_image, CF_DEFAULTS_AP_ESP_IMAGE,
+              "Location of cuttlefish AP esp image. If the image does not exist, "
+              "an esp partition image is created with default bootloaders.");
+DEFINE_string(ap_rootfs_image, CF_DEFAULTS_AP_ROOTFS_IMAGE,
               "rootfs image for AP instance");
-DEFINE_string(ap_kernel_image,
-              DefaultHostArtifactsPath("etc/openwrt/images/kernel_for_openwrt"),
+DEFINE_string(ap_kernel_image, CF_DEFAULTS_AP_KERNEL_IMAGE,
               "kernel image for AP instance");
 
-DEFINE_bool(record_screen, false, "Enable screen recording. "
-                                  "Requires --start_webrtc");
+DEFINE_vec(record_screen, cuttlefish::BoolToString(CF_DEFAULTS_RECORD_SCREEN),
+           "Enable screen recording. "
+           "Requires --start_webrtc");
 
-DEFINE_bool(smt, false, "Enable simultaneous multithreading (SMT/HT)");
+DEFINE_bool(smt, CF_DEFAULTS_SMT,
+            "Enable simultaneous multithreading (SMT/HT)");
 
-DEFINE_int32(vsock_guest_cid,
-             cuttlefish::GetDefaultVsockCid(),
-             "vsock_guest_cid is used to determine the guest vsock cid as well as all the ports"
-             "of all vsock servers such as tombstone or modem simulator(s)."
-             "The vsock ports and guest vsock cid are a function of vsock_guest_cid and instance number."
-             "An instance number of i th instance is determined by --num_instances=N and --base_instance_num=B"
-             "The instance number of i th instance is B + i where i in [0, N-1] and B >= 1."
-             "See --num_instances, and --base_instance_num for more information"
-             "If --vsock_guest_cid=C is given and C >= 3, the guest vsock cid is C + i. Otherwise,"
-             "the guest vsock cid is 2 + instance number, which is 2 + (B + i)."
-             "If --vsock_guest_cid is not given, each vsock server port number for i th instance is"
-             "base + instance number - 1. vsock_guest_cid is by default B + i + 2."
-             "Thus, by default, each port is base + vsock_guest_cid - 3."
-             "The same formula holds when --vsock_guest_cid=C is given, for algorithm's sake."
-             "Each vsock server port number is base + C - 3.");
+DEFINE_vec(
+    vsock_guest_cid, std::to_string(CF_DEFAULTS_VSOCK_GUEST_CID),
+    "vsock_guest_cid is used to determine the guest vsock cid as well as all "
+    "the ports"
+    "of all vsock servers such as tombstone or modem simulator(s)."
+    "The vsock ports and guest vsock cid are a function of vsock_guest_cid and "
+    "instance number."
+    "An instance number of i th instance is determined by --num_instances=N "
+    "and --base_instance_num=B"
+    "The instance number of i th instance is B + i where i in [0, N-1] and B "
+    ">= 1."
+    "See --num_instances, and --base_instance_num for more information"
+    "If --vsock_guest_cid=C is given and C >= 3, the guest vsock cid is C + i. "
+    "Otherwise,"
+    "the guest vsock cid is 2 + instance number, which is 2 + (B + i)."
+    "If --vsock_guest_cid is not given, each vsock server port number for i th "
+    "instance is"
+    "base + instance number - 1. vsock_guest_cid is by default B + i + 2."
+    "Thus, by default, each port is base + vsock_guest_cid - 3."
+    "The same formula holds when --vsock_guest_cid=C is given, for algorithm's "
+    "sake."
+    "Each vsock server port number is base + C - 3.");
 
-DEFINE_string(secure_hals, "keymint,gatekeeper",
+DEFINE_string(secure_hals, CF_DEFAULTS_SECURE_HALS,
               "Which HALs to use enable host security features for. Supports "
               "keymint and gatekeeper at the moment.");
 
-DEFINE_bool(use_sdcard, true, "Create blank SD-Card image and expose to guest");
+DEFINE_vec(use_sdcard, CF_DEFAULTS_USE_SDCARD?"true":"false",
+            "Create blank SD-Card image and expose to guest");
 
-DEFINE_bool(protected_vm, false, "Boot in Protected VM mode");
+DEFINE_vec(protected_vm, cuttlefish::BoolToString(CF_DEFAULTS_PROTECTED_VM),
+            "Boot in Protected VM mode");
 
-DEFINE_bool(enable_audio, true, "Whether to play or capture audio");
+DEFINE_vec(enable_audio, cuttlefish::BoolToString(CF_DEFAULTS_ENABLE_AUDIO),
+            "Whether to play or capture audio");
 
-DEFINE_uint32(camera_server_port, 0, "camera vsock port");
+DEFINE_vec(camera_server_port, std::to_string(CF_DEFAULTS_CAMERA_SERVER_PORT),
+              "camera vsock port");
 
-DEFINE_string(userdata_format, "f2fs", "The userdata filesystem format");
+DEFINE_vec(userdata_format, CF_DEFAULTS_USERDATA_FORMAT,
+              "The userdata filesystem format");
 
-DEFINE_bool(use_overlay, true,
+DEFINE_bool(use_overlay, CF_DEFAULTS_USE_OVERLAY,
             "Capture disk writes an overlay. This is a "
             "prerequisite for powerwash_cvd or multiple instances.");
+
+DEFINE_vec(modem_simulator_count,
+              std::to_string(CF_DEFAULTS_MODEM_SIMULATOR_COUNT),
+              "Modem simulator count corresponding to maximum sim number");
 
 DECLARE_string(assembly_dir);
 DECLARE_string(boot_image);
@@ -439,67 +481,219 @@ std::optional<CuttlefishConfig::DisplayConfig> ParseDisplayConfig(
 }
 
 #ifdef __ANDROID__
-Result<KernelConfig> ReadKernelConfig() {
-  // QEMU isn't on Android, so always follow host arch
-  KernelConfig ret{};
-  ret.target_arch = HostArch();
-  ret.bootconfig_supported = true;
-  return ret;
+Result<std::vector<KernelConfig>> ReadKernelConfig() {
+  std::vector<KernelConfig> rets;
+  auto instance_nums =
+      CF_EXPECT(InstanceNumsCalculator().FromGlobalGflags().Calculate());
+  for (int instance_index = 0; instance_index < instance_nums.size(); instance_index++) {
+    // QEMU isn't on Android, so always follow host arch
+    KernelConfig ret{};
+    ret.target_arch = HostArch();
+    ret.bootconfig_supported = true;
+    rets.push_back(ret);
+  }
+  return rets;
 }
 #else
-Result<KernelConfig> ReadKernelConfig() {
-  // extract-ikconfig can be called directly on the boot image since it looks
-  // for the ikconfig header in the image before extracting the config list.
-  // This code is liable to break if the boot image ever includes the
-  // ikconfig header outside the kernel.
-  const std::string kernel_image_path =
-      FLAGS_kernel_path.size() ? FLAGS_kernel_path : FLAGS_boot_image;
-
-  Command ikconfig_cmd(HostBinaryPath("extract-ikconfig"));
-  ikconfig_cmd.AddParameter(kernel_image_path);
+Result<std::vector<KernelConfig>> ReadKernelConfig() {
+  std::vector<KernelConfig> kernel_configs;
+  std::vector<std::string> boot_image =
+      android::base::Split(FLAGS_boot_image, ",");
+  std::vector<std::string> kernel_path =
+      android::base::Split(FLAGS_kernel_path, ",");
+  std::string kernel_image_path = "";
+  std::string cur_boot_image;
+  std::string cur_kernel_path;
 
   std::string current_path = StringFromEnv("PATH", "");
   std::string bin_folder = DefaultHostArtifactsPath("bin");
-  ikconfig_cmd.SetEnvironment({"PATH=" + current_path + ":" + bin_folder});
+  std::string new_path = "PATH=";
+  new_path += current_path;
+  new_path += ":";
+  new_path += bin_folder;
+  auto instance_nums =
+      CF_EXPECT(InstanceNumsCalculator().FromGlobalGflags().Calculate());
+  for (int instance_index = 0; instance_index < instance_nums.size(); instance_index++) {
+    // extract-ikconfig can be called directly on the boot image since it looks
+    // for the ikconfig header in the image before extracting the config list.
+    // This code is liable to break if the boot image ever includes the
+    // ikconfig header outside the kernel.
+    cur_kernel_path = "";
+    if (instance_index < kernel_path.size()) {
+      cur_kernel_path = kernel_path[instance_index];
+    }
 
-  std::string ikconfig_path =
-      StringFromEnv("TEMP", "/tmp") + "/ikconfig.XXXXXX";
-  auto ikconfig_fd = SharedFD::Mkstemp(&ikconfig_path);
-  CF_EXPECT(ikconfig_fd->IsOpen(),
-            "Unable to create ikconfig file: " << ikconfig_fd->StrError());
-  ikconfig_cmd.RedirectStdIO(Subprocess::StdIOChannel::kStdOut, ikconfig_fd);
+    cur_boot_image = "";
+    if (instance_index < boot_image.size()) {
+      cur_boot_image = boot_image[instance_index];
+    }
 
-  auto ikconfig_proc = ikconfig_cmd.Start();
-  CF_EXPECT(ikconfig_proc.Started() && ikconfig_proc.Wait() == 0,
-            "Failed to extract ikconfig from " << kernel_image_path);
+    if (cur_kernel_path.size() > 0) {
+      kernel_image_path = cur_kernel_path;
+    } else if (cur_boot_image.size() > 0) {
+      kernel_image_path = cur_boot_image;
+    }
 
-  std::string config = ReadFile(ikconfig_path);
+    Command ikconfig_cmd(HostBinaryPath("extract-ikconfig"));
+    ikconfig_cmd.AddParameter(kernel_image_path);
+    ikconfig_cmd.SetEnvironment({new_path});
 
-  KernelConfig kernel_config;
-  if (config.find("\nCONFIG_ARM=y") != std::string::npos) {
-    kernel_config.target_arch = Arch::Arm;
-  } else if (config.find("\nCONFIG_ARM64=y") != std::string::npos) {
-    kernel_config.target_arch = Arch::Arm64;
-  } else if (config.find("\nCONFIG_X86_64=y") != std::string::npos) {
-    kernel_config.target_arch = Arch::X86_64;
-  } else if (config.find("\nCONFIG_X86=y") != std::string::npos) {
-    kernel_config.target_arch = Arch::X86;
-  } else {
-    return CF_ERR("Unknown target architecture");
+    std::string ikconfig_path =
+        StringFromEnv("TEMP", "/tmp") + "/ikconfig.XXXXXX";
+    auto ikconfig_fd = SharedFD::Mkstemp(&ikconfig_path);
+    CF_EXPECT(ikconfig_fd->IsOpen(),
+              "Unable to create ikconfig file: " << ikconfig_fd->StrError());
+    ikconfig_cmd.RedirectStdIO(Subprocess::StdIOChannel::kStdOut, ikconfig_fd);
+
+    auto ikconfig_proc = ikconfig_cmd.Start();
+    CF_EXPECT(ikconfig_proc.Started() && ikconfig_proc.Wait() == 0,
+              "Failed to extract ikconfig from " << kernel_image_path);
+
+    std::string config = ReadFile(ikconfig_path);
+
+    KernelConfig kernel_config;
+    if (config.find("\nCONFIG_ARM=y") != std::string::npos) {
+      kernel_config.target_arch = Arch::Arm;
+    } else if (config.find("\nCONFIG_ARM64=y") != std::string::npos) {
+      kernel_config.target_arch = Arch::Arm64;
+    } else if (config.find("\nCONFIG_X86_64=y") != std::string::npos) {
+      kernel_config.target_arch = Arch::X86_64;
+    } else if (config.find("\nCONFIG_X86=y") != std::string::npos) {
+      kernel_config.target_arch = Arch::X86;
+    } else {
+      return CF_ERR("Unknown target architecture");
+    }
+    kernel_config.bootconfig_supported =
+        config.find("\nCONFIG_BOOT_CONFIG=y") != std::string::npos;
+    // Once all Cuttlefish kernel versions are at least 5.15, this code can be
+    // removed. CONFIG_CRYPTO_HCTR2=y will always be set.
+    kernel_config.hctr2_supported =
+        config.find("\nCONFIG_CRYPTO_HCTR2=y") != std::string::npos;
+
+    unlink(ikconfig_path.c_str());
+    kernel_configs.push_back(kernel_config);
   }
-  kernel_config.bootconfig_supported =
-      config.find("\nCONFIG_BOOT_CONFIG=y") != std::string::npos;
-
-  unlink(ikconfig_path.c_str());
-  return kernel_config;
+  return kernel_configs;
 }
+
 #endif  // #ifdef __ANDROID__
+
+Result<bool> ParseBool(const std::string& flag_str,
+                        const std::string& flag_name) {
+  auto result = android::base::ParseBool(flag_str);
+  CF_EXPECT(result != android::base::ParseBoolResult::kError,
+            "Failed to parse value \"" << flag_str
+            << "\" for " << flag_name);
+  if (result == android::base::ParseBoolResult::kTrue) {
+    return true;
+  }
+  return false;
+}
+
+Result<std::unordered_map<int, std::string>> CreateNumToWebrtcDeviceIdMap(
+    const CuttlefishConfig& tmp_config_obj,
+    const std::set<std::int32_t>& instance_nums,
+    const std::string& webrtc_device_id_flag) {
+  std::unordered_map<int, std::string> output_map;
+  if (webrtc_device_id_flag.empty()) {
+    for (const auto num : instance_nums) {
+      const auto const_instance = tmp_config_obj.ForInstance(num);
+      output_map[num] = const_instance.instance_name();
+    }
+    return output_map;
+  }
+  auto tokens = android::base::Tokenize(webrtc_device_id_flag, ",");
+  CF_EXPECT(tokens.size() == 1 || tokens.size() == instance_nums.size(),
+            "--webrtc_device_ids provided " << tokens.size()
+                                            << " tokens"
+                                               " while 1 or "
+                                            << instance_nums.size()
+                                            << " is expected.");
+  CF_EXPECT(!tokens.empty(), "--webrtc_device_ids is ill-formatted");
+
+  std::vector<std::string> device_ids;
+  if (tokens.size() != instance_nums.size()) {
+    /* this is only possible when tokens.size() == 1
+     * and instance_nums.size() > 1. The token must include {num}
+     * so that the token pattern can be expanded to multiple instances.
+     */
+    auto device_id = tokens.front();
+    CF_EXPECT(device_id.find("{num}") != std::string::npos,
+              "If one webrtc_device_ids is given for multiple instances, "
+                  << " {num} should be included in webrtc_device_id.");
+    device_ids = std::move(
+        std::vector<std::string>(instance_nums.size(), tokens.front()));
+  }
+
+  if (tokens.size() == instance_nums.size()) {
+    // doesn't have to include {num}
+    device_ids = std::move(tokens);
+  }
+
+  auto itr = device_ids.begin();
+  for (const auto num : instance_nums) {
+    std::string_view device_id_view(itr->data(), itr->size());
+    output_map[num] = android::base::StringReplace(device_id_view, "{num}",
+                                                   std::to_string(num), true);
+    ++itr;
+  }
+  return output_map;
+}
+
+Result<std::vector<bool>> GetFlagBoolValueForInstances(
+    const std::string& flag_values, int32_t instances_size, const std::string& flag_name) {
+  std::vector<std::string> flag_vec = android::base::Split(flag_values, ",");
+  std::vector<bool> value_vec(instances_size);
+
+  for (int instance_index=0; instance_index<instances_size; instance_index++) {
+    if (instance_index >= flag_vec.size()) {
+      value_vec[instance_index] = CF_EXPECT(ParseBool(flag_vec[0], flag_name));
+    } else {
+      value_vec[instance_index] = CF_EXPECT(ParseBool(flag_vec[instance_index], flag_name));
+    }
+  }
+  return value_vec;
+}
+
+Result<std::vector<int>> GetFlagIntValueForInstances(
+    const std::string& flag_values, int32_t instances_size, const std::string& flag_name) {
+  std::vector<std::string> flag_vec = android::base::Split(flag_values, ",");
+  std::vector<int> value_vec(instances_size);
+
+  for (int instance_index=0; instance_index<instances_size; instance_index++) {
+    if (instance_index >= flag_vec.size()) {
+      CF_EXPECT(android::base::ParseInt(flag_vec[0].c_str(), &value_vec[instance_index]),
+      "Failed to parse value \"" << flag_vec[0] << "\" for " << flag_name);
+    } else {
+      CF_EXPECT(android::base::ParseInt(flag_vec[instance_index].c_str(),
+      &value_vec[instance_index]),
+      "Failed to parse value \"" << flag_vec[instance_index] << "\" for " << flag_name);
+    }
+  }
+  return value_vec;
+}
+
+Result<std::vector<std::string>> GetFlagStrValueForInstances(
+    const std::string& flag_values, int32_t instances_size) {
+  std::vector<std::string> flag_vec = android::base::Split(flag_values, ",");
+  std::vector<std::string> value_vec(instances_size);
+
+  for (int instance_index=0; instance_index<instances_size; instance_index++) {
+    if (instance_index >= flag_vec.size()) {
+      value_vec[instance_index] = flag_vec[0];
+    } else {
+      value_vec[instance_index] = flag_vec[instance_index];
+    }
+  }
+  return value_vec;
+}
 
 } // namespace
 
-CuttlefishConfig InitializeCuttlefishConfiguration(
-    const std::string& root_dir, int modem_simulator_count,
-    KernelConfig kernel_config, fruit::Injector<>& injector) {
+Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
+    const std::string& root_dir,
+    const std::vector<KernelConfig>& kernel_configs,
+    fruit::Injector<>& injector, const FetcherConfig& fetcher_config) {
   CuttlefishConfig tmp_config_obj;
 
   for (const auto& fragment : injector.getMultibindings<ConfigFragment>()) {
@@ -509,128 +703,45 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
 
   tmp_config_obj.set_root_dir(root_dir);
 
-  tmp_config_obj.set_bootconfig_supported(kernel_config.bootconfig_supported);
-  auto vmm = GetVmManager(FLAGS_vm_manager, kernel_config.target_arch);
-  if (!vmm) {
-    LOG(FATAL) << "Invalid vm_manager: " << FLAGS_vm_manager;
+  // TODO(weihsu), b/250988697:
+  // FLAGS_vm_manager used too early, have to handle this vectorized string early
+  // Currently, all instances should use same vmm, added checking here
+  std::vector<std::string> vm_manager_vec =
+      android::base::Split(FLAGS_vm_manager, ",");
+  for (int i=1; i<vm_manager_vec.size(); i++) {
+    CF_EXPECT(
+        vm_manager_vec[0] == vm_manager_vec[i],
+        "All instances should have same vm_manager, " << FLAGS_vm_manager);
   }
-  tmp_config_obj.set_vm_manager(FLAGS_vm_manager);
+
+  // TODO(weihsu), b/250988697: these should move to instance,
+  // currently use instance[0] to setup for all instances
+  tmp_config_obj.set_bootconfig_supported(kernel_configs[0].bootconfig_supported);
+  tmp_config_obj.set_filename_encryption_mode(
+      kernel_configs[0].hctr2_supported ? "hctr2" : "cts");
+  auto vmm = GetVmManager(vm_manager_vec[0], kernel_configs[0].target_arch);
+  if (!vmm) {
+    LOG(FATAL) << "Invalid vm_manager: " << vm_manager_vec[0];
+  }
+  tmp_config_obj.set_vm_manager(vm_manager_vec[0]);
 
   const GraphicsAvailability graphics_availability =
     GetGraphicsAvailabilityWithSubprocessCheck();
 
   LOG(DEBUG) << graphics_availability;
 
-  tmp_config_obj.set_gpu_mode(FLAGS_gpu_mode);
-  if (tmp_config_obj.gpu_mode() != kGpuModeAuto &&
-      tmp_config_obj.gpu_mode() != kGpuModeDrmVirgl &&
-      tmp_config_obj.gpu_mode() != kGpuModeGfxStream &&
-      tmp_config_obj.gpu_mode() != kGpuModeGuestSwiftshader) {
-    LOG(FATAL) << "Invalid gpu_mode: " << FLAGS_gpu_mode;
-  }
-  if (tmp_config_obj.gpu_mode() == kGpuModeAuto) {
-    if (ShouldEnableAcceleratedRendering(graphics_availability)) {
-      LOG(INFO) << "GPU auto mode: detected prerequisites for accelerated "
-                   "rendering support.";
-      if (FLAGS_vm_manager == QemuManager::name()) {
-        LOG(INFO) << "Enabling --gpu_mode=drm_virgl.";
-        tmp_config_obj.set_gpu_mode(kGpuModeDrmVirgl);
-      } else {
-        LOG(INFO) << "Enabling --gpu_mode=gfxstream.";
-        tmp_config_obj.set_gpu_mode(kGpuModeGfxStream);
-      }
-    } else {
-      LOG(INFO) << "GPU auto mode: did not detect prerequisites for "
-                   "accelerated rendering support, enabling "
-                   "--gpu_mode=guest_swiftshader.";
-      tmp_config_obj.set_gpu_mode(kGpuModeGuestSwiftshader);
-    }
-  } else if (tmp_config_obj.gpu_mode() == kGpuModeGfxStream ||
-             tmp_config_obj.gpu_mode() == kGpuModeDrmVirgl) {
-    if (!ShouldEnableAcceleratedRendering(graphics_availability)) {
-      LOG(ERROR) << "--gpu_mode="
-                 << tmp_config_obj.gpu_mode()
-                 << " was requested but the prerequisites for accelerated "
-                    "rendering were not detected so the device may not "
-                    "function correctly. Please consider switching to "
-                    "--gpu_mode=auto or --gpu_mode=guest_swiftshader.";
-    }
-  }
-
-  tmp_config_obj.set_restart_subprocesses(FLAGS_restart_subprocesses);
-  tmp_config_obj.set_gpu_capture_binary(FLAGS_gpu_capture_binary);
-  if (!tmp_config_obj.gpu_capture_binary().empty()) {
-    CHECK(tmp_config_obj.gpu_mode() == kGpuModeGfxStream)
-        << "GPU capture only supported with --gpu_mode=gfxstream";
-
-    // GPU capture runs in a detached mode where the "launcher" process
-    // intentionally exits immediately.
-    CHECK(!tmp_config_obj.restart_subprocesses())
-        << "GPU capture only supported with --norestart_subprocesses";
-  }
-
-  tmp_config_obj.set_hwcomposer(FLAGS_hwcomposer);
-  if (!tmp_config_obj.hwcomposer().empty()) {
-    if (tmp_config_obj.hwcomposer() == kHwComposerRanchu) {
-      CHECK(tmp_config_obj.gpu_mode() != kGpuModeDrmVirgl)
-        << "ranchu hwcomposer not supported with --gpu_mode=drm_virgl";
-    }
-  }
-
-  if (tmp_config_obj.hwcomposer() == kHwComposerAuto) {
-      if (tmp_config_obj.gpu_mode() == kGpuModeDrmVirgl) {
-        tmp_config_obj.set_hwcomposer(kHwComposerDrm);
-      } else {
-        tmp_config_obj.set_hwcomposer(kHwComposerRanchu);
-      }
-  }
-
-  tmp_config_obj.set_enable_gpu_udmabuf(FLAGS_enable_gpu_udmabuf);
-  tmp_config_obj.set_enable_gpu_angle(FLAGS_enable_gpu_angle);
-
-  // Sepolicy rules need to be updated to support gpu mode. Temporarily disable
-  // auto-enabling sandbox when gpu is enabled (b/152323505).
-  if (tmp_config_obj.gpu_mode() != kGpuModeGuestSwiftshader) {
-    SetCommandLineOptionWithMode("enable_sandbox", "false", SET_FLAGS_DEFAULT);
-  }
-
-  if (vmm->ConfigureGraphics(tmp_config_obj).empty()) {
-    LOG(FATAL) << "Invalid (gpu_mode=," << FLAGS_gpu_mode <<
-               " hwcomposer= " << FLAGS_hwcomposer <<
-               ") does not work with vm_manager=" << FLAGS_vm_manager;
-  }
-
-  CHECK(!FLAGS_smt || FLAGS_cpus % 2 == 0)
-      << "CPUs must be a multiple of 2 in SMT mode";
-  tmp_config_obj.set_smt(FLAGS_smt);
-
-  tmp_config_obj.set_memory_mb(FLAGS_memory_mb);
-
-  tmp_config_obj.set_setupwizard_mode(FLAGS_setupwizard_mode);
-  tmp_config_obj.set_enable_bootanimation(FLAGS_enable_bootanimation);
-
   auto secure_hals = android::base::Split(FLAGS_secure_hals, ",");
   tmp_config_obj.set_secure_hals(
       std::set<std::string>(secure_hals.begin(), secure_hals.end()));
 
-  tmp_config_obj.set_guest_enforce_security(FLAGS_guest_enforce_security);
   tmp_config_obj.set_extra_kernel_cmdline(FLAGS_extra_kernel_cmdline);
   tmp_config_obj.set_extra_bootconfig_args(FLAGS_extra_bootconfig_args);
 
-  if (FLAGS_console) {
-    SetCommandLineOptionWithMode("enable_sandbox", "false", SET_FLAGS_DEFAULT);
-  }
-
-  tmp_config_obj.set_enable_kernel_log(FLAGS_enable_kernel_log);
-
   tmp_config_obj.set_host_tools_version(HostToolsCrc());
-
-  tmp_config_obj.set_deprecated_boot_completed(FLAGS_deprecated_boot_completed);
 
   tmp_config_obj.set_qemu_binary_dir(FLAGS_qemu_binary_dir);
   tmp_config_obj.set_crosvm_binary(FLAGS_crosvm_binary);
   tmp_config_obj.set_gem5_debug_flags(FLAGS_gem5_debug_flags);
-  tmp_config_obj.set_gem5_debug_file(FLAGS_gem5_debug_file);
 
   tmp_config_obj.set_seccomp_policy_dir(FLAGS_seccomp_policy_dir);
 
@@ -650,37 +761,11 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
   auto udp_range  = ParsePortRange(FLAGS_udp_port_range);
   tmp_config_obj.set_webrtc_udp_port_range(udp_range);
 
-  tmp_config_obj.set_enable_modem_simulator(FLAGS_enable_modem_simulator &&
-                                            !FLAGS_enable_minimal_mode);
-  tmp_config_obj.set_modem_simulator_instance_number(modem_simulator_count);
-  tmp_config_obj.set_modem_simulator_sim_type(FLAGS_modem_simulator_sim_type);
-
-  tmp_config_obj.set_webrtc_enable_adb_websocket(
-          FLAGS_webrtc_enable_adb_websocket);
-
-  tmp_config_obj.set_run_as_daemon(FLAGS_daemon);
-
-  tmp_config_obj.set_data_policy(FLAGS_data_policy);
-  tmp_config_obj.set_blank_data_image_mb(FLAGS_blank_data_image_mb);
-
-  tmp_config_obj.set_enable_gnss_grpc_proxy(FLAGS_start_gnss_proxy);
-
-  tmp_config_obj.set_enable_vehicle_hal_grpc_server(
-      FLAGS_enable_vehicle_hal_grpc_server);
-
-  tmp_config_obj.set_bootloader(FLAGS_bootloader);
-
   tmp_config_obj.set_enable_metrics(FLAGS_report_anonymous_usage_stats);
-
-  if (!FLAGS_boot_slot.empty()) {
-      tmp_config_obj.set_boot_slot(FLAGS_boot_slot);
-  }
 
   tmp_config_obj.set_cuttlefish_env_path(GetCuttlefishEnvPath());
 
   tmp_config_obj.set_ril_dns(FLAGS_ril_dns);
-
-  tmp_config_obj.set_enable_minimal_mode(FLAGS_enable_minimal_mode);
 
   tmp_config_obj.set_vhost_net(FLAGS_vhost_net);
 
@@ -690,8 +775,19 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
     LOG(FATAL) << "Either both ap_rootfs_image and ap_kernel_image should be "
                   "set or neither should be set.";
   }
+  // If user input multiple values, we only take the 1st value and shared with
+  // all instances
+  std::string ap_rootfs_image = "";
+  if (!FLAGS_ap_rootfs_image.empty()) {
+    ap_rootfs_image = android::base::Split(FLAGS_ap_rootfs_image, ",")[0];
+  }
+  std::string ap_esp_image = "";
+  if (!FLAGS_ap_esp_image.empty()) {
+    ap_esp_image = android::base::Split(FLAGS_ap_esp_image, ",")[0];
+  }
 
-  tmp_config_obj.set_ap_rootfs_image(FLAGS_ap_rootfs_image);
+  tmp_config_obj.set_ap_rootfs_image(ap_rootfs_image);
+  tmp_config_obj.set_ap_esp_image(ap_esp_image);
   tmp_config_obj.set_ap_kernel_image(FLAGS_ap_kernel_image);
 
   tmp_config_obj.set_wmediumd_config(FLAGS_wmediumd_config);
@@ -700,8 +796,6 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
       FLAGS_bluetooth_controller_properties_file);
   tmp_config_obj.set_rootcanal_default_commands_file(
       FLAGS_bluetooth_default_commands_file);
-
-  tmp_config_obj.set_record_screen(FLAGS_record_screen);
 
   // netsim flags allow all radios or selecting a specific radio
   bool is_any_netsim = FLAGS_netsim || FLAGS_netsim_bt;
@@ -718,46 +812,133 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
     tmp_config_obj.netsim_radio_enable(CuttlefishConfig::NetsimRadio::Bluetooth);
   }
 
-  tmp_config_obj.set_protected_vm(FLAGS_protected_vm);
-
-  tmp_config_obj.set_userdata_format(FLAGS_userdata_format);
+  auto instance_nums =
+      CF_EXPECT(InstanceNumsCalculator().FromGlobalGflags().Calculate());
 
   // old flags but vectorized for multi-device instances
-  std::vector<std::string> gnss_file_paths = android::base::Split(FLAGS_gnss_file_path, ",");
+  int32_t instances_size = instance_nums.size();
+  std::vector<std::string> gnss_file_paths =
+      CF_EXPECT(GetFlagStrValueForInstances(FLAGS_gnss_file_path, instances_size));
   std::vector<std::string> fixed_location_file_paths =
-      android::base::Split(FLAGS_fixed_location_file_path, ",");
-  std::vector<std::string> x_res_vec = android::base::Split(FLAGS_x_res, ",");
-  std::vector<std::string> y_res_vec = android::base::Split(FLAGS_y_res, ",");
-  std::vector<std::string> dpi_vec = android::base::Split(FLAGS_dpi, ",");
-  std::vector<std::string> refresh_rate_hz_vec =
-      android::base::Split(FLAGS_refresh_rate_hz, ",");
+      CF_EXPECT(GetFlagStrValueForInstances(FLAGS_fixed_location_file_path, instances_size));
+  std::vector<int> x_res_vec = CF_EXPECT(GetFlagIntValueForInstances(
+      FLAGS_x_res, instances_size, "x_res"));
+  std::vector<int> y_res_vec = CF_EXPECT(GetFlagIntValueForInstances(
+      FLAGS_y_res, instances_size, "y_res"));
+  std::vector<int> dpi_vec = CF_EXPECT(GetFlagIntValueForInstances(
+      FLAGS_dpi, instances_size, "dpi"));
+  std::vector<int> refresh_rate_hz_vec = CF_EXPECT(GetFlagIntValueForInstances(
+      FLAGS_refresh_rate_hz, instances_size, "refresh_rate_hz"));
+  std::vector<int> memory_mb_vec = CF_EXPECT(GetFlagIntValueForInstances(
+      FLAGS_memory_mb, instances_size, "memory_mb"));
+  std::vector<int> camera_server_port_vec = CF_EXPECT(GetFlagIntValueForInstances(
+      FLAGS_camera_server_port, instances_size, "camera_server_port"));
+  std::vector<int> vsock_guest_cid_vec = CF_EXPECT(GetFlagIntValueForInstances(
+      FLAGS_vsock_guest_cid, instances_size, "vsock_guest_cid"));
+  std::vector<int> cpus_vec = CF_EXPECT(GetFlagIntValueForInstances(
+      FLAGS_cpus, instances_size, "cpus"));
+  std::vector<int> blank_data_image_mb_vec = CF_EXPECT(GetFlagIntValueForInstances(
+      FLAGS_blank_data_image_mb, instances_size, "blank_data_image_mb"));
+  std::vector<int> gdb_port_vec = CF_EXPECT(GetFlagIntValueForInstances(
+      FLAGS_gdb_port, instances_size, "gdb_port"));
+  std::vector<std::string> setupwizard_mode_vec =
+      CF_EXPECT(GetFlagStrValueForInstances(FLAGS_setupwizard_mode, instances_size));
+  std::vector<std::string> userdata_format_vec =
+      CF_EXPECT(GetFlagStrValueForInstances(FLAGS_userdata_format, instances_size));
+  std::vector<bool> guest_enforce_security_vec = CF_EXPECT(GetFlagBoolValueForInstances(
+      FLAGS_guest_enforce_security, instances_size, "guest_enforce_security"));
+  std::vector<bool> use_random_serial_vec = CF_EXPECT(GetFlagBoolValueForInstances(
+      FLAGS_use_random_serial, instances_size, "use_random_serial"));
+  std::vector<bool> use_allocd_vec = CF_EXPECT(GetFlagBoolValueForInstances(
+      FLAGS_use_allocd, instances_size, "use_allocd"));
+  std::vector<bool> use_sdcard_vec = CF_EXPECT(GetFlagBoolValueForInstances(
+      FLAGS_use_sdcard, instances_size, "use_sdcard"));
+  std::vector<bool> pause_in_bootloader_vec = CF_EXPECT(GetFlagBoolValueForInstances(
+      FLAGS_pause_in_bootloader, instances_size, "pause_in_bootloader"));
+  std::vector<bool> daemon_vec = CF_EXPECT(GetFlagBoolValueForInstances(
+      FLAGS_daemon, instances_size, "daemon"));
+  std::vector<bool> enable_minimal_mode_vec = CF_EXPECT(GetFlagBoolValueForInstances(
+      FLAGS_enable_minimal_mode, instances_size, "enable_minimal_mode"));
+  std::vector<bool> enable_modem_simulator_vec = CF_EXPECT(GetFlagBoolValueForInstances(
+      FLAGS_enable_modem_simulator, instances_size, "enable_modem_simulator"));
+  std::vector<int> modem_simulator_count_vec = CF_EXPECT(GetFlagIntValueForInstances(
+      FLAGS_modem_simulator_count, instances_size, "modem_simulator_count"));
+  std::vector<int> modem_simulator_sim_type_vec = CF_EXPECT(GetFlagIntValueForInstances(
+      FLAGS_modem_simulator_sim_type, instances_size, "modem_simulator_sim_type"));
+  std::vector<bool> console_vec = CF_EXPECT(GetFlagBoolValueForInstances(
+      FLAGS_console, instances_size, "console"));
+  std::vector<bool> enable_audio_vec = CF_EXPECT(GetFlagBoolValueForInstances(
+      FLAGS_enable_audio, instances_size, "enable_audio"));
+  std::vector<bool> enable_vehicle_hal_grpc_server_vec = CF_EXPECT(GetFlagBoolValueForInstances(
+      FLAGS_enable_vehicle_hal_grpc_server, instances_size, "enable_vehicle_hal_grpc_server"));
+  std::vector<bool> start_gnss_proxy_vec = CF_EXPECT(GetFlagBoolValueForInstances(
+      FLAGS_start_gnss_proxy, instances_size, "start_gnss_proxy"));
+  std::vector<bool> enable_bootanimation_vec =
+      CF_EXPECT(GetFlagBoolValueForInstances(
+          FLAGS_enable_bootanimation, instances_size, "enable_bootanimation"));
+  std::vector<bool> record_screen_vec = CF_EXPECT(GetFlagBoolValueForInstances(
+      FLAGS_record_screen, instances_size, "record_screen"));
+  std::vector<std::string> gem5_debug_file_vec =
+      CF_EXPECT(GetFlagStrValueForInstances(FLAGS_gem5_debug_file, instances_size));
+  std::vector<bool> protected_vm_vec = CF_EXPECT(GetFlagBoolValueForInstances(
+      FLAGS_protected_vm, instances_size, "protected_vm"));
+  std::vector<bool> enable_kernel_log_vec = CF_EXPECT(GetFlagBoolValueForInstances(
+      FLAGS_enable_kernel_log, instances_size, "enable_kernel_log"));
+  std::vector<bool> kgdb_vec = CF_EXPECT(GetFlagBoolValueForInstances(
+      FLAGS_kgdb, instances_size, "kgdb"));
+  std::vector<std::string> boot_slot_vec =
+      CF_EXPECT(GetFlagStrValueForInstances(FLAGS_boot_slot, instances_size));
+
+  // At this time, FLAGS_enable_sandbox comes from SetDefaultFlagsForCrosvm
+  std::vector<bool> enable_sandbox_vec = CF_EXPECT(GetFlagBoolValueForInstances(
+      FLAGS_enable_sandbox, instances_size, "enable_sandbox"));
+
+  std::vector<std::string> gpu_mode_vec =
+      CF_EXPECT(GetFlagStrValueForInstances(FLAGS_gpu_mode, instances_size));
+  std::vector<std::string> gpu_capture_binary_vec =
+      CF_EXPECT(GetFlagStrValueForInstances(FLAGS_gpu_capture_binary, instances_size));
+  std::vector<bool> restart_subprocesses_vec = CF_EXPECT(GetFlagBoolValueForInstances(
+      FLAGS_restart_subprocesses, instances_size, "restart_subprocesses"));
+  std::vector<std::string> hwcomposer_vec =
+      CF_EXPECT(GetFlagStrValueForInstances(FLAGS_hwcomposer, instances_size));
+  std::vector<bool> enable_gpu_udmabuf_vec = CF_EXPECT(GetFlagBoolValueForInstances(
+      FLAGS_enable_gpu_udmabuf, instances_size, "enable_gpu_udmabuf"));
+  std::vector<bool> enable_gpu_angle_vec = CF_EXPECT(GetFlagBoolValueForInstances(
+      FLAGS_enable_gpu_angle, instances_size, "enable_gpu_angle"));
 
   // new instance specific flags (moved from common flags)
-  std::vector<std::string> gem5_binary_dirs =
-      android::base::Split(FLAGS_gem5_binary_dir, ",");
-  std::vector<std::string> gem5_checkpoint_dirs =
-      android::base::Split(FLAGS_gem5_checkpoint_dir, ",");
+  std::vector<std::string> gem5_binary_dir_vec =
+      CF_EXPECT(GetFlagStrValueForInstances(FLAGS_gem5_binary_dir, instances_size));
+  std::vector<std::string> gem5_checkpoint_dir_vec =
+      CF_EXPECT(GetFlagStrValueForInstances(FLAGS_gem5_checkpoint_dir, instances_size));
+  std::vector<std::string> data_policy_vec =
+      CF_EXPECT(GetFlagStrValueForInstances(FLAGS_data_policy, instances_size));
 
-  auto instance_nums = InstanceNumsCalculator().FromGlobalGflags().Calculate();
-  CHECK(instance_nums.ok()) << instance_nums.error();
+  std::string default_enable_sandbox = "";
+  std::string comma_str = "";
 
-  CHECK(FLAGS_use_overlay || instance_nums->size() == 1)
+  CHECK(FLAGS_use_overlay || instance_nums.size() == 1)
       << "`--use_overlay=false` is incompatible with multiple instances";
-  CHECK(instance_nums->size() > 0) << "Require at least one instance.";
-  auto rootcanal_instance_num = *instance_nums->begin() - 1;
+  CHECK(instance_nums.size() > 0) << "Require at least one instance.";
+  auto rootcanal_instance_num = *instance_nums.begin() - 1;
   if (FLAGS_rootcanal_instance_num > 0) {
     rootcanal_instance_num = FLAGS_rootcanal_instance_num - 1;
   }
+  tmp_config_obj.set_rootcanal_args(FLAGS_rootcanal_args);
   tmp_config_obj.set_rootcanal_hci_port(7300 + rootcanal_instance_num);
   tmp_config_obj.set_rootcanal_link_port(7400 + rootcanal_instance_num);
   tmp_config_obj.set_rootcanal_test_port(7500 + rootcanal_instance_num);
+  tmp_config_obj.set_rootcanal_link_ble_port(7600 + rootcanal_instance_num);
   LOG(DEBUG) << "rootcanal_instance_num: " << rootcanal_instance_num;
   LOG(DEBUG) << "launch rootcanal: " << (FLAGS_rootcanal_instance_num <= 0);
   bool is_first_instance = true;
   int instance_index = 0;
-  for (const auto& num : *instance_nums) {
+  auto num_to_webrtc_device_id_flag_map =
+      CF_EXPECT(CreateNumToWebrtcDeviceIdMap(tmp_config_obj, instance_nums,
+                                             FLAGS_webrtc_device_id));
+  for (const auto& num : instance_nums) {
     IfaceConfig iface_config;
-    if (FLAGS_use_allocd) {
+    if (use_allocd_vec[instance_index]) {
       auto iface_opt = AllocateNetworkInterfaces();
       if (!iface_opt.has_value()) {
         LOG(FATAL) << "Failed to acquire network interfaces";
@@ -767,31 +948,56 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
       iface_config = DefaultNetworkInterfaces(num);
     }
 
+
     auto instance = tmp_config_obj.ForInstance(num);
     auto const_instance =
         const_cast<const CuttlefishConfig&>(tmp_config_obj).ForInstance(num);
-    instance.set_use_allocd(FLAGS_use_allocd);
-    if (FLAGS_use_random_serial) {
+    instance.set_use_allocd(use_allocd_vec[instance_index]);
+    instance.set_enable_audio(enable_audio_vec[instance_index]);
+    instance.set_enable_vehicle_hal_grpc_server(
+      enable_vehicle_hal_grpc_server_vec[instance_index]);
+    instance.set_enable_gnss_grpc_proxy(start_gnss_proxy_vec[instance_index]);
+    instance.set_enable_bootanimation(enable_bootanimation_vec[instance_index]);
+    instance.set_record_screen(record_screen_vec[instance_index]);
+    instance.set_gem5_debug_file(gem5_debug_file_vec[instance_index]);
+    instance.set_protected_vm(protected_vm_vec[instance_index]);
+    instance.set_enable_kernel_log(enable_kernel_log_vec[instance_index]);
+    if (!boot_slot_vec[instance_index].empty()) {
+      instance.set_boot_slot(boot_slot_vec[instance_index]);
+    }
+
+    if (use_random_serial_vec[instance_index]) {
       instance.set_serial_number(
           RandomSerialNumber("CFCVD" + std::to_string(num)));
     } else {
       instance.set_serial_number(FLAGS_serial_number + std::to_string(num));
     }
+
     // call this before all stuff that has vsock server: e.g. touchpad, keyboard, etc
-    const auto vsock_guest_cid = FLAGS_vsock_guest_cid + num - GetInstance();
+    const auto vsock_guest_cid = vsock_guest_cid_vec[instance_index] + num - GetInstance();
     instance.set_vsock_guest_cid(vsock_guest_cid);
     auto calc_vsock_port = [vsock_guest_cid](const int base_port) {
-      // a base (vsock) port is like 9200 for modem_simulator, etc
+      // a base (vsock) port is like 9600 for modem_simulator, etc
       return cuttlefish::GetVsockServerPort(base_port, vsock_guest_cid);
     };
     instance.set_session_id(iface_config.mobile_tap.session_id);
 
+    instance.set_cpus(cpus_vec[instance_index]);
+    // TODO(weihsu): before vectorizing smt flag,
+    // make sure all instances have multiple of 2 then SMT mode
+    // if any of instance doesn't have multiple of 2 then NOT SMT
+    CF_EXPECT(!FLAGS_smt || cpus_vec[instance_index] % 2 == 0,
+              "CPUs must be a multiple of 2 in SMT mode");
+
     // new instance specific flags (moved from common flags)
-    instance.set_target_arch(kernel_config.target_arch);
-    instance.set_console(FLAGS_console);
-    instance.set_kgdb(FLAGS_console && FLAGS_kgdb);
-    instance.set_cpus(FLAGS_cpus);
-    instance.set_gdb_port(FLAGS_gdb_port);
+    CF_EXPECT(instance_index < kernel_configs.size(),
+              "instance_index " << instance_index << " out of boundary "
+                                << kernel_configs.size());
+    instance.set_target_arch(kernel_configs[instance_index].target_arch);
+    instance.set_console(console_vec[instance_index]);
+    instance.set_kgdb(console_vec[instance_index] && kgdb_vec[instance_index]);
+    instance.set_blank_data_image_mb(blank_data_image_mb_vec[instance_index]);
+    instance.set_gdb_port(gdb_port_vec[instance_index]);
 
     std::vector<CuttlefishConfig::DisplayConfig> display_configs;
     auto display0 = ParseDisplayConfig(FLAGS_display0);
@@ -811,61 +1017,13 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
       display_configs.push_back(*display3);
     }
 
-    int x_res = 0;
-    if (instance_index < x_res_vec.size()) {
-      if (!android::base::ParseInt(x_res_vec[instance_index].c_str(), &x_res)) {
-        LOG(ERROR) << "Failed to parse value \"" << x_res_vec[instance_index]
-                   << "\" for x_res";
-      }
-    } else if (x_res_vec.size() == 1) {
-      if (!android::base::ParseInt(x_res_vec[0].c_str(), &x_res)) {
-        LOG(ERROR) << "Failed to parse value \"" << x_res_vec[0]
-                   << "\" for x_res";
-      }
-    }
-    int y_res = 0;
-    if (instance_index < y_res_vec.size()) {
-      if (!android::base::ParseInt(y_res_vec[instance_index].c_str(), &y_res)) {
-        LOG(ERROR) << "Failed to parse value \"" << y_res_vec[instance_index]
-                   << "\" for y_res";
-      }
-    } else if (y_res_vec.size() == 1) {
-      if (!android::base::ParseInt(y_res_vec[0].c_str(), &y_res)) {
-        LOG(ERROR) << "Failed to parse value \"" << y_res_vec[0]
-                   << "\" for y_res";
-      }
-    }
-    int dpi = 0;
-    if (instance_index < dpi_vec.size()) {
-      if (!android::base::ParseInt(dpi_vec[instance_index].c_str(), &dpi)) {
-        LOG(ERROR) << "Failed to parse value \"" << dpi_vec[instance_index]
-                   << "\" for dpi";
-      }
-    } else if (dpi_vec.size() == 1) {
-      if (!android::base::ParseInt(dpi_vec[0].c_str(), &dpi)) {
-        LOG(ERROR) << "Failed to parse value \"" << dpi_vec[0]
-                   << "\" for dpi";
-      }
-    }
-    int refresh_rate_hz = 0;
-    if (instance_index < refresh_rate_hz_vec.size()) {
-      if (!android::base::ParseInt(refresh_rate_hz_vec[instance_index].c_str(), &refresh_rate_hz)) {
-        LOG(ERROR) << "Failed to parse value \"" << refresh_rate_hz_vec[instance_index]
-                   << "\" for refresh_rate_hz";
-      }
-    } else if (refresh_rate_hz_vec.size() == 1) {
-      if (!android::base::ParseInt(refresh_rate_hz_vec[0].c_str(), &refresh_rate_hz)) {
-        LOG(ERROR) << "Failed to parse value \"" << refresh_rate_hz_vec[0]
-                   << "\" for refresh_rate_hz";
-      }
-    }
-    if (x_res > 0 && y_res > 0) {
+    if (x_res_vec[instance_index] > 0 && y_res_vec[instance_index] > 0) {
       if (display_configs.empty()) {
         display_configs.push_back({
-            .width = x_res,
-            .height = y_res,
-            .dpi = dpi,
-            .refresh_rate_hz = refresh_rate_hz,
+            .width = x_res_vec[instance_index],
+            .height = y_res_vec[instance_index],
+            .dpi = dpi_vec[instance_index],
+            .refresh_rate_hz = refresh_rate_hz_vec[instance_index],
           });
       } else {
         LOG(WARNING) << "Ignoring --x_res and --y_res when --displayN specified.";
@@ -873,18 +1031,23 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
     }
     instance.set_display_configs(display_configs);
 
-    if (instance_index < gem5_binary_dirs.size()) {
-      instance.set_gem5_binary_dir(gem5_binary_dirs[instance_index]);
-    } else if (gem5_binary_dirs.size() == 1) {
-      // support legacy flag input in multi-device which set one and same flag to all instances
-      instance.set_gem5_binary_dir(gem5_binary_dirs[0]);
-    }
-    if (instance_index < gem5_checkpoint_dirs.size()) {
-      instance.set_gem5_checkpoint_dir(gem5_checkpoint_dirs[instance_index]);
-    } else if (gem5_checkpoint_dirs.size() == 1) {
-      // support legacy flag input in multi-device which set one and same flag to all instances
-      instance.set_gem5_checkpoint_dir(gem5_checkpoint_dirs[0]);
-    }
+    instance.set_memory_mb(memory_mb_vec[instance_index]);
+    instance.set_ddr_mem_mb(memory_mb_vec[instance_index] * 2);
+    instance.set_setupwizard_mode(setupwizard_mode_vec[instance_index]);
+    instance.set_userdata_format(userdata_format_vec[instance_index]);
+    instance.set_guest_enforce_security(guest_enforce_security_vec[instance_index]);
+    instance.set_pause_in_bootloader(pause_in_bootloader_vec[instance_index]);
+    instance.set_run_as_daemon(daemon_vec[instance_index]);
+    instance.set_enable_modem_simulator(enable_modem_simulator_vec[instance_index] &&
+                                        !enable_minimal_mode_vec[instance_index]);
+    instance.set_modem_simulator_instance_number(modem_simulator_count_vec[instance_index]);
+    instance.set_modem_simulator_sim_type(modem_simulator_sim_type_vec[instance_index]);
+
+    instance.set_enable_minimal_mode(enable_minimal_mode_vec[instance_index]);
+    instance.set_camera_server_port(camera_server_port_vec[instance_index]);
+    instance.set_gem5_binary_dir(gem5_binary_dir_vec[instance_index]);
+    instance.set_gem5_checkpoint_dir(gem5_checkpoint_dir_vec[instance_index]);
+    instance.set_data_policy(data_policy_vec[instance_index]);
 
     instance.set_mobile_bridge_name(StrForInstance("cvd-mbr-", num));
     instance.set_mobile_tap_name(iface_config.mobile_tap.name);
@@ -903,33 +1066,115 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
     instance.set_audiocontrol_server_port(9410);  /* OK to use the same port number across instances */
     instance.set_config_server_port(calc_vsock_port(6800));
 
-    if (tmp_config_obj.gpu_mode() != kGpuModeDrmVirgl &&
-        tmp_config_obj.gpu_mode() != kGpuModeGfxStream) {
-      if (FLAGS_vm_manager == QemuManager::name()) {
+    // gpu related settings
+    instance.set_gpu_mode(gpu_mode_vec[instance_index]);
+    if (gpu_mode_vec[instance_index] != kGpuModeAuto &&
+        gpu_mode_vec[instance_index] != kGpuModeDrmVirgl &&
+        gpu_mode_vec[instance_index] != kGpuModeGfxStream &&
+        gpu_mode_vec[instance_index] != kGpuModeGuestSwiftshader) {
+      LOG(FATAL) << "Invalid gpu_mode: " << gpu_mode_vec[instance_index];
+    }
+    if (gpu_mode_vec[instance_index] == kGpuModeAuto) {
+      if (ShouldEnableAcceleratedRendering(graphics_availability)) {
+        LOG(INFO) << "GPU auto mode: detected prerequisites for accelerated "
+            "rendering support.";
+        if (vm_manager_vec[0] == QemuManager::name()) {
+          LOG(INFO) << "Enabling --gpu_mode=drm_virgl.";
+          instance.set_gpu_mode(kGpuModeDrmVirgl);
+        } else {
+          LOG(INFO) << "Enabling --gpu_mode=gfxstream.";
+          instance.set_gpu_mode(kGpuModeGfxStream);
+        }
+      } else {
+        LOG(INFO) << "GPU auto mode: did not detect prerequisites for "
+            "accelerated rendering support, enabling "
+            "--gpu_mode=guest_swiftshader.";
+        instance.set_gpu_mode(kGpuModeGuestSwiftshader);
+      }
+    } else if (gpu_mode_vec[instance_index] == kGpuModeGfxStream ||
+               gpu_mode_vec[instance_index] == kGpuModeDrmVirgl) {
+      if (!ShouldEnableAcceleratedRendering(graphics_availability)) {
+        LOG(ERROR) << "--gpu_mode="
+                   << gpu_mode_vec[instance_index]
+                   << " was requested but the prerequisites for accelerated "
+                   "rendering were not detected so the device may not "
+                   "function correctly. Please consider switching to "
+                   "--gpu_mode=auto or --gpu_mode=guest_swiftshader.";
+      }
+    }
+
+    instance.set_restart_subprocesses(restart_subprocesses_vec[instance_index]);
+    instance.set_gpu_capture_binary(gpu_capture_binary_vec[instance_index]);
+    if (!gpu_capture_binary_vec[instance_index].empty()) {
+      CF_EXPECT(gpu_mode_vec[instance_index] == kGpuModeGfxStream,
+          "GPU capture only supported with --gpu_mode=gfxstream");
+
+      // GPU capture runs in a detached mode where the "launcher" process
+      // intentionally exits immediately.
+      CF_EXPECT(!restart_subprocesses_vec[instance_index],
+          "GPU capture only supported with --norestart_subprocesses");
+    }
+
+    instance.set_hwcomposer(hwcomposer_vec[instance_index]);
+    if (!hwcomposer_vec[instance_index].empty()) {
+      if (hwcomposer_vec[instance_index] == kHwComposerRanchu) {
+        CF_EXPECT(gpu_mode_vec[instance_index] != kGpuModeDrmVirgl,
+            "ranchu hwcomposer not supported with --gpu_mode=drm_virgl");
+      }
+    }
+
+    if (hwcomposer_vec[instance_index] == kHwComposerAuto) {
+      if (gpu_mode_vec[instance_index] == kGpuModeDrmVirgl) {
+        instance.set_hwcomposer(kHwComposerDrm);
+      } else {
+        instance.set_hwcomposer(kHwComposerRanchu);
+      }
+    }
+
+    instance.set_enable_gpu_udmabuf(enable_gpu_udmabuf_vec[instance_index]);
+    instance.set_enable_gpu_angle(enable_gpu_angle_vec[instance_index]);
+
+    // 1. Keep original code order SetCommandLineOptionWithMode("enable_sandbox")
+    // then set_enable_sandbox later.
+    // 2. SetCommandLineOptionWithMode condition: if gpu_mode or console,
+    // then SetCommandLineOptionWithMode false as original code did,
+    // otherwise keep default enable_sandbox value.
+    // 3. Sepolicy rules need to be updated to support gpu mode. Temporarily disable
+    // auto-enabling sandbox when gpu is enabled (b/152323505).
+    default_enable_sandbox += comma_str;
+    if ((gpu_mode_vec[instance_index] != kGpuModeGuestSwiftshader) || console_vec[instance_index]) {
+      // original code, just moved to each instance setting block
+      default_enable_sandbox += "false";
+    } else {
+      default_enable_sandbox += BoolToString(enable_sandbox_vec[instance_index]);
+    }
+    comma_str = ",";
+
+    if (vmm->ConfigureGraphics(const_instance).empty()) {
+      LOG(FATAL) << "Invalid (gpu_mode=," << gpu_mode_vec[instance_index] <<
+      " hwcomposer= " << hwcomposer_vec[instance_index] <<
+      ") does not work with vm_manager=" << vm_manager_vec[0];
+    }
+
+    if (gpu_mode_vec[instance_index] != kGpuModeDrmVirgl &&
+        gpu_mode_vec[instance_index] != kGpuModeGfxStream) {
+      if (vm_manager_vec[0] == QemuManager::name()) {
         instance.set_keyboard_server_port(calc_vsock_port(7000));
         instance.set_touch_server_port(calc_vsock_port(7100));
       }
     }
+    // end of gpu related settings
 
     instance.set_gnss_grpc_proxy_server_port(7200 + num -1);
-
-    if (num <= gnss_file_paths.size()) {
-      instance.set_gnss_file_path(gnss_file_paths[instance_index]);
-    }
-    if (num <= fixed_location_file_paths.size()) {
-      instance.set_fixed_location_file_path(
-          fixed_location_file_paths[instance_index]);
-    }
-    instance_index++;
-
-    instance.set_camera_server_port(FLAGS_camera_server_port);
+    instance.set_gnss_file_path(gnss_file_paths[instance_index]);
+    instance.set_fixed_location_file_path(fixed_location_file_paths[instance_index]);
 
     std::vector<std::string> virtual_disk_paths;
 
     bool os_overlay = true;
-    os_overlay &= !FLAGS_protected_vm;
+    os_overlay &= !protected_vm_vec[instance_index];
     // Gem5 already uses CoW wrappers around disk images
-    os_overlay &= FLAGS_vm_manager != Gem5Manager::name();
+    os_overlay &= vm_manager_vec[0] != Gem5Manager::name();
     os_overlay &= FLAGS_use_overlay;
     if (os_overlay) {
       auto path = const_instance.PerInstancePath("overlay.img");
@@ -939,16 +1184,18 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
     }
 
     bool persistent_disk = true;
-    persistent_disk &= !FLAGS_protected_vm;
-    persistent_disk &= FLAGS_vm_manager != Gem5Manager::name();
+    persistent_disk &= !protected_vm_vec[instance_index];
+    persistent_disk &= vm_manager_vec[0] != Gem5Manager::name();
     if (persistent_disk) {
       auto path = const_instance.PerInstancePath("persistent_composite.img");
       virtual_disk_paths.push_back(path);
     }
 
+    instance.set_use_sdcard(use_sdcard_vec[instance_index]);
+
     bool sdcard = true;
-    sdcard &= FLAGS_use_sdcard;
-    sdcard &= !FLAGS_protected_vm;
+    sdcard &= use_sdcard_vec[instance_index];
+    sdcard &= !protected_vm_vec[instance_index];
     if (sdcard) {
       virtual_disk_paths.push_back(const_instance.sdcard_path());
     }
@@ -962,17 +1209,10 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
 
     instance.set_start_webrtc_signaling_server(false);
 
-    if (FLAGS_webrtc_device_id.empty()) {
-      // Use the instance's name as a default
-      instance.set_webrtc_device_id(const_instance.instance_name());
-    } else {
-      std::string device_id = FLAGS_webrtc_device_id;
-      size_t pos;
-      while ((pos = device_id.find("{num}")) != std::string::npos) {
-        device_id.replace(pos, strlen("{num}"), std::to_string(num));
-      }
-      instance.set_webrtc_device_id(device_id);
-    }
+    CF_EXPECT(Contains(num_to_webrtc_device_id_flag_map, num),
+              "Error in looking up num to webrtc_device_id_flag_map");
+    instance.set_webrtc_device_id(num_to_webrtc_device_id_flag_map[num]);
+
     if (!is_first_instance || !FLAGS_start_webrtc) {
       // Only the first instance starts the signaling server or proxy
       instance.set_start_webrtc_signaling_server(false);
@@ -989,10 +1229,15 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
           !FLAGS_start_webrtc_sig_server);
     }
 
+#ifndef ENFORCE_MAC80211_HWSIM
+    const bool start_wmediumd = false;
+#else
     // Start wmediumd process for the first instance if
     // vhost_user_mac80211_hwsim is not specified.
     const bool start_wmediumd =
         FLAGS_vhost_user_mac80211_hwsim.empty() && is_first_instance;
+#endif
+
     if (start_wmediumd) {
       // TODO(b/199020470) move this to the directory for shared resources
       auto vhost_user_socket_path =
@@ -1012,26 +1257,49 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
     instance.set_start_rootcanal(is_first_instance && !is_bt_netsim &&
                                  (FLAGS_rootcanal_instance_num <= 0));
 
-    instance.set_start_ap(!FLAGS_ap_rootfs_image.empty() &&
-                          !FLAGS_ap_kernel_image.empty() && start_wmediumd);
+    if (!FLAGS_ap_rootfs_image.empty() && !FLAGS_ap_kernel_image.empty() && start_wmediumd) {
+      std::string required_grub_image_path;
+      switch (kernel_configs[0].target_arch) {
+        case Arch::Arm:
+        case Arch::Arm64:
+          // TODO(b/260960328) : Migrate openwrt image for arm64 into
+          // APBootFlow::Grub.
+          break;
+        case Arch::X86:
+        case Arch::X86_64:
+          required_grub_image_path = kBootSrcPathIA32;
+          break;
+      }
+
+      if (FileExists(required_grub_image_path)) {
+        instance.set_ap_boot_flow(CuttlefishConfig::InstanceSpecific::APBootFlow::Grub);
+      } else {
+        instance.set_ap_boot_flow(CuttlefishConfig::InstanceSpecific::APBootFlow::LegacyDirect);
+      }
+    } else {
+      instance.set_ap_boot_flow(CuttlefishConfig::InstanceSpecific::APBootFlow::None);
+    }
 
     is_first_instance = false;
 
     // instance.modem_simulator_ports := "" or "[port,]*port"
-    if (modem_simulator_count > 0) {
+    if (modem_simulator_count_vec[instance_index] > 0) {
       std::stringstream modem_ports;
-      for (auto index {0}; index < modem_simulator_count - 1; index++) {
-        auto port = 9200 + (modem_simulator_count * (num - 1)) + index;
+      for (auto index {0}; index < modem_simulator_count_vec[instance_index] - 1; index++) {
+        auto port = 9600 + (modem_simulator_count_vec[instance_index] * (num - 1)) + index;
         modem_ports << calc_vsock_port(port) << ",";
       }
-      auto port = 9200 + (modem_simulator_count * (num - 1)) +
-                  modem_simulator_count - 1;
+      auto port = 9600 + (modem_simulator_count_vec[instance_index] * (num - 1)) +
+                  modem_simulator_count_vec[instance_index] - 1;
       modem_ports << calc_vsock_port(port);
       instance.set_modem_simulator_ports(modem_ports.str());
     } else {
       instance.set_modem_simulator_ports("");
     }
+    instance_index++;
   }  // end of num_instances loop
+
+  tmp_config_obj.set_smt(FLAGS_smt);
 
   std::vector<std::string> names;
   for (const auto& instance : tmp_config_obj.Instances()) {
@@ -1039,21 +1307,43 @@ CuttlefishConfig InitializeCuttlefishConfiguration(
   }
   tmp_config_obj.set_instance_names(names);
 
-  tmp_config_obj.set_enable_sandbox(FLAGS_enable_sandbox);
+  // Keep the original code here to set enable_sandbox commandline flag value
+  SetCommandLineOptionWithMode("enable_sandbox", default_enable_sandbox.c_str(),
+                               google::FlagSettingMode::SET_FLAGS_DEFAULT);
+  // After last SetCommandLineOptionWithMode, we could set these special flags
+  enable_sandbox_vec = CF_EXPECT(GetFlagBoolValueForInstances(
+      FLAGS_enable_sandbox, instances_size, "enable_sandbox"));
 
-  tmp_config_obj.set_enable_audio(FLAGS_enable_audio);
+  instance_index = 0;
+  for (const auto& num : instance_nums) {
+    auto instance = tmp_config_obj.ForInstance(num);
+    instance.set_enable_sandbox(enable_sandbox_vec[instance_index]);
+    instance_index++;
+  }
+
+  DiskImageFlagsVectorization(tmp_config_obj, fetcher_config);
 
   return tmp_config_obj;
 }
 
-void SetDefaultFlagsForQemu(Arch target_arch) {
-  // for now, we don't set non-default options for QEMU
-  if (FLAGS_gpu_mode == kGpuModeGuestSwiftshader && !FLAGS_start_webrtc) {
-    // This makes WebRTC the default streamer unless the user requests
-    // another via a --star_<streamer> flag, while at the same time it's
-    // possible to run without any streamer by setting --start_webrtc=false.
-    SetCommandLineOptionWithMode("start_webrtc", "true", SET_FLAGS_DEFAULT);
+Result<void> SetDefaultFlagsForQemu(Arch target_arch) {
+  auto instance_nums =
+      CF_EXPECT(InstanceNumsCalculator().FromGlobalGflags().Calculate());
+  int32_t instances_size = instance_nums.size();
+  std::vector<std::string> gpu_mode_vec =
+      CF_EXPECT(GetFlagStrValueForInstances(FLAGS_gpu_mode, instances_size));
+
+  for (int instance_index = 0; instance_index < instance_nums.size(); instance_index++) {
+    // This is the 1st place to set "start_webrtc" flag value
+    // for now, we don't set non-default options for QEMU
+    if (gpu_mode_vec[instance_index] == kGpuModeGuestSwiftshader && !FLAGS_start_webrtc) {
+      // This makes WebRTC the default streamer unless the user requests
+      // another via a --star_<streamer> flag, while at the same time it's
+      // possible to run without any streamer by setting --start_webrtc=false.
+      SetCommandLineOptionWithMode("start_webrtc", "true", SET_FLAGS_DEFAULT);
+    }
   }
+
   std::string default_bootloader =
       DefaultHostArtifactsPath("etc/bootloader_");
   if(target_arch == Arch::Arm) {
@@ -1068,9 +1358,11 @@ void SetDefaultFlagsForQemu(Arch target_arch) {
   default_bootloader += "/bootloader.qemu";
   SetCommandLineOptionWithMode("bootloader", default_bootloader.c_str(),
                                SET_FLAGS_DEFAULT);
+  return {};
 }
 
-void SetDefaultFlagsForCrosvm() {
+Result<void> SetDefaultFlagsForCrosvm() {
+  // This is the 1st place to set "start_webrtc" flag value
   if (!FLAGS_start_webrtc) {
     // This makes WebRTC the default streamer unless the user requests
     // another via a --star_<streamer> flag, while at the same time it's
@@ -1083,13 +1375,34 @@ void SetDefaultFlagsForCrosvm() {
       supported_archs.find(HostArch()) != supported_archs.end() &&
       EnsureDirectoryExists(kCrosvmVarEmptyDir).ok() &&
       IsDirectoryEmpty(kCrosvmVarEmptyDir) && !IsRunningInContainer();
-  SetCommandLineOptionWithMode("enable_sandbox",
-                               (default_enable_sandbox ? "true" : "false"),
-                               SET_FLAGS_DEFAULT);
 
-  std::string default_bootloader = FLAGS_system_image_dir + "/bootloader";
+  std::vector<std::string> system_image_dir =
+      android::base::Split(FLAGS_system_image_dir, ",");
+  std::string cur_system_image_dir = "";
+  std::string default_bootloader = "";
+  std::string default_enable_sandbox_str = "";
+  auto instance_nums =
+      CF_EXPECT(InstanceNumsCalculator().FromGlobalGflags().Calculate());
+  for (int instance_index = 0; instance_index < instance_nums.size(); instance_index++) {
+    if (instance_index >= system_image_dir.size()) {
+      cur_system_image_dir = system_image_dir[0];
+    } else {
+      cur_system_image_dir = system_image_dir[instance_index];
+    }
+    cur_system_image_dir += "/bootloader";
+    if (instance_index > 0) {
+      default_bootloader += ",";
+      default_enable_sandbox_str += ",";
+    }
+    default_bootloader += cur_system_image_dir;
+    default_enable_sandbox_str += BoolToString(default_enable_sandbox);
+  }
   SetCommandLineOptionWithMode("bootloader", default_bootloader.c_str(),
                                SET_FLAGS_DEFAULT);
+  // This is the 1st place to set "enable_sandbox" flag value
+  SetCommandLineOptionWithMode("enable_sandbox",
+                               default_enable_sandbox_str.c_str(), SET_FLAGS_DEFAULT);
+  return {};
 }
 
 void SetDefaultFlagsForGem5() {
@@ -1100,33 +1413,76 @@ void SetDefaultFlagsForGem5() {
   SetCommandLineOptionWithMode("cpus", "1", SET_FLAGS_DEFAULT);
 }
 
-Result<KernelConfig> GetKernelConfigAndSetDefaults() {
+void SetDefaultFlagsForOpenwrt(Arch target_arch) {
+  if (target_arch == Arch::X86_64) {
+    SetCommandLineOptionWithMode(
+        "ap_kernel_image",
+        DefaultHostArtifactsPath("etc/openwrt/images/openwrt_kernel_x86_64")
+            .c_str(),
+        SET_FLAGS_DEFAULT);
+    SetCommandLineOptionWithMode(
+        "ap_rootfs_image",
+        DefaultHostArtifactsPath("etc/openwrt/images/openwrt_rootfs_x86_64")
+            .c_str(),
+        SET_FLAGS_DEFAULT);
+  } else if (target_arch == Arch::Arm64) {
+    SetCommandLineOptionWithMode(
+        "ap_kernel_image",
+        DefaultHostArtifactsPath("etc/openwrt/images/openwrt_kernel_aarch64")
+            .c_str(),
+        SET_FLAGS_DEFAULT);
+    SetCommandLineOptionWithMode(
+        "ap_rootfs_image",
+        DefaultHostArtifactsPath("etc/openwrt/images/openwrt_rootfs_aarch64")
+            .c_str(),
+        SET_FLAGS_DEFAULT);
+  }
+}
+
+Result<std::vector<KernelConfig>> GetKernelConfigAndSetDefaults() {
   CF_EXPECT(ResolveInstanceFiles(), "Failed to resolve instance files");
 
-  KernelConfig kernel_config = CF_EXPECT(ReadKernelConfig());
+  std::vector<KernelConfig> kernel_configs = CF_EXPECT(ReadKernelConfig());
 
+  // TODO(weihsu), b/250988697:
+  // assume all instances are using same VM manager/app/arch,
+  // later that multiple instances may use different VM manager/app/arch
+
+  // Temporary add this checking to make sure all instances have same target_arch
+  // and bootconfig_supported. This checking should be removed later.
+  for (int instance_index = 1; instance_index < kernel_configs.size(); instance_index++) {
+    CF_EXPECT(kernel_configs[0].target_arch == kernel_configs[instance_index].target_arch,
+              "all instance target_arch should be same");
+    CF_EXPECT(kernel_configs[0].bootconfig_supported ==
+              kernel_configs[instance_index].bootconfig_supported,
+              "all instance bootconfig_supported should be same");
+  }
   if (FLAGS_vm_manager == "") {
-    if (IsHostCompatible(kernel_config.target_arch)) {
+    if (IsHostCompatible(kernel_configs[0].target_arch)) {
       FLAGS_vm_manager = CrosvmManager::name();
     } else {
       FLAGS_vm_manager = QemuManager::name();
     }
   }
+  // TODO(weihsu), b/250988697:
+  // Currently, all instances should use same vmm
+  std::vector<std::string> vm_manager_vec =
+      android::base::Split(FLAGS_vm_manager, ",");
 
-  if (FLAGS_vm_manager == QemuManager::name()) {
-    SetDefaultFlagsForQemu(kernel_config.target_arch);
-  } else if (FLAGS_vm_manager == CrosvmManager::name()) {
-    SetDefaultFlagsForCrosvm();
-  } else if (FLAGS_vm_manager == Gem5Manager::name()) {
+  if (vm_manager_vec[0] == QemuManager::name()) {
+    CF_EXPECT(SetDefaultFlagsForQemu(kernel_configs[0].target_arch));
+  } else if (vm_manager_vec[0] == CrosvmManager::name()) {
+    CF_EXPECT(SetDefaultFlagsForCrosvm());
+  } else if (vm_manager_vec[0] == Gem5Manager::name()) {
     // TODO: Get the other architectures working
-    if (kernel_config.target_arch != Arch::Arm64) {
+    if (kernel_configs[0].target_arch != Arch::Arm64) {
       return CF_ERR("Gem5 only supports ARM64");
     }
     SetDefaultFlagsForGem5();
   } else {
     return CF_ERR("Unknown Virtual Machine Manager: " << FLAGS_vm_manager);
   }
-  if (FLAGS_vm_manager != Gem5Manager::name()) {
+  if (vm_manager_vec[0] != Gem5Manager::name()) {
     auto host_operator_present =
         cuttlefish::FileIsSocket(HOST_OPERATOR_SOCKET_PATH);
     // The default for starting signaling server depends on whether or not webrtc
@@ -1140,10 +1496,13 @@ Result<KernelConfig> GetKernelConfigAndSetDefaults() {
         host_operator_present ? HOST_OPERATOR_SOCKET_PATH : "0.0.0.0",
         SET_FLAGS_DEFAULT);
   }
+
+  SetDefaultFlagsForOpenwrt(kernel_configs[0].target_arch);
+
   // Set the env variable to empty (in case the caller passed a value for it).
   unsetenv(kCuttlefishConfigEnvVarName);
 
-  return kernel_config;
+  return kernel_configs;
 }
 
 std::string GetConfigFilePath(const CuttlefishConfig& config) {
@@ -1152,6 +1511,13 @@ std::string GetConfigFilePath(const CuttlefishConfig& config) {
 
 std::string GetCuttlefishEnvPath() {
   return StringFromEnv("HOME", ".") + "/.cuttlefish.sh";
+}
+
+std::string GetSeccompPolicyDir() {
+  static const std::string kSeccompDir = std::string("usr/share/crosvm/") +
+                                         cuttlefish::HostArchStr() +
+                                         "-linux-gnu/seccomp";
+  return DefaultHostArtifactsPath(kSeccompDir);
 }
 
 } // namespace cuttlefish
