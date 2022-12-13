@@ -116,6 +116,9 @@ static const std::set<std::string> kKnownMissingAidl = {
     "android.frameworks.automotive.telemetry.",
     "android.hardware.automotive.audiocontrol.",
     "android.hardware.automotive.occupant_awareness.",
+
+    // Weaver needs a real implementation (b/262418065)
+    "android.hardware.weaver.",
 };
 
 // AOSP packages which are never considered
