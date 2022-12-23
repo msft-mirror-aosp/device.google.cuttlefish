@@ -55,9 +55,9 @@ PRODUCT_PRODUCT_PROPERTIES += \
     persist.adb.tcp.port=5555 \
     ro.com.google.locationfeatures=1 \
 
-# Storage: for factory reset protection feature
-PRODUCT_PROPERTY_OVERRIDES += \
-    ro.frp.pst=/dev/block/vdc
+# TODO (b/263209317) - re-enable frp for mixed host package launch
+# PRODUCT_PROPERTY_OVERRIDES += \
+#     ro.frp.pst=/dev/block/vdc
 
 # Explanation of specific properties:
 #   debug.hwui.swap_with_damage avoids boot failure on M http://b/25152138
