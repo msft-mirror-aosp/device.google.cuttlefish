@@ -66,9 +66,6 @@ DEFINE_string(vbmeta_image, "",
 DEFINE_string(vbmeta_system_image, "",
               "Location of cuttlefish vbmeta_system image. If empty it is assumed to "
               "be vbmeta_system.img in the directory specified by -system_image_dir.");
-DEFINE_string(vbmeta_vendor_image, "",
-              "Location of cuttlefish vbmeta_vendor image. If empty it is assumed to "
-              "be vbmeta_vendor.img in the directory specified by -system_image_dir.");
 DEFINE_string(esp, "", "Path to ESP partition image (FAT formatted)");
 
 DEFINE_int32(blank_metadata_image_mb, 16,
@@ -125,11 +122,6 @@ bool ResolveInstanceFiles() {
                                           + "/vbmeta_system.img";
   SetCommandLineOptionWithMode("vbmeta_system_image",
                                default_vbmeta_system_image.c_str(),
-                               google::FlagSettingMode::SET_FLAGS_DEFAULT);
-  std::string default_vbmeta_vendor_image = FLAGS_system_image_dir
-										                      + "/vbmeta_vendor.img";
-  SetCommandLineOptionWithMode("vbmeta_vendor_image",
-                               default_vbmeta_vendor_image.c_str(),
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
 
   return true;
@@ -201,14 +193,6 @@ std::vector<ImagePartition> os_composite_disk_config(
   partitions.push_back(ImagePartition {
     .label = "vbmeta_system_b",
     .image_file_path = FLAGS_vbmeta_system_image,
-  });
-  partitions.push_back(ImagePartition {
-    .label = "vbmeta_vendor_a",
-    .image_file_path = FLAGS_vbmeta_vendor_image,
-  });
-  partitions.push_back(ImagePartition {
-    .label = "vbmeta_vendor_b",
-    .image_file_path = FLAGS_vbmeta_vendor_image,
   });
   partitions.push_back(ImagePartition {
     .label = "super",
