@@ -25,7 +25,6 @@
 #include <gflags/gflags.h>
 
 #include "common/libs/fs/shared_buf.h"
-#include "common/libs/utils/environment.h"
 #include "common/libs/utils/files.h"
 #include "common/libs/utils/size_utils.h"
 #include "common/libs/utils/subprocess.h"
@@ -66,6 +65,9 @@ DEFINE_string(vbmeta_image, "",
 DEFINE_string(vbmeta_system_image, "",
               "Location of cuttlefish vbmeta_system image. If empty it is assumed to "
               "be vbmeta_system.img in the directory specified by -system_image_dir.");
+DEFINE_string(vbmeta_vendor_dlkm_image, "",
+              "Location of cuttlefish vbmeta_vendor_dlkm image. If empty it is assumed to "
+              "be vbmeta_vendor_dlkm.img in the directory specified by -system_image_dir.");
 DEFINE_string(esp, "", "Path to ESP partition image (FAT formatted)");
 
 DEFINE_int32(blank_metadata_image_mb, 16,
@@ -122,6 +124,14 @@ bool ResolveInstanceFiles() {
                                           + "/vbmeta_system.img";
   SetCommandLineOptionWithMode("vbmeta_system_image",
                                default_vbmeta_system_image.c_str(),
+                               google::FlagSettingMode::SET_FLAGS_DEFAULT);
+  std::string default_vbmeta_vendor_dlkm_image = FLAGS_system_image_dir
+                                          + "/vbmeta_vendor_dlkm.img";
+  SetCommandLineOptionWithMode("vbmeta_vendor_dlkm_image",
+                               default_vbmeta_vendor_dlkm_image.c_str(),
+                               google::FlagSettingMode::SET_FLAGS_DEFAULT);
+  SetCommandLineOptionWithMode("vbmeta_vendor_dlkm_image",
+                               default_vbmeta_vendor_dlkm_image.c_str(),
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
 
   return true;
@@ -193,6 +203,14 @@ std::vector<ImagePartition> os_composite_disk_config(
   partitions.push_back(ImagePartition {
     .label = "vbmeta_system_b",
     .image_file_path = FLAGS_vbmeta_system_image,
+  });
+  partitions.push_back(ImagePartition {
+    .label = "vbmeta_vendor_dlkm_a",
+    .image_file_path = FLAGS_vbmeta_vendor_dlkm_image,
+  });
+  partitions.push_back(ImagePartition {
+    .label = "vbmeta_vendor_dlkm_b",
+    .image_file_path = FLAGS_vbmeta_vendor_dlkm_image,
   });
   partitions.push_back(ImagePartition {
     .label = "super",
@@ -315,7 +333,7 @@ bool ShouldCreateCompositeDisk(const std::string& composite_disk_path,
 }
 
 static uint64_t AvailableSpaceAtPath(const std::string& path) {
-  struct statvfs vfs;
+  struct statvfs vfs {};
   if (statvfs(path.c_str(), &vfs) != 0) {
     int error_num = errno;
     LOG(ERROR) << "Could not find space available at " << path << ", error was "
@@ -545,7 +563,9 @@ void CreateDynamicDiskFiles(const FetcherConfig& fetcher_config,
 
   // libavb expects to be able to read the maximum vbmeta size, so we must
   // provide a partition which matches this or the read will fail
-  for (const auto& vbmeta_image : { FLAGS_vbmeta_image, FLAGS_vbmeta_system_image }) {
+  for (const auto& vbmeta_image :
+       {FLAGS_vbmeta_image, FLAGS_vbmeta_system_image,
+        FLAGS_vbmeta_vendor_dlkm_image}) {
     if (FileSize(vbmeta_image) != VBMETA_MAX_SIZE) {
       auto fd = SharedFD::Open(vbmeta_image, O_RDWR);
       CHECK(fd->Truncate(VBMETA_MAX_SIZE) == 0)

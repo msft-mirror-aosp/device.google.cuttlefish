@@ -410,6 +410,22 @@ int FetchCvdMain(int argc, char** argv) {
             return -1;
           }
         }
+        if (ExtractImages(target_files[0], target_dir,
+                          {"IMAGES/vbmeta_vendor_dlkm.img"}) !=
+            std::vector<std::string>{}) {
+          std::string extracted_vbmeta_vendor_dlkm =
+              target_dir + "/IMAGES/vbmeta_vendor_dlkm.img";
+          std::string target_vbmeta_vendor_dlkm =
+              target_dir + "/vbmeta_vendor_dlkm.img";
+          if (rename(extracted_vbmeta_vendor_dlkm.c_str(),
+                     target_vbmeta_vendor_dlkm.c_str())) {
+            int error_num = errno;
+            LOG(FATAL)
+                << "Could not move vbmeta_vendor_dlkm.img in target directory: "
+                << strerror(error_num);
+            return -1;
+          }
+        }
         // This should technically call AddFilesToConfig with the produced files,
         // but it will conflict with the ones produced from the default system image
         // and pie doesn't care about the produced file list anyway.
