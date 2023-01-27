@@ -14,12 +14,11 @@
  * limitations under the License.
  */
 
-#include "host/libs/config/cuttlefish_config.h"
-
 #include <android-base/logging.h>
 #include <json/json.h>
 
 #include "common/libs/utils/files.h"
+#include "host/libs/config/cuttlefish_config.h"
 
 namespace cuttlefish {
 namespace {
@@ -59,7 +58,8 @@ void CuttlefishConfig::MutableInstanceSpecific::set_serial_number(
 }
 
 static constexpr char kVirtualDiskPaths[] = "virtual_disk_paths";
-std::vector<std::string> CuttlefishConfig::InstanceSpecific::virtual_disk_paths() const {
+std::vector<std::string>
+CuttlefishConfig::InstanceSpecific::virtual_disk_paths() const {
   std::vector<std::string> virtual_disks;
   auto virtual_disks_json_obj = (*Dictionary())[kVirtualDiskPaths];
   for (const auto& disk : virtual_disks_json_obj) {
@@ -119,7 +119,7 @@ std::string CuttlefishConfig::InstanceSpecific::gnss_file_path() const {
   return (*Dictionary())[kGnssFilePath].asString();
 }
 void CuttlefishConfig::MutableInstanceSpecific::set_gnss_file_path(
-  const std::string& gnss_file_path) {
+    const std::string& gnss_file_path) {
   (*Dictionary())[kGnssFilePath] = gnss_file_path;
 }
 
@@ -259,7 +259,8 @@ static constexpr char kUuid[] = "uuid";
 std::string CuttlefishConfig::InstanceSpecific::uuid() const {
   return (*Dictionary())[kUuid].asString();
 }
-void CuttlefishConfig::MutableInstanceSpecific::set_uuid(const std::string& uuid) {
+void CuttlefishConfig::MutableInstanceSpecific::set_uuid(
+    const std::string& uuid) {
   (*Dictionary())[kUuid] = uuid;
 }
 
@@ -301,7 +302,8 @@ static constexpr char kVncServerPort[] = "vnc_server_port";
 int CuttlefishConfig::InstanceSpecific::vnc_server_port() const {
   return (*Dictionary())[kVncServerPort].asInt();
 }
-void CuttlefishConfig::MutableInstanceSpecific::set_vnc_server_port(int vnc_server_port) {
+void CuttlefishConfig::MutableInstanceSpecific::set_vnc_server_port(
+    int vnc_server_port) {
   (*Dictionary())[kVncServerPort] = vnc_server_port;
 }
 
@@ -309,7 +311,8 @@ static constexpr char kFramesServerPort[] = "frames_server_port";
 int CuttlefishConfig::InstanceSpecific::frames_server_port() const {
   return (*Dictionary())[kFramesServerPort].asInt();
 }
-void CuttlefishConfig::MutableInstanceSpecific::set_frames_server_port(int frames_server_port) {
+void CuttlefishConfig::MutableInstanceSpecific::set_frames_server_port(
+    int frames_server_port) {
   (*Dictionary())[kFramesServerPort] = frames_server_port;
 }
 
@@ -318,7 +321,8 @@ int CuttlefishConfig::InstanceSpecific::touch_server_port() const {
   return (*Dictionary())[kTouchServerPort].asInt();
 }
 
-void CuttlefishConfig::MutableInstanceSpecific::set_touch_server_port(int touch_server_port) {
+void CuttlefishConfig::MutableInstanceSpecific::set_touch_server_port(
+    int touch_server_port) {
   (*Dictionary())[kTouchServerPort] = touch_server_port;
 }
 
@@ -326,7 +330,8 @@ static constexpr char kKeyboardServerPort[] = "keyboard_server_port";
 int CuttlefishConfig::InstanceSpecific::keyboard_server_port() const {
   return (*Dictionary())[kKeyboardServerPort].asInt();
 }
-void CuttlefishConfig::MutableInstanceSpecific::set_keyboard_server_port(int keyboard_server_port) {
+void CuttlefishConfig::MutableInstanceSpecific::set_keyboard_server_port(
+    int keyboard_server_port) {
   (*Dictionary())[kKeyboardServerPort] = keyboard_server_port;
 }
 
@@ -334,7 +339,8 @@ static constexpr char kTombstoneReceiverPort[] = "tombstone_receiver_port";
 int CuttlefishConfig::InstanceSpecific::tombstone_receiver_port() const {
   return (*Dictionary())[kTombstoneReceiverPort].asInt();
 }
-void CuttlefishConfig::MutableInstanceSpecific::set_tombstone_receiver_port(int tombstone_receiver_port) {
+void CuttlefishConfig::MutableInstanceSpecific::set_tombstone_receiver_port(
+    int tombstone_receiver_port) {
   (*Dictionary())[kTombstoneReceiverPort] = tombstone_receiver_port;
 }
 
@@ -342,7 +348,8 @@ static constexpr char kVehicleHalServerPort[] = "vehicle_hal_server_port";
 int CuttlefishConfig::InstanceSpecific::vehicle_hal_server_port() const {
   return (*Dictionary())[kVehicleHalServerPort].asInt();
 }
-void CuttlefishConfig::MutableInstanceSpecific::set_vehicle_hal_server_port(int vehicle_hal_server_port) {
+void CuttlefishConfig::MutableInstanceSpecific::set_vehicle_hal_server_port(
+    int vehicle_hal_server_port) {
   (*Dictionary())[kVehicleHalServerPort] = vehicle_hal_server_port;
 }
 
@@ -350,7 +357,8 @@ static constexpr char kAudioControlServerPort[] = "audiocontrol_server_port";
 int CuttlefishConfig::InstanceSpecific::audiocontrol_server_port() const {
   return (*Dictionary())[kAudioControlServerPort].asInt();
 }
-void CuttlefishConfig::MutableInstanceSpecific::set_audiocontrol_server_port(int audiocontrol_server_port) {
+void CuttlefishConfig::MutableInstanceSpecific::set_audiocontrol_server_port(
+    int audiocontrol_server_port) {
   (*Dictionary())[kAudioControlServerPort] = audiocontrol_server_port;
 }
 
@@ -358,7 +366,8 @@ static constexpr char kConfigServerPort[] = "config_server_port";
 int CuttlefishConfig::InstanceSpecific::config_server_port() const {
   return (*Dictionary())[kConfigServerPort].asInt();
 }
-void CuttlefishConfig::MutableInstanceSpecific::set_config_server_port(int config_server_port) {
+void CuttlefishConfig::MutableInstanceSpecific::set_config_server_port(
+    int config_server_port) {
   (*Dictionary())[kConfigServerPort] = config_server_port;
 }
 
@@ -422,7 +431,8 @@ std::string CuttlefishConfig::InstanceSpecific::webrtc_device_id() const {
 }
 
 static constexpr char kStartSigServer[] = "webrtc_start_sig_server";
-void CuttlefishConfig::MutableInstanceSpecific::set_start_webrtc_signaling_server(bool start) {
+void CuttlefishConfig::MutableInstanceSpecific::
+    set_start_webrtc_signaling_server(bool start) {
   (*Dictionary())[kStartSigServer] = start;
 }
 bool CuttlefishConfig::InstanceSpecific::start_webrtc_sig_server() const {
@@ -454,7 +464,8 @@ void CuttlefishConfig::MutableInstanceSpecific::set_wifi_mac_address(
   }
   (*Dictionary())[kWifiMacAddress] = mac_address_obj;
 }
-std::array<unsigned char, 6> CuttlefishConfig::InstanceSpecific::wifi_mac_address() const {
+std::array<unsigned char, 6>
+CuttlefishConfig::InstanceSpecific::wifi_mac_address() const {
   std::array<unsigned char, 6> mac_address{0, 0, 0, 0, 0, 0};
   auto mac_address_obj = (*Dictionary())[kWifiMacAddress];
   if (mac_address_obj.size() != 6) {
@@ -467,7 +478,8 @@ std::array<unsigned char, 6> CuttlefishConfig::InstanceSpecific::wifi_mac_addres
   return mac_address;
 }
 
-std::string CuttlefishConfig::InstanceSpecific::factory_reset_protected_path() const {
+std::string CuttlefishConfig::InstanceSpecific::factory_reset_protected_path()
+    const {
   return PerInstanceInternalPath("factory_reset_protected.img");
 }
 

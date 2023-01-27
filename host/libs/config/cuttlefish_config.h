@@ -16,13 +16,14 @@
 #pragma once
 
 #include <sys/types.h>
+
 #include <array>
 #include <cstdint>
 #include <map>
 #include <memory>
 #include <optional>
-#include <string>
 #include <set>
+#include <string>
 #include <vector>
 
 #include "common/libs/utils/environment.h"
@@ -35,14 +36,14 @@ class Value;
 namespace cuttlefish {
 constexpr char kLogcatSerialMode[] = "serial";
 constexpr char kLogcatVsockMode[] = "vsock";
-}
+}  // namespace cuttlefish
 
 namespace cuttlefish {
 
 constexpr char kDefaultUuidPrefix[] = "699acfc4-c8c4-11e7-882b-5065f31dc1";
 constexpr char kCuttlefishConfigEnvVarName[] = "CUTTLEFISH_CONFIG_FILE";
 constexpr char kVsocUserPrefix[] = "vsoc-";
-constexpr char kBootStartedMessage[] ="VIRTUAL_DEVICE_BOOT_STARTED";
+constexpr char kBootStartedMessage[] = "VIRTUAL_DEVICE_BOOT_STARTED";
 constexpr char kBootCompletedMessage[] = "VIRTUAL_DEVICE_BOOT_COMPLETED";
 constexpr char kBootFailedMessage[] = "VIRTUAL_DEVICE_BOOT_FAILED";
 constexpr char kMobileNetworkConnectedMessage[] =
@@ -166,7 +167,8 @@ class CuttlefishConfig {
   void set_enable_vehicle_hal_grpc_server(bool enable_vhal_server);
   bool enable_vehicle_hal_grpc_server() const;
 
-  void set_vehicle_hal_grpc_server_binary(const std::string& vhal_server_binary);
+  void set_vehicle_hal_grpc_server_binary(
+      const std::string& vhal_server_binary);
   std::string vehicle_hal_grpc_server_binary() const;
 
   void set_custom_actions(const std::vector<CustomActionConfig>& actions);
@@ -340,7 +342,8 @@ class CuttlefishConfig {
 
     Json::Value* Dictionary();
     const Json::Value* Dictionary() const;
-  public:
+
+   public:
     std::string serial_number() const;
     // If any of the following port numbers is 0, the relevant service is not
     // running on the guest.
@@ -471,7 +474,8 @@ class CuttlefishConfig {
         : config_(config), id_(id) {}
 
     Json::Value* Dictionary();
-  public:
+
+   public:
     void set_serial_number(const std::string& serial_number);
     void set_vnc_server_port(int vnc_server_port);
     void set_tombstone_receiver_port(int tombstone_receiver_port);
@@ -511,7 +515,7 @@ class CuttlefishConfig {
     // Gnss grpc proxy server port inside the host
     void set_gnss_grpc_proxy_server_port(int gnss_grpc_proxy_server_port);
     // Gnss grpc proxy local file path
-    void set_gnss_file_path(const std::string &gnss_file_path);
+    void set_gnss_file_path(const std::string& gnss_file_path);
   };
 
  private:
@@ -535,8 +539,7 @@ int GetDefaultVsockCid();
 
 // Calculates vsock server port number
 // return base + (vsock_guest_cid - 3)
-int GetVsockServerPort(const int base,
-                       const int vsock_guest_cid);
+int GetVsockServerPort(const int base, const int vsock_guest_cid);
 
 // Returns a path where the launhcer puts a link to the config file which makes
 // it easily discoverable regardless of what vm manager is in use
@@ -555,8 +558,7 @@ std::string DefaultHostArtifactsPath(const std::string& file);
 std::string HostBinaryPath(const std::string& file);
 std::string DefaultGuestImagePath(const std::string& file);
 std::string DefaultEnvironmentPath(const char* environment_key,
-                                   const char* default_value,
-                                   const char* path);
+                                   const char* default_value, const char* path);
 
 // Whether the host supports qemu
 bool HostSupportsQemuCli();
