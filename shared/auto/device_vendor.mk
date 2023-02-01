@@ -19,27 +19,14 @@ PRODUCT_MANIFEST_FILES += device/google/cuttlefish/shared/config/product_manifes
 SYSTEM_EXT_MANIFEST_FILES += device/google/cuttlefish/shared/config/system_ext_manifest.xml
 
 $(call inherit-product, $(SRC_TARGET_DIR)/product/handheld_vendor.mk)
-$(call inherit-product, frameworks/native/build/phone-xhdpi-2048-dalvik-heap.mk)
 $(call inherit-product, packages/services/Car/car_product/build/car.mk)
+
+$(call inherit-product, frameworks/native/build/phone-xhdpi-2048-dalvik-heap.mk)
+$(call inherit-product, device/google/cuttlefish/shared/graphics/device_vendor.mk)
+$(call inherit-product, device/google/cuttlefish/shared/swiftshader/device_vendor.mk)
+$(call inherit-product, device/google/cuttlefish/shared/telephony/device_vendor.mk)
+$(call inherit-product, device/google/cuttlefish/shared/virgl/device_vendor.mk)
 $(call inherit-product, device/google/cuttlefish/shared/device.mk)
-
-PRODUCT_VENDOR_PROPERTIES += \
-    keyguard.no_require_sim=true \
-    ro.cdma.home.operator.alpha=Android \
-    ro.cdma.home.operator.numeric=302780 \
-    ro.com.android.dataroaming=true \
-    ro.telephony.default_network=9 \
-
-# Cuttlefish RIL support
-TARGET_USES_CF_RILD ?= true
-ifeq ($(TARGET_USES_CF_RILD),true)
-$(call inherit-product, $(SRC_TARGET_DIR)/product/telephony_system_ext.mk)
-PRODUCT_PACKAGES += \
-    libcuttlefish-ril-2 \
-    libcuttlefish-rild
-else
-TARGET_NO_TELEPHONY := true
-endif
 
 # Extend cuttlefish common sepolicy with auto-specific functionality
 BOARD_SEPOLICY_DIRS += device/google/cuttlefish/shared/auto/sepolicy/vendor
@@ -88,8 +75,11 @@ ifeq ($(LOCAL_VHAL_PRODUCT_PACKAGE),)
 endif
 PRODUCT_PACKAGES += $(LOCAL_VHAL_PRODUCT_PACKAGE)
 
+# Remote access HAL
+PRODUCT_PACKAGES += android.hardware.automotive.remoteaccess@V1-default-service
+
 # Broadcast Radio
-PRODUCT_PACKAGES += android.hardware.broadcastradio@2.0-service
+PRODUCT_PACKAGES += android.hardware.broadcastradio-service.default
 
 # AudioControl HAL
 ifeq ($(LOCAL_AUDIOCONTROL_HAL_PRODUCT_PACKAGE),)
@@ -98,6 +88,7 @@ ifeq ($(LOCAL_AUDIOCONTROL_HAL_PRODUCT_PACKAGE),)
 endif
 PRODUCT_PACKAGES += $(LOCAL_AUDIOCONTROL_HAL_PRODUCT_PACKAGE)
 
+# TODO(b/261041693): Update this to use AIDL instead after protocan is updated.
 # CAN bus HAL
 PRODUCT_PACKAGES += android.hardware.automotive.can@1.0-service
 PRODUCT_PACKAGES_DEBUG += canhalctrl \
@@ -115,6 +106,7 @@ ENABLE_EVS_SERVICE ?= true
 ENABLE_MOCK_EVSHAL ?= true
 ENABLE_CAREVSSERVICE_SAMPLE ?= true
 ENABLE_SAMPLE_EVS_APP ?= true
+ENABLE_CARTELEMETRY_SERVICE ?= true
 
 ifeq ($(ENABLE_MOCK_EVSHAL), true)
 CUSTOMIZE_EVS_SERVICE_PARAMETER := true
@@ -128,8 +120,8 @@ endif
 ifeq ($(ENABLE_SAMPLE_EVS_APP), true)
 PRODUCT_PACKAGES += evs_app
 PRODUCT_COPY_FILES += \
-    device/google/cuttlefish/shared/auto/evs/evs_app_config.json:$(TARGET_COPY_OUT_SYSTEM)/etc/automotive/evs/config_override.json
-BOARD_SEPOLICY_DIRS += packages/services/Car/cpp/evs/apps/sepolicy/private
+    device/google/cuttlefish/shared/auto/evs/evs_app_config.json:$(TARGET_COPY_OUT_VENDOR)/etc/automotive/evs/config_override.json
+include packages/services/Car/cpp/evs/apps/sepolicy/evsapp.mk
 endif
 
 BOARD_IS_AUTOMOTIVE := true

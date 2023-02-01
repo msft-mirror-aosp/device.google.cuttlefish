@@ -31,6 +31,7 @@ PRODUCT_ENFORCE_ARTIFACT_PATH_REQUIREMENTS := false
 # All components inherited here go to system_ext image
 #
 $(call inherit-product, $(SRC_TARGET_DIR)/product/base_system_ext.mk)
+$(call inherit-product, $(SRC_TARGET_DIR)/product/telephony_system_ext.mk)
 
 #
 # All components inherited here go to product image
@@ -45,7 +46,6 @@ $(call inherit-product, device/google/cuttlefish/shared/auto/device_vendor.mk)
 #
 # Special settings for the target
 #
-$(call inherit-product, device/google/cuttlefish/vsoc_x86_64/kernel.mk)
 $(call inherit-product, device/google/cuttlefish/vsoc_x86_64/bootloader.mk)
 
 # Exclude features that are not available on AOSP devices.

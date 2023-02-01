@@ -36,7 +36,7 @@ int main(int argc, char** argv) {
 
   auto instance = config->ForDefaultInstance();
 
-  if (config->run_as_daemon()) {
+  if (instance.run_as_daemon()) {
     android::base::SetLogger(
         cuttlefish::LogToFiles({instance.launcher_log_path()}));
   } else {
@@ -58,7 +58,7 @@ int main(int argc, char** argv) {
   LOG(DEBUG) << "Starting to read from process " << FLAGS_process_name;
 
   while ((chars_read = log_fd->Read(buf, sizeof(buf))) > 0) {
-    auto trimmed = android::base::Trim(std::string(buf, chars_read));
+    auto trimmed = android::base::Trim(std::string_view(buf, chars_read));
     // Newlines inside `trimmed` are handled by the android logging code.
     // These checks attempt to determine the log severity coming from crosvm.
     // There is no guarantee of success all the time since log line boundaries

@@ -58,48 +58,67 @@ bool CrosvmManager::IsSupported() {
 }
 
 std::vector<std::string> CrosvmManager::ConfigureGraphics(
-    const CuttlefishConfig& config) {
+    const CuttlefishConfig::InstanceSpecific& instance) {
   // Override the default HAL search paths in all cases. We do this because
   // the HAL search path allows for fallbacks, and fallbacks in conjunction
   // with properities lead to non-deterministic behavior while loading the
   // HALs.
-  if (config.gpu_mode() == kGpuModeGuestSwiftshader) {
+  if (instance.gpu_mode() == kGpuModeGuestSwiftshader) {
     return {
         "androidboot.cpuvulkan.version=" + std::to_string(VK_API_VERSION_1_2),
         "androidboot.hardware.gralloc=minigbm",
-        "androidboot.hardware.hwcomposer="+ config.hwcomposer(),
+        "androidboot.hardware.hwcomposer=" + instance.hwcomposer(),
+        "androidboot.hardware.hwcomposer.display_finder_mode=drm",
         "androidboot.hardware.egl=angle",
         "androidboot.hardware.vulkan=pastel",
-        "androidboot.opengles.version=196609"};  // OpenGL ES 3.1
-  }
-
-  if (config.gpu_mode() == kGpuModeDrmVirgl) {
-    return {
-      "androidboot.cpuvulkan.version=0",
-      "androidboot.hardware.gralloc=minigbm",
-      "androidboot.hardware.hwcomposer=drm",
-      "androidboot.hardware.egl=mesa",
+        "androidboot.opengles.version=196609",  // OpenGL ES 3.1
     };
   }
-  if (config.gpu_mode() == kGpuModeGfxStream) {
-    std::string gles_impl = config.enable_gpu_angle() ? "angle" : "emulation";
-    return {"androidboot.cpuvulkan.version=0",
-            "androidboot.hardware.gralloc=minigbm",
-            "androidboot.hardware.hwcomposer=" + config.hwcomposer(),
-            "androidboot.hardware.egl=" + gles_impl,
-            "androidboot.hardware.vulkan=ranchu",
-            "androidboot.hardware.gltransport=virtio-gpu-asg",
-            "androidboot.opengles.version=196608"};  // OpenGL ES 3.0
+
+  if (instance.gpu_mode() == kGpuModeDrmVirgl) {
+    return {
+        "androidboot.cpuvulkan.version=0",
+        "androidboot.hardware.gralloc=minigbm",
+        "androidboot.hardware.hwcomposer=ranchu",
+        "androidboot.hardware.hwcomposer.mode=client",
+        "androidboot.hardware.hwcomposer.display_finder_mode=drm",
+        "androidboot.hardware.egl=mesa",
+        // No "hardware" Vulkan support, yet
+        "androidboot.opengles.version=196608",  // OpenGL ES 3.0
+    };
   }
+  if (instance.gpu_mode() == kGpuModeGfxStream) {
+    std::string gles_impl = instance.enable_gpu_angle() ? "angle" : "emulation";
+    return {
+        "androidboot.cpuvulkan.version=0",
+        "androidboot.hardware.gralloc=minigbm",
+        "androidboot.hardware.hwcomposer=" + instance.hwcomposer(),
+        "androidboot.hardware.hwcomposer.display_finder_mode=drm",
+        "androidboot.hardware.egl=" + gles_impl,
+        "androidboot.hardware.vulkan=ranchu",
+        "androidboot.hardware.gltransport=virtio-gpu-asg",
+        "androidboot.opengles.version=196608",  // OpenGL ES 3.0
+    };
+  }
+
+  if (instance.gpu_mode() == kGpuModeNone) {
+    // This function should probably return a result so that empty vec
+    // isn't treated as an error.
+    return {
+      "androidboot.dummy=0",
+    };
+  }
+
   return {};
 }
 
-std::string CrosvmManager::ConfigureBootDevices(int num_disks) {
+std::string CrosvmManager::ConfigureBootDevices(int num_disks, bool have_gpu) {
   // TODO There is no way to control this assignment with crosvm (yet)
   if (HostArch() == Arch::X86_64) {
     // crosvm has an additional PCI device for an ISA bridge
     // virtio_gpu and virtio_wl precedes the first console or disk
-    return ConfigureMultipleBootDevices("pci0000:00/0000:00:", 3, num_disks);
+    return ConfigureMultipleBootDevices("pci0000:00/0000:00:",
+                                        1 + (have_gpu ? 2 : 0), num_disks);
   } else {
     // On ARM64 crosvm, block devices are on their own bridge, so we don't
     // need to calculate it, and the path is always the same
@@ -109,18 +128,23 @@ std::string CrosvmManager::ConfigureBootDevices(int num_disks) {
 
 constexpr auto crosvm_socket = "crosvm_control.sock";
 
-std::vector<Command> CrosvmManager::StartCommands(
+Result<std::vector<Command>> CrosvmManager::StartCommands(
     const CuttlefishConfig& config) {
   auto instance = config.ForDefaultInstance();
-  CrosvmBuilder crosvm_cmd;
-  crosvm_cmd.SetBinary(config.crosvm_binary());
-  crosvm_cmd.AddControlSocket(GetControlSocketPath(instance, crosvm_socket));
 
-  if (!config.smt()) {
+  CrosvmBuilder crosvm_cmd;
+
+  crosvm_cmd.ApplyProcessRestarter(instance.crosvm_binary(),
+                                   kCrosvmVmResetExitCode);
+  crosvm_cmd.Cmd().AddParameter("run");
+  crosvm_cmd.AddControlSocket(GetControlSocketPath(instance, crosvm_socket),
+                              instance.crosvm_binary());
+
+  if (!instance.smt()) {
     crosvm_cmd.Cmd().AddParameter("--no-smt");
   }
 
-  if (config.vhost_net()) {
+  if (instance.vhost_net()) {
     crosvm_cmd.Cmd().AddParameter("--vhost-net");
   }
 
@@ -131,56 +155,86 @@ std::vector<Command> CrosvmManager::StartCommands(
   }
 #endif
 
-  if (config.protected_vm()) {
+  if (instance.protected_vm()) {
     crosvm_cmd.Cmd().AddParameter("--protected-vm");
   }
 
-  if (config.gdb_port() > 0) {
-    CHECK(config.cpus() == 1) << "CPUs must be 1 for crosvm gdb mode";
-    crosvm_cmd.Cmd().AddParameter("--gdb=", config.gdb_port());
+  if (instance.gdb_port() > 0) {
+    CF_EXPECT(instance.cpus() == 1, "CPUs must be 1 for crosvm gdb mode");
+    crosvm_cmd.Cmd().AddParameter("--gdb=", instance.gdb_port());
   }
 
-  auto gpu_capture_enabled = !config.gpu_capture_binary().empty();
-  auto gpu_mode = config.gpu_mode();
-  auto udmabuf_string = config.enable_gpu_udmabuf() ? "true" : "false";
-  auto angle_string = config.enable_gpu_angle() ? ",angle=true" : "";
+  const auto gpu_capture_enabled = !instance.gpu_capture_binary().empty();
+  const auto gpu_mode = instance.gpu_mode();
+
+  const std::string gpu_angle_string =
+      instance.enable_gpu_angle() ? ",angle=true" : "";
+  // 256MB so it is small enough for a 32-bit kernel.
+  const std::string gpu_pci_bar_size = ",pci-bar-size=268435456";
+  const std::string gpu_udmabuf_string =
+      instance.enable_gpu_udmabuf() ? ",udmabuf=true" : "";
+
+  const std::string gpu_common_string = gpu_udmabuf_string + gpu_pci_bar_size;
+  const std::string gpu_common_3d_string =
+      gpu_common_string + ",egl=true,surfaceless=true,glx=false,gles=true";
+
   if (gpu_mode == kGpuModeGuestSwiftshader) {
-    crosvm_cmd.Cmd().AddParameter("--gpu=2D,udmabuf=", udmabuf_string);
-  } else if (gpu_mode == kGpuModeDrmVirgl || gpu_mode == kGpuModeGfxStream) {
-    crosvm_cmd.Cmd().AddParameter(
-        gpu_mode == kGpuModeGfxStream ? "--gpu=gfxstream," : "--gpu=",
-        "egl=true,surfaceless=true,glx=false,gles=true,udmabuf=", udmabuf_string,
-        angle_string);
+    crosvm_cmd.Cmd().AddParameter("--gpu=backend=2D", gpu_common_string);
+  } else if (gpu_mode == kGpuModeDrmVirgl) {
+    crosvm_cmd.Cmd().AddParameter("--gpu=backend=virglrenderer",
+                                  gpu_common_3d_string);
+  } else if (gpu_mode == kGpuModeGfxStream) {
+    crosvm_cmd.Cmd().AddParameter("--gpu=backend=gfxstream",
+                                  gpu_common_3d_string, gpu_angle_string);
   }
 
-  for (const auto& display_config : config.display_configs()) {
-    crosvm_cmd.Cmd().AddParameter(
-        "--gpu-display=", "width=", display_config.width, ",",
-        "height=", display_config.height);
-  }
+  if (instance.hwcomposer() != kHwComposerNone) {
+    if (FileExists(instance.hwcomposer_pmem_path())) {
+      crosvm_cmd.Cmd().AddParameter("--rw-pmem-device=",
+                                    instance.hwcomposer_pmem_path());
+    }
 
-  crosvm_cmd.Cmd().AddParameter("--wayland-sock=",
-                                instance.frames_socket_path());
+    for (const auto& display_config : instance.display_configs()) {
+      const auto display_w = std::to_string(display_config.width);
+      const auto display_h = std::to_string(display_config.height);
+      const auto display_dpi = std::to_string(display_config.dpi);
+      const auto display_rr = std::to_string(display_config.refresh_rate_hz);
+      const auto display_params = android::base::Join(
+          std::vector<std::string>{
+              "mode=windowed[" + display_w + "," + display_h + "]",
+              "dpi=[" + display_dpi + "," + display_dpi + "]",
+              "refresh-rate=" + display_rr,
+          },
+          ",");
+      crosvm_cmd.Cmd().AddParameter("--gpu-display=", display_params);
+    }
+
+    crosvm_cmd.Cmd().AddParameter("--wayland-sock=",
+                                  instance.frames_socket_path());
+  }
 
   // crosvm_cmd.Cmd().AddParameter("--null-audio");
-  crosvm_cmd.Cmd().AddParameter("--mem=", config.memory_mb());
-  crosvm_cmd.Cmd().AddParameter("--cpus=", config.cpus());
+  crosvm_cmd.Cmd().AddParameter("--mem=", instance.memory_mb());
+  crosvm_cmd.Cmd().AddParameter("--cpus=", instance.cpus());
 
   auto disk_num = instance.virtual_disk_paths().size();
-  CHECK_GE(VmManager::kMaxDisks, disk_num)
-      << "Provided too many disks (" << disk_num << "), maximum "
-      << VmManager::kMaxDisks << "supported";
+  CF_EXPECT(VmManager::kMaxDisks >= disk_num,
+            "Provided too many disks (" << disk_num << "), maximum "
+                                        << VmManager::kMaxDisks << "supported");
   for (const auto& disk : instance.virtual_disk_paths()) {
-    crosvm_cmd.Cmd().AddParameter(
-        config.protected_vm() ? "--disk=" : "--rwdisk=", disk);
+    if (instance.protected_vm()) {
+      crosvm_cmd.AddReadOnlyDisk(disk);
+    } else {
+      crosvm_cmd.AddReadWriteDisk(disk);
+    }
   }
 
-  if (config.enable_webrtc()) {
+  if (instance.enable_webrtc()) {
     auto touch_type_parameter =
-        config.enable_webrtc() ? "--multi-touch=" : "--single-touch=";
+        instance.enable_webrtc() ? "--multi-touch=" : "--single-touch=";
 
-    auto display_configs = config.display_configs();
-    CHECK_GE(display_configs.size(), 1);
+    auto display_configs = instance.display_configs();
+    CF_EXPECT(display_configs.size() >= 1);
 
     for (int i = 0; i < display_configs.size(); ++i) {
       auto display_config = display_configs[i];
@@ -192,7 +246,7 @@ std::vector<Command> CrosvmManager::StartCommands(
     crosvm_cmd.Cmd().AddParameter("--keyboard=",
                                   instance.keyboard_socket_path());
   }
-  if (config.enable_webrtc()) {
+  if (instance.enable_webrtc()) {
     crosvm_cmd.Cmd().AddParameter("--switches=",
                                   instance.switches_socket_path());
   }
@@ -202,7 +256,7 @@ std::vector<Command> CrosvmManager::StartCommands(
   // having to pass arguments to crosvm via a wrapper script.
   if (!gpu_capture_enabled) {
     crosvm_cmd.AddTap(instance.mobile_tap_name());
-    crosvm_cmd.AddTap(instance.ethernet_tap_name());
+    crosvm_cmd.AddTap(instance.ethernet_tap_name(), instance.ethernet_mac());
 
     // TODO(b/199103204): remove this as well when
     // PRODUCT_ENFORCE_MAC80211_HWSIM is removed
@@ -216,28 +270,22 @@ std::vector<Command> CrosvmManager::StartCommands(
                                   instance.access_kregistry_path());
   }
 
-  if (FileExists(instance.hwcomposer_pmem_path())) {
-    crosvm_cmd.Cmd().AddParameter("--rw-pmem-device=",
-                                  instance.hwcomposer_pmem_path());
-  }
-
   if (FileExists(instance.pstore_path())) {
     crosvm_cmd.Cmd().AddParameter("--pstore=path=", instance.pstore_path(),
                                   ",size=", FileSize(instance.pstore_path()));
   }
 
-  if (config.enable_sandbox()) {
-    const bool seccomp_exists = DirectoryExists(config.seccomp_policy_dir());
+  if (instance.enable_sandbox()) {
+    const bool seccomp_exists = DirectoryExists(instance.seccomp_policy_dir());
     const std::string& var_empty_dir = kCrosvmVarEmptyDir;
     const bool var_empty_available = DirectoryExists(var_empty_dir);
-    if (!var_empty_available || !seccomp_exists) {
-      LOG(FATAL) << var_empty_dir << " is not an existing, empty directory."
-                 << "seccomp-policy-dir, " << config.seccomp_policy_dir()
-                 << " does not exist " << std::endl;
-      return {};
-    }
+    CF_EXPECT(var_empty_available && seccomp_exists,
+              var_empty_dir << " is not an existing, empty directory."
+                            << "seccomp-policy-dir, "
+                            << instance.seccomp_policy_dir()
+                            << " does not exist");
     crosvm_cmd.Cmd().AddParameter("--seccomp-policy-dir=",
-                                  config.seccomp_policy_dir());
+                                  instance.seccomp_policy_dir());
   } else {
     crosvm_cmd.Cmd().AddParameter("--disable-sandbox");
   }
@@ -246,19 +294,25 @@ std::vector<Command> CrosvmManager::StartCommands(
     crosvm_cmd.Cmd().AddParameter("--cid=", instance.vsock_guest_cid());
   }
 
-  // Use a virtio-console instance for the main kernel console. All
-  // messages will switch from earlycon to virtio-console after the driver
-  // is loaded, and crosvm will append to the kernel log automatically
-  crosvm_cmd.AddHvcConsoleReadOnly(instance.kernel_log_pipe_name());
+  // If kernel log is enabled, the virtio-console port will be specified as
+  // a true console for Linux, and kernel messages will be printed there.
+  // Otherwise, the port will still be set up for bootloader and userspace
+  // messages, but the kernel will not print anything here. This keeps our
+  // kernel log event features working. If an alternative "earlycon" boot
+  // console is configured below on a legacy serial port, it will control
+  // the main log until the virtio-console takes over.
+  crosvm_cmd.AddHvcReadOnly(instance.kernel_log_pipe_name(),
+                            instance.enable_kernel_log());
 
-  if (config.console()) {
-    // stdin is the only currently supported way to write data to a serial port in
-    // crosvm. A file (named pipe) is used here instead of stdout to ensure only
-    // the serial port output is received by the console forwarder as crosvm may
-    // print other messages to stdout.
-    if (config.kgdb() || config.use_bootloader()) {
+  if (instance.console()) {
+    // stdin is the only currently supported way to write data to a serial port
+    // in crosvm. A file (named pipe) is used here instead of stdout to ensure
+    // only the serial port output is received by the console forwarder as
+    // crosvm may print other messages to stdout.
+    if (instance.kgdb() || instance.use_bootloader()) {
       crosvm_cmd.AddSerialConsoleReadWrite(instance.console_out_pipe_name(),
-                                           instance.console_in_pipe_name());
+                                           instance.console_in_pipe_name(),
+                                           instance.enable_kernel_log());
       // In kgdb mode, we have the interactive console on ttyS0 (both Android's
       // console and kdb), so we can disable the virtio-console port usually
       // allocated to Android's serial console, and redirect it to a sink. This
@@ -275,7 +329,8 @@ std::vector<Command> CrosvmManager::StartCommands(
     // virtio-console driver may not be available for early messages
     // In kgdb mode, earlycon is an interactive console, and so early
     // dmesg will go there instead of the kernel.log
-    if (config.kgdb() || config.use_bootloader()) {
+    if (instance.enable_kernel_log() &&
+        (instance.kgdb() || instance.use_bootloader())) {
       crosvm_cmd.AddSerialConsoleReadOnly(instance.kernel_log_pipe_name());
     }
 
@@ -287,11 +342,9 @@ std::vector<Command> CrosvmManager::StartCommands(
 
   auto crosvm_logs_path = instance.PerInstanceInternalPath("crosvm.fifo");
   auto crosvm_logs = SharedFD::Fifo(crosvm_logs_path, 0666);
-  if (!crosvm_logs->IsOpen()) {
-    LOG(FATAL) << "Failed to create log fifo for crosvm's stdout/stderr: "
-               << crosvm_logs->StrError();
-    return {};
-  }
+  CF_EXPECT(crosvm_logs->IsOpen(),
+            "Failed to create log fifo for crosvm's stdout/stderr: "
+                << crosvm_logs->StrError());
 
   Command crosvm_log_tee_cmd(HostBinaryPath("log_tee"));
   crosvm_log_tee_cmd.AddParameter("--process_name=crosvm");
@@ -314,7 +367,7 @@ std::vector<Command> CrosvmManager::StartCommands(
   } else {
     crosvm_cmd.AddHvcSink();
   }
-  if (config.enable_gnss_grpc_proxy()) {
+  if (instance.enable_gnss_grpc_proxy()) {
     crosvm_cmd.AddHvcReadWrite(
         instance.PerInstanceInternalPath("gnsshvc_fifo_vm.out"),
         instance.PerInstanceInternalPath("gnsshvc_fifo_vm.in"));
@@ -327,22 +380,27 @@ std::vector<Command> CrosvmManager::StartCommands(
     }
   }
 
+  crosvm_cmd.AddHvcReadWrite(
+      instance.PerInstanceInternalPath("confui_fifo_vm.out"),
+      instance.PerInstanceInternalPath("confui_fifo_vm.in"));
+
   for (auto i = 0; i < VmManager::kMaxDisks - disk_num; i++) {
     crosvm_cmd.AddHvcSink();
   }
-  CHECK(crosvm_cmd.HvcNum() + disk_num ==
-        VmManager::kMaxDisks + VmManager::kDefaultNumHvcs)
-      << "HVC count (" << crosvm_cmd.HvcNum() << ") + disk count (" << disk_num
-      << ") is not the expected total of "
-      << VmManager::kMaxDisks + VmManager::kDefaultNumHvcs << " devices";
+  CF_EXPECT(crosvm_cmd.HvcNum() + disk_num ==
+                VmManager::kMaxDisks + VmManager::kDefaultNumHvcs,
+            "HVC count (" << crosvm_cmd.HvcNum() << ") + disk count ("
+                          << disk_num << ") is not the expected total of "
+                          << VmManager::kMaxDisks + VmManager::kDefaultNumHvcs
+                          << " devices");
 
-  if (config.enable_audio()) {
-    crosvm_cmd.Cmd().AddParameter(
-        "--sound=", config.ForDefaultInstance().audio_server_path());
+  if (instance.enable_audio()) {
+    crosvm_cmd.Cmd().AddParameter("--sound=", instance.audio_server_path());
   }
 
-  // TODO(b/162071003): virtiofs crashes without sandboxing, this should be fixed
-  if (0 && config.enable_sandbox()) {
+  // TODO(b/162071003): virtiofs crashes without sandboxing, this should be
+  // fixed
+  if (instance.enable_sandbox()) {
     // Set up directory shared with virtiofs
     crosvm_cmd.Cmd().AddParameter(
         "--shared-dir=", instance.PerInstancePath(kSharedDirName),
@@ -350,7 +408,7 @@ std::vector<Command> CrosvmManager::StartCommands(
   }
 
   // This needs to be the last parameter
-  crosvm_cmd.Cmd().AddParameter("--bios=", config.bootloader());
+  crosvm_cmd.Cmd().AddParameter("--bios=", instance.bootloader());
 
   // TODO(b/199103204): remove this as well when PRODUCT_ENFORCE_MAC80211_HWSIM
   // is removed
@@ -367,8 +425,9 @@ std::vector<Command> CrosvmManager::StartCommands(
     std::uint8_t dhcp_server_ip[] = {
         192, 168, 96, (std::uint8_t)(ForCurrentInstance(1) * 4 - 3)};
     if (!ReleaseDhcpLeases(lease_file, wifi_tap, dhcp_server_ip)) {
-      LOG(ERROR) << "Failed to release wifi DHCP leases. Connecting to the wifi "
-                 << "network may not work.";
+      LOG(ERROR)
+          << "Failed to release wifi DHCP leases. Connecting to the wifi "
+          << "network may not work.";
     }
   }
 
@@ -376,24 +435,21 @@ std::vector<Command> CrosvmManager::StartCommands(
 
   if (gpu_capture_enabled) {
     const std::string gpu_capture_basename =
-        cpp_basename(config.gpu_capture_binary());
+        cpp_basename(instance.gpu_capture_binary());
 
     auto gpu_capture_logs_path =
         instance.PerInstanceInternalPath("gpu_capture.fifo");
     auto gpu_capture_logs = SharedFD::Fifo(gpu_capture_logs_path, 0666);
-    if (!gpu_capture_logs->IsOpen()) {
-      LOG(FATAL)
-          << "Failed to create log fifo for gpu capture's stdout/stderr: "
-          << gpu_capture_logs->StrError();
-      return {};
-    }
+    CF_EXPECT(gpu_capture_logs->IsOpen(),
+              "Failed to create log fifo for gpu capture's stdout/stderr: "
+                  << gpu_capture_logs->StrError());
 
     Command gpu_capture_log_tee_cmd(HostBinaryPath("log_tee"));
     gpu_capture_log_tee_cmd.AddParameter("--process_name=",
                                          gpu_capture_basename);
     gpu_capture_log_tee_cmd.AddParameter("--log_fd_in=", gpu_capture_logs);
 
-    Command gpu_capture_command(config.gpu_capture_binary());
+    Command gpu_capture_command(instance.gpu_capture_binary());
     if (gpu_capture_basename == "ngfx") {
       // Crosvm depends on command line arguments being passed as multiple
       // arguments but ngfx only allows a single `--args`. To work around this,
@@ -404,9 +460,9 @@ std::vector<Command> CrosvmManager::StartCommands(
       const std::string crosvm_wrapper_content =
           crosvm_cmd.Cmd().AsBashScript(crosvm_logs_path);
 
-      CHECK(android::base::WriteStringToFile(crosvm_wrapper_content,
-                                             crosvm_wrapper_path));
-      CHECK(MakeFileExecutable(crosvm_wrapper_path));
+      CF_EXPECT(android::base::WriteStringToFile(crosvm_wrapper_content,
+                                                 crosvm_wrapper_path));
+      CF_EXPECT(MakeFileExecutable(crosvm_wrapper_path));
 
       gpu_capture_command.AddParameter("--exe=", crosvm_wrapper_path);
       gpu_capture_command.AddParameter("--launch-detached");
@@ -414,8 +470,8 @@ std::vector<Command> CrosvmManager::StartCommands(
       gpu_capture_command.AddParameter("--activity=Frame Debugger");
     } else {
       // TODO(natsu): renderdoc
-      LOG(FATAL) << "Unhandled GPU capture binary: "
-                 << config.gpu_capture_binary();
+      return CF_ERR(
+          "Unhandled GPU capture binary: " << instance.gpu_capture_binary());
     }
 
     gpu_capture_command.RedirectStdIO(Subprocess::StdIOChannel::kStdOut,
@@ -438,6 +494,5 @@ std::vector<Command> CrosvmManager::StartCommands(
   return ret;
 }
 
-} // namespace vm_manager
-} // namespace cuttlefish
-
+}  // namespace vm_manager
+}  // namespace cuttlefish

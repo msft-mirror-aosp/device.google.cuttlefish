@@ -18,9 +18,9 @@
 //! The tool ignores the existing overlay image in src, that is, the overlay image could be replaced with a new overlay image.
 use std::fs::File;
 use std::io::{copy, Error, ErrorKind, Read, Result, Seek, SeekFrom};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-use clap::{App, Arg};
+use clap::{builder::ValueParser, Arg, ArgAction, Command};
 
 // https://dr-emann.github.io/squashfs/squashfs.html
 const BYTES_USED_FIELD_POS: u64 = (32 * 5 + 16 * 6 + 64) / 8;
@@ -71,25 +71,38 @@ fn merge_fs(src: &Path, overlay: &Path, dest: &Path, overwrite: bool) -> Result<
     Ok(())
 }
 
-fn main() -> Result<()> {
-    let matches = App::new("append_squashfs_overlay")
-        .arg(Arg::with_name("src").required(true))
-        .arg(Arg::with_name("overlay").required(true))
-        .arg(Arg::with_name("dest").required(true))
+fn clap_command() -> Command {
+    Command::new("append_squashfs_overlay")
+        .arg(Arg::new("src").value_parser(ValueParser::path_buf()).required(true))
+        .arg(Arg::new("overlay").value_parser(ValueParser::path_buf()).required(true))
+        .arg(Arg::new("dest").value_parser(ValueParser::path_buf()).required(true))
         .arg(
-            Arg::with_name("overwrite")
-                .short("w")
+            Arg::new("overwrite")
+                .short('w')
                 .required(false)
-                .takes_value(false)
+                .action(ArgAction::SetTrue)
                 .help("whether the tool overwrite dest or not"),
         )
-        .get_matches();
+}
 
-    let src = matches.value_of("src").unwrap().as_ref();
-    let overlay = matches.value_of("overlay").unwrap().as_ref();
-    let dest = matches.value_of("dest").unwrap().as_ref();
-    let overwrite = matches.is_present("overwrite");
+fn main() -> Result<()> {
+    let matches = clap_command().get_matches();
+
+    let src = matches.get_one::<PathBuf>("src").unwrap().as_ref();
+    let overlay = matches.get_one::<PathBuf>("overlay").unwrap().as_ref();
+    let dest = matches.get_one::<PathBuf>("dest").unwrap().as_ref();
+    let overwrite = matches.get_flag("overwrite");
 
     merge_fs(src, overlay, dest, overwrite)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn verify_args() {
+        clap_command().debug_assert();
+    }
 }

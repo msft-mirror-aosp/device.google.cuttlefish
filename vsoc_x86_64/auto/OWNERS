@@ -1,5 +1,1 @@
-# Android Auto leads
-ankitarora@google.com
-egranata@google.com
-gurunagarajan@google.com
-keunyoung@google.com
+include device/google/cuttlefish:/shared/auto/OWNERS
