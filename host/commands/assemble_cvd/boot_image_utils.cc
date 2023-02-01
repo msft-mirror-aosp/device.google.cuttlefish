@@ -21,6 +21,7 @@
 #include <unistd.h>
 
 #include <fstream>
+#include <regex>
 #include <sstream>
 
 #include <android-base/logging.h>
@@ -336,7 +337,8 @@ bool RepackVendorBootImageWithEmptyRamdisk(
 
 void RepackGem5BootImage(const std::string& initrd_path,
                          const std::string& bootconfig_path,
-                         const std::string& unpack_dir) {
+                         const std::string& unpack_dir,
+                         const std::string& input_ramdisk_path) {
   // Simulate per-instance what the bootloader would usually do
   // Since on other devices this runs every time, just do it here every time
   std::ofstream final_rd(initrd_path,
@@ -344,7 +346,14 @@ void RepackGem5BootImage(const std::string& initrd_path,
 
   std::ifstream boot_ramdisk(unpack_dir + "/ramdisk",
                              std::ios_base::binary);
-  std::ifstream vendor_boot_ramdisk(unpack_dir +
+  std::string new_ramdisk_path = unpack_dir + "/vendor_ramdisk_repacked";
+  // Test to make sure new ramdisk hasn't already been repacked if input ramdisk is provided
+  if (FileExists(input_ramdisk_path) && !FileExists(new_ramdisk_path)) {
+    RepackVendorRamdisk(input_ramdisk_path,
+                        unpack_dir + "/" + CONCATENATED_VENDOR_RAMDISK,
+                        new_ramdisk_path, unpack_dir);
+  }
+  std::ifstream vendor_boot_ramdisk(FileExists(new_ramdisk_path) ? new_ramdisk_path : unpack_dir +
                                     "/concatenated_vendor_ramdisk",
                                     std::ios_base::binary);
 
@@ -396,5 +405,34 @@ void RepackGem5BootImage(const std::string& initrd_path,
   // Append bootconfig trailer
   final_rd << "#BOOTCONFIG\n";
   final_rd.close();
+}
+
+Result<std::string> ReadAndroidVersionFromBootImage(
+    const std::string& boot_image_path) {
+  // temp dir path length is chosen to be larger than sun_path_length (108)
+  char tmp_dir[200];
+  sprintf(tmp_dir, "%s/XXXXXX", StringFromEnv("TEMP", "/tmp").c_str());
+  char* unpack_dir = mkdtemp(tmp_dir);
+  if (!unpack_dir) {
+    return CF_ERR("boot image unpack dir could not be created");
+  }
+  bool unpack_status = UnpackBootImage(boot_image_path, unpack_dir);
+  if (!unpack_status) {
+    RecursivelyRemoveDirectory(unpack_dir);
+    return CF_ERR("\"" + boot_image_path + "\" boot image unpack into \"" +
+                  unpack_dir + "\" failed");
+  }
+
+  // dirty hack to read out boot params
+  size_t dir_path_len = strlen(tmp_dir);
+  std::string boot_params = ReadFile(strcat(unpack_dir, "/boot_params"));
+  unpack_dir[dir_path_len] = '\0';
+
+  RecursivelyRemoveDirectory(unpack_dir);
+  std::string os_version = ExtractValue(boot_params, "os version: ");
+  CF_EXPECT(os_version != "", "Could not extract os version from \"" + boot_image_path + "\"");
+  std::regex re("[1-9][0-9]*.[0-9]+.[0-9]+");
+  CF_EXPECT(std::regex_match(os_version, re), "Version string is not a valid version \"" + os_version + "\"");
+  return os_version;
 }
 } // namespace cuttlefish

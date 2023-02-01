@@ -13,12 +13,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "host/commands/cvd/server.h"
+
+#include "host/commands/cvd/acloud_command.h"
 
 #include <optional>
 #include <vector>
 
 #include <android-base/strings.h>
+#include <android-base/parseint.h>
 
 #include "cvd_server.pb.h"
 
@@ -29,7 +31,11 @@
 #include "common/libs/utils/subprocess.h"
 #include "host/commands/cvd/command_sequence.h"
 #include "host/commands/cvd/instance_lock.h"
+#include "host/commands/cvd/selector/selector_constants.h"
 #include "host/commands/cvd/server_client.h"
+#include "host/commands/cvd/server_command/utils.h"
+#include "host/commands/cvd/types.h"
+#include "host/libs/config/cuttlefish_config.h"
 
 namespace cuttlefish {
 
@@ -52,11 +58,13 @@ Result<std::vector<std::string>> BashTokenize(const std::string& str) {
   Command command("bash");
   command.AddParameter("-c");
   command.AddParameter("printf '%s\n' ", str);
-  std::string stdout;
-  std::string stderr;
-  auto ret = RunWithManagedStdio(std::move(command), nullptr, &stdout, &stderr);
-  CF_EXPECT(ret == 0, "printf fail \"" << stdout << "\", \"" << stderr << "\"");
-  return android::base::Split(stdout, "\n");
+  std::string stdout_str;
+  std::string stderr_str;
+  auto ret = RunWithManagedStdio(std::move(command), nullptr, &stdout_str,
+                                 &stderr_str);
+  CF_EXPECT(ret == 0,
+            "printf fail \"" << stdout_str << "\", \"" << stderr_str << "\"");
+  return android::base::Split(stdout_str, "\n");
 }
 
 class ConvertAcloudCreateCommand {
@@ -92,6 +100,16 @@ class ConvertAcloudCreateCommand {
       return true;
     });
     flags.emplace_back(local_instance_flag);
+
+    std::optional<std::string> flavor;
+    flags.emplace_back(
+        Flag()
+            .Alias({FlagAliasMode::kFlagConsumesFollowing, "--config"})
+            .Alias({FlagAliasMode::kFlagConsumesFollowing, "--flavor"})
+            .Setter([&flavor](const FlagMatch& m) {
+              flavor = m.value;
+              return true;
+            }));
 
     bool verbose = false;
     flags.emplace_back(Flag()
@@ -150,6 +168,60 @@ class ConvertAcloudCreateCommand {
               return true;
             }));
 
+    std::optional<std::string> system_branch;
+    flags.emplace_back(
+        Flag()
+            .Alias({FlagAliasMode::kFlagConsumesFollowing, "--system-branch"})
+            .Setter([&system_branch](const FlagMatch& m) {
+              system_branch = m.value;
+              return true;
+            }));
+
+    std::optional<std::string> system_build_target;
+    flags.emplace_back(Flag()
+                           .Alias({FlagAliasMode::kFlagConsumesFollowing,
+                                   "--system-build-target"})
+                           .Setter([&system_build_target](const FlagMatch& m) {
+                             system_build_target = m.value;
+                             return true;
+                           }));
+
+    std::optional<std::string> system_build_id;
+    flags.emplace_back(
+        Flag()
+            .Alias({FlagAliasMode::kFlagConsumesFollowing, "--system-build-id"})
+            .Setter([&system_build_id](const FlagMatch& m) {
+              system_build_id = m.value;
+              return true;
+            }));
+
+    std::optional<std::string> kernel_branch;
+    flags.emplace_back(
+        Flag()
+            .Alias({FlagAliasMode::kFlagConsumesFollowing, "--kernel-branch"})
+            .Setter([&kernel_branch](const FlagMatch& m) {
+              kernel_branch = m.value;
+              return true;
+            }));
+
+    std::optional<std::string> kernel_build_target;
+    flags.emplace_back(Flag()
+                           .Alias({FlagAliasMode::kFlagConsumesFollowing,
+                                   "--kernel-build-target"})
+                           .Setter([&kernel_build_target](const FlagMatch& m) {
+                             kernel_build_target = m.value;
+                             return true;
+                           }));
+
+    std::optional<std::string> kernel_build_id;
+    flags.emplace_back(
+        Flag()
+            .Alias({FlagAliasMode::kFlagConsumesFollowing, "--kernel-build-id"})
+            .Setter([&kernel_build_id](const FlagMatch& m) {
+              kernel_build_id = m.value;
+              return true;
+            }));
+
     CF_EXPECT(ParseFlags(flags, arguments));
     CF_EXPECT(arguments.size() == 0,
               "Unrecognized arguments:'"
@@ -178,6 +250,8 @@ class ConvertAcloudCreateCommand {
 
     std::vector<cvd::Request> request_protos;
     if (local_image) {
+      CF_EXPECT(!(system_branch || system_build_target || system_build_id),
+                "--local-image incompatible with --system-* flags");
       cvd::Request& mkdir_request = request_protos.emplace_back();
       auto& mkdir_command = *mkdir_request.mutable_command_request();
       mkdir_command.add_args("cvd");
@@ -186,7 +260,17 @@ class ConvertAcloudCreateCommand {
       mkdir_command.add_args(dir);
       auto& mkdir_env = *mkdir_command.mutable_env();
       mkdir_env[kAndroidHostOut] = host_artifacts_path->second;
-      *mkdir_command.mutable_working_directory() = dir;
+
+      cvd::Request& ln_request = request_protos.emplace_back();
+      auto& ln_command = *ln_request.mutable_command_request();
+      ln_command.add_args("cvd");
+      ln_command.add_args("ln");
+      ln_command.add_args("-f");
+      ln_command.add_args("-s");
+      ln_command.add_args(host_artifacts_path->second);
+      ln_command.add_args(dir + "/host_bins");
+      auto& ln_env = *ln_command.mutable_env();
+      ln_env[kAndroidHostOut] = host_artifacts_path->second;
     } else {
       cvd::Request& fetch_request = request_protos.emplace_back();
       auto& fetch_command = *fetch_request.mutable_command_request();
@@ -200,9 +284,36 @@ class ConvertAcloudCreateCommand {
         auto build = build_id.value_or(branch.value_or("aosp-master"));
         fetch_command.add_args(build + target);
       }
-      *fetch_command.mutable_working_directory() = dir;
+      if (system_branch || system_build_id || system_build_target) {
+        fetch_command.add_args("--system_build");
+        auto target = system_build_target.value_or(build_target.value_or(""));
+        if (target != "") {
+          target = "/" + target;
+        }
+        auto build =
+            system_build_id.value_or(system_branch.value_or("aosp-master"));
+        fetch_command.add_args(build + target);
+      }
+      if (kernel_branch || kernel_build_id || kernel_build_target) {
+        fetch_command.add_args("--kernel_build");
+        auto target = kernel_build_target.value_or("kernel_virt_x86_64");
+        auto build = kernel_build_id.value_or(
+            branch.value_or("aosp_kernel-common-android-mainline"));
+        fetch_command.add_args(build + "/" + target);
+      }
       auto& fetch_env = *fetch_command.mutable_env();
       fetch_env[kAndroidHostOut] = host_artifacts_path->second;
+
+      cvd::Request& ln_request = request_protos.emplace_back();
+      auto& ln_command = *ln_request.mutable_command_request();
+      ln_command.add_args("cvd");
+      ln_command.add_args("ln");
+      ln_command.add_args("-f");
+      ln_command.add_args("-s");
+      ln_command.add_args(dir);
+      ln_command.add_args(dir + "/host_bins");
+      auto& ln_env = *ln_command.mutable_env();
+      ln_env[kAndroidHostOut] = host_artifacts_path->second;
     }
 
     cvd::Request& start_request = request_protos.emplace_back();
@@ -214,11 +325,17 @@ class ConvertAcloudCreateCommand {
     start_command.add_args("report_anonymous_usage_stats");
     start_command.add_args("--report_anonymous_usage_stats");
     start_command.add_args("y");
+    if (flavor) {
+      start_command.add_args("-config");
+      start_command.add_args(flavor.value());
+    }
     if (launch_args) {
       for (const auto& arg : CF_EXPECT(BashTokenize(*launch_args))) {
         start_command.add_args(arg);
       }
     }
+    start_command.mutable_selector_opts()->add_args(
+        std::string("--") + selector::kAcquireFileLockOpt + "=false");
     static constexpr char kAndroidProductOut[] = "ANDROID_PRODUCT_OUT";
     auto& start_env = *start_command.mutable_env();
     if (local_image) {
@@ -232,7 +349,7 @@ class ConvertAcloudCreateCommand {
       start_env[kAndroidHostOut] = dir;
       start_env[kAndroidProductOut] = dir;
     }
-    start_env["CUTTLEFISH_INSTANCE"] = std::to_string(lock->Instance());
+    start_env[kCuttlefishInstanceEnvVarName] = std::to_string(lock->Instance());
     start_env["HOME"] = dir;
     *start_command.mutable_working_directory() = dir;
 
@@ -249,7 +366,8 @@ class ConvertAcloudCreateCommand {
         .lock = {std::move(*lock)},
     };
     for (auto& request_proto : request_protos) {
-      ret.requests.emplace_back(request_proto, fds, request.Credentials());
+      ret.requests.emplace_back(request.Client(), request_proto, fds,
+                                request.Credentials());
     }
     return ret;
   }
@@ -258,19 +376,30 @@ class ConvertAcloudCreateCommand {
   InstanceLockFileManager& lock_file_manager_;
 };
 
-class TryAcloudCreateCommand : public CvdServerHandler {
+static bool IsSubOperationSupported(const RequestWithStdio& request) {
+  auto invocation = ParseInvocation(request.Message());
+  if (invocation.arguments.empty()) {
+    return false;
+  }
+  return invocation.arguments[0] == "create";
+}
+
+class TryAcloudCommand : public CvdServerHandler {
  public:
-  INJECT(TryAcloudCreateCommand(ConvertAcloudCreateCommand& converter))
+  INJECT(TryAcloudCommand(ConvertAcloudCreateCommand& converter))
       : converter_(converter) {}
-  ~TryAcloudCreateCommand() = default;
+  ~TryAcloudCommand() = default;
 
   Result<bool> CanHandle(const RequestWithStdio& request) const override {
     auto invocation = ParseInvocation(request.Message());
-    return invocation.command == "try-acloud" &&
-           invocation.arguments.size() >= 1 &&
-           invocation.arguments[0] == "create";
+    return invocation.command == "try-acloud";
   }
+
+  cvd_common::Args CmdList() const override { return {"try-acloud"}; }
+
   Result<cvd::Response> Handle(const RequestWithStdio& request) override {
+    CF_EXPECT(CanHandle(request));
+    CF_EXPECT(IsSubOperationSupported(request));
     CF_EXPECT(converter_.Convert(request));
     return CF_ERR("Unreleased");
   }
@@ -280,25 +409,27 @@ class TryAcloudCreateCommand : public CvdServerHandler {
   ConvertAcloudCreateCommand& converter_;
 };
 
-class AcloudCreateCommand : public CvdServerHandler {
+class AcloudCommand : public CvdServerHandler {
  public:
-  INJECT(AcloudCreateCommand(CommandSequenceExecutor& executor,
-                             ConvertAcloudCreateCommand& converter))
+  INJECT(AcloudCommand(CommandSequenceExecutor& executor,
+                       ConvertAcloudCreateCommand& converter))
       : executor_(executor), converter_(converter) {}
-  ~AcloudCreateCommand() = default;
+  ~AcloudCommand() = default;
 
   Result<bool> CanHandle(const RequestWithStdio& request) const override {
     auto invocation = ParseInvocation(request.Message());
-    return invocation.command == "acloud" && invocation.arguments.size() >= 1 &&
-           invocation.arguments[0] == "create";
+    return invocation.command == "acloud";
   }
+
+  cvd_common::Args CmdList() const override { return {"acloud"}; }
+
   Result<cvd::Response> Handle(const RequestWithStdio& request) override {
     std::unique_lock interrupt_lock(interrupt_mutex_);
     if (interrupted_) {
       return CF_ERR("Interrupted");
     }
     CF_EXPECT(CanHandle(request));
-
+    CF_EXPECT(IsSubOperationSupported(request));
     auto converted = CF_EXPECT(converter_.Convert(request));
     interrupt_lock.unlock();
     CF_EXPECT(executor_.Execute(converted.requests, request.Err()));
@@ -326,10 +457,11 @@ class AcloudCreateCommand : public CvdServerHandler {
 
 }  // namespace
 
-fruit::Component<fruit::Required<CvdCommandHandler>> AcloudCommandComponent() {
+fruit::Component<fruit::Required<CommandSequenceExecutor>>
+AcloudCommandComponent() {
   return fruit::createComponent()
-      .addMultibinding<CvdServerHandler, AcloudCreateCommand>()
-      .addMultibinding<CvdServerHandler, TryAcloudCreateCommand>();
+      .addMultibinding<CvdServerHandler, AcloudCommand>()
+      .addMultibinding<CvdServerHandler, TryAcloudCommand>();
 }
 
 }  // namespace cuttlefish

@@ -68,7 +68,7 @@ class AdbConnector : public CommandSource {
   INJECT(AdbConnector(const AdbHelper& helper)) : helper_(helper) {}
 
   // CommandSource
-  std::vector<Command> Commands() override {
+  Result<std::vector<Command>> Commands() override {
     Command console_forwarder_cmd(ConsoleForwarderBinary());
     Command adb_connector(AdbConnectorBinary());
     std::set<std::string> addresses;
@@ -107,7 +107,7 @@ class AdbConnector : public CommandSource {
   const AdbHelper& helper_;
 };
 
-class SocketVsockProxy : public CommandSource {
+class SocketVsockProxy : public CommandSource, public KernelLogPipeConsumer {
  public:
   INJECT(SocketVsockProxy(const AdbHelper& helper,
                           const CuttlefishConfig::InstanceSpecific& instance,
@@ -117,7 +117,7 @@ class SocketVsockProxy : public CommandSource {
         log_pipe_provider_(log_pipe_provider) {}
 
   // CommandSource
-  std::vector<Command> Commands() override {
+  Result<std::vector<Command>> Commands() override {
     std::vector<Command> commands;
     if (helper_.VsockTunnelEnabled()) {
       Command adb_tunnel(SocketVsockProxyBinary());
@@ -136,10 +136,11 @@ class SocketVsockProxy : public CommandSource {
        * instance.adb_host_port()
        *
        */
-      adb_tunnel.AddParameter("--server=tcp");
-      adb_tunnel.AddParameter("--vsock_port=6520");
+      adb_tunnel.AddParameter("--server_type=tcp");
       adb_tunnel.AddParameter("--server_fd=", tcp_server_);
-      adb_tunnel.AddParameter("--vsock_cid=", instance_.vsock_guest_cid());
+      adb_tunnel.AddParameter("--client_type=vsock");
+      adb_tunnel.AddParameter("--client_vsock_port=6520");
+      adb_tunnel.AddParameter("--client_vsock_id=", instance_.vsock_guest_cid());
       commands.emplace_back(std::move(adb_tunnel));
     }
     if (helper_.VsockHalfTunnelEnabled()) {
@@ -155,10 +156,12 @@ class SocketVsockProxy : public CommandSource {
        * should be therefore tcp, and the port should differ from instance to
        * instance and be equal to instance.adb_host_port()
        */
-      adb_tunnel.AddParameter("--server=tcp");
-      adb_tunnel.AddParameter("--vsock_port=", 5555);
+      adb_tunnel.AddParameter("--server_type=tcp");
       adb_tunnel.AddParameter("--server_fd=", tcp_server_);
-      adb_tunnel.AddParameter("--vsock_cid=", instance_.vsock_guest_cid());
+      adb_tunnel.AddParameter("--client_type=vsock");
+      adb_tunnel.AddParameter("--client_vsock_port=", 5555);
+      adb_tunnel.AddParameter("--client_vsock_id=", instance_.vsock_guest_cid());
+      adb_tunnel.AddParameter("--label=", "adb");
       commands.emplace_back(std::move(adb_tunnel));
     }
     return commands;
@@ -202,6 +205,7 @@ LaunchAdbComponent() {
       .addMultibinding<CommandSource, AdbConnector>()
       .addMultibinding<CommandSource, SocketVsockProxy>()
       .addMultibinding<SetupFeature, AdbConnector>()
+      .addMultibinding<KernelLogPipeConsumer, SocketVsockProxy>()
       .addMultibinding<SetupFeature, SocketVsockProxy>();
 }
 

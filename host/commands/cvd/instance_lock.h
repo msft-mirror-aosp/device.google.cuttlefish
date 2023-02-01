@@ -15,6 +15,8 @@
  */
 #pragma once
 
+#include <functional>
+#include <optional>
 #include <set>
 
 #include <fruit/fruit.h>
@@ -64,6 +66,15 @@ class InstanceLockFileManager {
 
   // Best-effort attempt to find a free instance id.
   Result<std::optional<InstanceLockFile>> TryAcquireUnusedLock();
+
+  Result<std::vector<InstanceLockFile>> LockAllAvailable();
+
+ private:
+  /*
+   * Generate value to initialize
+   */
+  Result<std::set<int>> FindPotentialInstanceNumsFromNetDevices();
+  std::optional<std::set<int>> all_instance_nums_;
 };
 
 }  // namespace cuttlefish
