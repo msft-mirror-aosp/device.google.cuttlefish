@@ -27,8 +27,8 @@ class CrosvmBuilder {
  public:
   CrosvmBuilder();
 
-  void SetBinary(const std::string&);
-  void AddControlSocket(const std::string&);
+  void ApplyProcessRestarter(const std::string& crosvm_binary, int exit_code);
+  void AddControlSocket(const std::string&, const std::string&);
 
   void AddHvcSink();
   void AddHvcReadOnly(const std::string& output, bool console = false);
@@ -45,6 +45,7 @@ class CrosvmBuilder {
   void AddSerial(const std::string& output, const std::string& input);
 
   SharedFD AddTap(const std::string& tap_name);
+  SharedFD AddTap(const std::string& tap_name, const std::string& mac);
 
   int HvcNum();
 

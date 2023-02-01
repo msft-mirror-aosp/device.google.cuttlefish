@@ -40,17 +40,24 @@ class RootCanal : public CommandSource {
     Command command(RootCanalBinary());
 
     // Test port
-    command.AddParameter(config_.rootcanal_test_port());
+    command.AddParameter("--test_port=", config_.rootcanal_test_port());
     // HCI server port
-    command.AddParameter(config_.rootcanal_hci_port());
+    command.AddParameter("--hci_port=", config_.rootcanal_hci_port());
     // Link server port
-    command.AddParameter(config_.rootcanal_link_port());
+    command.AddParameter("--link_port=", config_.rootcanal_link_port());
+    // Link ble server port
+    command.AddParameter("--link_ble_port=", config_.rootcanal_link_ble_port());
     // Bluetooth controller properties file
     command.AddParameter("--controller_properties_file=",
                          config_.rootcanal_config_file());
     // Default commands file
     command.AddParameter("--default_commands_file=",
                          config_.rootcanal_default_commands_file());
+
+    // Add parameters from passthrough option --rootcanal-args
+    for (auto const& arg : config_.rootcanal_args()) {
+      command.AddParameter(arg);
+    }
 
     std::vector<Command> commands;
     commands.emplace_back(log_tee_.CreateLogTee(command, "rootcanal"));

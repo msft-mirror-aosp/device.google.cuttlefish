@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2020 The Android Open Source Project
+# Copyright (C) 2022 The Android Open Source Project
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -44,7 +44,6 @@ $(call inherit-product, device/google/cuttlefish/shared/auto/device_vendor.mk)
 #
 # Special settings for the target
 #
-$(call inherit-product, device/google/cuttlefish/vsoc_x86_64/kernel.mk)
 $(call inherit-product, device/google/cuttlefish/vsoc_x86_64/bootloader.mk)
 
 # Exclude features that are not available on AOSP devices.

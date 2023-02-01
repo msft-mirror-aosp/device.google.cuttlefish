@@ -43,13 +43,15 @@ TpmRemoteProvisioningContext::TpmRemoteProvisioningContext(
 
 std::vector<uint8_t> TpmRemoteProvisioningContext::DeriveBytesFromHbk(
     const std::string& context, size_t num_bytes) const {
-  auto key = PrimaryKeyBuilder::CreateSigningKey(resource_manager_,
-                                                 "HardwareBoundKey");
-  auto hbk =
-      TpmHmac(resource_manager_, key->get(), TpmAuth(ESYS_TR_PASSWORD),
-              reinterpret_cast<const uint8_t*>(context.data()), context.size());
-
   std::vector<uint8_t> result(num_bytes);
+  auto hbk = TpmHmacWithContext(
+      resource_manager_, "HardwareBoundKey",
+      reinterpret_cast<const uint8_t*>(context.data()), context.size());
+  if (!hbk) {
+    LOG(ERROR) << "Error calculating HMAC";
+    return result;
+  }
+
   if (!HKDF(result.data(), num_bytes,              //
             EVP_sha256(),                          //
             hbk->buffer, hbk->size,                //
@@ -57,14 +59,14 @@ std::vector<uint8_t> TpmRemoteProvisioningContext::DeriveBytesFromHbk(
             reinterpret_cast<const uint8_t*>(context.data()), context.size())) {
     // Should never fail. Even if it could the API has no way of reporting the
     // error.
-    LOG(ERROR) << "Error calculating HMAC: " << ERR_peek_last_error();
+    LOG(ERROR) << "Error calculating HKDF: " << ERR_peek_last_error();
   }
 
   return result;
 }
 
-std::unique_ptr<cppbor::Map> TpmRemoteProvisioningContext::CreateDeviceInfo()
-    const {
+std::unique_ptr<cppbor::Map> TpmRemoteProvisioningContext::CreateDeviceInfo(
+    uint32_t csrVersion) const {
   auto result = std::make_unique<cppbor::Map>();
   result->add(cppbor::Tstr("brand"), cppbor::Tstr("Google"));
   result->add(cppbor::Tstr("manufacturer"), cppbor::Tstr("Google"));
@@ -98,7 +100,10 @@ std::unique_ptr<cppbor::Map> TpmRemoteProvisioningContext::CreateDeviceInfo()
     result->add(cppbor::Tstr("vendor_patch_level"),
                 cppbor::Uint(*vendor_patchlevel_));
   }
-  result->add(cppbor::Tstr("version"), cppbor::Uint(2));
+  // "version" field was removed from DeviceInfo in CSR v3.
+  if (csrVersion < 3) {
+    result->add(cppbor::Tstr("version"), cppbor::Uint(csrVersion));
+  }
   result->add(cppbor::Tstr("fused"), cppbor::Uint(0));
   result->add(cppbor::Tstr("security_level"), cppbor::Tstr("tee"));
   result->canonicalize();
@@ -125,7 +130,6 @@ TpmRemoteProvisioningContext::GenerateBcc(bool testMode) const {
                      .add(CoseKey::KEY_TYPE, OCTET_KEY_PAIR)
                      .add(CoseKey::ALGORITHM, EDDSA)
                      .add(CoseKey::CURVE, ED25519)
-                     .add(CoseKey::KEY_OPS, VERIFY)
                      .add(CoseKey::PUBKEY_X, pubKey)
                      .canonicalize();
   auto sign1Payload =
@@ -196,17 +200,9 @@ TpmRemoteProvisioningContext::BuildProtectedDataPayload(
 std::optional<cppcose::HmacSha256>
 TpmRemoteProvisioningContext::GenerateHmacSha256(
     const cppcose::bytevec& input) const {
-  auto signing_key = PrimaryKeyBuilder::CreateSigningKey(
-      resource_manager_, "Public Key Authentication Key");
-  if (!signing_key) {
-    LOG(ERROR) << "Could not make MAC key for authenticating the pubkey";
-    return std::nullopt;
-  }
-
   auto tpm_digest =
-      TpmHmac(resource_manager_, signing_key->get(), TpmAuth(ESYS_TR_PASSWORD),
-              input.data(), input.size());
-
+      TpmHmacWithContext(resource_manager_, "Public Key Authentication Key",
+                         input.data(), input.size());
   if (!tpm_digest) {
     LOG(ERROR) << "Could not calculate hmac";
     return std::nullopt;
@@ -222,6 +218,36 @@ TpmRemoteProvisioningContext::GenerateHmacSha256(
   std::copy(tpm_digest->buffer, tpm_digest->buffer + tpm_digest->size,
             hmac.begin());
   return hmac;
+}
+
+void TpmRemoteProvisioningContext::GetHwInfo(
+    keymaster::GetHwInfoResponse* hwInfo) const {
+  hwInfo->version = 3;
+  hwInfo->rpcAuthorName = "Google";
+  hwInfo->supportedEekCurve = 2 /* CURVE_25519 */;
+  hwInfo->uniqueId = "remote keymint";
+  hwInfo->supportedNumKeysInCsr = 20;
+}
+
+cppcose::ErrMsgOr<cppbor::Array> TpmRemoteProvisioningContext::BuildCsr(
+    const std::vector<uint8_t>& challenge, cppbor::Array keysToSign) const {
+  uint32_t csrVersion = 3;
+  auto deviceInfo = std::move(*CreateDeviceInfo(csrVersion));
+  auto csrPayload = cppbor::Array()
+                        .add(csrVersion)
+                        .add("keymint" /* CertificateType */)
+                        .add(std::move(deviceInfo))
+                        .add(std::move(keysToSign));
+  auto signedDataPayload =
+      cppbor::Array().add(challenge).add(cppbor::Bstr(csrPayload.encode()));
+  auto signedData = constructCoseSign1(
+      devicePrivKey_, signedDataPayload.encode(), {} /* aad */);
+
+  return cppbor::Array()
+      .add(1 /* version */)
+      .add(cppbor::Map() /* UdsCerts */)
+      .add(std::move(*bcc_.clone()->asArray()) /* DiceCertChain */)
+      .add(std::move(*signedData) /* SignedData */);
 }
 
 }  // namespace cuttlefish

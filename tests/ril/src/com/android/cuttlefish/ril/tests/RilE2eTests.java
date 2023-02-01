@@ -23,8 +23,8 @@ import android.net.Network;
 import android.net.NetworkInfo;
 import android.net.wifi.WifiManager;
 import android.os.Build;
-import android.telephony.CellInfoGsm;
-import android.telephony.CellSignalStrengthGsm;
+import android.telephony.CellInfoLte;
+import android.telephony.CellSignalStrengthLte;
 import android.telephony.TelephonyManager;
 import android.util.Log;
 
@@ -93,9 +93,9 @@ public class RilE2eTests {
 
     /**
      * Verify that RIL stack is able to get up and connect to network in
-     * 60 seconds.
+     * 20 seconds.
      */
-    @Test(timeout = 10 * 1000)
+    @Test(timeout = 20 * 1000)
     public void testRilConnects() throws Exception {
         while (true) {
             NetworkInfo net = mConnManager.getActiveNetworkInfo();
@@ -142,9 +142,9 @@ public class RilE2eTests {
 
     @Test
     public void testSignalLevels() throws Exception {
-        CellInfoGsm cellinfogsm = (CellInfoGsm)mTeleManager.getAllCellInfo().get(0);
-        CellSignalStrengthGsm cellSignalStrengthGsm = cellinfogsm.getCellSignalStrength();
-        int bars = cellSignalStrengthGsm.getLevel();
+        CellInfoLte cellInfo = (CellInfoLte) mTeleManager.getAllCellInfo().get(0);
+        CellSignalStrengthLte signalStrength = cellInfo.getCellSignalStrength();
+        int bars = signalStrength.getLevel();
         Assert.assertThat("Signal Bars", bars, greaterThan(1));
     }
 }

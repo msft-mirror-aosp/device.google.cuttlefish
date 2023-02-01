@@ -38,7 +38,6 @@
 
 using cuttlefish::vm_manager::CrosvmManager;
 
-DECLARE_bool(pause_in_bootloader);
 DECLARE_string(vm_manager);
 
 // Taken from external/avb/avbtool.py; this define is not in the headers
@@ -47,7 +46,42 @@ DECLARE_string(vm_manager);
 namespace cuttlefish {
 namespace {
 
-size_t WriteEnvironment(const CuttlefishConfig& config,
+void WritePausedEntrypoint(std::ostream& env, const char* entrypoint,
+                           const CuttlefishConfig::InstanceSpecific& instance) {
+  if (instance.pause_in_bootloader()) {
+    env << "if test $paused -ne 1; then paused=1; else " << entrypoint << "; fi";
+  } else {
+    env << entrypoint;
+  }
+
+  env << '\0';
+}
+
+void WriteAndroidEnvironment(
+    std::ostream& env,
+    const CuttlefishConfig::InstanceSpecific& instance) {
+  WritePausedEntrypoint(env, "run bootcmd_android", instance);
+
+  if (!instance.boot_slot().empty()) {
+    env << "android_slot_suffix=_" << instance.boot_slot() << '\0';
+  }
+  env << '\0';
+}
+
+void WriteEFIEnvironment(
+    std::ostream& env, const CuttlefishConfig::InstanceSpecific& instance) {
+  // TODO(b/256602611): get rid of loadddr hardcode. make sure loadddr
+  // env setup in the bootloader.
+  WritePausedEntrypoint(env,
+    "load virtio 0:${devplist} 0x80200000 efi/boot/bootaa64.efi "
+    "&& bootefi 0x80200000 ${fdtcontroladdr}; "
+    "load virtio 0:${devplist} 0x02400000 efi/boot/bootia32.efi && "
+    "bootefi 0x02400000 ${fdtcontroladdr}", instance
+  );
+}
+
+size_t WriteEnvironment(const CuttlefishConfig::InstanceSpecific& instance,
+                        const CuttlefishConfig::InstanceSpecific::BootFlow& flow,
                         const std::string& kernel_args,
                         const std::string& env_path) {
   std::ostringstream env;
@@ -57,16 +91,16 @@ size_t WriteEnvironment(const CuttlefishConfig& config,
   } else {
     env << "uenvcmd=setenv bootargs \"$cbootargs\" && ";
   }
-  if (FLAGS_pause_in_bootloader) {
-    env << "if test $paused -ne 1; then paused=1; else run bootcmd_android; fi";
-  } else {
-    env << "run bootcmd_android";
+
+  switch (flow) {
+    case CuttlefishConfig::InstanceSpecific::BootFlow::Android:
+      WriteAndroidEnvironment(env, instance);
+      break;
+    case CuttlefishConfig::InstanceSpecific::BootFlow::Linux:
+    case CuttlefishConfig::InstanceSpecific::BootFlow::Fuchsia:
+      WriteEFIEnvironment(env, instance);
+      break;
   }
-  env << '\0';
-  if (!config.boot_slot().empty()) {
-    env << "android_slot_suffix=_" << config.boot_slot() << '\0';
-  }
-  env << '\0';
 
   std::string env_str = env.str();
   std::ofstream file_out(env_path.c_str(), std::ios::binary);
@@ -90,20 +124,34 @@ class InitBootloaderEnvPartitionImpl : public InitBootloaderEnvPartition {
 
   // SetupFeature
   std::string Name() const override { return "InitBootloaderEnvPartitionImpl"; }
-  bool Enabled() const override { return !config_.protected_vm(); }
+  bool Enabled() const override { return !instance_.protected_vm(); }
 
  private:
   std::unordered_set<SetupFeature*> Dependencies() const override { return {}; }
   bool Setup() override {
-    auto boot_env_image_path = instance_.uboot_env_image_path();
-    auto tmp_boot_env_image_path = boot_env_image_path + ".tmp";
+    if (instance_.ap_boot_flow() == CuttlefishConfig::InstanceSpecific::APBootFlow::Grub) {
+      if (!PrepareBootEnvImage(instance_.ap_uboot_env_image_path(),
+          CuttlefishConfig::InstanceSpecific::BootFlow::Linux)) {
+        return false;
+      }
+    }
+    if (!PrepareBootEnvImage(instance_.uboot_env_image_path(), instance_.boot_flow())) {
+      return false;
+    }
+
+    return true;
+  }
+
+  bool PrepareBootEnvImage(const std::string& image_path,
+                           const CuttlefishConfig::InstanceSpecific::BootFlow& flow) {
+    auto tmp_boot_env_image_path = image_path + ".tmp";
     auto uboot_env_path = instance_.PerInstancePath("mkenvimg_input");
     auto kernel_cmdline = android::base::Join(
         KernelCommandLineFromConfig(config_, instance_), " ");
     // If the bootconfig isn't supported in the guest kernel, the bootconfig
     // args need to be passed in via the uboot env. This won't be an issue for
     // protect kvm which is running a kernel with bootconfig support.
-    if (!config_.bootconfig_supported()) {
+    if (!instance_.bootconfig_supported()) {
       auto bootconfig_args = android::base::Join(
           BootconfigArgsFromConfig(config_, instance_), " ");
       // "androidboot.hardware" kernel parameter has changed to "hardware" in
@@ -120,7 +168,8 @@ class InitBootloaderEnvPartitionImpl : public InitBootloaderEnvPartition {
       kernel_cmdline += " ";
       kernel_cmdline += bootconfig_args;
     }
-    if (!WriteEnvironment(config_, kernel_cmdline, uboot_env_path)) {
+
+    if (!WriteEnvironment(instance_, flow, kernel_cmdline, uboot_env_path)) {
       LOG(ERROR) << "Unable to write out plaintext env '" << uboot_env_path
                  << ".'";
       return false;
@@ -163,9 +212,9 @@ class InitBootloaderEnvPartitionImpl : public InitBootloaderEnvPartition {
       return false;
     }
 
-    if (!FileExists(boot_env_image_path) ||
-        ReadFile(boot_env_image_path) != ReadFile(tmp_boot_env_image_path)) {
-      if (!RenameFile(tmp_boot_env_image_path, boot_env_image_path)) {
+    if (!FileExists(image_path) ||
+        ReadFile(image_path) != ReadFile(tmp_boot_env_image_path)) {
+      if (!RenameFile(tmp_boot_env_image_path, image_path)) {
         LOG(ERROR) << "Unable to delete the old env image.";
         return false;
       }

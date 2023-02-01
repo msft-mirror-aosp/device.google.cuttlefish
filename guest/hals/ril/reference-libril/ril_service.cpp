@@ -16,6 +16,8 @@
 
 #define LOG_TAG "RILC"
 
+#include "RefRadioNetwork.h"
+
 #include <android-base/logging.h>
 #include <android/binder_manager.h>
 #include <android/binder_process.h>
@@ -27,7 +29,6 @@
 #include <libradiocompat/RadioData.h>
 #include <libradiocompat/RadioMessaging.h>
 #include <libradiocompat/RadioModem.h>
-#include <libradiocompat/RadioNetwork.h>
 #include <libradiocompat/RadioSim.h>
 #include <libradiocompat/RadioVoice.h>
 
@@ -105,6 +106,7 @@ int64_t nitzTimeReceived[1];
 // counter used for synchronization. It is incremented every time response callbacks are updated.
 volatile int32_t mCounterRadio[1];
 volatile int32_t mCounterOemHook[1];
+hidl_vec<uint8_t> osAppIdVec;
 #endif
 
 static pthread_rwlock_t radioServiceRwlock = PTHREAD_RWLOCK_INITIALIZER;
@@ -4434,17 +4436,15 @@ Return<void> RadioImpl_1_6::setupDataCall_1_5(int32_t serial ,
     return Void();
 }
 
-Return<void> RadioImpl_1_6::setupDataCall_1_6(int32_t serial ,
-        ::android::hardware::radio::V1_5::AccessNetwork /* accessNetwork */,
+Return<void> RadioImpl_1_6::setupDataCall_1_6(
+        int32_t serial, ::android::hardware::radio::V1_5::AccessNetwork /* accessNetwork */,
         const ::android::hardware::radio::V1_5::DataProfileInfo& dataProfileInfo,
         bool roamingAllowed, ::android::hardware::radio::V1_2::DataRequestReason /* reason */,
         const hidl_vec<::android::hardware::radio::V1_5::LinkAddress>& /* addresses */,
-        const hidl_vec<hidl_string>& /* dnses */,
-        int32_t /* pduSessionId */,
+        const hidl_vec<hidl_string>& /* dnses */, int32_t /* pduSessionId */,
         const ::android::hardware::radio::V1_6::OptionalSliceInfo& /* sliceInfo */,
-        const ::android::hardware::radio::V1_6::OptionalTrafficDescriptor& /*trafficDescriptor*/,
+        const ::android::hardware::radio::V1_6::OptionalTrafficDescriptor& trafficDescriptor,
         bool matchAllRuleAllowed) {
-
 #if VDBG
     RLOGD("setupDataCall_1_6: serial %d", serial);
 #endif
@@ -4458,6 +4458,16 @@ Return<void> RadioImpl_1_6::setupDataCall_1_6(int32_t serial ,
         }
         return Void();
     }
+
+    if (trafficDescriptor.getDiscriminator() ==
+                V1_6::OptionalTrafficDescriptor::hidl_discriminator::value &&
+        trafficDescriptor.value().osAppId.getDiscriminator() ==
+                V1_6::OptionalOsAppId::hidl_discriminator::value) {
+        osAppIdVec = trafficDescriptor.value().osAppId.value().osAppId;
+    } else {
+        osAppIdVec = {};
+    }
+
     dispatchStrings(serial, mSlotId, RIL_REQUEST_SETUP_DATA_CALL, true, 16,
         std::to_string((int) RadioTechnology::UNKNOWN + 2).c_str(),
         std::to_string((int) dataProfileInfo.profileId).c_str(),
@@ -4940,7 +4950,7 @@ int radio_1_6::getIccCardStatusResponse(int slotId,
                 appStatus[i].pin2 = (PinState) rilAppStatus[i].pin2;
             }
         }
-        if (radioService[slotId]->mRadioResponseV1_5 != NULL) {
+        if (p_cur && radioService[slotId]->mRadioResponseV1_5 != NULL) {
             ::android::hardware::radio::V1_2::CardStatus cardStatusV1_2;
             ::android::hardware::radio::V1_4::CardStatus cardStatusV1_4;
             ::android::hardware::radio::V1_5::CardStatus cardStatusV1_5;
@@ -4971,7 +4981,7 @@ int radio_1_6::getIccCardStatusResponse(int slotId,
             Return<void> retStatus = radioService[slotId]->mRadioResponseV1_5->
                     getIccCardStatusResponse_1_5(responseInfo, cardStatusV1_5);
             radioService[slotId]->checkReturnStatus(retStatus);
-        } else if (radioService[slotId]->mRadioResponseV1_4 != NULL) {
+        } else if (p_cur && radioService[slotId]->mRadioResponseV1_4 != NULL) {
             ::android::hardware::radio::V1_2::CardStatus cardStatusV1_2;
             ::android::hardware::radio::V1_4::CardStatus cardStatusV1_4;
             cardStatusV1_2.base = cardStatus;
@@ -4981,7 +4991,7 @@ int radio_1_6::getIccCardStatusResponse(int slotId,
             Return<void> retStatus = radioService[slotId]->mRadioResponseV1_4->
                     getIccCardStatusResponse_1_4(responseInfo, cardStatusV1_4);
             radioService[slotId]->checkReturnStatus(retStatus);
-        } else if (radioService[slotId]->mRadioResponseV1_3 != NULL) {
+        } else if (p_cur && radioService[slotId]->mRadioResponseV1_3 != NULL) {
             ::android::hardware::radio::V1_2::CardStatus cardStatusV1_2;
             cardStatusV1_2.base = cardStatus;
             cardStatusV1_2.physicalSlotId = -1;
@@ -4989,7 +4999,7 @@ int radio_1_6::getIccCardStatusResponse(int slotId,
             Return<void> retStatus = radioService[slotId]->mRadioResponseV1_3->
                     getIccCardStatusResponse_1_2(responseInfo, cardStatusV1_2);
             radioService[slotId]->checkReturnStatus(retStatus);
-        } else if (radioService[slotId]->mRadioResponseV1_2 != NULL) {
+        } else if (p_cur && radioService[slotId]->mRadioResponseV1_2 != NULL) {
             ::android::hardware::radio::V1_2::CardStatus cardStatusV1_2;
             cardStatusV1_2.base = cardStatus;
             cardStatusV1_2.physicalSlotId = -1;
@@ -11100,16 +11110,6 @@ void convertRilDataCallToHal(RIL_Data_Call_Response_v11* dcResponse,
     std::vector<::android::hardware::radio::V1_6::TrafficDescriptor> trafficDescriptors;
     ::android::hardware::radio::V1_6::TrafficDescriptor trafficDescriptor;
     ::android::hardware::radio::V1_6::OsAppId osAppId;
-
-    std::vector<uint8_t> osAppIdVec;
-    osAppIdVec.push_back('o');
-    osAppIdVec.push_back('s');
-    osAppIdVec.push_back('A');
-    osAppIdVec.push_back('p');
-    osAppIdVec.push_back('p');
-    osAppIdVec.push_back('I');
-    osAppIdVec.push_back('d');
-
     osAppId.osAppId = osAppIdVec;
     trafficDescriptor.osAppId.value(osAppId);
     trafficDescriptors.push_back(trafficDescriptor);
@@ -12651,6 +12651,11 @@ void convertRilCellInfoListToHal_1_6(void* response, size_t responseLen,
                         rillCellInfo->CellInfo.lte.cellIdentityLte.tac;
                 cellInfoLte.cellIdentityLte.base.base.earfcn =
                         rillCellInfo->CellInfo.lte.cellIdentityLte.earfcn;
+                cellInfoLte.cellIdentityLte.base.bandwidth = INT_MAX;
+                hidl_vec<V1_5::EutranBands> bands;
+                bands.resize(1);
+                bands[0] = V1_5::EutranBands::BAND_1;
+                cellInfoLte.cellIdentityLte.bands = bands;
                 cellInfoLte.signalStrengthLte.base.signalStrength =
                         rillCellInfo->CellInfo.lte.signalStrengthLte.signalStrength;
                 cellInfoLte.signalStrengthLte.base.rsrp =
@@ -13413,7 +13418,7 @@ void radio_1_6::registerService(RIL_RadioFunctions *callbacks, CommandInfo *comm
                 serviceNames[i], i);
 
         // use a compat shim to convert HIDL interface to AIDL and publish it
-        // PLEASE NOTE this is a temporary solution
+        // TODO(bug 220004469): replace with a full AIDL implementation
         auto radioHidl = radioService[i];
         const auto slot = serviceNames[i];
         auto context = std::make_shared<compat::DriverContext>();
@@ -13421,7 +13426,7 @@ void radio_1_6::registerService(RIL_RadioFunctions *callbacks, CommandInfo *comm
         publishRadioHal<compat::RadioData>(context, radioHidl, callbackMgr, slot);
         publishRadioHal<compat::RadioMessaging>(context, radioHidl, callbackMgr, slot);
         publishRadioHal<compat::RadioModem>(context, radioHidl, callbackMgr, slot);
-        publishRadioHal<compat::RadioNetwork>(context, radioHidl, callbackMgr, slot);
+        publishRadioHal<cf::ril::RefRadioNetwork>(context, radioHidl, callbackMgr, slot);
         publishRadioHal<compat::RadioSim>(context, radioHidl, callbackMgr, slot);
         publishRadioHal<compat::RadioVoice>(context, radioHidl, callbackMgr, slot);
 

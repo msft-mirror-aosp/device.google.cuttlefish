@@ -19,7 +19,6 @@
 #include <stdlib.h>
 
 #include <iostream>
-#include <memory>
 #include <sstream>
 
 #include <android-base/file.h>
@@ -27,6 +26,7 @@
 
 #include "common/libs/utils/environment.h"
 #include "common/libs/utils/subprocess.h"
+#include "host/commands/cvd/common_utils.h"
 #include "host/commands/cvd/server_constants.h"
 #include "host/libs/config/host_tools_version.h"
 
@@ -58,12 +58,12 @@ Result<SharedFD> ConnectToServer() {
   // TODO(b/206893146): Detect what the platform actually is.
   auto py_acloud_path =
       android_top + "/prebuilts/asuite/acloud/linux-x86/acloud";
-  char** new_argv = new char*[args.size() + 1];
+  std::unique_ptr<char*[]> new_argv(new char*[args.size() + 1]);
   for (size_t i = 0; i < args.size(); i++) {
     new_argv[i] = args[i].data();
   }
   new_argv[args.size()] = nullptr;
-  execv(py_acloud_path.data(), new_argv);
+  execv(py_acloud_path.data(), new_argv.get());
   PLOG(FATAL) << "execv(" << py_acloud_path << ", ...) failed";
   abort();
 }
@@ -158,7 +158,9 @@ Result<void> CvdClient::StopCvdServer(bool clear) {
   CF_EXPECT(cuttlefish::SharedFD::Pipe(&read_pipe, &write_pipe),
             "Unable to create shutdown pipe: " << strerror(errno));
 
-  auto response = SendRequest(request, /*extra_fd=*/write_pipe);
+  auto response =
+      SendRequest(request, OverrideFd{/* override none of 0, 1, 2 */},
+                  /*extra_fd=*/write_pipe);
 
   // If the server is already not running then SendRequest will fail.
   // We treat this as success.
@@ -185,26 +187,11 @@ Result<void> CvdClient::StopCvdServer(bool clear) {
   return {};
 }
 
-Result<void> CvdClient::HandleCommand(std::vector<std::string> args,
-                                      std::vector<std::string> env) {
-  cvd::Request request;
-  auto command_request = request.mutable_command_request();
-  for (const std::string& arg : args) {
-    command_request->add_args(arg);
-  }
-  for (const std::string& e : env) {
-    auto eq_pos = e.find('=');
-    if (eq_pos == std::string::npos) {
-      LOG(WARNING) << "Environment var in unknown format: " << e;
-      continue;
-    }
-    (*command_request->mutable_env())[e.substr(0, eq_pos)] =
-        e.substr(eq_pos + 1);
-  }
-  std::unique_ptr<char, void (*)(void*)> cwd(getcwd(nullptr, 0), &free);
-  command_request->set_working_directory(cwd.get());
-  command_request->set_wait_behavior(cvd::WAIT_BEHAVIOR_COMPLETE);
-
+Result<cvd::Response> CvdClient::HandleCommand(
+    const std::vector<std::string>& args,
+    const std::unordered_map<std::string, std::string>& env,
+    const std::vector<std::string>& selector_args,
+    const OverrideFd& new_control_fd) {
   std::optional<SharedFD> exe_fd;
   if (args.size() > 2 && android::base::Basename(args[0]) == "cvd" &&
       args[1] == "restart-server" && args[2] == "match-client") {
@@ -214,11 +201,14 @@ Result<void> CvdClient::HandleCommand(std::vector<std::string> args,
                                                        << (*exe_fd)->StrError()
                                                        << "\"");
   }
-  auto response = CF_EXPECT(SendRequest(request, exe_fd));
+  cvd::Request request = MakeRequest(
+      {.cmd_args = args, .env = env, .selector_args = selector_args},
+      cvd::WAIT_BEHAVIOR_COMPLETE);
+  auto response = CF_EXPECT(SendRequest(request, new_control_fd, exe_fd));
   CF_EXPECT(CheckStatus(response.status(), "HandleCommand"));
   CF_EXPECT(response.has_command_response(),
             "HandleCommand call missing CommandResponse.");
-  return {};
+  return {response};
 }
 
 Result<void> CvdClient::SetServer(const SharedFD& server) {
@@ -231,6 +221,7 @@ Result<void> CvdClient::SetServer(const SharedFD& server) {
 }
 
 Result<cvd::Response> CvdClient::SendRequest(const cvd::Request& request,
+                                             const OverrideFd& new_control_fds,
                                              std::optional<SharedFD> extra_fd) {
   if (!server_) {
     CF_EXPECT(SetServer(CF_EXPECT(ConnectToServer())));
@@ -242,10 +233,12 @@ Result<cvd::Response> CvdClient::SendRequest(const cvd::Request& request,
   UnixSocketMessage request_message;
 
   std::vector<SharedFD> control_fds = {
-      SharedFD::Dup(0),
-      SharedFD::Dup(1),
-      SharedFD::Dup(2),
-  };
+      (new_control_fds.stdin_override_fd ? *new_control_fds.stdin_override_fd
+                                         : SharedFD::Dup(0)),
+      (new_control_fds.stdout_override_fd ? *new_control_fds.stdout_override_fd
+                                          : SharedFD::Dup(1)),
+      (new_control_fds.stderr_override_fd ? *new_control_fds.stderr_override_fd
+                                          : SharedFD::Dup(2))};
   if (extra_fd) {
     control_fds.push_back(*extra_fd);
   }
@@ -297,27 +290,30 @@ Result<void> CvdClient::CheckStatus(const cvd::Status& status,
                                                  << "\nIn client");
 }
 
-Result<void> CvdClient::HandleAcloud(std::vector<std::string>& args,
-                                     const std::vector<std::string>& env,
-                                     const std::string& host_tool_directory) {
+Result<void> CvdClient::HandleAcloud(
+    const std::vector<std::string>& args,
+    const std::unordered_map<std::string, std::string>& env,
+    const std::string& host_tool_directory) {
   auto server_running =
       ValidateServerVersion(android::base::Dirname(host_tool_directory));
 
+  std::vector<std::string> args_copy{args};
+
   // TODO(b/206893146): Make this decision inside the server.
   if (!server_running.ok()) {
-    CallPythonAcloud(args);
+    CallPythonAcloud(args_copy);
     // no return
   }
 
-  args[0] = "try-acloud";
-  auto attempt = HandleCommand(args, env);
+  args_copy[0] = "try-acloud";
+  auto attempt = HandleCommand(args_copy, env, {});
   if (!attempt.ok()) {
-    CallPythonAcloud(args);
+    CallPythonAcloud(args_copy);
     // no return
   }
 
-  args[0] = "acloud";
-  CF_EXPECT(HandleCommand(args, env));
+  args_copy[0] = "acloud";
+  CF_EXPECT(HandleCommand(args_copy, env, {}));
   return {};
 }
 
@@ -327,10 +323,12 @@ Result<std::string> CvdClient::HandleVersion(
   std::stringstream result;
   std::string output;
   auto server_version = CF_EXPECT(GetServerVersion(host_tool_directory));
-  TextFormat::PrintToString(server_version, &output);
+  CF_EXPECT(TextFormat::PrintToString(server_version, &output),
+            "converting server_version to string failed");
   result << "Server version:" << std::endl << std::endl << output << std::endl;
 
-  TextFormat::PrintToString(CvdClient::GetClientVersion(), &output);
+  CF_EXPECT(TextFormat::PrintToString(CvdClient::GetClientVersion(), &output),
+            "converting client version to string failed");
   result << "Client version:" << std::endl << std::endl << output << std::endl;
   return {result.str()};
 }

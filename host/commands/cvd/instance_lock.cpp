@@ -66,7 +66,7 @@ bool InstanceLockFile::operator<(const InstanceLockFile& other) const {
   return fd_ < other.fd_;
 }
 
-InstanceLockFileManager::InstanceLockFileManager() = default;
+InstanceLockFileManager::InstanceLockFileManager() {}
 
 // Replicates tempfile.gettempdir() in Python
 std::string TempDir() {
@@ -99,7 +99,7 @@ static Result<SharedFD> OpenLockFile(int instance_num) {
 Result<InstanceLockFile> InstanceLockFileManager::AcquireLock(
     int instance_num) {
   auto fd = CF_EXPECT(OpenLockFile(instance_num));
-  CF_EXPECT(fd->Flock(LOCK_EX), fd->StrError());
+  CF_EXPECT(fd->Flock(LOCK_EX));
   return InstanceLockFile(fd, instance_num);
 }
 
@@ -115,13 +115,15 @@ Result<std::set<InstanceLockFile>> InstanceLockFileManager::AcquireLocks(
 Result<std::optional<InstanceLockFile>> InstanceLockFileManager::TryAcquireLock(
     int instance_num) {
   auto fd = CF_EXPECT(OpenLockFile(instance_num));
-  int flock_result = fd->Flock(LOCK_EX | LOCK_NB);
-  if (flock_result == 0) {
+  auto flock_result = fd->Flock(LOCK_EX | LOCK_NB);
+  if (flock_result.ok()) {
     return InstanceLockFile(fd, instance_num);
-  } else if (flock_result == -1 && fd->GetErrno() == EWOULDBLOCK) {
+    // TODO(schuffelen): Include the error code in the Result
+  } else if (!flock_result.ok() && fd->GetErrno() == EWOULDBLOCK) {
     return {};
   }
-  return CF_ERR("flock " << instance_num << " failed: " << fd->StrError());
+  CF_EXPECT(std::move(flock_result));
+  return {};
 }
 
 Result<std::set<InstanceLockFile>> InstanceLockFileManager::TryAcquireLocks(
@@ -136,7 +138,29 @@ Result<std::set<InstanceLockFile>> InstanceLockFileManager::TryAcquireLocks(
   return locks;
 }
 
-static Result<std::set<int>> AllInstanceNums() {
+Result<std::vector<InstanceLockFile>>
+InstanceLockFileManager::LockAllAvailable() {
+  if (!all_instance_nums_) {
+    all_instance_nums_ = CF_EXPECT(FindPotentialInstanceNumsFromNetDevices());
+  }
+
+  std::vector<InstanceLockFile> acquired_lock_files;
+  for (const auto num : *all_instance_nums_) {
+    auto lock = CF_EXPECT(TryAcquireLock(num));
+    if (!lock) {
+      continue;
+    }
+    auto status = CF_EXPECT(lock->Status());
+    if (status != InUseState::kNotInUse) {
+      continue;
+    }
+    acquired_lock_files.emplace_back(std::move(*lock));
+  }
+  return acquired_lock_files;
+}
+
+Result<std::set<int>>
+InstanceLockFileManager::FindPotentialInstanceNumsFromNetDevices() {
   // Estimate this by looking at available tap devices
   // clang-format off
   /** Sample format:
@@ -149,6 +173,7 @@ cvd-wtap-02:       0       0    0    0    0     0          0         0        0 
   std::string proc_net_dev;
   using android::base::ReadFileToString;
   CF_EXPECT(ReadFileToString(kPath, &proc_net_dev, /* follow_symlinks */ true));
+
   auto lines = android::base::Split(proc_net_dev, "\n");
   std::set<int> etaps, mtaps, wtaps;
   for (const auto& line : lines) {
@@ -175,8 +200,11 @@ cvd-wtap-02:       0       0    0    0    0     0          0         0        0 
 
 Result<std::optional<InstanceLockFile>>
 InstanceLockFileManager::TryAcquireUnusedLock() {
-  auto nums = CF_EXPECT(AllInstanceNums());
-  for (const auto& num : nums) {
+  if (!all_instance_nums_) {
+    all_instance_nums_ = CF_EXPECT(FindPotentialInstanceNumsFromNetDevices());
+  }
+
+  for (const auto num : *all_instance_nums_) {
     auto lock = CF_EXPECT(TryAcquireLock(num));
     if (lock && CF_EXPECT(lock->Status()) == InUseState::kNotInUse) {
       return std::move(*lock);

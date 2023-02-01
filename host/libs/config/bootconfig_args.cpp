@@ -80,24 +80,28 @@ std::vector<std::string> BootconfigArgsFromConfig(
   auto vmm =
       vm_manager::GetVmManager(config.vm_manager(), instance.target_arch());
   bootconfig_args.push_back(
-      vmm->ConfigureBootDevices(instance.virtual_disk_paths().size()));
-  AppendVector(&bootconfig_args, vmm->ConfigureGraphics(config));
+      vmm->ConfigureBootDevices(instance.virtual_disk_paths().size(),
+                                instance.hwcomposer() != kHwComposerNone));
+  AppendVector(&bootconfig_args, vmm->ConfigureGraphics(instance));
 
   bootconfig_args.push_back(
       concat("androidboot.serialno=", instance.serial_number()));
+  bootconfig_args.push_back(
+      concat("androidboot.ddr_size=", concat(instance.ddr_mem_mb(), "MB")));
 
   // TODO(b/131884992): update to specify multiple once supported.
-  const auto display_configs = config.display_configs();
-  CHECK_GE(display_configs.size(), 1);
-  bootconfig_args.push_back(
-      concat("androidboot.lcd_density=", display_configs[0].dpi));
+  const auto display_configs = instance.display_configs();
+  if (!display_configs.empty()) {
+    bootconfig_args.push_back(
+        concat("androidboot.lcd_density=", display_configs[0].dpi));
+  }
 
   bootconfig_args.push_back(
-      concat("androidboot.setupwizard_mode=", config.setupwizard_mode()));
+      concat("androidboot.setupwizard_mode=", instance.setupwizard_mode()));
   bootconfig_args.push_back(concat("androidboot.enable_bootanimation=",
-                                   config.enable_bootanimation()));
+                                   instance.enable_bootanimation()));
 
-  if (!config.guest_enforce_security()) {
+  if (!instance.guest_enforce_security()) {
     bootconfig_args.push_back("androidboot.selinux=permissive");
   }
 
@@ -127,7 +131,7 @@ std::vector<std::string> BootconfigArgsFromConfig(
         concat("androidboot.vsock_touch_port=", instance.touch_server_port()));
   }
 
-  if (config.enable_vehicle_hal_grpc_server() &&
+  if (instance.enable_vehicle_hal_grpc_server() &&
       instance.vehicle_hal_server_port() &&
       FileExists(VehicleHalGrpcServerBinary())) {
     constexpr int vehicle_hal_server_cid = 2;
@@ -147,7 +151,7 @@ std::vector<std::string> BootconfigArgsFromConfig(
                instance.audiocontrol_server_port()));
   }
 
-  if (!config.enable_audio()) {
+  if (!instance.enable_audio()) {
     bootconfig_args.push_back("androidboot.audio.tinyalsa.ignore_output=true");
     bootconfig_args.push_back("androidboot.audio.tinyalsa.simulate_input=true");
   }
@@ -159,14 +163,19 @@ std::vector<std::string> BootconfigArgsFromConfig(
         concat("androidboot.vsock_camera_cid=", instance.vsock_guest_cid()));
   }
 
-  if (config.enable_modem_simulator() &&
+  if (instance.enable_modem_simulator() &&
       instance.modem_simulator_ports() != "") {
     bootconfig_args.push_back(concat("androidboot.modem_simulator_ports=",
                                      instance.modem_simulator_ports()));
   }
 
-  bootconfig_args.push_back(concat("androidboot.fstab_suffix=",
-                                   config.userdata_format()));
+  // Once all Cuttlefish kernel versions are at least 5.15, filename encryption
+  // will not need to be set conditionally. HCTR2 will always be available.
+  // At that point fstab.cf.f2fs.cts and fstab.cf.ext4.cts can be removed.
+  std::string fstab_suffix = fmt::format("cf.{}.{}", instance.userdata_format(),
+                                         instance.filename_encryption_mode());
+
+  bootconfig_args.push_back(concat("androidboot.fstab_suffix=", fstab_suffix));
 
   bootconfig_args.push_back(
       concat("androidboot.wifi_mac_prefix=", instance.wifi_mac_prefix()));
@@ -183,8 +192,15 @@ std::vector<std::string> BootconfigArgsFromConfig(
     bootconfig_args.push_back(
         concat("androidboot.hypervisor.version=cf-", config.vm_manager()));
     bootconfig_args.push_back("androidboot.hypervisor.vm.supported=1");
-    bootconfig_args.push_back(
-        "androidboot.hypervisor.protected_vm.supported=0");
+  } else {
+    bootconfig_args.push_back("androidboot.hypervisor.vm.supported=0");
+  }
+  bootconfig_args.push_back("androidboot.hypervisor.protected_vm.supported=0");
+  if (!instance.kernel_path().empty()) {
+    bootconfig_args.emplace_back("androidboot.kernel_hotswapped=1");
+  }
+  if (!instance.initramfs_path().empty()) {
+    bootconfig_args.emplace_back("androidboot.ramdisk_hotswapped=1");
   }
 
   AppendVector(&bootconfig_args, config.extra_bootconfig_args());

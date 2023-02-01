@@ -35,10 +35,9 @@ BOOT_SECURITY_PATCH = $(PLATFORM_SECURITY_PATCH)
 PRODUCT_VENDOR_PROPERTIES += \
     ro.vendor.boot_security_patch=$(BOOT_SECURITY_PATCH)
 
-PRODUCT_SOONG_NAMESPACES += device/generic/goldfish-opengl # for vulkan
 PRODUCT_SOONG_NAMESPACES += device/generic/goldfish # for audio and wifi
 
-PRODUCT_SHIPPING_API_LEVEL := 33
+PRODUCT_SHIPPING_API_LEVEL := 34
 PRODUCT_USE_DYNAMIC_PARTITIONS := true
 DISABLE_RILD_OEM_HOOK := true
 
@@ -49,10 +48,8 @@ endif
 
 PRODUCT_SET_DEBUGFS_RESTRICTIONS := true
 
-PRODUCT_SOONG_NAMESPACES += device/generic/goldfish-opengl # for vulkan
-
 PRODUCT_FS_COMPRESSION := 1
-TARGET_RO_FILE_SYSTEM_TYPE ?= ext4
+TARGET_RO_FILE_SYSTEM_TYPE ?= erofs
 TARGET_USERDATAIMAGE_FILE_SYSTEM_TYPE ?= f2fs
 TARGET_USERDATAIMAGE_PARTITION_SIZE ?= 6442450944
 
@@ -60,25 +57,12 @@ TARGET_VULKAN_SUPPORT ?= true
 TARGET_ENABLE_HOST_BLUETOOTH_EMULATION ?= true
 TARGET_USE_BTLINUX_HAL_IMPL ?= true
 
-AB_OTA_UPDATER := true
-AB_OTA_PARTITIONS += \
-    boot \
-    init_boot \
-    odm \
-    odm_dlkm \
-    product \
-    system \
-    system_dlkm \
-    system_ext \
-    vbmeta \
-    vbmeta_system \
-    vendor \
-    vendor_boot \
-    vendor_dlkm \
-
 # Enable Virtual A/B
 $(call inherit-product, $(SRC_TARGET_DIR)/product/virtual_ab_ota/android_t_baseline.mk)
 PRODUCT_VIRTUAL_AB_COMPRESSION_METHOD := gz
+
+PRODUCT_VENDOR_PROPERTIES += ro.virtual_ab.compression.threads=true
+PRODUCT_VENDOR_PROPERTIES += ro.virtual_ab.batch_writes=true
 
 # Enable Scoped Storage related
 $(call inherit-product, $(SRC_TARGET_DIR)/product/emulated_storage.mk)
@@ -87,10 +71,13 @@ $(call inherit-product, $(SRC_TARGET_DIR)/product/emulated_storage.mk)
 # partition, instead of the vendor partition, and do not need vendor
 # sepolicy
 PRODUCT_PRODUCT_PROPERTIES += \
+    remote_provisioning.enable_rkpd=true \
+    remote_provisioning.hostname=remoteprovisioning.googleapis.com \
     persist.adb.tcp.port=5555 \
     ro.com.google.locationfeatures=1 \
     persist.sys.fuse.passthrough.enable=true \
     persist.sys.fuse.bpf.enable=false \
+    remote_provisioning.tee.rkp_only=1 \
 
 # Until we support adb keys on user builds, and fix logcat over serial,
 # spawn adbd by default without authorization for "adb logcat"
@@ -114,10 +101,8 @@ PRODUCT_VENDOR_PROPERTIES += \
     persist.sys.zram_enabled=1 \
     ro.hardware.keystore_desede=true \
     ro.rebootescrow.device=/dev/block/pmem0 \
-    ro.vendor.hwcomposer.pmem=/dev/block/pmem1 \
     ro.incremental.enable=1 \
-    debug.c2.use_dmabufheaps=1 \
-    ro.camerax.extensions.enabled=true \
+    debug.c2.use_dmabufheaps=1
 
 LOCAL_BT_PROPERTIES ?= \
  vendor.ser.bt-uart?=/dev/hvc5 \
@@ -128,12 +113,6 @@ PRODUCT_VENDOR_PROPERTIES += \
 # Below is a list of properties we probably should get rid of.
 PRODUCT_VENDOR_PROPERTIES += \
     wlan.driver.status=ok
-
-ifneq ($(LOCAL_DISABLE_OMX),true)
-# Codec 1.0 requires the OMX services
-DEVICE_MANIFEST_FILE += \
-    device/google/cuttlefish/shared/config/android.hardware.media.omx@1.0.xml
-endif
 
 PRODUCT_VENDOR_PROPERTIES += \
     debug.stagefright.c2inputsurface=-1
@@ -147,30 +126,24 @@ PRODUCT_VENDOR_PROPERTIES += ro.cp_system_other_odex=1
 AB_OTA_POSTINSTALL_CONFIG += \
     RUN_POSTINSTALL_system=true \
     POSTINSTALL_PATH_system=system/bin/otapreopt_script \
-    FILESYSTEM_TYPE_system=ext4 \
+    FILESYSTEM_TYPE_system=erofs \
     POSTINSTALL_OPTIONAL_system=true
 
 AB_OTA_POSTINSTALL_CONFIG += \
     RUN_POSTINSTALL_vendor=true \
     POSTINSTALL_PATH_vendor=bin/checkpoint_gc \
-    FILESYSTEM_TYPE_vendor=ext4 \
+    FILESYSTEM_TYPE_vendor=erofs \
     POSTINSTALL_OPTIONAL_vendor=true
 
 # Userdata Checkpointing OTA GC
 PRODUCT_PACKAGES += \
     checkpoint_gc
 
-# Enable CameraX extension sample
-PRODUCT_PACKAGES += androidx.camera.extensions.impl sample_camera_extensions.xml
-
 # DRM service opt-in
 PRODUCT_VENDOR_PROPERTIES += drm.service.enabled=true
 
 # Call deleteAllKeys if vold detects a factory reset
 PRODUCT_VENDOR_PROPERTIES += ro.crypto.metadata_init_delete_all_keys.enabled=true
-
-PRODUCT_SOONG_NAMESPACES += hardware/google/camera
-PRODUCT_SOONG_NAMESPACES += hardware/google/camera/devices/EmulatedCamera
 
 #
 # Packages for various GCE-specific utilities
@@ -199,48 +172,6 @@ PRODUCT_PACKAGES += \
     wificond \
 
 #
-# Packages for the OpenGL implementation
-#
-
-# ANGLE provides an OpenGL implementation built on top of Vulkan.
-PRODUCT_PACKAGES += \
-    libEGL_angle \
-    libGLESv1_CM_angle \
-    libGLESv2_angle
-
-# Enable the ANGLE feature to prefer linear filtering for YUV AHBs
-# to pass android.media.decoder.cts.DecodeAccuracyTest.
-PRODUCT_VENDOR_PROPERTIES += \
-    debug.angle.feature_overrides_enabled=preferLinearFilterForYUV
-
-# GL implementation for virgl
-PRODUCT_PACKAGES += \
-    libGLES_mesa \
-
-#
-# Packages for the Vulkan implementation
-#
-ifeq ($(TARGET_VULKAN_SUPPORT),true)
-PRODUCT_PACKAGES += \
-    vulkan.ranchu \
-    libvulkan_enc
-endif
-
-# GL/Vk implementation for gfxstream
-PRODUCT_PACKAGES += \
-    hwcomposer.ranchu \
-    libandroidemu \
-    libOpenglCodecCommon \
-    libOpenglSystemCommon \
-    libGLESv1_CM_emulation \
-    lib_renderControl_enc \
-    libEGL_emulation \
-    libGLESv2_enc \
-    libGLESv2_emulation \
-    libGLESv1_enc \
-    libGoldfishProfiler \
-
-#
 # Packages for testing
 #
 PRODUCT_PACKAGES += \
@@ -264,7 +195,8 @@ endif
 #
 # Common manifest for all targets
 #
-DEVICE_MANIFEST_FILE += device/google/cuttlefish/shared/config/manifest.xml
+LOCAL_DEVICE_FCM_MANIFEST_FILE ?= device/google/cuttlefish/shared/config/manifest.xml
+DEVICE_MANIFEST_FILE += $(LOCAL_DEVICE_FCM_MANIFEST_FILE)
 
 #
 # General files
@@ -288,11 +220,6 @@ ifneq ($(LOCAL_PREFER_VENDOR_APEX),true)
 PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/permissions/cuttlefish_excluded_hardware.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/cuttlefish_excluded_hardware.xml \
     frameworks/native/data/etc/android.hardware.audio.low_latency.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.audio.low_latency.xml \
-    frameworks/native/data/etc/android.hardware.camera.concurrent.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.camera.concurrent.xml \
-    frameworks/native/data/etc/android.hardware.camera.flash-autofocus.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.camera.flash-autofocus.xml \
-    frameworks/native/data/etc/android.hardware.camera.front.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.camera.front.xml \
-    frameworks/native/data/etc/android.hardware.camera.full.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.camera.full.xml \
-    frameworks/native/data/etc/android.hardware.camera.raw.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.camera.raw.xml \
     frameworks/native/data/etc/android.hardware.ethernet.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.ethernet.xml \
     frameworks/native/data/etc/android.hardware.location.gps.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.location.gps.xml \
     frameworks/native/data/etc/android.hardware.reboot_escrow.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.reboot_escrow.xml \
@@ -303,10 +230,8 @@ PRODUCT_COPY_FILES += \
     frameworks/native/data/etc/android.hardware.wifi.passpoint.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.wifi.passpoint.xml \
     frameworks/native/data/etc/android.software.ipsec_tunnels.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.ipsec_tunnels.xml \
     frameworks/native/data/etc/android.software.sip.voip.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.sip.voip.xml \
-    frameworks/native/data/etc/android.software.verified_boot.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.verified_boot.xml \
-    hardware/google/camera/devices/EmulatedCamera/hwl/configs/emu_camera_back.json:$(TARGET_COPY_OUT_VENDOR)/etc/config/emu_camera_back.json \
-    hardware/google/camera/devices/EmulatedCamera/hwl/configs/emu_camera_front.json:$(TARGET_COPY_OUT_VENDOR)/etc/config/emu_camera_front.json \
-    hardware/google/camera/devices/EmulatedCamera/hwl/configs/emu_camera_depth.json:$(TARGET_COPY_OUT_VENDOR)/etc/config/emu_camera_depth.json
+    frameworks/native/data/etc/android.software.verified_boot.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.verified_boot.xml
+
 endif
 PRODUCT_COPY_FILES += \
     frameworks/native/data/etc/android.hardware.consumerir.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.consumerir.xml \
@@ -319,9 +244,9 @@ PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/config/media_profiles.xml:$(TARGET_COPY_OUT_VENDOR)/etc/media_profiles_V1_0.xml \
     device/google/cuttlefish/shared/permissions/privapp-permissions-cuttlefish.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/privapp-permissions-cuttlefish.xml \
     frameworks/av/media/libeffects/data/audio_effects.xml:$(TARGET_COPY_OUT_VENDOR)/etc/audio_effects.xml \
+    hardware/interfaces/audio/aidl/default/audio_effects_config.xml:$(TARGET_COPY_OUT_VENDOR)/etc/audio_effects_config.xml \
     frameworks/av/media/libstagefright/data/media_codecs_google_audio.xml:$(TARGET_COPY_OUT_VENDOR)/etc/media_codecs_google_audio.xml \
     frameworks/av/media/libstagefright/data/media_codecs_google_telephony.xml:$(TARGET_COPY_OUT_VENDOR)/etc/media_codecs_google_telephony.xml \
-    frameworks/av/services/audiopolicy/config/a2dp_in_audio_policy_configuration_7_0.xml:$(TARGET_COPY_OUT_VENDOR)/etc/a2dp_in_audio_policy_configuration_7_0.xml \
     frameworks/av/services/audiopolicy/config/bluetooth_audio_policy_configuration_7_0.xml:$(TARGET_COPY_OUT_VENDOR)/etc/bluetooth_audio_policy_configuration_7_0.xml \
     frameworks/av/services/audiopolicy/config/r_submix_audio_policy_configuration.xml:$(TARGET_COPY_OUT_VENDOR)/etc/r_submix_audio_policy_configuration.xml \
     frameworks/av/services/audiopolicy/config/audio_policy_volumes.xml:$(TARGET_COPY_OUT_VENDOR)/etc/audio_policy_volumes.xml \
@@ -339,31 +264,17 @@ PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/config/input/Crosvm_Virtio_Multitouch_Touchscreen_3.idc:$(TARGET_COPY_OUT_VENDOR)/usr/idc/Crosvm_Virtio_Multitouch_Touchscreen_3.idc
 endif
 
-PRODUCT_COPY_FILES += \
-    device/google/cuttlefish/shared/config/fstab.f2fs:$(TARGET_COPY_OUT_VENDOR_RAMDISK)/first_stage_ramdisk/fstab.f2fs \
-    device/google/cuttlefish/shared/config/fstab.f2fs:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.f2fs \
-    device/google/cuttlefish/shared/config/fstab.f2fs:$(TARGET_COPY_OUT_RECOVERY)/root/first_stage_ramdisk/fstab.f2fs \
-    device/google/cuttlefish/shared/config/fstab.ext4:$(TARGET_COPY_OUT_VENDOR_RAMDISK)/first_stage_ramdisk/fstab.ext4 \
-    device/google/cuttlefish/shared/config/fstab.ext4:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.ext4 \
-    device/google/cuttlefish/shared/config/fstab.ext4:$(TARGET_COPY_OUT_RECOVERY)/root/first_stage_ramdisk/fstab.ext4
-
-ifeq ($(TARGET_VULKAN_SUPPORT),true)
-ifneq ($(LOCAL_PREFER_VENDOR_APEX),true)
-PRODUCT_COPY_FILES += \
-    frameworks/native/data/etc/android.hardware.vulkan.level-0.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.vulkan.level.xml \
-    frameworks/native/data/etc/android.hardware.vulkan.version-1_0_3.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.vulkan.version.xml \
-    frameworks/native/data/etc/android.software.vulkan.deqp.level-2022-03-01.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.vulkan.deqp.level.xml \
-    frameworks/native/data/etc/android.software.opengles.deqp.level-2022-03-01.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.opengles.deqp.level.xml
-endif
-endif
+PRODUCT_PACKAGES += \
+    fstab.cf.f2fs.hctr2 \
+    fstab.cf.f2fs.hctr2.vendor_ramdisk \
+    fstab.cf.f2fs.cts \
+    fstab.cf.f2fs.cts.vendor_ramdisk \
+    fstab.cf.ext4.hctr2 \
+    fstab.cf.ext4.hctr2.vendor_ramdisk \
+    fstab.cf.ext4.cts \
+    fstab.cf.ext4.cts.vendor_ramdisk \
 
 # Packages for HAL implementations
-
-#
-# Atrace HAL
-#
-PRODUCT_PACKAGES += \
-    android.hardware.atrace@1.0-service
 
 #
 # Weaver aidl HAL
@@ -375,7 +286,9 @@ PRODUCT_PACKAGES += \
 # IR aidl HAL
 #
 PRODUCT_PACKAGES += \
-	android.hardware.ir-service.example
+	android.hardware.ir-service.example \
+	consumerir.default
+
 
 #
 # OemLock aidl HAL
@@ -394,44 +307,18 @@ PRODUCT_PACKAGES += \
 #
 PRODUCT_PACKAGES += \
     android.hardware.authsecret-service.example
-#
-# Hardware Composer HAL
-#
-PRODUCT_PACKAGES += \
-    hwcomposer.drm \
-    android.hardware.graphics.composer@2.4-service
-
-#
-# Gralloc HAL
-#
-PRODUCT_PACKAGES += \
-    android.hardware.graphics.allocator@4.0-service.minigbm \
-    android.hardware.graphics.mapper@4.0-impl.minigbm
 
 #
 # Bluetooth HAL and Compatibility Bluetooth library (for older revs).
 #
 ifneq ($(LOCAL_PREFER_VENDOR_APEX),true)
-ifeq ($(LOCAL_BLUETOOTH_PRODUCT_PACKAGE),)
-ifeq ($(TARGET_ENABLE_HOST_BLUETOOTH_EMULATION),true)
-ifeq ($(TARGET_USE_BTLINUX_HAL_IMPL),true)
-    LOCAL_BLUETOOTH_PRODUCT_PACKAGE := android.hardware.bluetooth@1.1-service.btlinux
-else
-    LOCAL_BLUETOOTH_PRODUCT_PACKAGE := android.hardware.bluetooth@1.1-service.remote
-endif
-else
-    LOCAL_BLUETOOTH_PRODUCT_PACKAGE := android.hardware.bluetooth@1.1-service.sim
-endif
-    DEVICE_MANIFEST_FILE += device/google/cuttlefish/shared/config/manifest_android.hardware.bluetooth@1.1-service.xml
-endif
-
 PRODUCT_COPY_FILES +=\
     frameworks/native/data/etc/android.hardware.bluetooth.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.bluetooth.xml \
     frameworks/native/data/etc/android.hardware.bluetooth_le.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.bluetooth_le.xml
 
-PRODUCT_PACKAGES += $(LOCAL_BLUETOOTH_PRODUCT_PACKAGE)
-
-PRODUCT_PACKAGES += android.hardware.bluetooth.audio@2.1-impl  bt_vhci_forwarder
+PRODUCT_PACKAGES += \
+    android.hardware.bluetooth-service.default \
+    bt_vhci_forwarder
 
 # Bluetooth initialization configuration is copied to the init folder here instead of being added
 # as an init_rc attribute of the bt_vhci_forward binary.  The bt_vhci_forward binary is used by
@@ -440,7 +327,7 @@ PRODUCT_COPY_FILES += \
     device/google/cuttlefish/guest/commands/bt_vhci_forwarder/bt_vhci_forwarder.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/bt_vhci_forwarder.rc
 
 else
-PRODUCT_PACKAGES += com.google.cf.bt android.hardware.bluetooth.audio@2.1-impl
+PRODUCT_PACKAGES += com.google.cf.bt
 endif
 
 #
@@ -451,12 +338,18 @@ PRODUCT_PACKAGES += \
 
 #
 # Audio HAL
+# Note: aidl services are loaded, however they are not fully functional yet,
+#       and are not used by the framework, only by VTS tests.
 #
 ifndef LOCAL_AUDIO_PRODUCT_PACKAGE
 LOCAL_AUDIO_PRODUCT_PACKAGE := \
     android.hardware.audio.service \
     android.hardware.audio@7.1-impl.ranchu \
-    android.hardware.audio.effect@7.0-impl
+    android.hardware.audio.effect@7.0-impl \
+    android.hardware.audio.service-aidl.example \
+    android.hardware.audio.effect.service-aidl.example
+DEVICE_MANIFEST_FILE += \
+    device/google/cuttlefish/guest/hals/audio/effects/manifest.xml
 endif
 
 ifndef LOCAL_AUDIO_PRODUCT_COPY_FILES
@@ -466,7 +359,8 @@ LOCAL_AUDIO_PRODUCT_COPY_FILES := \
     frameworks/av/services/audiopolicy/config/r_submix_audio_policy_configuration.xml:$(TARGET_COPY_OUT_VENDOR)/etc/r_submix_audio_policy_configuration.xml \
     frameworks/av/services/audiopolicy/config/audio_policy_volumes.xml:$(TARGET_COPY_OUT_VENDOR)/etc/audio_policy_volumes.xml \
     frameworks/av/services/audiopolicy/config/default_volume_tables.xml:$(TARGET_COPY_OUT_VENDOR)/etc/default_volume_tables.xml \
-    frameworks/av/media/libeffects/data/audio_effects.xml:$(TARGET_COPY_OUT_VENDOR)/etc/audio_effects.xml
+    frameworks/av/media/libeffects/data/audio_effects.xml:$(TARGET_COPY_OUT_VENDOR)/etc/audio_effects.xml \
+    hardware/interfaces/audio/aidl/default/audio_effects_config.xml:$(TARGET_COPY_OUT_VENDOR)/etc/audio_effects_config.xml
 endif
 
 PRODUCT_PACKAGES += $(LOCAL_AUDIO_PRODUCT_PACKAGE)
@@ -489,20 +383,20 @@ PRODUCT_PACKAGES += \
 # Contexthub HAL
 #
 PRODUCT_PACKAGES += \
-    android.hardware.contexthub@1.2-service.mock
+    android.hardware.contexthub-service.example
 
 #
 # Drm HAL
 #
 PRODUCT_PACKAGES += \
-    android.hardware.drm@1.4-service.clearkey \
+    android.hardware.drm@latest-service.clearkey \
     android.hardware.drm@latest-service.widevine
 
 #
 # Confirmation UI HAL
 #
 ifeq ($(LOCAL_CONFIRMATIONUI_PRODUCT_PACKAGE),)
-    LOCAL_CONFIRMATIONUI_PRODUCT_PACKAGE := android.hardware.confirmationui@1.0-service.cuttlefish
+    LOCAL_CONFIRMATIONUI_PRODUCT_PACKAGE := android.hardware.confirmationui-service.cuttlefish
 endif
 PRODUCT_PACKAGES += $(LOCAL_CONFIRMATIONUI_PRODUCT_PACKAGE)
 
@@ -515,30 +409,10 @@ endif
 PRODUCT_PACKAGES += $(LOCAL_DUMPSTATE_PRODUCT_PACKAGE)
 
 #
-# Camera
-#
-ifeq ($(TARGET_USE_VSOCK_CAMERA_HAL_IMPL),true)
-PRODUCT_PACKAGES += \
-    android.hardware.camera.provider@2.7-external-vsock-service \
-    android.hardware.camera.provider@2.7-impl-cuttlefish
-DEVICE_MANIFEST_FILE += \
-    device/google/cuttlefish/guest/hals/camera/manifest.xml
-else
-ifeq ($(LOCAL_PREFER_VENDOR_APEX),true)
-PRODUCT_PACKAGES += com.google.emulated.camera.provider.hal
-PRODUCT_PACKAGES += com.google.emulated.camera.provider.hal.fastscenecycle
-endif
-PRODUCT_PACKAGES += \
-    android.hardware.camera.provider@2.7-service-google \
-    libgooglecamerahwl_impl \
-    android.hardware.camera.provider@2.7-impl-google \
-
-endif
-#
 # Gatekeeper
 #
 ifeq ($(LOCAL_GATEKEEPER_PRODUCT_PACKAGE),)
-       LOCAL_GATEKEEPER_PRODUCT_PACKAGE := android.hardware.gatekeeper@1.0-service.remote
+       LOCAL_GATEKEEPER_PRODUCT_PACKAGE := android.hardware.gatekeeper-service.remote
 endif
 PRODUCT_PACKAGES += \
     $(LOCAL_GATEKEEPER_PRODUCT_PACKAGE)
@@ -568,30 +442,26 @@ PRODUCT_PACKAGES += \
 PRODUCT_PACKAGES += \
     android.hardware.identity-service.remote
 
-# Input Classifier HAL
 PRODUCT_PACKAGES += \
-    android.hardware.input.classifier@1.0-service.default
+    android.hardware.input.processor-service.example
+
+# Netlink Interceptor HAL
+PRODUCT_PACKAGES += \
+    android.hardware.net.nlinterceptor-service.default
 
 #
 # Sensors
 #
 ifeq ($(LOCAL_SENSOR_PRODUCT_PACKAGE),)
-ifeq ($(LOCAL_PREFER_VENDOR_APEX),true)
-       LOCAL_SENSOR_PRODUCT_PACKAGE := com.android.hardware.sensors
-else
-       LOCAL_SENSOR_PRODUCT_PACKAGE := android.hardware.sensors@2.1-service.mock
-endif
+# TODO(b/210883464): Convert the sensors APEX to use the new AIDL impl.
+#ifeq ($(LOCAL_PREFER_VENDOR_APEX),true)
+#       LOCAL_SENSOR_PRODUCT_PACKAGE := com.android.hardware.sensors
+#else
+       LOCAL_SENSOR_PRODUCT_PACKAGE := android.hardware.sensors-service.example
+#endif
 endif
 PRODUCT_PACKAGES += \
     $(LOCAL_SENSOR_PRODUCT_PACKAGE)
-#
-# Thermal (mock)
-#
-ifeq ($(LOCAL_PREFER_VENDOR_APEX),true)
-PRODUCT_PACKAGES += com.android.hardware.thermal.mock
-else
-PRODUCT_PACKAGES += android.hardware.thermal@2.0-service.mock
-endif
 
 #
 # Lights
@@ -603,25 +473,30 @@ PRODUCT_PACKAGES += \
 # KeyMint HAL
 #
 ifeq ($(LOCAL_KEYMINT_PRODUCT_PACKAGE),)
-       LOCAL_KEYMINT_PRODUCT_PACKAGE := android.hardware.security.keymint-service.remote
-# Indicate that this KeyMint includes support for the ATTEST_KEY key purpose.
+    LOCAL_KEYMINT_PRODUCT_PACKAGE := android.hardware.security.keymint-service.rust
+endif
+
+ifeq ($(LOCAL_KEYMINT_PRODUCT_PACKAGE),android.hardware.security.keymint-service.rust)
+    # KeyMint HAL has been overridden to force use of the Rust reference implementation.
+    # Set the build config for secure_env to match.
+    $(call soong_config_set,secure_env,keymint_impl,rust)
+endif
+
+PRODUCT_PACKAGES += \
+    $(LOCAL_KEYMINT_PRODUCT_PACKAGE) \
+    RemoteProvisioner
+
+# Indicate that KeyMint includes support for the ATTEST_KEY key purpose.
 PRODUCT_COPY_FILES += \
     frameworks/native/data/etc/android.hardware.keystore.app_attest_key.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.keystore.app_attest_key.xml
-endif
- PRODUCT_PACKAGES += \
-    $(LOCAL_KEYMINT_PRODUCT_PACKAGE)
-
-# Keymint configuration
-ifneq ($(LOCAL_PREFER_VENDOR_APEX),true)
-PRODUCT_COPY_FILES += \
-    frameworks/native/data/etc/android.software.device_id_attestation.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.device_id_attestation.xml
-endif
 
 #
 # Dice HAL
 #
+ifneq ($(filter-out %_riscv64,$(TARGET_PRODUCT)),)
 PRODUCT_PACKAGES += \
     android.hardware.security.dice-service.non-secure-software
+endif
 
 #
 # Power and PowerStats HALs
@@ -636,6 +511,18 @@ PRODUCT_PACKAGES += \
 endif
 
 #
+# Tetheroffload HAL
+#
+PRODUCT_PACKAGES += \
+    android.hardware.tetheroffload-service.example
+
+#
+# Thermal HAL
+#
+LOCAL_THERMAL_HAL_PRODUCT_PACKAGE ?= android.hardware.thermal-service.example
+PRODUCT_PACKAGES += $(LOCAL_THERMAL_HAL_PRODUCT_PACKAGE)
+
+#
 # NeuralNetworks HAL
 #
 PRODUCT_PACKAGES += \
@@ -643,16 +530,13 @@ PRODUCT_PACKAGES += \
     android.hardware.neuralnetworks-service-sample-limited \
     android.hardware.neuralnetworks-shim-service-sample
 
-#
 # USB
-# TODO(b/227791019): Convert USB AIDL HAL to APEX
-# ifeq ($(LOCAL_PREFER_VENDOR_APEX),true)
-# PRODUCT_PACKAGES += \
-#    com.android.hardware.usb
-#else
 PRODUCT_PACKAGES += \
-    android.hardware.usb-service.example
-#endif
+    com.android.hardware.usb
+
+# USB Gadget
+PRODUCT_PACKAGES += \
+    android.hardware.usb.gadget-service.example
 
 # Vibrator HAL
 ifeq ($(LOCAL_PREFER_VENDOR_APEX),true)
@@ -664,7 +548,9 @@ endif
 
 # BootControl HAL
 PRODUCT_PACKAGES += \
-    android.hardware.boot-service.default
+    android.hardware.boot-service.default \
+    android.hardware.boot-service.default_recovery
+
 
 # RebootEscrow HAL
 PRODUCT_PACKAGES += \
@@ -721,6 +607,7 @@ PRODUCT_VENDOR_PROPERTIES += ro.vendor.wifi_impl=virt_wifi
 else
 PRODUCT_SOONG_NAMESPACES += device/google/cuttlefish/apex/com.google.cf.wifi_hwsim
 PRODUCT_PACKAGES += com.google.cf.wifi_hwsim
+PRODUCT_PACKAGES += com.android.hardware.wifi
 $(call add_soong_config_namespace, wpa_supplicant)
 $(call add_soong_config_var_value, wpa_supplicant, platform_version, $(PLATFORM_VERSION))
 $(call add_soong_config_var_value, wpa_supplicant, nl80211_driver, CONFIG_DRIVER_NL80211_QCA)
@@ -735,6 +622,12 @@ PRODUCT_PACKAGES += \
     wpa_supplicant
 PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/config/wpa_supplicant.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/wpa_supplicant.rc
+
+# VirtWifi interface configuration
+ifeq ($(DEVICE_VIRTWIFI_PORT),)
+    DEVICE_VIRTWIFI_PORT := eth2
+endif
+PRODUCT_VENDOR_PROPERTIES += ro.vendor.virtwifi.port=${DEVICE_VIRTWIFI_PORT}
 
 # WLAN driver configuration files
 ifndef LOCAL_WPA_SUPPLICANT_OVERLAY
@@ -753,7 +646,7 @@ PRODUCT_PACKAGES += \
     mac80211_create_radios \
     hostapd \
     android.hardware.wifi@1.0-service \
-    init.wifi.sh
+    init.wifi
 
 PRODUCT_VENDOR_PROPERTIES += ro.vendor.wifi_impl=mac8011_hwsim_virtio
 
@@ -766,6 +659,10 @@ endif
 
 endif
 
+# UWB HAL
+PRODUCT_PACKAGES += \
+    android.hardware.uwb-service
+
 ifeq ($(PRODUCT_ENFORCE_MAC80211_HWSIM),true)
 # Wifi Runtime Resource Overlay
 PRODUCT_PACKAGES += \
@@ -773,13 +670,8 @@ PRODUCT_PACKAGES += \
     CuttlefishWifiOverlay
 endif
 
-
 # Host packages to install
 PRODUCT_HOST_PACKAGES += socket_vsock_proxy
-
-PRODUCT_EXTRA_VNDK_VERSIONS := 28 29 30 31
-
-PRODUCT_SOONG_NAMESPACES += external/mesa3d
 
 #for Confirmation UI
 PRODUCT_SOONG_NAMESPACES += vendor/google_devices/common/proprietary/confirmatioui_hal
@@ -793,18 +685,6 @@ PRODUCT_VENDOR_PROPERTIES += \
 PRODUCT_VENDOR_PROPERTIES += \
     ro.surface_flinger.supports_background_blur=1
 
-# Set support one-handed mode
-PRODUCT_PRODUCT_PROPERTIES += \
-    ro.support_one_handed_mode=true
-
-# Set one_handed_mode screen translate offset percentage
-PRODUCT_PRODUCT_PROPERTIES += \
-    persist.debug.one_handed_offset_percentage=50
-
-# Set one_handed_mode translate animation duration milliseconds
-PRODUCT_PRODUCT_PROPERTIES += \
-    persist.debug.one_handed_translate_animation_duration=300
-
 # Vendor Dlkm Locader
 PRODUCT_PACKAGES += \
    dlkm_loader
@@ -812,6 +692,10 @@ PRODUCT_PACKAGES += \
 # NFC AIDL HAL
 PRODUCT_PACKAGES += \
     android.hardware.nfc-service.cuttlefish
+
+# CAS AIDL HAL
+PRODUCT_PACKAGES += \
+    android.hardware.cas-service.example
 
 PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/config/pci.ids:$(TARGET_COPY_OUT_VENDOR)/pci.ids

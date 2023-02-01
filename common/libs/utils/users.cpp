@@ -17,16 +17,23 @@
 #include "common/libs/utils/users.h"
 
 #include <grp.h>
+#include <pwd.h>
+#include <sys/types.h>
 #include <unistd.h>
 
 #include <algorithm>
 #include <cerrno>
+#include <cstdlib>
 #include <cstring>
+#include <mutex>
 #include <ostream>
 #include <string>
 #include <vector>
 
+#include <android-base/file.h>
 #include <android-base/logging.h>
+
+#include "common/libs/utils/contains.h"
 
 namespace cuttlefish {
 namespace {
@@ -86,11 +93,33 @@ bool InGroup(const std::string& group) {
   }
 
   auto groups = GetSuplementaryGroups();
+  return Contains(groups, gid);
+}
 
-  if (std::find(groups.cbegin(), groups.cend(), gid) != groups.cend()) {
-    return true;
+Result<std::string> SystemWideUserHome(const uid_t uid) {
+  // getpwuid() is not thread-safe, so we need a lock across all calls
+  static std::mutex getpwuid_mutex;
+  std::string home_dir;
+  {
+    std::lock_guard<std::mutex> lock(getpwuid_mutex);
+    const auto entry = getpwuid(uid);
+    if (entry) {
+      home_dir = entry->pw_dir;
+    }
+    endpwent();
+    if (home_dir.empty()) {
+      return CF_ERRNO("Failed to find the home directory using " << uid);
+    }
   }
-  return false;
+  std::string home_realpath;
+  if (!android::base::Realpath(home_dir, &home_realpath)) {
+    return CF_ERRNO("Failed to convert " << home_dir << " to its Realpath");
+  }
+  return home_realpath;
+}
+
+Result<std::string> SystemWideUserHome() {
+  return SystemWideUserHome(getuid());
 }
 
 } // namespace cuttlefish

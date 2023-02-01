@@ -100,7 +100,7 @@ class StreamerSockets : public virtual SetupFeature {
     }
     cmd.AddParameter("-keyboard_fd=", keyboard_server_);
     cmd.AddParameter("-frame_server_fd=", frames_server_);
-    if (config_.enable_audio()) {
+    if (instance_.enable_audio()) {
       cmd.AddParameter("--audio_server_fd=", audio_server_);
     }
     cmd.AddParameter("--confui_in_fd=", confui_in_fd_);
@@ -111,7 +111,7 @@ class StreamerSockets : public virtual SetupFeature {
   std::string Name() const override { return "StreamerSockets"; }
   bool Enabled() const override {
     bool is_qemu = config_.vm_manager() == vm_manager::QemuManager::name();
-    bool is_accelerated = config_.gpu_mode() != kGpuModeGuestSwiftshader;
+    bool is_accelerated = instance_.gpu_mode() != kGpuModeGuestSwiftshader;
     return !(is_qemu && is_accelerated);
   }
 
@@ -120,7 +120,7 @@ class StreamerSockets : public virtual SetupFeature {
 
   Result<void> ResultSetup() override {
     auto use_vsockets = config_.vm_manager() == vm_manager::QemuManager::name();
-    for (int i = 0; i < config_.display_configs().size(); ++i) {
+    for (int i = 0; i < instance_.display_configs().size(); ++i) {
       SharedFD touch_socket =
           use_vsockets ? SharedFD::VsockServer(instance_.touch_server_port(),
                                                SOCK_STREAM)
@@ -137,7 +137,7 @@ class StreamerSockets : public virtual SetupFeature {
     frames_server_ = CreateUnixInputServer(instance_.frames_socket_path());
     CF_EXPECT(frames_server_->IsOpen(), frames_server_->StrError());
     // TODO(schuffelen): Make this a separate optional feature?
-    if (config_.enable_audio()) {
+    if (instance_.enable_audio()) {
       auto path = config_.ForDefaultInstance().audio_server_path();
       audio_server_ =
           SharedFD::SocketLocalServer(path, false, SOCK_SEQPACKET, 0666);
@@ -193,15 +193,17 @@ class WebRtcServer : public virtual CommandSource,
         custom_action_config_(custom_action_config) {}
   // DiagnosticInformation
   std::vector<std::string> Diagnostics() const override {
-    if (!Enabled() || !config_.ForDefaultInstance().start_webrtc_sig_server()) {
+    if (!Enabled() ||
+        !(config_.ForDefaultInstance().start_webrtc_sig_server() ||
+          config_.ForDefaultInstance().start_webrtc_sig_server_proxy())) {
       // When WebRTC is enabled but an operator other than the one launched by
       // run_cvd is used there is no way to know the url to which to point the
       // browser to.
       return {};
     }
     std::ostringstream out;
-    out << "Point your browser to https://" << config_.sig_server_address()
-        << ":" << config_.sig_server_port() << " to interact with the device.";
+    out << "Point your browser to https://localhost:"
+        << config_.sig_server_port() << " to interact with the device.";
     return {out.str()};
   }
 
@@ -210,7 +212,7 @@ class WebRtcServer : public virtual CommandSource,
     std::vector<Command> commands;
     if (instance_.start_webrtc_sig_server()) {
       Command sig_server(WebRtcSigServerBinary());
-      sig_server.AddParameter("-assets_dir=", config_.webrtc_assets_dir());
+      sig_server.AddParameter("-assets_dir=", instance_.webrtc_assets_dir());
       sig_server.AddParameter("-use_secure_http=",
                               config_.sig_server_secure() ? "true" : "false");
       if (!config_.webrtc_certs_dir().empty()) {
@@ -265,7 +267,8 @@ class WebRtcServer : public virtual CommandSource,
                         DefaultHostArtifactsPath("usr/share/webrtc/assets"));
 
     // TODO get from launcher params
-    const auto& actions = custom_action_config_.CustomActionServers();
+    const auto& actions =
+        custom_action_config_.CustomActionServers(instance_.id());
     for (auto& action : LaunchCustomActionServers(webrtc, actions)) {
       commands.emplace_back(std::move(action));
     }
@@ -276,7 +279,7 @@ class WebRtcServer : public virtual CommandSource,
 
   // SetupFeature
   bool Enabled() const override {
-    return sockets_.Enabled() && config_.enable_webrtc();
+    return sockets_.Enabled() && instance_.enable_webrtc();
   }
 
  private:

@@ -22,26 +22,11 @@ $(call inherit-product, $(SRC_TARGET_DIR)/product/handheld_vendor.mk)
 $(call inherit-product, packages/services/Car/car_product/build/car.mk)
 
 $(call inherit-product, frameworks/native/build/phone-xhdpi-2048-dalvik-heap.mk)
+$(call inherit-product, device/google/cuttlefish/shared/graphics/device_vendor.mk)
 $(call inherit-product, device/google/cuttlefish/shared/swiftshader/device_vendor.mk)
+$(call inherit-product, device/google/cuttlefish/shared/telephony/device_vendor.mk)
+$(call inherit-product, device/google/cuttlefish/shared/virgl/device_vendor.mk)
 $(call inherit-product, device/google/cuttlefish/shared/device.mk)
-
-PRODUCT_VENDOR_PROPERTIES += \
-    keyguard.no_require_sim=true \
-    ro.cdma.home.operator.alpha=Android \
-    ro.cdma.home.operator.numeric=302780 \
-    ro.com.android.dataroaming=true \
-    ro.telephony.default_network=9 \
-
-# Cuttlefish RIL support
-TARGET_USES_CF_RILD ?= true
-ifeq ($(TARGET_USES_CF_RILD),true)
-$(call inherit-product, $(SRC_TARGET_DIR)/product/telephony_system_ext.mk)
-PRODUCT_PACKAGES += \
-    libcuttlefish-ril-2 \
-    libcuttlefish-rild
-else
-TARGET_NO_TELEPHONY := true
-endif
 
 # Extend cuttlefish common sepolicy with auto-specific functionality
 BOARD_SEPOLICY_DIRS += device/google/cuttlefish/shared/auto/sepolicy/vendor
@@ -79,12 +64,19 @@ LOCAL_AUDIO_PRODUCT_COPY_FILES := \
     frameworks/av/services/audiopolicy/config/usb_audio_policy_configuration.xml:$(TARGET_COPY_OUT_VENDOR)/etc/usb_audio_policy_configuration.xml
 endif
 
+# Include display settings for an auto device.
+PRODUCT_COPY_FILES += \
+    device/google/cuttlefish/shared/auto/display_settings.xml:$(TARGET_COPY_OUT_VENDOR)/etc/display_settings.xml
+
 # vehicle HAL
 ifeq ($(LOCAL_VHAL_PRODUCT_PACKAGE),)
-    LOCAL_VHAL_PRODUCT_PACKAGE := android.hardware.automotive.vehicle@2.0-service
+    LOCAL_VHAL_PRODUCT_PACKAGE := android.hardware.automotive.vehicle@V1-emulator-service
     BOARD_SEPOLICY_DIRS += device/google/cuttlefish/shared/auto/sepolicy/vhal
 endif
 PRODUCT_PACKAGES += $(LOCAL_VHAL_PRODUCT_PACKAGE)
+
+# Remote access HAL
+PRODUCT_PACKAGES += android.hardware.automotive.remoteaccess@V1-default-service
 
 # Broadcast Radio
 PRODUCT_PACKAGES += android.hardware.broadcastradio@2.0-service
@@ -92,6 +84,7 @@ PRODUCT_PACKAGES += android.hardware.broadcastradio@2.0-service
 # AudioControl HAL
 ifeq ($(LOCAL_AUDIOCONTROL_HAL_PRODUCT_PACKAGE),)
     LOCAL_AUDIOCONTROL_HAL_PRODUCT_PACKAGE := android.hardware.automotive.audiocontrol-service.example
+    BOARD_SEPOLICY_DIRS += device/google/cuttlefish/shared/auto/sepolicy/audio
 endif
 PRODUCT_PACKAGES += $(LOCAL_AUDIOCONTROL_HAL_PRODUCT_PACKAGE)
 
@@ -101,8 +94,43 @@ PRODUCT_PACKAGES_DEBUG += canhalctrl \
     canhaldump \
     canhalsend
 
+# EVS
+# By default, we enable EvsManager, a sample EVS app, and a mock EVS HAL implementation.
+# If you want to use your own EVS HAL implementation, please set ENABLE_MOCK_EVSHAL as false
+# and add your HAL implementation to the product.  Please also check init.evs.rc and see how
+# you can configure EvsManager to use your EVS HAL implementation.  Similarly, please set
+# ENABLE_SAMPLE_EVS_APP as false if you want to use your own EVS app configuration or own EVS
+# app implementation.
+ENABLE_EVS_SERVICE ?= true
+ENABLE_MOCK_EVSHAL ?= true
+ENABLE_CAREVSSERVICE_SAMPLE ?= true
+ENABLE_SAMPLE_EVS_APP ?= true
+ENABLE_CARTELEMETRY_SERVICE ?= true
+
+ifeq ($(ENABLE_MOCK_EVSHAL), true)
+CUSTOMIZE_EVS_SERVICE_PARAMETER := true
+PRODUCT_PACKAGES += android.hardware.automotive.evs@1.1-service \
+    android.frameworks.automotive.display@1.0-service
+PRODUCT_COPY_FILES += \
+    device/google/cuttlefish/shared/auto/evs/init.evs.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/init.evs.rc
+BOARD_SEPOLICY_DIRS += device/google/cuttlefish/shared/auto/sepolicy/evs
+endif
+
+ifeq ($(ENABLE_SAMPLE_EVS_APP), true)
+PRODUCT_PACKAGES += evs_app
+PRODUCT_COPY_FILES += \
+    device/google/cuttlefish/shared/auto/evs/evs_app_config.json:$(TARGET_COPY_OUT_SYSTEM)/etc/automotive/evs/config_override.json
+BOARD_SEPOLICY_DIRS += packages/services/Car/cpp/evs/apps/sepolicy/private
+ifeq ($(ENABLE_CARTELEMETRY_SERVICE), true)
+BOARD_SEPOLICY_DIRS += packages/services/Car/cpp/evs/apps/sepolicy/cartelemetry
+endif
+endif
+
 BOARD_IS_AUTOMOTIVE := true
 
 DEVICE_PACKAGE_OVERLAYS += device/google/cuttlefish/shared/auto/overlay
+
+PRODUCT_PACKAGES += CarServiceOverlayCuttleFish
+GOOGLE_CAR_SERVICE_OVERLAY += CarServiceOverlayCuttleFishGoogle
 
 TARGET_BOARD_INFO_FILE ?= device/google/cuttlefish/shared/auto/android-info.txt

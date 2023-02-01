@@ -25,37 +25,43 @@
 #include "host/libs/location/KmlParser.h"
 
 DEFINE_int32(instance_num, 1, "Which instance to read the configs from");
-DEFINE_double(delay, 1.0, "delay interval between different gps_locations");
+DEFINE_double(delay, 1.0, "delay interval between different coordinates");
 
-DEFINE_string(format, "", "gnss raw measurement file path for gnss grpc");
-DEFINE_string(file_path, "", "gnss raw measurement file path for gnss grpc");
+DEFINE_string(format, "", "supported file format, either kml or gpx");
+DEFINE_string(file_path, "", "path to input file location {Kml or gpx} format");
 
-constexpr char kUsageMessage[] =
-    "gps locations import commandline utility\n\n"
-    "  Usage: cvd_import_locations [option] command [args...]\n\n"
-    "  arguments:\n\n"
-    "    --frmat=[format_string]\n"
-    "      input file format for cvd_import_locations\n"
-    "         \"gpx\" for gpx input data file\n"
-    "         \"kml\" for kml input data file\n\n"
-    "    --file_path=[path]\n"
-    "      gps locations input file path\n"
-    "      if path is not specified, error will be reported\n\n"
-    "    --delay=[delay_value]\n"
-    "      delay between different gps locations ( double , default value is "
-    "1.0 second) \n\n"
-    "    --instance_num=[integer_value]\n"
-    "      running instance number , starts from 1 ( integer , default value "
-    "is 1) \n\n"
-    "  examples:\n\n"
-    "     cvd_import_locations --format=\"gpx\" --file_path=\"input.gpx\"\n"
-    "     cvd_import_locations --format=\"kml\" --file_path=\"input.kml\"\n\n"
-    "     cvd_import_locations --format=\"gpx\" --file_path=\"input.gpx\" "
-    "--delay=.5\n"
-    "     cvd_import_locations --format=\"kml\" --file_path=\"input.kml\" "
-    "--delay=.5\n\n"
-    "     cvd_import_locations --format=\"gpx\" --file_path=\"input.gpx\" "
-    "--delay=.5 --instance_num=2\n";
+const char* kUsageMessage = R""""(gps locations import commandline utility
+
+Usage: cvd_import_locations [option] command [args...]
+
+arguments:
+
+  --format=[format_string]
+    input file format for cvd_import_locations
+        "gpx" for gpx input data file
+        "kml" for kml input data file
+
+  --file_path=[path]
+    gps locations input file path
+    if path is not specified, error will be reported
+
+  --delay=[delay_value]
+    delay between different gps locations ( double , default value is 1.0 second)
+
+  --instance_num=[integer_value]
+    running instance number , starts from 1 ( integer , default value is 1)
+
+examples:
+
+    cvd_import_locations --format="gpx" --file_path="input.gpx"
+    cvd_import_locations --format="kml" --file_path="input.kml"
+
+    cvd_import_locations --format="gpx" --file_path="input.gpx" --delay=.5
+    cvd_import_locations --format="kml" --file_path="input.kml" --delay=.5
+
+    cvd_import_locations --format="gpx" --file_path="input.gpx" --delay=.5 --instance_num=2
+
+)"""";
 namespace cuttlefish {
 namespace {
 
@@ -82,7 +88,7 @@ int ImportLocationsCvdMain(int argc, char** argv) {
   GnssClient gpsclient(
       grpc::CreateChannel(socket_name, grpc::InsecureChannelCredentials()));
 
-  GpsFixArray gps_locations;
+  GpsFixArray coordinates;
   std::string error;
   bool isOk = false;
 
@@ -90,13 +96,13 @@ int ImportLocationsCvdMain(int argc, char** argv) {
             << std::endl;
   if (FLAGS_format == "gpx" || FLAGS_format == "GPX") {
     isOk =
-        GpxParser::parseFile(FLAGS_file_path.c_str(), &gps_locations, &error);
+        GpxParser::parseFile(FLAGS_file_path.c_str(), &coordinates, &error);
   } else if (FLAGS_format == "kml" || FLAGS_format == "KML") {
     isOk =
-        KmlParser::parseFile(FLAGS_file_path.c_str(), &gps_locations, &error);
+        KmlParser::parseFile(FLAGS_file_path.c_str(), &coordinates, &error);
   }
 
-  LOG(INFO) << "Number of parsed points: " << gps_locations.size() << std::endl;
+  LOG(INFO) << "Number of parsed points: " << coordinates.size() << std::endl;
 
   if (!isOk) {
     LOG(ERROR) << " Parsing Error: " << error << std::endl;
@@ -104,20 +110,12 @@ int ImportLocationsCvdMain(int argc, char** argv) {
   }
 
   int delay = (int)(1000 * FLAGS_delay);
-  for (auto itr : gps_locations) {
-    std::string latitude = std::to_string(itr.latitude);
-    std::string longitude = std::to_string(itr.longitude);
-    std::string elevation = std::to_string(itr.elevation);
-
-    std::string formatted_location =
-        gpsclient.FormatGps(latitude, longitude, elevation);
-    auto status = gpsclient.SendSingleGpsLoc(formatted_location);
-    CHECK(status.ok()) << "Failed to send gps location data \n";
-    if (!status.ok()) {
-      return 1;
-    }
-    std::this_thread::sleep_for(std::chrono::milliseconds(delay));
+  auto status = gpsclient.SendGpsLocations(delay,coordinates);
+  CHECK(status.ok()) << "Failed to send gps location data \n";
+  if (!status.ok()) {
+    return 1;
   }
+  std::this_thread::sleep_for(std::chrono::milliseconds(delay));
   return 0;
 }
 

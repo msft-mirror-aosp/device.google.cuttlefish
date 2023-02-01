@@ -36,8 +36,8 @@ class QemuManager : public VmManager {
 
   bool IsSupported() override;
   std::vector<std::string> ConfigureGraphics(
-      const CuttlefishConfig& config) override;
-  std::string ConfigureBootDevices(int num_disks) override;
+      const CuttlefishConfig::InstanceSpecific& instance) override;
+  std::string ConfigureBootDevices(int num_disks, bool have_gpu) override;
 
   Result<std::vector<cuttlefish::Command>> StartCommands(
       const CuttlefishConfig& config) override;
@@ -48,4 +48,3 @@ class QemuManager : public VmManager {
 
 } // namespace vm_manager
 } // namespace cuttlefish
-

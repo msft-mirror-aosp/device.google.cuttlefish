@@ -20,8 +20,9 @@
 #include <fruit/fruit.h>
 
 #include "common/libs/fs/shared_fd.h"
-#include "host/commands/cvd/server.h"
+#include "cvd_server.pb.h"
 #include "host/commands/cvd/server_client.h"
+#include "host/commands/cvd/server_command/server_handler.h"
 #include "host/libs/config/inject.h"
 
 namespace cuttlefish {
@@ -33,11 +34,14 @@ class CommandSequenceExecutor : public LateInjected {
   Result<void> LateInject(fruit::Injector<>&) override;
 
   Result<void> Interrupt();
-  Result<void> Execute(const std::vector<RequestWithStdio>&, SharedFD report);
+  Result<std::vector<cvd::Response>> Execute(
+      const std::vector<RequestWithStdio>&, SharedFD report);
+
+  std::vector<std::string> CmdList() const;
 
  private:
   std::vector<CvdServerHandler*> server_handlers_;
-  CvdServerHandler* current_handler_;
+  std::vector<CvdServerHandler*> handler_stack_;
   std::mutex interrupt_mutex_;
   bool interrupted_ = false;
 };

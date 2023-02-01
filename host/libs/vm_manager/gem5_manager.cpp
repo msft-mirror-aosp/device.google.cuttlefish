@@ -86,7 +86,7 @@ void GenerateGem5File(const CuttlefishConfig& config,
   starter_fs_ofstream << "  parser.add_argument(\"--mem-type\", default=\"" << mem_type << "\", choices=ObjectList.mem_list.get_names())\n";
   starter_fs_ofstream << "  parser.add_argument(\"--mem-channels\", type=int, default=" << mem_channels << ")\n";
   starter_fs_ofstream << "  parser.add_argument(\"--mem-ranks\", type=int, default=" << mem_ranks << ")\n";
-  starter_fs_ofstream << "  parser.add_argument(\"--mem-size\", action=\"store\", type=str, default=\"" << config.memory_mb() << "MB\")\n";
+  starter_fs_ofstream << "  parser.add_argument(\"--mem-size\", action=\"store\", type=str, default=\"" << instance.memory_mb() << "MB\")\n";
   starter_fs_ofstream << "  parser.add_argument(\"--restore\", type=str, default=None)\n";
   starter_fs_ofstream << "  args = parser.parse_args()\n";
 
@@ -124,7 +124,7 @@ bool Gem5Manager::IsSupported() {
 }
 
 std::vector<std::string> Gem5Manager::ConfigureGraphics(
-    const CuttlefishConfig& config) {
+    const CuttlefishConfig::InstanceSpecific& instance) {
   // TODO: Add support for the gem5 gpu models
 
   // Override the default HAL search paths in all cases. We do this because
@@ -134,14 +134,15 @@ std::vector<std::string> Gem5Manager::ConfigureGraphics(
   return {
       "androidboot.cpuvulkan.version=" + std::to_string(VK_API_VERSION_1_1),
       "androidboot.hardware.gralloc=minigbm",
-      "androidboot.hardware.hwcomposer=" + config.hwcomposer(),
+      "androidboot.hardware.hwcomposer=" + instance.hwcomposer(),
       "androidboot.hardware.hwcomposer.mode=noop",
       "androidboot.hardware.egl=angle",
       "androidboot.hardware.vulkan=pastel",
   };
 }
 
-std::string Gem5Manager::ConfigureBootDevices(int /*num_disks*/) {
+std::string Gem5Manager::ConfigureBootDevices(int /*num_disks*/,
+                                              bool /*have_gpu*/) {
   switch (arch_) {
     case Arch::Arm:
     case Arch::Arm64:
@@ -167,6 +168,9 @@ Result<std::vector<Command>> Gem5Manager::StartCommands(
     case Arch::Arm64:
       gem5_binary += "/build/ARM/gem5.opt";
       break;
+    case Arch::RiscV64:
+      gem5_binary += "/build/RISCV/gem5.opt";
+      break;
     case Arch::X86:
     case Arch::X86_64:
       gem5_binary += "/build/X86/gem5.opt";
@@ -177,12 +181,16 @@ Result<std::vector<Command>> Gem5Manager::StartCommands(
 
   Command gem5_cmd(gem5_binary, stop);
 
+  // Always enable listeners, because auto mode will disable once it detects
+  // gem5 is not run interactively
+  gem5_cmd.AddParameter("--listener-mode=on");
+
   // Add debug-flags and debug-file before the script (i.e. starter_fs.py).
   // We check the flags are not empty first since they are optional
   if(!config.gem5_debug_flags().empty()) {
     gem5_cmd.AddParameter("--debug-flags=", config.gem5_debug_flags());
-    if(!config.gem5_debug_file().empty()) {
-      gem5_cmd.AddParameter("--debug-file=", config.gem5_debug_file());
+    if(!instance.gem5_debug_file().empty()) {
+      gem5_cmd.AddParameter("--debug-file=", instance.gem5_debug_file());
     }
   }
 
@@ -195,7 +203,7 @@ Result<std::vector<Command>> Gem5Manager::StartCommands(
                           instance.gem5_checkpoint_dir());
   }
 
-  gem5_cmd.AddParameter("--mem-size=", config.memory_mb() * 1024ULL * 1024ULL);
+  gem5_cmd.AddParameter("--mem-size=", instance.memory_mb() * 1024ULL * 1024ULL);
   for (const auto& disk : instance.virtual_disk_paths()) {
     gem5_cmd.AddParameter("--disk-image=", disk);
   }

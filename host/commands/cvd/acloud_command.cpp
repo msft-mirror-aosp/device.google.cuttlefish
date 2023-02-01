@@ -20,6 +20,7 @@
 #include <vector>
 
 #include <android-base/strings.h>
+#include <android-base/parseint.h>
 
 #include "cvd_server.pb.h"
 
@@ -30,8 +31,11 @@
 #include "common/libs/utils/subprocess.h"
 #include "host/commands/cvd/command_sequence.h"
 #include "host/commands/cvd/instance_lock.h"
-#include "host/commands/cvd/server.h"
+#include "host/commands/cvd/selector/selector_constants.h"
 #include "host/commands/cvd/server_client.h"
+#include "host/commands/cvd/server_command/utils.h"
+#include "host/commands/cvd/types.h"
+#include "host/libs/config/cuttlefish_config.h"
 
 namespace cuttlefish {
 
@@ -96,6 +100,16 @@ class ConvertAcloudCreateCommand {
       return true;
     });
     flags.emplace_back(local_instance_flag);
+
+    std::optional<std::string> flavor;
+    flags.emplace_back(
+        Flag()
+            .Alias({FlagAliasMode::kFlagConsumesFollowing, "--config"})
+            .Alias({FlagAliasMode::kFlagConsumesFollowing, "--flavor"})
+            .Setter([&flavor](const FlagMatch& m) {
+              flavor = m.value;
+              return true;
+            }));
 
     bool verbose = false;
     flags.emplace_back(Flag()
@@ -311,11 +325,17 @@ class ConvertAcloudCreateCommand {
     start_command.add_args("report_anonymous_usage_stats");
     start_command.add_args("--report_anonymous_usage_stats");
     start_command.add_args("y");
+    if (flavor) {
+      start_command.add_args("-config");
+      start_command.add_args(flavor.value());
+    }
     if (launch_args) {
       for (const auto& arg : CF_EXPECT(BashTokenize(*launch_args))) {
         start_command.add_args(arg);
       }
     }
+    start_command.mutable_selector_opts()->add_args(
+        std::string("--") + selector::kAcquireFileLockOpt + "=false");
     static constexpr char kAndroidProductOut[] = "ANDROID_PRODUCT_OUT";
     auto& start_env = *start_command.mutable_env();
     if (local_image) {
@@ -329,7 +349,7 @@ class ConvertAcloudCreateCommand {
       start_env[kAndroidHostOut] = dir;
       start_env[kAndroidProductOut] = dir;
     }
-    start_env["CUTTLEFISH_INSTANCE"] = std::to_string(lock->Instance());
+    start_env[kCuttlefishInstanceEnvVarName] = std::to_string(lock->Instance());
     start_env["HOME"] = dir;
     *start_command.mutable_working_directory() = dir;
 
@@ -356,19 +376,30 @@ class ConvertAcloudCreateCommand {
   InstanceLockFileManager& lock_file_manager_;
 };
 
-class TryAcloudCreateCommand : public CvdServerHandler {
+static bool IsSubOperationSupported(const RequestWithStdio& request) {
+  auto invocation = ParseInvocation(request.Message());
+  if (invocation.arguments.empty()) {
+    return false;
+  }
+  return invocation.arguments[0] == "create";
+}
+
+class TryAcloudCommand : public CvdServerHandler {
  public:
-  INJECT(TryAcloudCreateCommand(ConvertAcloudCreateCommand& converter))
+  INJECT(TryAcloudCommand(ConvertAcloudCreateCommand& converter))
       : converter_(converter) {}
-  ~TryAcloudCreateCommand() = default;
+  ~TryAcloudCommand() = default;
 
   Result<bool> CanHandle(const RequestWithStdio& request) const override {
     auto invocation = ParseInvocation(request.Message());
-    return invocation.command == "try-acloud" &&
-           invocation.arguments.size() >= 1 &&
-           invocation.arguments[0] == "create";
+    return invocation.command == "try-acloud";
   }
+
+  cvd_common::Args CmdList() const override { return {"try-acloud"}; }
+
   Result<cvd::Response> Handle(const RequestWithStdio& request) override {
+    CF_EXPECT(CanHandle(request));
+    CF_EXPECT(IsSubOperationSupported(request));
     CF_EXPECT(converter_.Convert(request));
     return CF_ERR("Unreleased");
   }
@@ -378,25 +409,27 @@ class TryAcloudCreateCommand : public CvdServerHandler {
   ConvertAcloudCreateCommand& converter_;
 };
 
-class AcloudCreateCommand : public CvdServerHandler {
+class AcloudCommand : public CvdServerHandler {
  public:
-  INJECT(AcloudCreateCommand(CommandSequenceExecutor& executor,
-                             ConvertAcloudCreateCommand& converter))
+  INJECT(AcloudCommand(CommandSequenceExecutor& executor,
+                       ConvertAcloudCreateCommand& converter))
       : executor_(executor), converter_(converter) {}
-  ~AcloudCreateCommand() = default;
+  ~AcloudCommand() = default;
 
   Result<bool> CanHandle(const RequestWithStdio& request) const override {
     auto invocation = ParseInvocation(request.Message());
-    return invocation.command == "acloud" && invocation.arguments.size() >= 1 &&
-           invocation.arguments[0] == "create";
+    return invocation.command == "acloud";
   }
+
+  cvd_common::Args CmdList() const override { return {"acloud"}; }
+
   Result<cvd::Response> Handle(const RequestWithStdio& request) override {
     std::unique_lock interrupt_lock(interrupt_mutex_);
     if (interrupted_) {
       return CF_ERR("Interrupted");
     }
     CF_EXPECT(CanHandle(request));
-
+    CF_EXPECT(IsSubOperationSupported(request));
     auto converted = CF_EXPECT(converter_.Convert(request));
     interrupt_lock.unlock();
     CF_EXPECT(executor_.Execute(converted.requests, request.Err()));
@@ -427,8 +460,8 @@ class AcloudCreateCommand : public CvdServerHandler {
 fruit::Component<fruit::Required<CommandSequenceExecutor>>
 AcloudCommandComponent() {
   return fruit::createComponent()
-      .addMultibinding<CvdServerHandler, AcloudCreateCommand>()
-      .addMultibinding<CvdServerHandler, TryAcloudCreateCommand>();
+      .addMultibinding<CvdServerHandler, AcloudCommand>()
+      .addMultibinding<CvdServerHandler, TryAcloudCommand>();
 }
 
 }  // namespace cuttlefish

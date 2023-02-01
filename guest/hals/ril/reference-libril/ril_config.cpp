@@ -167,14 +167,14 @@ Return<void> RadioConfigImpl::setSimSlotsMapping(int32_t serial, const hidl_vec<
     }
     size_t slotNum = slotMap.size();
 
-    if (slotNum > RIL_SOCKET_NUM) {
+    if (slotNum > MAX_LOGICAL_MODEM_NUM) {
         RLOGE("setSimSlotsMapping: invalid parameter");
         sendErrorResponse(pRI, RIL_E_INVALID_ARGUMENTS);
         return Void();
     }
 
     for (size_t socket_id = 0; socket_id < slotNum; socket_id++) {
-        if (slotMap[socket_id] >= RIL_SOCKET_NUM) {
+        if (slotMap[socket_id] >= MAX_LOGICAL_MODEM_NUM) {
             RLOGE("setSimSlotsMapping: invalid parameter[%zu]", socket_id);
             sendErrorResponse(pRI, RIL_E_INVALID_ARGUMENTS);
             return Void();
@@ -285,7 +285,7 @@ void radio_1_6::registerConfigService(RIL_RadioFunctions *callbacks, CommandInfo
     radioConfigService->mRadioConfigIndicationV1_2 = NULL;
 
     // use a compat shim to convert HIDL interface to AIDL and publish it
-    // PLEASE NOTE this is a temporary solution
+    // TODO(bug 220004469): replace with a full AIDL implementation
     static auto aidlHal = ndk::SharedRefBase::make<compat::RadioConfig>(radioConfigService);
     const auto instance = compat::RadioConfig::descriptor + "/"s + std::string(serviceNames);
     const auto status = AServiceManager_addService(aidlHal->asBinder().get(), instance.c_str());
