@@ -197,7 +197,7 @@ int main(int argc, char** argv) {
   if (cuttlefish::CuttlefishConfig::ConfigExists()) {
     auto previous_config = cuttlefish::CuttlefishConfig::Get();
     CHECK(previous_config);
-    CHECK(previous_config->Instances().size() > 0);
+    CHECK(!previous_config->Instances().empty());
     auto previous_instance = previous_config->Instances()[0];
     const auto& disks = previous_instance.virtual_disk_paths();
     auto overlay = previous_instance.PerInstancePath("overlay.img");
