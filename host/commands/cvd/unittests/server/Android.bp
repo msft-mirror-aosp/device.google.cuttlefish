@@ -18,9 +18,10 @@ package {
 }
 
 cc_library_host_static {
-    name: "cvd_test_cmd_runner",
+    name: "cvd_test_cmd_utils",
     srcs: [
         "cmd_runner.cpp",
+        "utils.cpp",
     ],
     defaults: ["cvd_lib_defaults"],
 }
@@ -28,11 +29,14 @@ cc_library_host_static {
 cc_test_host {
     name: "cvd_server_test",
     srcs: [
+        "autogen_ids_test.cpp",
         "basic_test.cpp",
+        "clear_test.cpp",
         "help_test.cpp",
+        "instance_ids_test.cpp",
     ],
     static_libs: [
-        "cvd_test_cmd_runner",
+        "cvd_test_cmd_utils",
     ],
     test_options: {
         unit_test: false,
