@@ -436,11 +436,9 @@ class DeviceControlApp {
     this.#getControlPanelButtons().forEach(b => b.disabled = true);
   }
 
-  #getControlPanelButtons() {
-    return [
-      ...document.querySelectorAll('#control-panel-default-buttons button'),
-      ...document.querySelectorAll('#control-panel-custom-buttons button'),
-    ];
+  #getControlPanelButtons(f) {
+    return [...document.querySelectorAll(
+        '#control-panel-default-buttons button')];
   }
 
   #takePhoto() {
@@ -710,11 +708,11 @@ class DeviceControlApp {
 
   #initializeAdb() {
     init_adb(
-        this.#deviceConnection, () => this.#onAdbConnected(),
+        this.#deviceConnection, () => this.#showAdbConnected(),
         () => this.#showAdbError());
   }
 
-  #onAdbConnected() {
+  #showAdbConnected() {
     // Screen changed messages are not reported until after boot has completed.
     // Certain default adb buttons change screen state, so wait for boot
     // completion before enabling these buttons.
