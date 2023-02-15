@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "host/commands/cvd/load_configs.h"
+#include "host/commands/cvd/server_command/load_configs.h"
 
 #include <chrono>
 #include <mutex>
@@ -38,9 +38,7 @@ namespace cuttlefish {
 
 namespace {
 
-struct DemoCommandSequence {
-  std::vector<RequestWithStdio> requests;
-};
+using DemoCommandSequence = std::vector<RequestWithStdio>;
 
 }  // namespace
 
@@ -62,7 +60,7 @@ class LoadConfigsCommand : public CvdServerHandler {
 
     auto commands = CF_EXPECT(CreateCommandSequence(request));
     interrupt_lock.unlock();
-    CF_EXPECT(executor_.Execute(commands.requests, request.Err()));
+    CF_EXPECT(executor_.Execute(commands, request.Err()));
 
     cvd::Response response;
     response.mutable_command_response();
@@ -103,37 +101,36 @@ class LoadConfigsCommand : public CvdServerHandler {
     auto cvd_flags =
         CF_EXPECT(ParseCvdConfigs(json_configs), "parsing json configs failed");
 
-    DemoCommandSequence ret;
-
     std::vector<cvd::Request> req_protos;
 
-    auto& launch_phone = *req_protos.emplace_back().mutable_command_request();
-    launch_phone.set_working_directory(
+    auto& launch_cmd = *req_protos.emplace_back().mutable_command_request();
+    launch_cmd.set_working_directory(
         request.Message().command_request().working_directory());
-    *launch_phone.mutable_env() = request.Message().command_request().env();
+    *launch_cmd.mutable_env() = request.Message().command_request().env();
 
     /* cvd load will always create instances in deamon mode (to be independent
      of terminal) and will enable reporting automatically (to run automatically
      without question during launch)
      */
-    launch_phone.add_args("cvd");
-    launch_phone.add_args("start");
-    launch_phone.add_args("--daemon");
+    launch_cmd.add_args("cvd");
+    launch_cmd.add_args("start");
+    launch_cmd.add_args("--daemon");
     for (auto& parsed_flag : cvd_flags.launch_cvd_flags) {
-      launch_phone.add_args(parsed_flag);
+      launch_cmd.add_args(parsed_flag);
     }
 
-    launch_phone.mutable_selector_opts()->add_args(
+    launch_cmd.mutable_selector_opts()->add_args(
         std::string("--") + selector::kDisableDefaultGroupOpt);
 
     /*Verbose is disabled by default*/
     auto dev_null = SharedFD::Open("/dev/null", O_RDWR);
     CF_EXPECT(dev_null->IsOpen(), dev_null->StrError());
     std::vector<SharedFD> fds = {dev_null, dev_null, dev_null};
+    DemoCommandSequence ret;
 
     for (auto& request_proto : req_protos) {
-      ret.requests.emplace_back(RequestWithStdio(
-          request.Client(), request_proto, fds, request.Credentials()));
+      ret.emplace_back(RequestWithStdio(request.Client(), request_proto, fds,
+                                        request.Credentials()));
     }
 
     return ret;

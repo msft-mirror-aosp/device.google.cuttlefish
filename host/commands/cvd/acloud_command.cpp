@@ -27,10 +27,12 @@
 
 #include "common/libs/fs/shared_buf.h"
 #include "common/libs/fs/shared_fd.h"
+#include "common/libs/utils/files.h"
 #include "common/libs/utils/flag_parser.h"
 #include "common/libs/utils/result.h"
 #include "common/libs/utils/subprocess.h"
 #include "host/commands/cvd/command_sequence.h"
+#include "host/commands/cvd/common_utils.h"
 #include "host/commands/cvd/instance_lock.h"
 #include "host/commands/cvd/selector/selector_constants.h"
 #include "host/commands/cvd/server_client.h"
@@ -65,12 +67,10 @@ const std::vector<std::string> _VENDOR_BOOT_IMAGE_NAME =
  */
 std::string FindImage(const std::string& search_path,
                       const std::vector<std::string>& pattern) {
-  struct stat statbuf;
-  std::string image;
   const std::string& search_path_extend = search_path + "/";
   for (const auto& name : pattern) {
-    image = search_path_extend + name;
-    if (stat(image.c_str(), &statbuf) == 0) {
+    const std::string image = search_path_extend + name;
+    if (FileExists(image)) {
       return image;
     }
   }
@@ -200,6 +200,34 @@ class ConvertAcloudCreateCommand {
               return true;
             }));
 
+    std::optional<std::string> bootloader_build_id;
+    flags.emplace_back(
+        Flag()
+            .Alias({FlagAliasMode::kFlagConsumesFollowing, "--bootloader-build-id"})
+            .Alias({FlagAliasMode::kFlagConsumesFollowing, "--bootloader_build_id"})
+            .Setter([&bootloader_build_id](const FlagMatch& m) {
+              bootloader_build_id = m.value;
+              return true;
+            }));
+    std::optional<std::string> bootloader_build_target;
+    flags.emplace_back(
+        Flag()
+            .Alias({FlagAliasMode::kFlagConsumesFollowing, "--bootloader-build-target"})
+            .Alias({FlagAliasMode::kFlagConsumesFollowing, "--bootloader_build_target"})
+            .Setter([&bootloader_build_target](const FlagMatch& m) {
+              bootloader_build_target = m.value;
+              return true;
+            }));
+    std::optional<std::string> bootloader_branch;
+    flags.emplace_back(
+        Flag()
+            .Alias({FlagAliasMode::kFlagConsumesFollowing, "--bootloader-branch"})
+            .Alias({FlagAliasMode::kFlagConsumesFollowing, "--bootloader_branch"})
+            .Setter([&bootloader_branch](const FlagMatch& m) {
+              bootloader_branch = m.value;
+              return true;
+            }));
+
     std::optional<std::string> launch_args;
     flags.emplace_back(
         Flag()
@@ -283,8 +311,6 @@ class ConvertAcloudCreateCommand {
     auto dir = TempDir() + "/acloud_cvd_temp/local-instance-" +
                std::to_string(lock->Instance());
 
-    static constexpr char kAndroidHostOut[] = "ANDROID_HOST_OUT";
-
     auto host_artifacts_path = request_command.env().find(kAndroidHostOut);
     CF_EXPECT(host_artifacts_path != request_command.env().end(),
               "Missing " << kAndroidHostOut);
@@ -293,6 +319,8 @@ class ConvertAcloudCreateCommand {
     if (local_image) {
       CF_EXPECT(!(system_branch || system_build_target || system_build_id),
                 "--local-image incompatible with --system-* flags");
+      CF_EXPECT(!(bootloader_branch || bootloader_build_target || bootloader_build_id),
+                "--local-image incompatible with --bootloader-* flags");
       cvd::Request& mkdir_request = request_protos.emplace_back();
       auto& mkdir_command = *mkdir_request.mutable_command_request();
       mkdir_command.add_args("cvd");
@@ -333,6 +361,16 @@ class ConvertAcloudCreateCommand {
         }
         auto build =
             system_build_id.value_or(system_branch.value_or("aosp-master"));
+        fetch_command.add_args(build + target);
+      }
+      if (bootloader_branch || bootloader_build_id || bootloader_build_target) {
+        fetch_command.add_args("--bootloader_build");
+        auto target = bootloader_build_target.value_or("");
+        if (target != "") {
+          target = "/" + target;
+        }
+        auto build =
+            bootloader_build_id.value_or(bootloader_branch.value_or("aosp_u-boot-mainline"));
         fetch_command.add_args(build + target);
       }
       if (kernel_branch || kernel_build_id || kernel_build_target) {
