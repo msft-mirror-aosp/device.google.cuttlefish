@@ -180,6 +180,15 @@ class CvdClient {
       (*command_request->mutable_env())[e.substr(0, eq_pos)] =
           e.substr(eq_pos + 1);
     }
+
+    constexpr const char kAndroidHostOut[] = "ANDROID_HOST_OUT";
+    const auto& envs_in_request = command_request->env();
+    if (envs_in_request.find(kAndroidHostOut) == envs_in_request.end()) {
+      const std::string new_android_host_out =
+          android::base::Dirname(android::base::GetExecutableDirectory());
+      (*command_request->mutable_env())[kAndroidHostOut] = new_android_host_out;
+    }
+
     std::unique_ptr<char, void(*)(void*)> cwd(getcwd(nullptr, 0), &free);
     command_request->set_working_directory(cwd.get());
     command_request->set_wait_behavior(cvd::WAIT_BEHAVIOR_COMPLETE);
