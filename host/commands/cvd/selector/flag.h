@@ -58,6 +58,10 @@ class SelectorFlag {
     return *this;
   }
   bool HasDefaultValue() const { return default_value_ != std::nullopt; }
+  Result<T> DefaultValue() const {
+    CF_EXPECT(HasDefaultValue());
+    return *default_value_;
+  }
 
   // returns CF_ERR if parsing error,
   // returns std::nullopt if parsing was okay but the flag wasn't given
@@ -76,6 +80,8 @@ class SelectorFlag {
     return value;
   }
 
+  // Parses the arguments. If flag is given, returns the parsed value. If not,
+  // returns the default value if any. If no default value, it returns CF_ERR.
   Result<T> ParseFlag(cvd_common::Args& args) {
     auto value_opt = CF_EXPECT(FilterFlag(args));
     if (!value_opt) {
