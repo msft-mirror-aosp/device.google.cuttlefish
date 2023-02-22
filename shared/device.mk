@@ -356,13 +356,15 @@ LOCAL_AUDIO_PRODUCT_PACKAGE := \
     android.hardware.audio.service-aidl.example \
     android.hardware.audio.effect.service-aidl.example \
     libaecsw \
-    libagcsw \
+    libagc1sw \
+    libagc2sw \
     libbassboostsw \
     libbundleaidl \
     libdownmixaidl \
     libdynamicsprocessingaidl \
     libenvreverbsw \
     libequalizersw \
+    libextensioneffect \
     libhapticgeneratoraidl \
     libloudnessenhanceraidl \
     libnssw \

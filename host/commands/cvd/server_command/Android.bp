@@ -29,6 +29,8 @@ cc_library_host_static {
         "host_tool_target_manager.cpp",
         "generic.cpp",
         "help.cpp",
+        "operation_to_bins_map.cpp",
+        "load_configs.cpp",
         "restart.cpp",
         "serial_launch.cpp",
         "serial_preset.cpp",

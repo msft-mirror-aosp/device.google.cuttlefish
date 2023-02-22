@@ -62,8 +62,11 @@ Result<std::string> InstanceManager::GetCuttlefishConfigPath(
   return selector::GetCuttlefishConfigPath(home);
 }
 
-InstanceManager::InstanceManager(InstanceLockFileManager& lock_manager)
-    : lock_manager_(lock_manager) {}
+InstanceManager::InstanceManager(
+    InstanceLockFileManager& lock_manager,
+    HostToolTargetManager& host_tool_target_manager)
+    : lock_manager_(lock_manager),
+      host_tool_target_manager_(host_tool_target_manager) {}
 
 selector::InstanceDatabase& InstanceManager::GetInstanceDB(const uid_t uid) {
   if (!Contains(instance_dbs_, uid)) {
@@ -76,11 +79,24 @@ Result<InstanceManager::GroupCreationInfo> InstanceManager::Analyze(
     const std::string& sub_cmd, const CreationAnalyzerParam& param,
     const ucred& credential) {
   const uid_t uid = credential.uid;
+  std::unique_lock lock(instance_db_mutex_);
   auto& instance_db = GetInstanceDB(uid);
+  lock.unlock();
 
   auto group_creation_info = CF_EXPECT(CreationAnalyzer::Analyze(
       sub_cmd, param, credential, instance_db, lock_manager_));
   return {group_creation_info};
+}
+
+Result<InstanceManager::LocalInstanceGroup> InstanceManager::SelectGroup(
+    const cvd_common::Args& selector_args, const cvd_common::Envs& envs,
+    const uid_t uid) {
+  std::unique_lock lock(instance_db_mutex_);
+  auto& instance_db = GetInstanceDB(uid);
+  lock.unlock();
+  auto group =
+      CF_EXPECT(GroupSelector::Select(selector_args, uid, instance_db, envs));
+  return {group};
 }
 
 bool InstanceManager::HasInstanceGroups(const uid_t uid) {
@@ -232,6 +248,15 @@ Result<cvd::Status> InstanceManager::CvdFleet(
             "cvd fleet --help should be handled by fleet handler itself.");
   const auto status = CF_EXPECT(CvdFleetImpl(uid, out, err));
   return status;
+}
+
+Result<std::string> InstanceManager::StopBin(
+    const std::string& host_android_out) {
+  const auto stop_bin = CF_EXPECT(host_tool_target_manager_.ExecBaseName({
+      .artifacts_path = host_android_out,
+      .op = "stop",
+  }));
+  return stop_bin;
 }
 
 Result<void> InstanceManager::IssueStopCommand(
