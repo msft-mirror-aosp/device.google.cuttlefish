@@ -1,16 +1,28 @@
+//
+// Copyright (C) 2022 The Android Open Source Project
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 //! KeyMint TA core for Cuttlefish.
 
 extern crate alloc;
 
-use kmr_common::{crypto, Error};
+use kmr_common::crypto;
 use kmr_crypto_boring::{
     aes::BoringAes, aes_cmac::BoringAesCmac, des::BoringDes, ec::BoringEc, eq::BoringEq,
     hmac::BoringHmac, rng::BoringRng, rsa::BoringRsa,
 };
-use kmr_ta::device::{
-    BootloaderDone, Implementation, NoOpRetrieveRpcArtifacts, RetrieveKeyMaterial,
-    TrustedPresenceUnsupported,
-};
+use kmr_ta::device::{BootloaderDone, Implementation, TrustedPresenceUnsupported};
 use kmr_ta::{HardwareInfo, KeyMintTa, RpcInfo, RpcInfoV3};
 use kmr_wire::keymint::SecurityLevel;
 use kmr_wire::rpc::MINIMUM_SUPPORTED_KEYS_IN_CSR;
@@ -21,7 +33,12 @@ use std::os::unix::io::FromRawFd;
 
 pub mod attest;
 mod clock;
+pub mod rpc;
+mod soft;
 mod tpm;
+
+#[cfg(test)]
+mod tests;
 
 /// Main routine for the KeyMint TA. Only returns if there is a fatal error.
 pub fn ta_main(fd_in: c_int, fd_out: c_int, security_level: SecurityLevel, trm: *mut libc::c_void) {
@@ -73,11 +90,14 @@ pub fn ta_main(fd_in: c_int, fd_out: c_int, security_level: SecurityLevel, trm: 
     let sign_info = attest::CertSignInfo::new();
 
     let tpm_keys = tpm::Keys::new(trm);
-    let soft_keys = SoftwareKeys;
+    let soft_keys = soft::Keys;
     let keys: &dyn kmr_ta::device::RetrieveKeyMaterial =
         if security_level == SecurityLevel::TrustedEnvironment { &tpm_keys } else { &soft_keys };
+    let tpm_rpc = tpm::RpcArtifacts::new(tpm::TpmHmac::new(trm));
+    let soft_rpc = soft::RpcArtifacts::new(soft::Derive::default());
+    let rpc: &dyn kmr_ta::device::RetrieveRpcArtifacts =
+        if security_level == SecurityLevel::TrustedEnvironment { &tpm_rpc } else { &soft_rpc };
     let dev = Implementation {
-        // TODO(b/242838132): add TPM-backed implementation
         keys,
         sign_info: &sign_info,
         // HAL populates attestation IDs from properties.
@@ -92,12 +112,11 @@ pub fn ta_main(fd_in: c_int, fd_out: c_int, security_level: SecurityLevel, trm: 
         tup: &TrustedPresenceUnsupported,
         // No support for converting previous implementation's keyblobs.
         legacy_key: None,
-        // TODO (b/260601375): add TPM-backed implementation
-        rpc: &NoOpRetrieveRpcArtifacts,
+        rpc,
     };
     let mut ta = KeyMintTa::new(hw_info, RpcInfo::V3(rpc_info_v3), imp, dev);
 
-    let mut buf = [0; kmr_wire::MAX_SIZE];
+    let mut buf = [0; kmr_wire::DEFAULT_MAX_SIZE];
     loop {
         // Read a request message from the pipe, as a 4-byte BE length followed by the message.
         let mut req_len_data = [0u8; 4];
@@ -106,7 +125,7 @@ pub fn ta_main(fd_in: c_int, fd_out: c_int, security_level: SecurityLevel, trm: 
             return;
         }
         let req_len = u32::from_be_bytes(req_len_data) as usize;
-        if req_len > kmr_wire::MAX_SIZE {
+        if req_len > kmr_wire::DEFAULT_MAX_SIZE {
             error!("FATAL: Request too long ({})", req_len);
             return;
         }
@@ -145,24 +164,5 @@ pub fn ta_main(fd_in: c_int, fd_out: c_int, security_level: SecurityLevel, trm: 
             return;
         }
         let _ = outfile.flush();
-    }
-}
-
-/// Software-only implementation using fake keys.
-struct SoftwareKeys;
-
-impl RetrieveKeyMaterial for SoftwareKeys {
-    fn root_kek(&self, _context: &[u8]) -> Result<crypto::RawKeyMaterial, Error> {
-        // Matches `MASTER_KEY` in system/keymaster/key_blob_utils/software_keyblobs.cpp
-        Ok(crypto::RawKeyMaterial([0; 16].to_vec()))
-    }
-    fn kak(&self) -> Result<crypto::aes::Key, Error> {
-        // Matches `kFakeKeyAgreementKey` in
-        // system/keymaster/km_openssl/soft_keymaster_enforcement.cpp.
-        Ok(crypto::aes::Key::Aes256([0; 32]))
-    }
-    fn unique_id_hbk(&self, _ckdf: &dyn crypto::Ckdf) -> Result<crypto::hmac::Key, Error> {
-        // Matches value used in system/keymaster/contexts/pure_soft_keymaster_context.cpp.
-        crypto::hmac::Key::new_from(b"MustBeRandomBits")
     }
 }

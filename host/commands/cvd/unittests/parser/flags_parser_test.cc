@@ -21,7 +21,7 @@
 #include <android-base/file.h>
 #include <gtest/gtest.h>
 
-#include "host/commands/cvd/parser/load_configs_parser.h"
+#include "host/commands/cvd/parser/launch_cvd_parser.h"
 #include "host/commands/cvd/unittests/parser/test_common.h"
 namespace cuttlefish {
 TEST(FlagsParserTest, ParseInvalidJson) {
@@ -51,7 +51,7 @@ TEST(FlagsParserTest, ParseJsonWithSpellingError) {
 
   EXPECT_TRUE(ParseJsonString(json_text, json_configs))
       << "Invalid Json string";
-  auto serialized_data = ParseCvdConfigs(json_configs);
+  auto serialized_data = LaunchCvdParserTester(json_configs);
   EXPECT_FALSE(serialized_data.ok());
 }
 
@@ -61,6 +61,10 @@ TEST(FlagsParserTest, ParseBasicJsonSingleInstances) {
     "instances" :
     [
         {
+          "vm": {
+            "crosvm":{
+            }
+          }
         }
     ]
 }
@@ -71,7 +75,7 @@ TEST(FlagsParserTest, ParseBasicJsonSingleInstances) {
 
   EXPECT_TRUE(ParseJsonString(json_text, json_configs))
       << "Invalid Json string";
-  auto serialized_data = ParseCvdConfigs(json_configs);
+  auto serialized_data = LaunchCvdParserTester(json_configs);
   EXPECT_TRUE(serialized_data.ok()) << serialized_data.error().Trace();
   EXPECT_TRUE(FindConfig(*serialized_data, "--num_instances=1"))
       << "num_instances flag is missing or wrongly formatted";
@@ -83,9 +87,16 @@ TEST(FlagsParserTest, ParseBasicJsonTwoInstances) {
     "instances" :
     [
         {
+          "vm": {
+            "crosvm":{
+            }
+          }
         },
         {
-
+          "vm": {
+            "crosvm":{
+            }
+          }
         }
     ]
 }
@@ -96,10 +107,63 @@ TEST(FlagsParserTest, ParseBasicJsonTwoInstances) {
 
   EXPECT_TRUE(ParseJsonString(json_text, json_configs))
       << "Invalid Json string";
-  auto serialized_data = ParseCvdConfigs(json_configs);
+  auto serialized_data = LaunchCvdParserTester(json_configs);
   EXPECT_TRUE(serialized_data.ok()) << serialized_data.error().Trace();
   EXPECT_TRUE(FindConfig(*serialized_data, "--num_instances=2"))
       << "num_instances flag is missing or wrongly formatted";
+}
+
+TEST(BootFlagsParserTest, ParseNetSimFlagEmptyJson) {
+  const char* test_string = R""""(
+{
+  "instances" :
+  [
+        {
+          "vm": {
+            "crosvm":{
+            }
+          }
+        }
+  ]
+}
+  )"""";
+
+  Json::Value json_configs;
+  std::string json_text(test_string);
+
+  EXPECT_TRUE(ParseJsonString(json_text, json_configs))
+      << "Invalid Json string";
+  auto serialized_data = LaunchCvdParserTester(json_configs);
+  EXPECT_TRUE(serialized_data.ok()) << serialized_data.error().Trace();
+  EXPECT_TRUE(FindConfig(*serialized_data, R"(--netsim_bt=false)"))
+      << "netsim_bt flag is missing or wrongly formatted";
+}
+
+TEST(BootFlagsParserTest, ParseNetSimFlagEnabled) {
+  const char* test_string = R""""(
+{
+   "netsim_bt": true,
+     "instances" :
+     [
+        {
+          "vm": {
+            "crosvm":{
+            }
+          }
+        }
+      ]
+}
+  )"""";
+
+  Json::Value json_configs;
+  std::string json_text(test_string);
+
+  EXPECT_TRUE(ParseJsonString(json_text, json_configs))
+      << "Invalid Json string";
+  auto serialized_data = LaunchCvdParserTester(json_configs);
+  EXPECT_TRUE(serialized_data.ok()) << serialized_data.error().Trace();
+  EXPECT_TRUE(FindConfig(*serialized_data, R"(--netsim_bt=true)"))
+      << "netsim_bt flag is missing or wrongly formatted";
 }
 
 }  // namespace cuttlefish

@@ -16,14 +16,14 @@
 
 #include "host/commands/cvd/common_utils.h"
 
-#include <unistd.h>
-
 #include <memory>
+#include <sstream>
 
 #include <android-base/file.h>
 #include <android-base/logging.h>
 
 #include "common/libs/utils/contains.h"
+#include "common/libs/utils/files.h"
 
 namespace cuttlefish {
 
@@ -42,21 +42,26 @@ cvd::Request MakeRequest(const MakeRequestParam& args_and_envs,
     selector_opts->add_args(selector_arg);
   }
 
-  for (const std::string& e : env) {
-    auto eq_pos = e.find('=');
-    if (eq_pos == std::string::npos) {
-      LOG(WARNING) << "Environment var in unknown format: " << e;
-      continue;
-    }
-    const auto key = e.substr(0, eq_pos);
-    const auto value = e.substr(eq_pos + 1);
+  for (const auto& [key, value] : env) {
     (*command_request->mutable_env())[key] = value;
   }
 
-  if (!Contains(command_request->env(), "ANDROID_HOST_OUT")) {
-    // see b/254418863
-    (*command_request->mutable_env())["ANDROID_HOST_OUT"] =
-        android::base::Dirname(android::base::GetExecutableDirectory());
+  /*
+   * the client must set the kAndroidHostOut environment variable. There were,
+   * however, a few branches where kAndroidSoongHostOut replaced
+   * kAndroidHostOut. Cvd server eventually read kAndroidHostOut only and set
+   * both for the subtools.
+   *
+   * If none of the two are set, cvd server tries to use the parent directory of
+   * the client cvd executable as env[kAndroidHostOut].
+   *
+   */
+  if (!Contains(command_request->env(), kAndroidHostOut)) {
+    const std::string new_android_host_out =
+        Contains(command_request->env(), kAndroidSoongHostOut)
+            ? (*command_request->mutable_env())[kAndroidSoongHostOut]
+            : android::base::Dirname(android::base::GetExecutableDirectory());
+    (*command_request->mutable_env())[kAndroidHostOut] = new_android_host_out;
   }
 
   std::unique_ptr<char, void (*)(void*)> cwd(getcwd(nullptr, 0), &free);

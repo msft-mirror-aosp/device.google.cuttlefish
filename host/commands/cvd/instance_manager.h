@@ -31,20 +31,22 @@
 
 #include "common/libs/fs/shared_fd.h"
 #include "common/libs/utils/result.h"
+#include "host/commands/cvd/common_utils.h"
 #include "host/commands/cvd/instance_lock.h"
 #include "host/commands/cvd/selector/creation_analyzer.h"
+#include "host/commands/cvd/selector/group_selector.h"
 #include "host/commands/cvd/selector/instance_database.h"
+#include "host/commands/cvd/server_command/host_tool_target_manager.h"
 
 namespace cuttlefish {
-
-constexpr char kStatusBin[] = "cvd_internal_status";
-constexpr char kStopBin[] = "cvd_internal_stop";
 
 class InstanceManager {
  public:
   using CreationAnalyzer = selector::CreationAnalyzer;
   using CreationAnalyzerParam = CreationAnalyzer::CreationAnalyzerParam;
   using GroupCreationInfo = selector::GroupCreationInfo;
+  using LocalInstanceGroup = selector::LocalInstanceGroup;
+  using GroupSelector = selector::GroupSelector;
 
   using InstanceGroupDir = std::string;
   struct InstanceGroupInfo {
@@ -52,11 +54,16 @@ class InstanceManager {
     std::set<int> instances;
   };
 
-  INJECT(InstanceManager(InstanceLockFileManager&));
+  INJECT(InstanceManager(InstanceLockFileManager&, HostToolTargetManager&));
 
+  // For cvd start
   Result<GroupCreationInfo> Analyze(const std::string& sub_cmd,
                                     const CreationAnalyzerParam& param,
                                     const ucred& credential);
+
+  Result<LocalInstanceGroup> SelectGroup(const cvd_common::Args& selector_args,
+                                         const cvd_common::Envs& envs,
+                                         const uid_t uid);
 
   bool HasInstanceGroups(const uid_t uid);
   Result<void> SetInstanceGroup(const uid_t uid,
@@ -65,32 +72,23 @@ class InstanceManager {
   Result<InstanceGroupInfo> GetInstanceGroupInfo(const uid_t uid,
                                                  const InstanceGroupDir&);
 
-  cvd::Status CvdClear(const uid_t uid, const SharedFD& out,
-                       const SharedFD& err);
+  cvd::Status CvdClear(const SharedFD& out, const SharedFD& err);
   Result<cvd::Status> CvdFleet(const uid_t uid, const SharedFD& out,
                                const SharedFD& err,
-                               const std::optional<std::string>& env_config,
-                               const std::string& host_tool_dir,
-                               const std::vector<std::string>& args);
+                               const std::vector<std::string>& fleet_cmd_args);
   static Result<std::string> GetCuttlefishConfigPath(const std::string& home);
 
  private:
-  Result<cvd::Status> CvdFleetImpl(
-      const uid_t uid, const SharedFD& out, const SharedFD& err,
-      const std::optional<std::string>& env_config);
-  Result<cvd::Status> CvdFleetHelp(const SharedFD& out, const SharedFD& err,
-                                   const std::string& host_tool_dir);
-
-  static void IssueStatusCommand(const SharedFD& out, const SharedFD& err,
-                                 const std::string& config_file_path,
-                                 const selector::LocalInstanceGroup& group);
-  void IssueStopCommand(const SharedFD& out, const SharedFD& err,
-                        const std::string& config_file_path,
-                        const selector::LocalInstanceGroup& group);
+  Result<cvd::Status> CvdFleetImpl(const uid_t uid, const SharedFD& out,
+                                   const SharedFD& err);
+  Result<void> IssueStopCommand(const SharedFD& out, const SharedFD& err,
+                                const std::string& config_file_path,
+                                const selector::LocalInstanceGroup& group);
+  Result<std::string> StopBin(const std::string& host_android_out);
 
   selector::InstanceDatabase& GetInstanceDB(const uid_t uid);
   InstanceLockFileManager& lock_manager_;
-
+  HostToolTargetManager& host_tool_target_manager_;
   mutable std::mutex instance_db_mutex_;
   std::unordered_map<uid_t, selector::InstanceDatabase> instance_dbs_;
 

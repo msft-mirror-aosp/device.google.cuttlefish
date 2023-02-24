@@ -65,8 +65,8 @@ std::vector<uint8_t> TpmRemoteProvisioningContext::DeriveBytesFromHbk(
   return result;
 }
 
-std::unique_ptr<cppbor::Map> TpmRemoteProvisioningContext::CreateDeviceInfo()
-    const {
+std::unique_ptr<cppbor::Map> TpmRemoteProvisioningContext::CreateDeviceInfo(
+    uint32_t csrVersion) const {
   auto result = std::make_unique<cppbor::Map>();
   result->add(cppbor::Tstr("brand"), cppbor::Tstr("Google"));
   result->add(cppbor::Tstr("manufacturer"), cppbor::Tstr("Google"));
@@ -100,7 +100,10 @@ std::unique_ptr<cppbor::Map> TpmRemoteProvisioningContext::CreateDeviceInfo()
     result->add(cppbor::Tstr("vendor_patch_level"),
                 cppbor::Uint(*vendor_patchlevel_));
   }
-  result->add(cppbor::Tstr("version"), cppbor::Uint(2));
+  // "version" field was removed from DeviceInfo in CSR v3.
+  if (csrVersion < 3) {
+    result->add(cppbor::Tstr("version"), cppbor::Uint(csrVersion));
+  }
   result->add(cppbor::Tstr("fused"), cppbor::Uint(0));
   result->add(cppbor::Tstr("security_level"), cppbor::Tstr("tee"));
   result->canonicalize();
@@ -123,6 +126,7 @@ TpmRemoteProvisioningContext::GenerateBcc(bool testMode) const {
   }
   ED25519_keypair_from_seed(pubKey.data(), privKey.data(), seed.data());
 
+  const auto issuer_and_subject = "Cuttlefish secure env";
   auto coseKey = cppbor::Map()
                      .add(CoseKey::KEY_TYPE, OCTET_KEY_PAIR)
                      .add(CoseKey::ALGORITHM, EDDSA)
@@ -131,8 +135,8 @@ TpmRemoteProvisioningContext::GenerateBcc(bool testMode) const {
                      .canonicalize();
   auto sign1Payload =
       cppbor::Map()
-          .add(1 /* Issuer */, "Issuer")
-          .add(2 /* Subject */, "Subject")
+          .add(1 /* Issuer */, issuer_and_subject)
+          .add(2 /* Subject */, issuer_and_subject)
           .add(-4670552 /* Subject Pub Key */, coseKey.encode())
           .add(-4670553 /* Key Usage (little-endian order) */,
                std::vector<uint8_t>{0x20} /* keyCertSign = 1<<5 */)
@@ -228,9 +232,10 @@ void TpmRemoteProvisioningContext::GetHwInfo(
 
 cppcose::ErrMsgOr<cppbor::Array> TpmRemoteProvisioningContext::BuildCsr(
     const std::vector<uint8_t>& challenge, cppbor::Array keysToSign) const {
-  auto deviceInfo = std::move(*CreateDeviceInfo());
+  uint32_t csrVersion = 3;
+  auto deviceInfo = std::move(*CreateDeviceInfo(csrVersion));
   auto csrPayload = cppbor::Array()
-                        .add(3 /* version */)
+                        .add(csrVersion)
                         .add("keymint" /* CertificateType */)
                         .add(std::move(deviceInfo))
                         .add(std::move(keysToSign));

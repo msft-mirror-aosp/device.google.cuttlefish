@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+#include "host/commands/cvd/parser/load_configs_parser.h"
+
 #include <android-base/file.h>
 #include <gflags/gflags.h>
 
@@ -23,15 +25,14 @@
 
 #include "common/libs/utils/files.h"
 #include "common/libs/utils/json.h"
+#include "host/commands/assemble_cvd/flags_defaults.h"
 #include "host/commands/cvd/parser/cf_configs_common.h"
 #include "host/commands/cvd/parser/cf_configs_instances.h"
-#include "host/commands/cvd/parser/load_configs_parser.h"
+#include "host/commands/cvd/parser/cf_flags_validator.h"
+#include "host/commands/cvd/parser/fetch_cvd_parser.h"
+#include "host/commands/cvd/parser/launch_cvd_parser.h"
 
 namespace cuttlefish {
-
-// json parameters definitions
-static std::map<std::string, Json::ValueType> kConfigsKeyMap = {
-    {"instances", Json::ValueType::arrayValue}};
 
 Result<Json::Value> ParseJsonFile(const std::string& file_path) {
   std::string file_content;
@@ -42,36 +43,16 @@ Result<Json::Value> ParseJsonFile(const std::string& file_path) {
   return root;
 }
 
-Result<void> ValidateCfConfigs(const Json::Value& root) {
-  CF_EXPECT(ValidateTypo(root, kConfigsKeyMap), "Typo in config main parameters");
-  CF_EXPECT(root.isMember("instances"), "instances object is missing");
-  CF_EXPECT(ValidateInstancesConfigs(root["instances"]), "ValidateInstancesConfigs failed");
+Result<CvdFlags> ParseCvdConfigs(Json::Value& root) {
+  CvdFlags results;
 
-  return {};
-}
-
-std::string GenerateNumInstancesFlag(const Json::Value& root) {
-  int num_instances = root["instances"].size();
-  LOG(DEBUG) << "num_instances = " << num_instances;
-  std::string result = "--num_instances=" + std::to_string(num_instances);
-  return result;
-}
-
-std::vector<std::string> GenerateCfFlags(const Json::Value& root) {
-  std::vector<std::string> result;
-  result.emplace_back(GenerateNumInstancesFlag(root));
-
-  result = MergeResults(result, GenerateInstancesFlags(root["instances"]));
-  return result;
-}
-
-Result<std::vector<std::string>> ParseCvdConfigs(Json::Value& root) {
   CF_EXPECT(ValidateCfConfigs(root), "Loaded Json validation failed");
 
-  InitInstancesConfigs(root["instances"]);
+  results.launch_cvd_flags = ParseLaunchCvdConfigs(root);
 
-  return GenerateCfFlags(root);
-  ;
+  results.fetch_cvd_flags = ParseFetchCvdConfigs(root);
+
+  return results;
 }
 
 }  // namespace cuttlefish

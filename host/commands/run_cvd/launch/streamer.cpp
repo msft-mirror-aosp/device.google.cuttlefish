@@ -212,7 +212,7 @@ class WebRtcServer : public virtual CommandSource,
     std::vector<Command> commands;
     if (instance_.start_webrtc_sig_server()) {
       Command sig_server(WebRtcSigServerBinary());
-      sig_server.AddParameter("-assets_dir=", config_.webrtc_assets_dir());
+      sig_server.AddParameter("-assets_dir=", instance_.webrtc_assets_dir());
       sig_server.AddParameter("-use_secure_http=",
                               config_.sig_server_secure() ? "true" : "false");
       if (!config_.webrtc_certs_dir().empty()) {
@@ -267,7 +267,8 @@ class WebRtcServer : public virtual CommandSource,
                         DefaultHostArtifactsPath("usr/share/webrtc/assets"));
 
     // TODO get from launcher params
-    const auto& actions = custom_action_config_.CustomActionServers();
+    const auto& actions =
+        custom_action_config_.CustomActionServers(instance_.id());
     for (auto& action : LaunchCustomActionServers(webrtc, actions)) {
       commands.emplace_back(std::move(action));
     }
@@ -278,7 +279,7 @@ class WebRtcServer : public virtual CommandSource,
 
   // SetupFeature
   bool Enabled() const override {
-    return sockets_.Enabled() && config_.enable_webrtc();
+    return sockets_.Enabled() && instance_.enable_webrtc();
   }
 
  private:

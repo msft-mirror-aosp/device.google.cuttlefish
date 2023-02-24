@@ -17,16 +17,12 @@
 #include <linux/input.h>
 
 #include <memory>
-#include <string>
-#include <utility>
-#include <vector>
 
 #include <android-base/logging.h>
 #include <android-base/strings.h>
 #include <gflags/gflags.h>
 #include <libyuv.h>
 
-#include "common/libs/fs/shared_buf.h"
 #include "common/libs/fs/shared_fd.h"
 #include "common/libs/utils/files.h"
 #include "host/frontend/webrtc/audio_handler.h"
@@ -90,47 +86,6 @@ class CfOperatorObserver
     LOG(ERROR) << "Error encountered in connection with Operator";
   }
 };
-
-static std::vector<std::pair<std::string, std::string>> ParseHttpHeaders(
-    const std::string& path) {
-  auto fd = cuttlefish::SharedFD::Open(path, O_RDONLY);
-  if (!fd->IsOpen()) {
-    LOG(WARNING) << "Unable to open operator (signaling server) headers file, "
-                    "connecting to the operator will probably fail: "
-                 << fd->StrError();
-    return {};
-  }
-  std::string raw_headers;
-  auto res = cuttlefish::ReadAll(fd, &raw_headers);
-  if (res < 0) {
-    LOG(WARNING) << "Unable to open operator (signaling server) headers file, "
-                    "connecting to the operator will probably fail: "
-                 << fd->StrError();
-    return {};
-  }
-  std::vector<std::pair<std::string, std::string>> headers;
-  std::size_t raw_index = 0;
-  while (raw_index < raw_headers.size()) {
-    auto colon_pos = raw_headers.find(':', raw_index);
-    if (colon_pos == std::string::npos) {
-      LOG(ERROR)
-          << "Expected to find ':' in each line of the operator headers file";
-      break;
-    }
-    auto eol_pos = raw_headers.find('\n', colon_pos);
-    if (eol_pos == std::string::npos) {
-      eol_pos = raw_headers.size();
-    }
-    // If the file uses \r\n as line delimiters exclude the \r too.
-    auto eov_pos = raw_headers[eol_pos - 1] == '\r'? eol_pos - 1: eol_pos;
-    headers.emplace_back(
-        raw_headers.substr(raw_index, colon_pos + 1 - raw_index),
-        raw_headers.substr(colon_pos + 1, eov_pos - colon_pos - 1));
-    raw_index = eol_pos + 1;
-  }
-  return headers;
-}
-
 std::unique_ptr<cuttlefish::AudioServer> CreateAudioServer() {
   cuttlefish::SharedFD audio_server_fd =
       cuttlefish::SharedFD::Dup(FLAGS_audio_server_fd);
@@ -143,7 +98,6 @@ fruit::Component<cuttlefish::CustomActionConfigProvider> WebRtcComponent() {
       .install(cuttlefish::ConfigFlagPlaceholder)
       .install(cuttlefish::CustomActionsComponent);
 };
-
 int main(int argc, char** argv) {
   cuttlefish::DefaultSubprocessLogging(argv);
   ::gflags::ParseCommandLineFlags(&argc, &argv, true);
@@ -178,6 +132,7 @@ int main(int argc, char** argv) {
       cuttlefish::SharedFD::Accept(*input_sockets.switches_server);
 
   std::vector<std::thread> touch_accepters;
+  touch_accepters.reserve(input_sockets.touch_servers.size());
   for (const auto& touch : input_sockets.touch_servers) {
     auto label = touch.first;
     touch_accepters.emplace_back([label, &input_sockets]() {
@@ -229,8 +184,8 @@ int main(int argc, char** argv) {
 
   streamer_config.device_id = instance.webrtc_device_id();
   streamer_config.client_files_port = client_server->port();
-  streamer_config.tcp_port_range = cvd_config->webrtc_tcp_port_range();
-  streamer_config.udp_port_range = cvd_config->webrtc_udp_port_range();
+  streamer_config.tcp_port_range = instance.webrtc_tcp_port_range();
+  streamer_config.udp_port_range = instance.webrtc_udp_port_range();
   streamer_config.operator_server.addr = cvd_config->sig_server_address();
   streamer_config.operator_server.port = cvd_config->sig_server_port();
   streamer_config.operator_server.path = cvd_config->sig_server_path();
@@ -242,11 +197,6 @@ int main(int argc, char** argv) {
   } else {
     streamer_config.operator_server.security =
         ServerConfig::Security::kInsecure;
-  }
-
-  if (!cvd_config->sig_server_headers_path().empty()) {
-    streamer_config.operator_server.http_headers =
-        ParseHttpHeaders(cvd_config->sig_server_headers_path());
   }
 
   KernelLogEventsHandler kernel_logs_event_handler(kernel_log_events_client);
@@ -334,14 +284,16 @@ int main(int argc, char** argv) {
   const auto& actions_provider =
       injector.get<cuttlefish::CustomActionConfigProvider&>();
 
-  for (const auto& custom_action : actions_provider.CustomShellActions()) {
+  for (const auto& custom_action :
+       actions_provider.CustomShellActions(instance.id())) {
     const auto button = custom_action.button;
     streamer->AddCustomControlPanelButtonWithShellCommand(
         button.command, button.title, button.icon_name,
         custom_action.shell_command);
   }
 
-  for (const auto& custom_action : actions_provider.CustomActionServers()) {
+  for (const auto& custom_action :
+       actions_provider.CustomActionServers(instance.id())) {
     if (action_server_fds.find(custom_action.server) ==
         action_server_fds.end()) {
       LOG(ERROR) << "Custom action server not provided as command line flag: "
@@ -369,11 +321,12 @@ int main(int argc, char** argv) {
     }
   }
 
-  for (const auto& custom_action : actions_provider.CustomDeviceStateActions()) {
-      const auto button = custom_action.button;
-      streamer->AddCustomControlPanelButtonWithDeviceStates(
-          button.command, button.title, button.icon_name,
-          custom_action.device_states);
+  for (const auto& custom_action :
+       actions_provider.CustomDeviceStateActions(instance.id())) {
+    const auto button = custom_action.button;
+    streamer->AddCustomControlPanelButtonWithDeviceStates(
+        button.command, button.title, button.icon_name,
+        custom_action.device_states);
   }
 
   std::shared_ptr<cuttlefish::webrtc_streaming::OperatorObserver> operator_observer(

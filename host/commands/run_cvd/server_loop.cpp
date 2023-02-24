@@ -230,6 +230,9 @@ class ServerLoopImpl : public ServerLoop,
   bool PowerwashFiles() {
     DeleteFifos();
 
+    // TODO(b/269669405): Figure out why this file is not being deleted
+    unlink(instance_.PerInstanceInternalPath("crosvm_control.sock").c_str());
+
     // TODO(schuffelen): Clean up duplication with assemble_cvd
     unlink(instance_.PerInstancePath("NVChip").c_str());
 
@@ -272,7 +275,7 @@ class ServerLoopImpl : public ServerLoop,
       auto composite_disk_path = overlay_file.composite_disk_path.c_str();
 
       unlink(overlay_path.c_str());
-      if (!CreateQcowOverlay(config_.crosvm_binary(), composite_disk_path, overlay_path)) {
+      if (!CreateQcowOverlay(instance_.crosvm_binary(), composite_disk_path, overlay_path)) {
         LOG(ERROR) << "CreateQcowOverlay failed";
         return false;
       }

@@ -21,6 +21,7 @@
 #include <unistd.h>
 
 #include <fstream>
+#include <regex>
 #include <sstream>
 
 #include <android-base/logging.h>
@@ -75,22 +76,9 @@ void RepackVendorRamdisk(const std::string& kernel_modules_ramdisk_path,
                          const std::string& original_ramdisk_path,
                          const std::string& new_ramdisk_path,
                          const std::string& build_dir) {
-  int success = execute({"/bin/bash", "-c", HostBinaryPath("lz4") + " -c -d -l " +
-                        original_ramdisk_path + " > " + original_ramdisk_path + CPIO_EXT});
-  CHECK(success == 0) << "Unable to run lz4. Exited with status " << success;
-
+  int success = 0;
   const std::string ramdisk_stage_dir = build_dir + "/" + TMP_RD_DIR;
-  success =
-      mkdir(ramdisk_stage_dir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
-  CHECK(success == 0) << "Could not mkdir \"" << ramdisk_stage_dir
-                      << "\", error was " << strerror(errno);
-
-  success = execute(
-      {"/bin/bash", "-c",
-       "(cd " + ramdisk_stage_dir + " && while " + HostBinaryPath("toybox") +
-           " cpio -idu; do :; done) < " + original_ramdisk_path + CPIO_EXT});
-  CHECK(success == 0) << "Unable to run cd or cpio. Exited with status "
-                      << success;
+  UnpackRamdisk(original_ramdisk_path, ramdisk_stage_dir);
 
   success = execute({"rm", "-rf", ramdisk_stage_dir + "/lib/modules"});
   CHECK(success == 0) << "Could not rmdir \"lib/modules\" in TMP_RD_DIR. "
@@ -116,6 +104,27 @@ void RepackVendorRamdisk(const std::string& kernel_modules_ramdisk_path,
 }
 
 }  // namespace
+
+void UnpackRamdisk(const std::string& original_ramdisk_path,
+                   const std::string& ramdisk_stage_dir) {
+  int success =
+      execute({"/bin/bash", "-c",
+               HostBinaryPath("lz4") + " -c -d -l " + original_ramdisk_path +
+                   " > " + original_ramdisk_path + CPIO_EXT});
+  CHECK(success == 0) << "Unable to run lz4. Exited with status " << success;
+
+  success =
+      mkdir(ramdisk_stage_dir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+  CHECK(success == 0) << "Could not mkdir \"" << ramdisk_stage_dir
+                      << "\", error was " << strerror(errno);
+  success = execute(
+      {"/bin/bash", "-c",
+       "(cd " + ramdisk_stage_dir + " && while " + HostBinaryPath("toybox") +
+           " cpio -idu; do :; done) < " + original_ramdisk_path + CPIO_EXT});
+  CHECK(success == 0) << "Unable to run cd or cpio. Exited with status "
+                      << success;
+}
+
 
 bool UnpackBootImage(const std::string& boot_image_path,
                      const std::string& unpack_dir) {
@@ -404,5 +413,34 @@ void RepackGem5BootImage(const std::string& initrd_path,
   // Append bootconfig trailer
   final_rd << "#BOOTCONFIG\n";
   final_rd.close();
+}
+
+Result<std::string> ReadAndroidVersionFromBootImage(
+    const std::string& boot_image_path) {
+  // temp dir path length is chosen to be larger than sun_path_length (108)
+  char tmp_dir[200];
+  sprintf(tmp_dir, "%s/XXXXXX", StringFromEnv("TEMP", "/tmp").c_str());
+  char* unpack_dir = mkdtemp(tmp_dir);
+  if (!unpack_dir) {
+    return CF_ERR("boot image unpack dir could not be created");
+  }
+  bool unpack_status = UnpackBootImage(boot_image_path, unpack_dir);
+  if (!unpack_status) {
+    RecursivelyRemoveDirectory(unpack_dir);
+    return CF_ERR("\"" + boot_image_path + "\" boot image unpack into \"" +
+                  unpack_dir + "\" failed");
+  }
+
+  // dirty hack to read out boot params
+  size_t dir_path_len = strlen(tmp_dir);
+  std::string boot_params = ReadFile(strcat(unpack_dir, "/boot_params"));
+  unpack_dir[dir_path_len] = '\0';
+
+  RecursivelyRemoveDirectory(unpack_dir);
+  std::string os_version = ExtractValue(boot_params, "os version: ");
+  CF_EXPECT(os_version != "", "Could not extract os version from \"" + boot_image_path + "\"");
+  std::regex re("[1-9][0-9]*.[0-9]+.[0-9]+");
+  CF_EXPECT(std::regex_match(os_version, re), "Version string is not a valid version \"" + os_version + "\"");
+  return os_version;
 }
 } // namespace cuttlefish

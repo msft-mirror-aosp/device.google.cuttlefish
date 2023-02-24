@@ -121,48 +121,61 @@ bool QemuManager::IsSupported() {
   return HostSupportsQemuCli();
 }
 
-std::vector<std::string> QemuManager::ConfigureGraphics(
+Result<std::unordered_map<std::string, std::string>>
+QemuManager::ConfigureGraphics(
     const CuttlefishConfig::InstanceSpecific& instance) {
   if (instance.gpu_mode() == kGpuModeGuestSwiftshader) {
     // Override the default HAL search paths in all cases. We do this because
     // the HAL search path allows for fallbacks, and fallbacks in conjunction
     // with properities lead to non-deterministic behavior while loading the
     // HALs.
-    return {
-        "androidboot.cpuvulkan.version=" + std::to_string(VK_API_VERSION_1_2),
-        "androidboot.hardware.gralloc=minigbm",
-        "androidboot.hardware.hwcomposer=" + instance.hwcomposer(),
-        "androidboot.hardware.egl=angle",
-        "androidboot.hardware.vulkan=pastel",
-        "androidboot.opengles.version=196609"};  // OpenGL ES 3.1
+    return {{
+        {"androidboot.cpuvulkan.version", std::to_string(VK_API_VERSION_1_2)},
+        {"androidboot.hardware.gralloc", "minigbm"},
+        {"androidboot.hardware.hwcomposer", instance.hwcomposer()},
+        {"androidboot.hardware.egl", "angle"},
+        {"androidboot.hardware.vulkan", "pastel"},
+        // OpenGL ES 3.1
+        {"androidboot.opengles.version", "196609"},
+    }};
   }
 
   if (instance.gpu_mode() == kGpuModeDrmVirgl) {
-    return {
-      "androidboot.cpuvulkan.version=0",
-      "androidboot.hardware.gralloc=minigbm",
-      "androidboot.hardware.hwcomposer=ranchu",
-      "androidboot.hardware.hwcomposer.mode=client",
-      "androidboot.hardware.egl=mesa",
-      // No "hardware" Vulkan support, yet
-      "androidboot.opengles.version=196608"};  // OpenGL ES 3.0
+    return {{
+        {"androidboot.cpuvulkan.version", "0"},
+        {"androidboot.hardware.gralloc", "minigbm"},
+        {"androidboot.hardware.hwcomposer", "ranchu"},
+        {"androidboot.hardware.hwcomposer.mode", "client"},
+        {"androidboot.hardware.egl", "mesa"},
+        // No "hardware" Vulkan support, yet
+        // OpenGL ES 3.0
+        {"androidboot.opengles.version", "196608"},
+    }};
   }
 
-  return {};
+  if (instance.gpu_mode() == kGpuModeNone) {
+    return {};
+  }
+
+  return CF_ERR("Unhandled GPU mode: " << instance.gpu_mode());
 }
 
-std::string QemuManager::ConfigureBootDevices(int num_disks) {
+Result<std::unordered_map<std::string, std::string>>
+QemuManager::ConfigureBootDevices(int num_disks, bool have_gpu) {
   switch (arch_) {
+    case Arch::Arm:
+      return {{{"androidboot.boot_devices", "3f000000.pcie"}}};
+    case Arch::Arm64:
+      return {{{"androidboot.boot_devices", "4010000000.pcie"}}};
+    case Arch::RiscV64:
+      return {{{"androidboot.boot_devices", "soc/30000000.pci"}}};
     case Arch::X86:
     case Arch::X86_64: {
       // QEMU has additional PCI devices for an ISA bridge and PIIX4
       // virtio_gpu precedes the first console or disk
-      return ConfigureMultipleBootDevices("pci0000:00/0000:00:", 3, num_disks);
+      return ConfigureMultipleBootDevices("pci0000:00/0000:00:",
+                                          2 + (have_gpu ? 1 : 0), num_disks);
     }
-    case Arch::Arm:
-      return "androidboot.boot_devices=3f000000.pcie";
-    case Arch::Arm64:
-      return "androidboot.boot_devices=4010000000.pcie";
   }
 }
 
@@ -181,13 +194,16 @@ Result<std::vector<Command>> QemuManager::StartCommands(
                ? StopperResult::kStopCrash
                : StopperResult::kStopFailure;
   };
-  std::string qemu_binary = config.qemu_binary_dir();
+  std::string qemu_binary = instance.qemu_binary_dir();
   switch (arch_) {
     case Arch::Arm:
       qemu_binary += "/qemu-system-arm";
       break;
     case Arch::Arm64:
       qemu_binary += "/qemu-system-aarch64";
+      break;
+    case Arch::RiscV64:
+      qemu_binary += "/qemu-system-riscv64";
       break;
     case Arch::X86:
       qemu_binary += "/qemu-system-i386";
@@ -265,7 +281,9 @@ Result<std::vector<Command>> QemuManager::StartCommands(
   };
 
   bool is_arm = arch_ == Arch::Arm || arch_ == Arch::Arm64;
+  bool is_x86 = arch_ == Arch::X86 || arch_ == Arch::X86_64;
   bool is_arm64 = arch_ == Arch::Arm64;
+  bool is_riscv64 = arch_ == Arch::RiscV64;
 
   auto access_kregistry_size_bytes = 0;
   if (FileExists(instance.access_kregistry_path())) {
@@ -277,12 +295,14 @@ Result<std::vector<Command>> QemuManager::StartCommands(
   }
 
   auto hwcomposer_pmem_size_bytes = 0;
-  if (FileExists(instance.hwcomposer_pmem_path())) {
-    hwcomposer_pmem_size_bytes = FileSize(instance.hwcomposer_pmem_path());
-    CF_EXPECT((hwcomposer_pmem_size_bytes & (1024 * 1024 - 1)) == 0,
-              instance.hwcomposer_pmem_path()
-                  << " file size (" << hwcomposer_pmem_size_bytes
-                  << ") not a multiple of 1MB");
+  if (instance.hwcomposer() != kHwComposerNone) {
+    if (FileExists(instance.hwcomposer_pmem_path())) {
+      hwcomposer_pmem_size_bytes = FileSize(instance.hwcomposer_pmem_path());
+      CF_EXPECT((hwcomposer_pmem_size_bytes & (1024 * 1024 - 1)) == 0,
+                instance.hwcomposer_pmem_path()
+                    << " file size (" << hwcomposer_pmem_size_bytes
+                    << ") not a multiple of 1MB");
+    }
   }
 
   auto pstore_size_bytes = 0;
@@ -297,7 +317,7 @@ Result<std::vector<Command>> QemuManager::StartCommands(
   qemu_cmd.AddParameter("guest=", instance.instance_name(), ",debug-threads=on");
 
   qemu_cmd.AddParameter("-machine");
-  std::string machine = is_arm ? "virt" : "pc-i440fx-2.8,nvdimm=on";
+  std::string machine = is_x86 ? "pc-i440fx-2.8,nvdimm=on" : "virt";
   if (IsHostCompatible(arch_)) {
     machine += ",accel=kvm";
     if (is_arm) {
@@ -319,8 +339,8 @@ Result<std::vector<Command>> QemuManager::StartCommands(
   auto maxmem = instance.memory_mb() +
                 (access_kregistry_size_bytes / 1024 / 1024) +
                 (hwcomposer_pmem_size_bytes / 1024 / 1024) +
-                (is_arm ? 0 : pstore_size_bytes / 1024 / 1024);
-  auto slots = is_arm ? "" : ",slots=2";
+                (is_x86 ? pstore_size_bytes / 1024 / 1024 : 0);
+  auto slots = is_x86 ? ",slots=2" : "";
   qemu_cmd.AddParameter("size=", instance.memory_mb(), "M",
                         ",maxmem=", maxmem, "M", slots);
 
@@ -330,7 +350,7 @@ Result<std::vector<Command>> QemuManager::StartCommands(
   // Assume SMT is always 2 threads per core, which is how most hardware
   // today is configured, and the way crosvm does it
   qemu_cmd.AddParameter("-smp");
-  if (config.smt()) {
+  if (instance.smt()) {
     CF_EXPECT(instance.cpus() % 2 == 0,
               "CPUs must be a multiple of 2 in SMT mode");
     qemu_cmd.AddParameter(instance.cpus(), ",cores=",
@@ -371,18 +391,20 @@ Result<std::vector<Command>> QemuManager::StartCommands(
     qemu_cmd.AddParameter("none");
   }
 
-  auto display_configs = instance.display_configs();
-  CF_EXPECT(display_configs.size() >= 1);
-  auto display_config = display_configs[0];
+  if (instance.hwcomposer() != kHwComposerNone) {
+    auto display_configs = instance.display_configs();
+    CF_EXPECT(display_configs.size() >= 1);
+    auto display_config = display_configs[0];
 
-  qemu_cmd.AddParameter("-device");
+    qemu_cmd.AddParameter("-device");
 
-  bool use_gpu_gl = qemu_version.first >= 6 &&
-                    instance.gpu_mode() != kGpuModeGuestSwiftshader;
-  qemu_cmd.AddParameter(use_gpu_gl ?
-                            "virtio-gpu-gl-pci" : "virtio-gpu-pci", ",id=gpu0",
-                        ",xres=", display_config.width,
-                        ",yres=", display_config.height);
+    bool use_gpu_gl = qemu_version.first >= 6 &&
+                      instance.gpu_mode() != kGpuModeGuestSwiftshader;
+    qemu_cmd.AddParameter(use_gpu_gl ?
+                              "virtio-gpu-gl-pci" : "virtio-gpu-pci", ",id=gpu0",
+                          ",xres=", display_config.width,
+                          ",yres=", display_config.height);
+  }
 
   if (!instance.console()) {
     // In kgdb mode, earlycon is an interactive console, and so early
@@ -495,7 +517,7 @@ Result<std::vector<Command>> QemuManager::StartCommands(
                           ",id=virtio-disk", i, bootindex);
   }
 
-  if (!is_arm && FileExists(instance.pstore_path())) {
+  if (is_x86 && FileExists(instance.pstore_path())) {
     // QEMU will assign the NVDIMM (ramoops pstore region) 100000000-1001fffff
     // As we will pass this to ramoops, define this region first so it is always
     // located at this address. This is currently x86 only.
@@ -507,9 +529,9 @@ Result<std::vector<Command>> QemuManager::StartCommands(
     qemu_cmd.AddParameter("nvdimm,memdev=objpmem0,id=ramoops");
   }
 
-  // QEMU does not implement virtio-pmem-pci for ARM64 yet; restore this
-  // when the device has been added
-  if (!is_arm) {
+  // QEMU does not implement virtio-pmem-pci for ARM64 or RISC-V yet; restore
+  // this when the device has been added
+  if (is_x86) {
     if (access_kregistry_size_bytes > 0) {
       qemu_cmd.AddParameter("-object");
       qemu_cmd.AddParameter(
@@ -551,7 +573,7 @@ Result<std::vector<Command>> QemuManager::StartCommands(
   qemu_cmd.AddParameter("-device");
   qemu_cmd.AddParameter("virtio-keyboard-pci,disable-legacy=on");
 
-  auto vhost_net = config.vhost_net() ? ",vhost=on" : "";
+  auto vhost_net = instance.vhost_net() ? ",vhost=on" : "";
 
   qemu_cmd.AddParameter("-device");
   qemu_cmd.AddParameter("virtio-balloon-pci-non-transitional,id=balloon0");
@@ -577,8 +599,10 @@ Result<std::vector<Command>> QemuManager::StartCommands(
   qemu_cmd.AddParameter("virtio-net-pci-non-transitional,netdev=hostnet2,id=net2");
 #endif
 
-  qemu_cmd.AddParameter("-cpu");
-  qemu_cmd.AddParameter(IsHostCompatible(arch_) ? "host" : "max");
+  if (is_x86 || is_arm) {
+    qemu_cmd.AddParameter("-cpu");
+    qemu_cmd.AddParameter(IsHostCompatible(arch_) ? "host" : "max");
+  }
 
   qemu_cmd.AddParameter("-msg");
   qemu_cmd.AddParameter("timestamp=on");
@@ -593,7 +617,11 @@ Result<std::vector<Command>> QemuManager::StartCommands(
   qemu_cmd.AddParameter("-device");
   qemu_cmd.AddParameter("qemu-xhci,id=xhci");
 
-  qemu_cmd.AddParameter("-bios");
+  if (is_riscv64) {
+    qemu_cmd.AddParameter("-kernel");
+  } else {
+    qemu_cmd.AddParameter("-bios");
+  }
   qemu_cmd.AddParameter(instance.bootloader());
 
   if (instance.gdb_port() > 0) {

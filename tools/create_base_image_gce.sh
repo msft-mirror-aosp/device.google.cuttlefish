@@ -1,5 +1,19 @@
 #!/bin/bash
 
+# Copyright 2018 Google Inc. All rights reserved.
+
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+
+#     http://www.apache.org/licenses/LICENSE-2.0
+
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 set -x
 set -o errexit
 shopt -s extglob
@@ -18,6 +32,14 @@ sudo apt-get update
 # Stuff we need to get build support
 
 sudo apt install -y debhelper ubuntu-dev-tools equivs "${extra_packages[@]}"
+
+# Resize
+sudo apt install -y cloud-utils
+sudo apt install -y cloud-guest-utils
+sudo apt install -y fdisk
+sudo growpart /dev/sdb 1
+sudo e2fsck -f -y /dev/sdb1
+sudo resize2fs /dev/sdb1
 
 # Install the cuttlefish build deps
 
@@ -68,7 +90,7 @@ sudo cp /etc/resolv.conf /mnt/image/etc/
 sudo chroot /mnt/image /usr/bin/apt update
 sudo chroot /mnt/image /usr/bin/apt install -y "${tmp_debs[@]}"
 # install tools dependencies
-sudo chroot /mnt/image /usr/bin/apt install -y openjdk-11-jre
+sudo chroot /mnt/image /usr/bin/apt install -y openjdk-17-jre
 sudo chroot /mnt/image /usr/bin/apt install -y unzip bzip2 lzop
 sudo chroot /mnt/image /usr/bin/apt install -y aapt
 sudo chroot /mnt/image /usr/bin/apt install -y screen # needed by tradefed

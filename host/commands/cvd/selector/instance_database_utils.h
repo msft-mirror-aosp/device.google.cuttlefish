@@ -41,6 +41,8 @@ std::string LocalDeviceNameRule(const std::string& group_name,
                                 const std::string& instance_name);
 
 // [A-Za-z0-9_]+, e.g. 0, tv, my_phone07, etc
+// Or, it can include "-" in the middle
+// ([A-Za-z0-9_]+[-])*[A-Za-z0-9_]
 bool IsValidInstanceName(const std::string& token);
 
 // [A-Za-z_][A-Za-z0-9_]*, e.g. cool_group, cv0_d, cf, etc
@@ -49,6 +51,12 @@ bool IsValidGroupName(const std::string& token);
 
 // <valid group name>-<valid instance name>
 bool IsValidDeviceName(const std::string& token);
+
+struct DeviceName {
+  std::string group_name;
+  std::string per_instance_name;
+};
+Result<DeviceName> BreakDeviceName(const std::string& device_name);
 
 /**
  * Runs simple tests to see if it could potentially be a host artifacts dir
@@ -151,6 +159,9 @@ Result<typename std::remove_reference<S>::type> AtMostOne(
 template <typename RetSet, typename AnyContainer>
 RetSet Intersection(const RetSet& u, AnyContainer&& v) {
   RetSet result;
+  if (u.empty() || v.empty()) {
+    return result;
+  }
   for (auto const& e : v) {
     if (Contains(u, e)) {
       result.insert(e);
@@ -162,6 +173,9 @@ RetSet Intersection(const RetSet& u, AnyContainer&& v) {
 template <typename RetSet, typename AnyContainer, typename... Containers>
 RetSet Intersection(const RetSet& u, AnyContainer&& v, Containers&&... s) {
   RetSet first = Intersection(u, std::forward<AnyContainer>(v));
+  if (first.empty()) {
+    return first;
+  }
   return Intersection(first, std::forward<Containers>(s)...);
 }
 

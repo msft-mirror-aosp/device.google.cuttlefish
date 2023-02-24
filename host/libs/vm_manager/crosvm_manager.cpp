@@ -57,62 +57,77 @@ bool CrosvmManager::IsSupported() {
 #endif
 }
 
-std::vector<std::string> CrosvmManager::ConfigureGraphics(
+Result<std::unordered_map<std::string, std::string>>
+CrosvmManager::ConfigureGraphics(
     const CuttlefishConfig::InstanceSpecific& instance) {
+  std::unordered_map<std::string, std::string> bootconfig_args;
+
   // Override the default HAL search paths in all cases. We do this because
   // the HAL search path allows for fallbacks, and fallbacks in conjunction
   // with properities lead to non-deterministic behavior while loading the
   // HALs.
   if (instance.gpu_mode() == kGpuModeGuestSwiftshader) {
-    return {
-        "androidboot.cpuvulkan.version=" + std::to_string(VK_API_VERSION_1_2),
-        "androidboot.hardware.gralloc=minigbm",
-        "androidboot.hardware.hwcomposer=" + instance.hwcomposer(),
-        "androidboot.hardware.hwcomposer.display_finder_mode=drm",
-        "androidboot.hardware.egl=angle",
-        "androidboot.hardware.vulkan=pastel",
-        "androidboot.opengles.version=196609",  // OpenGL ES 3.1
-    };
+    return {{
+        {"androidboot.cpuvulkan.version", std::to_string(VK_API_VERSION_1_2)},
+        {"androidboot.hardware.gralloc", "minigbm"},
+        {"androidboot.hardware.hwcomposer", instance.hwcomposer()},
+        {"androidboot.hardware.hwcomposer.display_finder_mode", "drm"},
+        {"androidboot.hardware.egl", "angle"},
+        {"androidboot.hardware.vulkan", "pastel"},
+        {"androidboot.opengles.version", "196609"},  // OpenGL ES 3.1
+    }};
   }
 
   if (instance.gpu_mode() == kGpuModeDrmVirgl) {
-    return {
-        "androidboot.cpuvulkan.version=0",
-        "androidboot.hardware.gralloc=minigbm",
-        "androidboot.hardware.hwcomposer=ranchu",
-        "androidboot.hardware.hwcomposer.mode=client",
-        "androidboot.hardware.hwcomposer.display_finder_mode=drm",
-        "androidboot.hardware.egl=mesa",
+    return {{
+        {"androidboot.cpuvulkan.version", "0"},
+        {"androidboot.hardware.gralloc", "minigbm"},
+        {"androidboot.hardware.hwcomposer", "ranchu"},
+        {"androidboot.hardware.hwcomposer.mode", "client"},
+        {"androidboot.hardware.hwcomposer.display_finder_mode", "drm"},
+        {"androidboot.hardware.egl", "mesa"},
         // No "hardware" Vulkan support, yet
-        "androidboot.opengles.version=196608",  // OpenGL ES 3.0
-    };
+        {"androidboot.opengles.version", "196608"},  // OpenGL ES 3.0
+    }};
   }
+
   if (instance.gpu_mode() == kGpuModeGfxStream) {
     std::string gles_impl = instance.enable_gpu_angle() ? "angle" : "emulation";
-    return {
-        "androidboot.cpuvulkan.version=0",
-        "androidboot.hardware.gralloc=minigbm",
-        "androidboot.hardware.hwcomposer=" + instance.hwcomposer(),
-        "androidboot.hardware.hwcomposer.display_finder_mode=drm",
-        "androidboot.hardware.egl=" + gles_impl,
-        "androidboot.hardware.vulkan=ranchu",
-        "androidboot.hardware.gltransport=virtio-gpu-asg",
-        "androidboot.opengles.version=196608",  // OpenGL ES 3.0
-    };
+    std::string gltransport = (instance.guest_android_version() == "11.0.0")
+                                  ? "virtio-gpu-pipe"
+                                  : "virtio-gpu-asg";
+    std::string gles_version = instance.enable_gpu_angle() ? "196608" : "196609";
+    return {{
+        {"androidboot.cpuvulkan.version", "0"},
+        {"androidboot.hardware.gralloc", "minigbm"},
+        {"androidboot.hardware.hwcomposer", instance.hwcomposer()},
+        {"androidboot.hardware.hwcomposer.display_finder_mode", "drm"},
+        {"androidboot.hardware.egl", gles_impl},
+        {"androidboot.hardware.vulkan", "ranchu"},
+        {"androidboot.hardware.gltransport", gltransport},
+        {"androidboot.opengles.version", gles_version},
+    }};
   }
-  return {};
+
+  if (instance.gpu_mode() == kGpuModeNone) {
+    return {};
+  }
+
+  return CF_ERR("Unknown GPU mode " << instance.gpu_mode());
 }
 
-std::string CrosvmManager::ConfigureBootDevices(int num_disks) {
+Result<std::unordered_map<std::string, std::string>>
+CrosvmManager::ConfigureBootDevices(int num_disks, bool have_gpu) {
   // TODO There is no way to control this assignment with crosvm (yet)
   if (HostArch() == Arch::X86_64) {
     // crosvm has an additional PCI device for an ISA bridge
     // virtio_gpu and virtio_wl precedes the first console or disk
-    return ConfigureMultipleBootDevices("pci0000:00/0000:00:", 3, num_disks);
+    return ConfigureMultipleBootDevices("pci0000:00/0000:00:",
+                                        1 + (have_gpu ? 2 : 0), num_disks);
   } else {
     // On ARM64 crosvm, block devices are on their own bridge, so we don't
     // need to calculate it, and the path is always the same
-    return "androidboot.boot_devices=10000.pci";
+    return {{{"androidboot.boot_devices", "10000.pci"}}};
   }
 }
 
@@ -124,17 +139,16 @@ Result<std::vector<Command>> CrosvmManager::StartCommands(
 
   CrosvmBuilder crosvm_cmd;
 
-  crosvm_cmd.ApplyProcessRestarter(config.crosvm_binary(),
+  crosvm_cmd.ApplyProcessRestarter(instance.crosvm_binary(),
                                    kCrosvmVmResetExitCode);
   crosvm_cmd.Cmd().AddParameter("run");
   crosvm_cmd.AddControlSocket(GetControlSocketPath(instance, crosvm_socket),
-                              config.crosvm_binary());
-
-  if (!config.smt()) {
+                              instance.crosvm_binary());
+  if (!instance.smt()) {
     crosvm_cmd.Cmd().AddParameter("--no-smt");
   }
 
-  if (config.vhost_net()) {
+  if (instance.vhost_net()) {
     crosvm_cmd.Cmd().AddParameter("--vhost-net");
   }
 
@@ -174,28 +188,34 @@ Result<std::vector<Command>> CrosvmManager::StartCommands(
     crosvm_cmd.Cmd().AddParameter("--gpu=backend=virglrenderer",
                                   gpu_common_3d_string);
   } else if (gpu_mode == kGpuModeGfxStream) {
-    crosvm_cmd.Cmd().AddParameter("--gpu=backend=gfxstream",
+    crosvm_cmd.Cmd().AddParameter("--gpu=backend=gfxstream,gles31=true",
                                   gpu_common_3d_string, gpu_angle_string);
   }
 
-  for (const auto& display_config : instance.display_configs()) {
-    const auto display_w = std::to_string(display_config.width);
-    const auto display_h = std::to_string(display_config.height);
-    const auto display_dpi = std::to_string(display_config.dpi);
-    const auto display_rr = std::to_string(display_config.refresh_rate_hz);
-    const auto display_params = android::base::Join(
-        std::vector<std::string>{
-            "mode=windowed[" + display_w + "," + display_h + "]",
-            "horizontal-dpi=" + display_dpi,
-            "vertical-dpi=" + display_dpi,
-            "refresh-rate=" + display_rr,
-        },
-        ",");
-    crosvm_cmd.Cmd().AddParameter("--gpu-display=", display_params);
-  }
+  if (instance.hwcomposer() != kHwComposerNone) {
+    if (FileExists(instance.hwcomposer_pmem_path())) {
+      crosvm_cmd.Cmd().AddParameter("--rw-pmem-device=",
+                                    instance.hwcomposer_pmem_path());
+    }
 
-  crosvm_cmd.Cmd().AddParameter("--wayland-sock=",
-                                instance.frames_socket_path());
+    for (const auto& display_config : instance.display_configs()) {
+      const auto display_w = std::to_string(display_config.width);
+      const auto display_h = std::to_string(display_config.height);
+      const auto display_dpi = std::to_string(display_config.dpi);
+      const auto display_rr = std::to_string(display_config.refresh_rate_hz);
+      const auto display_params = android::base::Join(
+          std::vector<std::string>{
+              "mode=windowed[" + display_w + "," + display_h + "]",
+              "dpi=[" + display_dpi + "," + display_dpi + "]",
+              "refresh-rate=" + display_rr,
+          },
+          ",");
+      crosvm_cmd.Cmd().AddParameter("--gpu-display=", display_params);
+    }
+
+    crosvm_cmd.Cmd().AddParameter("--wayland-sock=",
+                                  instance.frames_socket_path());
+  }
 
   // crosvm_cmd.Cmd().AddParameter("--null-audio");
   crosvm_cmd.Cmd().AddParameter("--mem=", instance.memory_mb());
@@ -213,9 +233,9 @@ Result<std::vector<Command>> CrosvmManager::StartCommands(
     }
   }
 
-  if (config.enable_webrtc()) {
+  if (instance.enable_webrtc()) {
     auto touch_type_parameter =
-        config.enable_webrtc() ? "--multi-touch=" : "--single-touch=";
+        instance.enable_webrtc() ? "--multi-touch=" : "--single-touch=";
 
     auto display_configs = instance.display_configs();
     CF_EXPECT(display_configs.size() >= 1);
@@ -230,7 +250,7 @@ Result<std::vector<Command>> CrosvmManager::StartCommands(
     crosvm_cmd.Cmd().AddParameter("--keyboard=",
                                   instance.keyboard_socket_path());
   }
-  if (config.enable_webrtc()) {
+  if (instance.enable_webrtc()) {
     crosvm_cmd.Cmd().AddParameter("--switches=",
                                   instance.switches_socket_path());
   }
@@ -240,7 +260,7 @@ Result<std::vector<Command>> CrosvmManager::StartCommands(
   // having to pass arguments to crosvm via a wrapper script.
   if (!gpu_capture_enabled) {
     crosvm_cmd.AddTap(instance.mobile_tap_name());
-    crosvm_cmd.AddTap(instance.ethernet_tap_name());
+    crosvm_cmd.AddTap(instance.ethernet_tap_name(), instance.ethernet_mac());
 
     // TODO(b/199103204): remove this as well when
     // PRODUCT_ENFORCE_MAC80211_HWSIM is removed
@@ -254,27 +274,22 @@ Result<std::vector<Command>> CrosvmManager::StartCommands(
                                   instance.access_kregistry_path());
   }
 
-  if (FileExists(instance.hwcomposer_pmem_path())) {
-    crosvm_cmd.Cmd().AddParameter("--rw-pmem-device=",
-                                  instance.hwcomposer_pmem_path());
-  }
-
   if (FileExists(instance.pstore_path())) {
     crosvm_cmd.Cmd().AddParameter("--pstore=path=", instance.pstore_path(),
                                   ",size=", FileSize(instance.pstore_path()));
   }
 
   if (instance.enable_sandbox()) {
-    const bool seccomp_exists = DirectoryExists(config.seccomp_policy_dir());
+    const bool seccomp_exists = DirectoryExists(instance.seccomp_policy_dir());
     const std::string& var_empty_dir = kCrosvmVarEmptyDir;
     const bool var_empty_available = DirectoryExists(var_empty_dir);
     CF_EXPECT(var_empty_available && seccomp_exists,
               var_empty_dir << " is not an existing, empty directory."
                             << "seccomp-policy-dir, "
-                            << config.seccomp_policy_dir()
+                            << instance.seccomp_policy_dir()
                             << " does not exist");
     crosvm_cmd.Cmd().AddParameter("--seccomp-policy-dir=",
-                                  config.seccomp_policy_dir());
+                                  instance.seccomp_policy_dir());
   } else {
     crosvm_cmd.Cmd().AddParameter("--disable-sandbox");
   }
@@ -338,6 +353,17 @@ Result<std::vector<Command>> CrosvmManager::StartCommands(
   Command crosvm_log_tee_cmd(HostBinaryPath("log_tee"));
   crosvm_log_tee_cmd.AddParameter("--process_name=crosvm");
   crosvm_log_tee_cmd.AddParameter("--log_fd_in=", crosvm_logs);
+  crosvm_log_tee_cmd.SetStopper([](Subprocess* proc) {
+    // Ask nicely so that log_tee gets a chance to process all the logs.
+    int rval = kill(proc->pid(), SIGINT);
+    if (rval != 0) {
+      LOG(ERROR) << "Failed to stop log_tee nicely, attempting to KILL";
+      return KillSubprocess(proc) == StopperResult::kStopSuccess
+                 ? StopperResult::kStopCrash
+                 : StopperResult::kStopFailure;
+    }
+    return StopperResult::kStopSuccess;
+  });
 
   // Serial port for logcat, redirected to a pipe
   crosvm_cmd.AddHvcReadOnly(instance.logcat_pipe_name());
@@ -422,6 +448,10 @@ Result<std::vector<Command>> CrosvmManager::StartCommands(
 
   std::vector<Command> ret;
 
+  // log_tee must be added before crosvm_cmd to ensure all of crosvm's logs are
+  // captured during shutdown. Processes are stopped in reverse order.
+  ret.push_back(std::move(crosvm_log_tee_cmd));
+
   if (gpu_capture_enabled) {
     const std::string gpu_capture_basename =
         cpp_basename(instance.gpu_capture_binary());
@@ -479,7 +509,6 @@ Result<std::vector<Command>> CrosvmManager::StartCommands(
     ret.push_back(std::move(crosvm_cmd.Cmd()));
   }
 
-  ret.push_back(std::move(crosvm_log_tee_cmd));
   return ret;
 }
 

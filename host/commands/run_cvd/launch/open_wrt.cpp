@@ -15,9 +15,12 @@
 
 #include "host/commands/run_cvd/launch/launch.h"
 
+#include <android-base/logging.h>
+
 #include "common/libs/utils/files.h"
 #include "common/libs/utils/network.h"
 #include "host/libs/config/known_paths.h"
+#include "host/libs/config/openwrt_args.h"
 #include "host/libs/vm_manager/crosvm_builder.h"
 #include "host/libs/vm_manager/crosvm_manager.h"
 
@@ -38,12 +41,12 @@ class OpenWrt : public CommandSource {
     constexpr auto crosvm_for_ap_socket = "ap_control.sock";
 
     CrosvmBuilder ap_cmd;
-    ap_cmd.ApplyProcessRestarter(config_.crosvm_binary(),
+    ap_cmd.ApplyProcessRestarter(instance_.crosvm_binary(),
                                  kOpenwrtVmResetExitCode);
     ap_cmd.Cmd().AddParameter("run");
     ap_cmd.AddControlSocket(
         instance_.PerInstanceInternalPath(crosvm_for_ap_socket),
-        config_.crosvm_binary());
+        instance_.crosvm_binary());
 
     if (!config_.vhost_user_mac80211_hwsim().empty()) {
       ap_cmd.Cmd().AddParameter("--vhost-user-mac80211-hwsim=",
@@ -70,7 +73,7 @@ class OpenWrt : public CommandSource {
     }
     if (instance_.enable_sandbox()) {
       ap_cmd.Cmd().AddParameter("--seccomp-policy-dir=",
-                                config_.seccomp_policy_dir());
+                                instance_.seccomp_policy_dir());
     } else {
       ap_cmd.Cmd().AddParameter("--disable-sandbox");
     }
@@ -82,6 +85,7 @@ class OpenWrt : public CommandSource {
     ap_cmd.AddSerialConsoleReadOnly(boot_logs_path);
     ap_cmd.AddHvcReadOnly(logs_path);
 
+    auto openwrt_args = OpenwrtArgsFromConfig(instance_);
     switch (instance_.ap_boot_flow()) {
       case APBootFlow::Grub:
         ap_cmd.AddReadWriteDisk(instance_.persistent_ap_composite_disk_path());
@@ -89,6 +93,10 @@ class OpenWrt : public CommandSource {
         break;
       case APBootFlow::LegacyDirect:
         ap_cmd.Cmd().AddParameter("--params=\"root=/dev/vda1\"");
+        for (auto& openwrt_arg : openwrt_args) {
+          ap_cmd.Cmd().AddParameter("--params=" + openwrt_arg.first + "=" +
+                                    openwrt_arg.second);
+        }
         ap_cmd.Cmd().AddParameter(config_.ap_kernel_image());
         break;
       default:

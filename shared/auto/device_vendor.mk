@@ -22,6 +22,7 @@ $(call inherit-product, $(SRC_TARGET_DIR)/product/handheld_vendor.mk)
 $(call inherit-product, packages/services/Car/car_product/build/car.mk)
 
 $(call inherit-product, frameworks/native/build/phone-xhdpi-2048-dalvik-heap.mk)
+$(call inherit-product, device/google/cuttlefish/shared/graphics/device_vendor.mk)
 $(call inherit-product, device/google/cuttlefish/shared/swiftshader/device_vendor.mk)
 $(call inherit-product, device/google/cuttlefish/shared/telephony/device_vendor.mk)
 $(call inherit-product, device/google/cuttlefish/shared/virgl/device_vendor.mk)
@@ -120,6 +121,9 @@ PRODUCT_PACKAGES += evs_app
 PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/auto/evs/evs_app_config.json:$(TARGET_COPY_OUT_SYSTEM)/etc/automotive/evs/config_override.json
 BOARD_SEPOLICY_DIRS += packages/services/Car/cpp/evs/apps/sepolicy/private
+ifeq ($(ENABLE_CARTELEMETRY_SERVICE), true)
+BOARD_SEPOLICY_DIRS += packages/services/Car/cpp/evs/apps/sepolicy/cartelemetry
+endif
 endif
 
 BOARD_IS_AUTOMOTIVE := true

@@ -35,6 +35,7 @@
 #include "host/libs/config/adb/adb.h"
 #include "host/libs/config/config_flag.h"
 #include "host/libs/config/custom_actions.h"
+#include "host/libs/config/fastboot/fastboot.h"
 #include "host/libs/config/fetcher_config.h"
 #include "host/libs/config/inject.h"
 
@@ -140,7 +141,7 @@ Result<void> CreateLegacySymlinks(
 }
 
 Result<const CuttlefishConfig*> InitFilesystemAndCreateConfig(
-    FetcherConfig fetcher_config, const std::vector<KernelConfig>& kernel_configs,
+    FetcherConfig fetcher_config, const std::vector<GuestConfig>& guest_configs,
     fruit::Injector<>& injector) {
   std::string runtime_dir_parent = AbsolutePath(FLAGS_instance_dir);
   while (runtime_dir_parent[runtime_dir_parent.size() - 1] == '/') {
@@ -167,7 +168,7 @@ Result<const CuttlefishConfig*> InitFilesystemAndCreateConfig(
     // two operations, as those will assume they can read the config object from
     // disk.
     auto config = CF_EXPECT(
-        InitializeCuttlefishConfiguration(FLAGS_instance_dir, kernel_configs,
+        InitializeCuttlefishConfiguration(FLAGS_instance_dir, guest_configs,
                                           injector, fetcher_config),
         "cuttlefish configuration initialization failed");
 
@@ -209,6 +210,7 @@ Result<const CuttlefishConfig*> InitFilesystemAndCreateConfig(
       preserving.insert("os_composite.img");
       preserving.insert("sdcard.img");
       preserving.insert("boot_repacked.img");
+      preserving.insert("vendor_dlkm_repacked.img");
       preserving.insert("vendor_boot_repacked.img");
       preserving.insert("access-kregistry");
       preserving.insert("hwcomposer-pmem");
@@ -248,6 +250,8 @@ Result<const CuttlefishConfig*> InitFilesystemAndCreateConfig(
       CF_EXPECT(EnsureDirectoryExists(instance.instance_dir()));
       auto internal_dir = instance.instance_dir() + "/" + kInternalDirName;
       CF_EXPECT(EnsureDirectoryExists(internal_dir));
+      auto grpc_socket_dir = instance.instance_dir() + "/" + kGrpcSocketDirName;
+      CF_EXPECT(EnsureDirectoryExists(grpc_socket_dir));
       auto shared_dir = instance.instance_dir() + "/" + kSharedDirName;
       CF_EXPECT(EnsureDirectoryExists(shared_dir));
       auto recording_dir = instance.instance_dir() + "/recording";
@@ -315,6 +319,9 @@ fruit::Component<> FlagsComponent() {
       .install(AdbConfigComponent)
       .install(AdbConfigFlagComponent)
       .install(AdbConfigFragmentComponent)
+      .install(FastbootConfigComponent)
+      .install(FastbootConfigFlagComponent)
+      .install(FastbootConfigFragmentComponent)
       .install(GflagsComponent)
       .install(ConfigFlagComponent)
       .install(CustomActionsComponent);
@@ -394,12 +401,12 @@ Result<int> AssembleCvdMain(int argc, char** argv) {
   // gflags either consumes all arguments that start with - or leaves all of
   // them in place, and either errors out on unknown flags or accepts any flags.
 
-  auto kernel_configs =
-      CF_EXPECT(GetKernelConfigAndSetDefaults(), "Failed to parse arguments");
+  auto guest_configs =
+      CF_EXPECT(GetGuestConfigAndSetDefaults(), "Failed to parse arguments");
 
   auto config =
       CF_EXPECT(InitFilesystemAndCreateConfig(std::move(fetcher_config),
-                                              kernel_configs, injector),
+                                              guest_configs, injector),
                 "Failed to create config");
 
   std::cout << GetConfigFilePath(*config) << "\n";
