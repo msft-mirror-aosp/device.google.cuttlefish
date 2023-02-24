@@ -56,8 +56,15 @@ class InstanceDatabase {
    * If id is duplicated in the scope of the InstanceDatabase or instance_name
    * is not unique within the group, CF_ERR is returned.
    */
-  Result<void> AddInstance(const LocalInstanceGroup& group, const unsigned id,
+  Result<void> AddInstance(const std::string& group_name, const unsigned id,
                            const std::string& instance_name);
+
+  struct InstanceInfo {
+    const unsigned id;
+    const std::string name;
+  };
+  Result<void> AddInstances(const std::string& group_name,
+                            const std::vector<InstanceInfo>& instances);
 
   /*
    *  auto group = CF_EXPEC(FindGroups(...));

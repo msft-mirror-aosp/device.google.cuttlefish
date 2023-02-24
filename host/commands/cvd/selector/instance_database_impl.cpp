@@ -73,9 +73,20 @@ Result<ConstRef<LocalInstanceGroup>> InstanceDatabase::AddInstanceGroup(
   return {const_ref};
 }
 
-Result<void> InstanceDatabase::AddInstance(const LocalInstanceGroup& group,
+Result<void> InstanceDatabase::AddInstance(const std::string& group_name,
                                            const unsigned id,
                                            const std::string& instance_name) {
+  LocalInstanceGroup* group_ptr = nullptr;
+  for (auto& group_uniq_ptr : local_instance_groups_) {
+    if (group_uniq_ptr && group_uniq_ptr->GroupName() == group_name) {
+      group_ptr = group_uniq_ptr.get();
+      break;
+    }
+  }
+  CF_EXPECT(group_ptr != nullptr,
+            "Instance Group named as " << group_name << " is not found.");
+  LocalInstanceGroup& group = *group_ptr;
+
   CF_EXPECT(IsValidInstanceName(instance_name),
             "instance_name " << instance_name << " is invalid.");
   auto itr = FindIterator(group);
@@ -96,6 +107,13 @@ Result<void> InstanceDatabase::AddInstance(const LocalInstanceGroup& group,
   return (*itr)->AddInstance(id, instance_name);
 }
 
+Result<void> InstanceDatabase::AddInstances(
+    const std::string& group_name, const std::vector<InstanceInfo>& instances) {
+  for (const auto& instance_info : instances) {
+    CF_EXPECT(AddInstance(group_name, instance_info.id, instance_info.name));
+  }
+  return {};
+}
 bool InstanceDatabase::RemoveInstanceGroup(const LocalInstanceGroup& group) {
   auto itr = FindIterator(group);
   // *itr is the reference to the unique pointer object
