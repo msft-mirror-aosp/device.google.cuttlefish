@@ -72,7 +72,7 @@ $(call inherit-product, $(SRC_TARGET_DIR)/product/emulated_storage.mk)
 # sepolicy
 PRODUCT_PRODUCT_PROPERTIES += \
     remote_provisioning.enable_rkpd=true \
-    remote_provisioning.hostname=remoteprovisioning.googleapis.com \
+    remote_provisioning.hostname=autopush-remoteprovisioning.sandbox.googleapis.com \
     persist.adb.tcp.port=5555 \
     ro.com.google.locationfeatures=1 \
     persist.sys.fuse.passthrough.enable=true \
@@ -248,6 +248,7 @@ PRODUCT_COPY_FILES += \
     frameworks/av/media/libstagefright/data/media_codecs_google_audio.xml:$(TARGET_COPY_OUT_VENDOR)/etc/media_codecs_google_audio.xml \
     frameworks/av/media/libstagefright/data/media_codecs_google_telephony.xml:$(TARGET_COPY_OUT_VENDOR)/etc/media_codecs_google_telephony.xml \
     frameworks/av/services/audiopolicy/config/bluetooth_audio_policy_configuration_7_0.xml:$(TARGET_COPY_OUT_VENDOR)/etc/bluetooth_audio_policy_configuration_7_0.xml \
+    frameworks/av/services/audiopolicy/config/usb_audio_policy_configuration.xml:$(TARGET_COPY_OUT_VENDOR)/etc/usb_audio_policy_configuration.xml \
     frameworks/av/services/audiopolicy/config/r_submix_audio_policy_configuration.xml:$(TARGET_COPY_OUT_VENDOR)/etc/r_submix_audio_policy_configuration.xml \
     frameworks/av/services/audiopolicy/config/audio_policy_volumes.xml:$(TARGET_COPY_OUT_VENDOR)/etc/audio_policy_volumes.xml \
     frameworks/av/services/audiopolicy/config/default_volume_tables.xml:$(TARGET_COPY_OUT_VENDOR)/etc/default_volume_tables.xml \
@@ -349,16 +350,19 @@ LOCAL_AUDIO_PRODUCT_PACKAGE := \
     android.hardware.audio.service-aidl.example \
     android.hardware.audio.effect.service-aidl.example \
     libaecsw \
-    libagcsw \
+    libagc1sw \
+    libagc2sw \
     libbassboostsw \
     libbundleaidl \
     libdownmixaidl \
     libdynamicsprocessingaidl \
     libenvreverbsw \
     libequalizersw \
+    libextensioneffect \
     libhapticgeneratoraidl \
     libloudnessenhanceraidl \
     libnssw \
+    libpreprocessingaidl \
     libpresetreverbsw \
     libreverbaidl \
     libtinyxml2 \
