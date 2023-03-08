@@ -68,6 +68,8 @@ class InstanceManager {
   bool HasInstanceGroups(const uid_t uid);
   Result<void> SetInstanceGroup(const uid_t uid,
                                 const selector::GroupCreationInfo& group_info);
+  Result<void> SetBuildId(const uid_t uid, const std::string& group_name,
+                          const std::string& build_id);
   void RemoveInstanceGroup(const uid_t uid, const InstanceGroupDir&);
   Result<InstanceGroupInfo> GetInstanceGroupInfo(const uid_t uid,
                                                  const InstanceGroupDir&);
@@ -77,6 +79,8 @@ class InstanceManager {
                                const SharedFD& err,
                                const std::vector<std::string>& fleet_cmd_args);
   static Result<std::string> GetCuttlefishConfigPath(const std::string& home);
+
+  Result<std::optional<InstanceLockFile>> TryAcquireLock(int instance_num);
 
  private:
   Result<cvd::Status> CvdFleetImpl(const uid_t uid, const SharedFD& out,

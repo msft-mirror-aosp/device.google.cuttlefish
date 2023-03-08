@@ -56,6 +56,7 @@
 #include "host/libs/config/esp.h"
 #include "host/libs/config/host_tools_version.h"
 #include "host/libs/config/instance_nums.h"
+#include "host/libs/graphics_detector/graphics_configuration.h"
 #include "host/libs/graphics_detector/graphics_detector.h"
 #include "host/libs/vm_manager/crosvm_manager.h"
 #include "host/libs/vm_manager/gem5_manager.h"
@@ -136,12 +137,9 @@ DEFINE_vec(hwcomposer, CF_DEFAULTS_HWCOMPOSER,
 DEFINE_vec(gpu_capture_binary, CF_DEFAULTS_GPU_CAPTURE_BINARY,
               "Path to the GPU capture binary to use when capturing GPU traces"
               "(ngfx, renderdoc, etc)");
-DEFINE_vec(enable_gpu_udmabuf, cuttlefish::BoolToString(CF_DEFAULTS_ENABLE_GPU_UDMABUF),
-            "Use the udmabuf driver for zero-copy virtio-gpu");
-DEFINE_vec(enable_gpu_angle,
-           cuttlefish::BoolToString(CF_DEFAULTS_ENABLE_GPU_ANGLE),
-           "Use ANGLE to provide GLES implementation (always true for"
-           " guest_swiftshader");
+DEFINE_vec(enable_gpu_udmabuf,
+           cuttlefish::BoolToString(CF_DEFAULTS_ENABLE_GPU_UDMABUF),
+           "Use the udmabuf driver for zero-copy virtio-gpu");
 
 DEFINE_vec(use_allocd, CF_DEFAULTS_USE_ALLOCD?"true":"false",
             "Acquire static resources from the resource allocator daemon.");
@@ -955,10 +953,8 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
       restart_subprocesses));
   std::vector<std::string> hwcomposer_vec =
       CF_EXPECT(GET_FLAG_STR_VALUE(hwcomposer));
-  std::vector<bool> enable_gpu_udmabuf_vec = CF_EXPECT(GET_FLAG_BOOL_VALUE(
-      enable_gpu_udmabuf));
-  std::vector<bool> enable_gpu_angle_vec = CF_EXPECT(GET_FLAG_BOOL_VALUE(
-      enable_gpu_angle));
+  std::vector<bool> enable_gpu_udmabuf_vec =
+      CF_EXPECT(GET_FLAG_BOOL_VALUE(enable_gpu_udmabuf));
   std::vector<bool> smt_vec = CF_EXPECT(GET_FLAG_BOOL_VALUE(smt));
   std::vector<std::string> crosvm_binary_vec =
       CF_EXPECT(GET_FLAG_STR_VALUE(crosvm_binary));
@@ -1145,13 +1141,21 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     instance.set_wifi_bridge_name("cvd-wbr");
     instance.set_ethernet_bridge_name("cvd-ebr");
     instance.set_mobile_tap_name(iface_config.mobile_tap.name);
-    if (NetworkInterfaceExists(iface_config.non_bridged_wireless_tap.name)) {
+
+#ifdef ENFORCE_MAC80211_HWSIM
+    const bool enforce_mac80211_hwsim = true;
+#else
+    const bool enforce_mac80211_hwsim = false;
+#endif
+    if (NetworkInterfaceExists(iface_config.non_bridged_wireless_tap.name) &&
+        enforce_mac80211_hwsim) {
       instance.set_use_bridged_wifi_tap(false);
       instance.set_wifi_tap_name(iface_config.non_bridged_wireless_tap.name);
     } else {
       instance.set_use_bridged_wifi_tap(true);
       instance.set_wifi_tap_name(iface_config.bridged_wireless_tap.name);
     }
+
     instance.set_ethernet_tap_name(iface_config.ethernet_tap.name);
 
     instance.set_uuid(FLAGS_uuid);
@@ -1177,48 +1181,56 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     instance.set_config_server_port(calc_vsock_port(6800));
 
     // gpu related settings
-    instance.set_gpu_mode(gpu_mode_vec[instance_index]);
-    if (gpu_mode_vec[instance_index] != kGpuModeAuto &&
-        gpu_mode_vec[instance_index] != kGpuModeDrmVirgl &&
-        gpu_mode_vec[instance_index] != kGpuModeGfxStream &&
-        gpu_mode_vec[instance_index] != kGpuModeGuestSwiftshader &&
-        gpu_mode_vec[instance_index] != kGpuModeNone) {
-      LOG(FATAL) << "Invalid gpu_mode: " << gpu_mode_vec[instance_index];
+    auto gpu_mode = gpu_mode_vec[instance_index];
+    if (gpu_mode != kGpuModeAuto && gpu_mode != kGpuModeDrmVirgl &&
+        gpu_mode != kGpuModeGfxstream &&
+        gpu_mode != kGpuModeGfxstreamGuestAngle &&
+        gpu_mode != kGpuModeGuestSwiftshader && gpu_mode != kGpuModeNone) {
+      LOG(FATAL) << "Invalid gpu_mode: " << gpu_mode;
     }
-    if (gpu_mode_vec[instance_index] == kGpuModeAuto) {
+    if (gpu_mode == kGpuModeAuto) {
       if (ShouldEnableAcceleratedRendering(graphics_availability)) {
         LOG(INFO) << "GPU auto mode: detected prerequisites for accelerated "
             "rendering support.";
         if (vm_manager_vec[0] == QemuManager::name()) {
           LOG(INFO) << "Enabling --gpu_mode=drm_virgl.";
-          instance.set_gpu_mode(kGpuModeDrmVirgl);
+          gpu_mode = kGpuModeDrmVirgl;
         } else {
           LOG(INFO) << "Enabling --gpu_mode=gfxstream.";
-          instance.set_gpu_mode(kGpuModeGfxStream);
+          gpu_mode = kGpuModeGfxstream;
         }
       } else {
         LOG(INFO) << "GPU auto mode: did not detect prerequisites for "
             "accelerated rendering support, enabling "
             "--gpu_mode=guest_swiftshader.";
-        instance.set_gpu_mode(kGpuModeGuestSwiftshader);
+        gpu_mode = kGpuModeGuestSwiftshader;
       }
-    } else if (gpu_mode_vec[instance_index] == kGpuModeGfxStream ||
-               gpu_mode_vec[instance_index] == kGpuModeDrmVirgl) {
+    } else if (gpu_mode == kGpuModeGfxstream ||
+               gpu_mode == kGpuModeGfxstreamGuestAngle ||
+               gpu_mode == kGpuModeDrmVirgl) {
       if (!ShouldEnableAcceleratedRendering(graphics_availability)) {
-        LOG(ERROR) << "--gpu_mode="
-                   << gpu_mode_vec[instance_index]
+        LOG(ERROR) << "--gpu_mode=" << gpu_mode
                    << " was requested but the prerequisites for accelerated "
-                   "rendering were not detected so the device may not "
-                   "function correctly. Please consider switching to "
-                   "--gpu_mode=auto or --gpu_mode=guest_swiftshader.";
+                      "rendering were not detected so the device may not "
+                      "function correctly. Please consider switching to "
+                      "--gpu_mode=auto or --gpu_mode=guest_swiftshader.";
       }
     }
+    instance.set_gpu_mode(gpu_mode);
+
+    const auto angle_features = CF_EXPECT(GetNeededAngleFeatures(
+        CF_EXPECT(GetRenderingMode(gpu_mode)), graphics_availability));
+    instance.set_gpu_angle_feature_overrides_enabled(
+        angle_features.angle_feature_overrides_enabled);
+    instance.set_gpu_angle_feature_overrides_disabled(
+        angle_features.angle_feature_overrides_disabled);
 
     instance.set_restart_subprocesses(restart_subprocesses_vec[instance_index]);
     instance.set_gpu_capture_binary(gpu_capture_binary_vec[instance_index]);
     if (!gpu_capture_binary_vec[instance_index].empty()) {
-      CF_EXPECT(gpu_mode_vec[instance_index] == kGpuModeGfxStream,
-          "GPU capture only supported with --gpu_mode=gfxstream");
+      CF_EXPECT(gpu_mode == kGpuModeGfxstream ||
+                    gpu_mode == kGpuModeGfxstreamGuestAngle,
+                "GPU capture only supported with --gpu_mode=gfxstream");
 
       // GPU capture runs in a detached mode where the "launcher" process
       // intentionally exits immediately.
@@ -1229,15 +1241,15 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     instance.set_hwcomposer(hwcomposer_vec[instance_index]);
     if (!hwcomposer_vec[instance_index].empty()) {
       if (hwcomposer_vec[instance_index] == kHwComposerRanchu) {
-        CF_EXPECT(gpu_mode_vec[instance_index] != kGpuModeDrmVirgl,
-            "ranchu hwcomposer not supported with --gpu_mode=drm_virgl");
+        CF_EXPECT(gpu_mode != kGpuModeDrmVirgl,
+                  "ranchu hwcomposer not supported with --gpu_mode=drm_virgl");
       }
     }
 
     if (hwcomposer_vec[instance_index] == kHwComposerAuto) {
-      if (gpu_mode_vec[instance_index] == kGpuModeDrmVirgl) {
+      if (gpu_mode == kGpuModeDrmVirgl) {
         instance.set_hwcomposer(kHwComposerDrm);
-      } else if (gpu_mode_vec[instance_index] == kGpuModeNone) {
+      } else if (gpu_mode == kGpuModeNone) {
         instance.set_hwcomposer(kHwComposerNone);
       } else {
         instance.set_hwcomposer(kHwComposerRanchu);
@@ -1245,7 +1257,6 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     }
 
     instance.set_enable_gpu_udmabuf(enable_gpu_udmabuf_vec[instance_index]);
-    instance.set_enable_gpu_angle(enable_gpu_angle_vec[instance_index]);
 
     // 1. Keep original code order SetCommandLineOptionWithMode("enable_sandbox")
     // then set_enable_sandbox later.
@@ -1255,7 +1266,7 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     // 3. Sepolicy rules need to be updated to support gpu mode. Temporarily disable
     // auto-enabling sandbox when gpu is enabled (b/152323505).
     default_enable_sandbox += comma_str;
-    if ((gpu_mode_vec[instance_index] != kGpuModeGuestSwiftshader) || console_vec[instance_index]) {
+    if ((gpu_mode != kGpuModeGuestSwiftshader) || console_vec[instance_index]) {
       // original code, just moved to each instance setting block
       default_enable_sandbox += "false";
     } else {
@@ -1263,14 +1274,12 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     }
     comma_str = ",";
 
-    if (!vmm->ConfigureGraphics(const_instance).ok()) {
-      LOG(FATAL) << "Invalid (gpu_mode=," << gpu_mode_vec[instance_index] <<
-      " hwcomposer= " << hwcomposer_vec[instance_index] <<
-      ") does not work with vm_manager=" << vm_manager_vec[0];
+    auto graphics_check = vmm->ConfigureGraphics(const_instance);
+    if (!graphics_check.ok()) {
+      LOG(FATAL) << graphics_check.error().Message();
     }
 
-    if (gpu_mode_vec[instance_index] != kGpuModeDrmVirgl &&
-        gpu_mode_vec[instance_index] != kGpuModeGfxStream) {
+    if (gpu_mode != kGpuModeDrmVirgl && gpu_mode != kGpuModeGfxstream) {
       if (vm_manager_vec[0] == QemuManager::name()) {
         instance.set_keyboard_server_port(calc_vsock_port(7000));
         instance.set_touch_server_port(calc_vsock_port(7100));
@@ -1354,15 +1363,11 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
           !FLAGS_start_webrtc_sig_server);
     }
 
-#ifndef ENFORCE_MAC80211_HWSIM
-    const bool start_wmediumd = false;
-#else
     // Start wmediumd process for the first instance if
     // vhost_user_mac80211_hwsim is not specified.
-    const bool start_wmediumd =
-        FLAGS_vhost_user_mac80211_hwsim.empty() && is_first_instance;
-#endif
-
+    const bool start_wmediumd = enforce_mac80211_hwsim &&
+                                FLAGS_vhost_user_mac80211_hwsim.empty() &&
+                                is_first_instance;
     if (start_wmediumd) {
       // TODO(b/199020470) move this to the directory for shared resources
       auto vhost_user_socket_path =

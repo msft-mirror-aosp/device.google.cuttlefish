@@ -20,9 +20,8 @@
 #include <unordered_map>
 #include <vector>
 
-#include "cvd_server.pb.h"
-
 #include "common/libs/utils/result.h"
+#include "cvd_server.pb.h"
 
 namespace cuttlefish {
 
@@ -39,6 +38,8 @@ cvd::Request MakeRequest(
 // name of environment variable to mark the launch_cvd initiated by the cvd
 // server
 static constexpr char kCvdMarkEnv[] = "_STARTED_BY_CVD_SERVER_";
+
+constexpr char kServerExecPath[] = "/proc/self/exe";
 
 constexpr char kStatusBin[] = "cvd_internal_status";
 // The name of environment variable that points to the host out directory

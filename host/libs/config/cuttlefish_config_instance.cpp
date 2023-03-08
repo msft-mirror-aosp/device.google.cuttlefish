@@ -599,6 +599,30 @@ void CuttlefishConfig::MutableInstanceSpecific::set_gpu_mode(const std::string& 
   (*Dictionary())[kGpuMode] = name;
 }
 
+static constexpr char kGpuAngleFeatureOverridesEnabled[] =
+    "gpu_angle_feature_overrides_enabled";
+std::string
+CuttlefishConfig::InstanceSpecific::gpu_angle_feature_overrides_enabled()
+    const {
+  return (*Dictionary())[kGpuAngleFeatureOverridesEnabled].asString();
+}
+void CuttlefishConfig::MutableInstanceSpecific::
+    set_gpu_angle_feature_overrides_enabled(const std::string& overrides) {
+  (*Dictionary())[kGpuAngleFeatureOverridesEnabled] = overrides;
+}
+
+static constexpr char kGpuAngleFeatureOverridesDisabled[] =
+    "gpu_angle_feature_overrides_disabled";
+std::string
+CuttlefishConfig::InstanceSpecific::gpu_angle_feature_overrides_disabled()
+    const {
+  return (*Dictionary())[kGpuAngleFeatureOverridesDisabled].asString();
+}
+void CuttlefishConfig::MutableInstanceSpecific::
+    set_gpu_angle_feature_overrides_disabled(const std::string& overrides) {
+  (*Dictionary())[kGpuAngleFeatureOverridesDisabled] = overrides;
+}
+
 static constexpr char kGpuCaptureBinary[] = "gpu_capture_binary";
 std::string CuttlefishConfig::InstanceSpecific::gpu_capture_binary() const {
   return (*Dictionary())[kGpuCaptureBinary].asString();
@@ -629,14 +653,6 @@ void CuttlefishConfig::MutableInstanceSpecific::set_enable_gpu_udmabuf(const boo
 }
 bool CuttlefishConfig::InstanceSpecific::enable_gpu_udmabuf() const {
   return (*Dictionary())[kEnableGpuUdmabuf].asBool();
-}
-
-static constexpr char kEnableGpuAngle[] = "enable_gpu_angle";
-void CuttlefishConfig::MutableInstanceSpecific::set_enable_gpu_angle(const bool enable_gpu_angle) {
-  (*Dictionary())[kEnableGpuAngle] = enable_gpu_angle;
-}
-bool CuttlefishConfig::InstanceSpecific::enable_gpu_angle() const {
-  return (*Dictionary())[kEnableGpuAngle].asBool();
 }
 
 static constexpr char kEnableAudio[] = "enable_audio";
