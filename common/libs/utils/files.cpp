@@ -50,6 +50,7 @@
 
 #include "common/libs/fs/shared_fd.h"
 #include "common/libs/utils/result.h"
+#include "common/libs/utils/subprocess.h"
 
 namespace cuttlefish {
 
@@ -62,15 +63,13 @@ bool FileHasContent(const std::string& path) {
   return FileSize(path) > 0;
 }
 
-std::vector<std::string> DirectoryContents(const std::string& path) {
+Result<std::vector<std::string>> DirectoryContents(const std::string& path) {
   std::vector<std::string> ret;
   std::unique_ptr<DIR, int(*)(DIR*)> dir(opendir(path.c_str()), closedir);
-  CHECK(dir != nullptr) << "Could not read from dir \"" << path << "\"";
-  if (dir) {
-    struct dirent* ent{};
-    while ((ent = readdir(dir.get()))) {
-      ret.push_back(ent->d_name);
-    }
+  CF_EXPECT(dir != nullptr, "Could not read from dir \"" << path << "\"");
+  struct dirent* ent{};
+  while ((ent = readdir(dir.get()))) {
+    ret.emplace_back(ent->d_name);
   }
   return ret;
 }
@@ -384,5 +383,22 @@ bool FileIsSocket(const std::string& path) {
   return stat(path.c_str(), &st) == 0 && S_ISSOCK(st.st_mode);
 }
 
+int GetDiskUsage(const std::string& path) {
+  Command du_cmd("du");
+  du_cmd.AddParameter("-b");
+  du_cmd.AddParameter("-k");
+  du_cmd.AddParameter("-s");
+  du_cmd.AddParameter(path);
+  SharedFD read_fd;
+  SharedFD write_fd;
+  SharedFD::Pipe(&read_fd, &write_fd);
+  du_cmd.RedirectStdIO(Subprocess::StdIOChannel::kStdOut, write_fd);
+  auto subprocess = du_cmd.Start();
+  std::array<char, 1024> text_output{};
+  const auto bytes_read = read_fd->Read(text_output.data(), text_output.size());
+  CHECK_GT(bytes_read, 0) << "Failed to read from pipe " << strerror(errno);
+  std::move(subprocess).Wait();
+  return atoi(text_output.data()) * 1024;
+}
 
 }  // namespace cuttlefish

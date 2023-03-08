@@ -121,52 +121,64 @@ bool QemuManager::IsSupported() {
   return HostSupportsQemuCli();
 }
 
-std::vector<std::string> QemuManager::ConfigureGraphics(
+Result<std::unordered_map<std::string, std::string>>
+QemuManager::ConfigureGraphics(
     const CuttlefishConfig::InstanceSpecific& instance) {
+  // Override the default HAL search paths in all cases. We do this because
+  // the HAL search path allows for fallbacks, and fallbacks in conjunction
+  // with properities lead to non-deterministic behavior while loading the
+  // HALs.
+
+  std::unordered_map<std::string, std::string> bootconfig_args;
+
   if (instance.gpu_mode() == kGpuModeGuestSwiftshader) {
-    // Override the default HAL search paths in all cases. We do this because
-    // the HAL search path allows for fallbacks, and fallbacks in conjunction
-    // with properities lead to non-deterministic behavior while loading the
-    // HALs.
-    return {
-        "androidboot.cpuvulkan.version=" + std::to_string(VK_API_VERSION_1_2),
-        "androidboot.hardware.gralloc=minigbm",
-        "androidboot.hardware.hwcomposer=" + instance.hwcomposer(),
-        "androidboot.hardware.egl=angle",
-        "androidboot.hardware.vulkan=pastel",
-        "androidboot.opengles.version=196609"};  // OpenGL ES 3.1
-  }
-
-  if (instance.gpu_mode() == kGpuModeDrmVirgl) {
-    return {
-      "androidboot.cpuvulkan.version=0",
-      "androidboot.hardware.gralloc=minigbm",
-      "androidboot.hardware.hwcomposer=ranchu",
-      "androidboot.hardware.hwcomposer.mode=client",
-      "androidboot.hardware.egl=mesa",
-      // No "hardware" Vulkan support, yet
-      "androidboot.opengles.version=196608"};  // OpenGL ES 3.0
-  }
-
-  if (instance.gpu_mode() == kGpuModeNone) {
-    // This function should probably return a result so that empty vec
-    // isn't treated as an error.
-    return {
-      "androidboot.dummy=0",
+    bootconfig_args = {
+        {"androidboot.cpuvulkan.version", std::to_string(VK_API_VERSION_1_2)},
+        {"androidboot.hardware.gralloc", "minigbm"},
+        {"androidboot.hardware.hwcomposer", instance.hwcomposer()},
+        {"androidboot.hardware.egl", "angle"},
+        {"androidboot.hardware.vulkan", "pastel"},
+        // OpenGL ES 3.1
+        {"androidboot.opengles.version", "196609"},
     };
+  } else if (instance.gpu_mode() == kGpuModeDrmVirgl) {
+    bootconfig_args = {
+        {"androidboot.cpuvulkan.version", "0"},
+        {"androidboot.hardware.gralloc", "minigbm"},
+        {"androidboot.hardware.hwcomposer", "ranchu"},
+        {"androidboot.hardware.hwcomposer.mode", "client"},
+        {"androidboot.hardware.egl", "mesa"},
+        // No "hardware" Vulkan support, yet
+        // OpenGL ES 3.0
+        {"androidboot.opengles.version", "196608"},
+    };
+  } else if (instance.gpu_mode() == kGpuModeNone) {
+    return {};
+  } else {
+    return CF_ERR("Unhandled GPU mode: " << instance.gpu_mode());
   }
 
-  return {};
+  if (!instance.gpu_angle_feature_overrides_enabled().empty()) {
+    bootconfig_args["androidboot.hardware.angle_feature_overrides_enabled"] =
+        instance.gpu_angle_feature_overrides_enabled();
+  }
+  if (!instance.gpu_angle_feature_overrides_disabled().empty()) {
+    bootconfig_args["androidboot.hardware.angle_feature_overrides_disabled"] =
+        instance.gpu_angle_feature_overrides_disabled();
+  }
+
+  return bootconfig_args;
 }
 
-std::string QemuManager::ConfigureBootDevices(int num_disks, bool have_gpu) {
+Result<std::unordered_map<std::string, std::string>>
+QemuManager::ConfigureBootDevices(int num_disks, bool have_gpu) {
   switch (arch_) {
     case Arch::Arm:
-      return "androidboot.boot_devices=3f000000.pcie";
+      return {{{"androidboot.boot_devices", "3f000000.pcie"}}};
     case Arch::Arm64:
-      return "androidboot.boot_devices=4010000000.pcie";
+      return {{{"androidboot.boot_devices", "4010000000.pcie"}}};
     case Arch::RiscV64:
-      return "androidboot.boot_devices=30000000.pci";
+      return {{{"androidboot.boot_devices", "soc/30000000.pci"}}};
     case Arch::X86:
     case Arch::X86_64: {
       // QEMU has additional PCI devices for an ISA bridge and PIIX4
@@ -281,6 +293,7 @@ Result<std::vector<Command>> QemuManager::StartCommands(
   bool is_arm = arch_ == Arch::Arm || arch_ == Arch::Arm64;
   bool is_x86 = arch_ == Arch::X86 || arch_ == Arch::X86_64;
   bool is_arm64 = arch_ == Arch::Arm64;
+  bool is_riscv64 = arch_ == Arch::RiscV64;
 
   auto access_kregistry_size_bytes = 0;
   if (FileExists(instance.access_kregistry_path())) {
@@ -388,13 +401,13 @@ Result<std::vector<Command>> QemuManager::StartCommands(
     qemu_cmd.AddParameter("none");
   }
 
-  auto display_configs = instance.display_configs();
-  CF_EXPECT(display_configs.size() >= 1);
-  auto display_config = display_configs[0];
-
-  qemu_cmd.AddParameter("-device");
-
   if (instance.hwcomposer() != kHwComposerNone) {
+    auto display_configs = instance.display_configs();
+    CF_EXPECT(display_configs.size() >= 1);
+    auto display_config = display_configs[0];
+
+    qemu_cmd.AddParameter("-device");
+
     bool use_gpu_gl = qemu_version.first >= 6 &&
                       instance.gpu_mode() != kGpuModeGuestSwiftshader;
     qemu_cmd.AddParameter(use_gpu_gl ?
@@ -614,7 +627,11 @@ Result<std::vector<Command>> QemuManager::StartCommands(
   qemu_cmd.AddParameter("-device");
   qemu_cmd.AddParameter("qemu-xhci,id=xhci");
 
-  qemu_cmd.AddParameter("-bios");
+  if (is_riscv64) {
+    qemu_cmd.AddParameter("-kernel");
+  } else {
+    qemu_cmd.AddParameter("-bios");
+  }
   qemu_cmd.AddParameter(instance.bootloader());
 
   if (instance.gdb_port() > 0) {

@@ -30,6 +30,41 @@ LocalInstanceGroup::LocalInstanceGroup(const std::string& group_name,
       internal_group_name_(GenInternalGroupName()),
       group_name_(group_name) {}
 
+LocalInstanceGroup::LocalInstanceGroup(const LocalInstanceGroup& src)
+    : home_dir_{src.home_dir_},
+      host_artifacts_path_{src.host_artifacts_path_},
+      internal_group_name_{src.internal_group_name_},
+      group_name_{src.group_name_},
+      build_id_{src.build_id_},
+      instances_{CopyInstances(src.instances_)} {}
+
+LocalInstanceGroup& LocalInstanceGroup::operator=(
+    const LocalInstanceGroup& src) {
+  if (this == std::addressof(src)) {
+    return *this;
+  }
+  home_dir_ = src.home_dir_;
+  host_artifacts_path_ = src.host_artifacts_path_;
+  internal_group_name_ = src.internal_group_name_;
+  group_name_ = src.group_name_;
+  build_id_ = src.build_id_;
+  instances_ = CopyInstances(src.instances_);
+  return *this;
+}
+
+Set<std::unique_ptr<LocalInstance>> LocalInstanceGroup::CopyInstances(
+    const Set<std::unique_ptr<LocalInstance>>& src_instances) {
+  Set<std::unique_ptr<LocalInstance>> copied;
+  // Due to the const reference to the parent, LocalInstanceGroup,
+  // the LocalInstance class does not have a copy constructor
+  for (const auto& src_instance : src_instances) {
+    LocalInstance* new_instance = new LocalInstance(
+        *this, src_instance->InstanceId(), src_instance->PerInstanceName());
+    copied.emplace(new_instance);
+  }
+  return copied;
+}
+
 Result<std::string> LocalInstanceGroup::GetCuttlefishConfigPath() const {
   return ::cuttlefish::selector::GetCuttlefishConfigPath(HomeDir());
 }
@@ -69,6 +104,18 @@ Result<Set<ConstRef<LocalInstance>>> LocalInstanceGroup::FindByInstanceName(
                    GenerateTooManyInstancesErrorMsg(1, kInstanceNameField));
 }
 
+Result<Set<ConstRef<LocalInstance>>> LocalInstanceGroup::FindAllInstances()
+    const {
+  auto subset = CollectToSet<LocalInstance>(
+      instances_, [](const std::unique_ptr<LocalInstance>& instance) {
+        if (instance) {
+          return true;
+        }
+        return false;
+      });
+  return subset;
+}
+
 bool LocalInstanceGroup::HasInstance(const unsigned instance_id) const {
   for (const auto& instance : instances_) {
     if (!instance) {
@@ -79,6 +126,10 @@ bool LocalInstanceGroup::HasInstance(const unsigned instance_id) const {
     }
   }
   return false;
+}
+
+void LocalInstanceGroup::SetBuildId(const std::string& build_id) {
+  build_id_ = build_id;
 }
 
 }  // namespace selector

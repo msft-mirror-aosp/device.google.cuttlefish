@@ -20,8 +20,8 @@
 
 TARGET_KERNEL_USE ?= 5.15
 TARGET_KERNEL_ARCH ?= $(TARGET_ARCH)
-BOARD_SYSTEM_DLKM_SRC ?= kernel/prebuilts/$(TARGET_KERNEL_USE)/$(TARGET_KERNEL_ARCH)
-TARGET_KERNEL_PATH ?= $(BOARD_SYSTEM_DLKM_SRC)/kernel-$(TARGET_KERNEL_USE)
+SYSTEM_DLKM_SRC ?= kernel/prebuilts/$(TARGET_KERNEL_USE)/$(TARGET_KERNEL_ARCH)
+TARGET_KERNEL_PATH ?= $(SYSTEM_DLKM_SRC)/kernel-$(TARGET_KERNEL_USE)
 KERNEL_MODULES_PATH ?= \
     kernel/prebuilts/common-modules/virtual-device/$(TARGET_KERNEL_USE)/$(subst _,-,$(TARGET_KERNEL_ARCH))
 PRODUCT_COPY_FILES += $(TARGET_KERNEL_PATH):kernel
@@ -40,9 +40,17 @@ RAMDISK_KERNEL_MODULES := \
     virtio_input.ko \
     virtio_net.ko \
     virtio_pci.ko \
-    virtio_pci_modern_dev.ko \
     virtio-rng.ko \
     vmw_vsock_virtio_transport.ko \
+
+ifneq ($(filter-out 5.4 5.10,$(TARGET_KERNEL_USE)),)
+ifneq ($(filter-out 5.15,$(TARGET_KERNEL_USE)),)
+# GKI >5.15 will have and require virtio_pci_legacy_dev.ko
+RAMDISK_KERNEL_MODULES += virtio_pci_legacy_dev.ko
+endif
+# GKI >5.10 will have and require virtio_pci_modern_dev.ko
+RAMDISK_KERNEL_MODULES += virtio_pci_modern_dev.ko
+endif
 
 BOARD_VENDOR_RAMDISK_KERNEL_MODULES := \
     $(patsubst %,$(KERNEL_MODULES_PATH)/%,$(RAMDISK_KERNEL_MODULES))
@@ -59,7 +67,9 @@ TARGET_NO_BOOTLOADER := $(__TARGET_NO_BOOTLOADER)
 BOARD_VENDOR_KERNEL_MODULES_BLOCKLIST_FILE := \
     device/google/cuttlefish/shared/modules.blocklist
 
+ifndef TARGET_BOOTLOADER_BOARD_NAME
 TARGET_BOOTLOADER_BOARD_NAME := cutf
+endif
 
 BOARD_SYSTEMIMAGE_FILE_SYSTEM_TYPE := $(TARGET_RO_FILE_SYSTEM_TYPE)
 
@@ -111,7 +121,7 @@ TARGET_COPY_OUT_ODM_DLKM := odm_dlkm
 BOARD_USES_SYSTEM_DLKMIMAGE := true
 BOARD_SYSTEM_DLKMIMAGE_FILE_SYSTEM_TYPE := $(TARGET_RO_FILE_SYSTEM_TYPE)
 TARGET_COPY_OUT_SYSTEM_DLKM := system_dlkm
-BOARD_SYSTEM_KERNEL_MODULES := $(wildcard $(BOARD_SYSTEM_DLKM_SRC)/*.ko)
+BOARD_SYSTEM_KERNEL_MODULES := $(wildcard $(SYSTEM_DLKM_SRC)/*.ko)
 
 # Enable AVB
 BOARD_AVB_ENABLE := true
@@ -178,10 +188,10 @@ TARGET_USES_HWC2 := true
 # The compiler will occasionally generate movaps, etc.
 BOARD_MALLOC_ALIGNMENT := 16
 
-# Disable sparse on all filesystem images
-TARGET_USERIMAGES_SPARSE_EROFS_DISABLED ?= true
-TARGET_USERIMAGES_SPARSE_EXT_DISABLED ?= true
-TARGET_USERIMAGES_SPARSE_F2FS_DISABLED ?= true
+# Enable sparse on all filesystem images
+TARGET_USERIMAGES_SPARSE_EROFS_DISABLED ?= false
+TARGET_USERIMAGES_SPARSE_EXT_DISABLED ?= false
+TARGET_USERIMAGES_SPARSE_F2FS_DISABLED ?= false
 
 # Make the userdata partition 6G to accommodate ASAN and CTS
 BOARD_USERDATAIMAGE_PARTITION_SIZE := $(TARGET_USERDATAIMAGE_PARTITION_SIZE)
@@ -207,14 +217,10 @@ BOARD_FLASH_BLOCK_SIZE := 512
 USE_OPENGL_RENDERER := true
 
 # Wifi.
-ifeq ($(PRODUCT_ENFORCE_MAC80211_HWSIM),true)
 BOARD_WLAN_DEVICE           := emulator
 BOARD_HOSTAPD_PRIVATE_LIB   := lib_driver_cmd_simulated_cf
 WIFI_HIDL_FEATURE_DUAL_INTERFACE := true
 WIFI_HAL_INTERFACE_COMBINATIONS := {{{STA}, 1}, {{AP}, 1}, {{P2P}, 1}}
-else
-BOARD_WLAN_DEVICE           := wlan0
-endif
 BOARD_HOSTAPD_DRIVER        := NL80211
 BOARD_WPA_SUPPLICANT_DRIVER := NL80211
 BOARD_WPA_SUPPLICANT_PRIVATE_LIB := lib_driver_cmd_simulated_cf

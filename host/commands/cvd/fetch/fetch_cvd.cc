@@ -541,19 +541,6 @@ Result<void> FetchCvdMain(int argc, char** argv) {
                                 << "\"" << target_vbmeta_system
                                 << "\") failed: \"" << strerror(errno) << "\"");
         }
-        if (ExtractImages(target_files[0], target_dir,
-                          {"IMAGES/vbmeta_vendor_dlkm.img"}) !=
-            std::vector<std::string>{}) {
-          std::string extracted_vbmeta_vendor_dlkm =
-              target_dir + "/IMAGES/vbmeta_vendor_dlkm.img";
-          std::string target_vbmeta_vendor_dlkm =
-              target_dir + "/vbmeta_vendor_dlkm.img";
-          CF_EXPECT(rename(extracted_vbmeta_vendor_dlkm.c_str(),
-                           target_vbmeta_vendor_dlkm.c_str()) == 0,
-                    "rename(\"" << extracted_vbmeta_vendor_dlkm << "\", \""
-                                << "\"" << target_vbmeta_vendor_dlkm
-                                << "\") failed: \"" << strerror(errno) << "\"");
-        }
         // This should technically call AddFilesToConfig with the produced
         // files, but it will conflict with the ones produced from the default
         // system image and pie doesn't care about the produced file list
@@ -595,10 +582,14 @@ Result<void> FetchCvdMain(int argc, char** argv) {
       CF_EXPECT(AddFilesToConfig(FileSource::BOOT_BUILD, boot_build, boot_files,
                                  &config, target_dir, true));
     }
-    auto misc_info =
-        CF_EXPECT(DownloadMiscInfo(build_api, default_build, "", target_dir));
-    CF_EXPECT(AddFilesToConfig(FileSource::DEFAULT_BUILD, default_build,
-                               {misc_info}, &config, target_dir, true));
+    // Some older builds might not have misc_info.txt, so permit errors on
+    // fetching misc_info.txt
+    auto misc_info = DownloadMiscInfo(build_api, default_build, "", target_dir);
+    if (misc_info.ok()) {
+      CF_EXPECT(AddFilesToConfig(FileSource::DEFAULT_BUILD, default_build,
+                                 {misc_info.value()}, &config, target_dir,
+                                 true));
+    }
 
     if (FLAGS_bootloader_build != "") {
       auto bootloader_build =
