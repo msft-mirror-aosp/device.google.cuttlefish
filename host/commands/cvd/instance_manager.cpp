@@ -143,6 +143,15 @@ Result<void> InstanceManager::SetInstanceGroup(
   return {};
 }
 
+Result<void> InstanceManager::SetBuildId(const uid_t uid,
+                                         const std::string& group_name,
+                                         const std::string& build_id) {
+  std::lock_guard assemblies_lock(instance_db_mutex_);
+  auto& instance_db = GetInstanceDB(uid);
+  CF_EXPECT(instance_db.SetBuildId(group_name, build_id));
+  return {};
+}
+
 void InstanceManager::RemoveInstanceGroup(
     const uid_t uid, const InstanceManager::InstanceGroupDir& dir) {
   std::lock_guard assemblies_lock(instance_db_mutex_);
@@ -338,6 +347,12 @@ cvd::Status InstanceManager::CvdClear(const SharedFD& out,
   WriteAll(err, "Stopped all known instances\n");
   status.set_code(cvd::Status::OK);
   return status;
+}
+
+Result<std::optional<InstanceLockFile>> InstanceManager::TryAcquireLock(
+    int instance_num) {
+  std::lock_guard lock(instance_db_mutex_);
+  return CF_EXPECT(lock_manager_.TryAcquireLock(instance_num));
 }
 
 }  // namespace cuttlefish

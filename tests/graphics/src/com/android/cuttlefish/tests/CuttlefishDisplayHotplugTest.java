@@ -19,7 +19,6 @@ import static com.google.common.truth.Truth.assertThat;
 
 import android.platform.test.annotations.LargeTest;
 
-import com.android.compatibility.common.tradefed.build.CompatibilityBuildHelper;
 import com.android.cuttlefish.tests.utils.CuttlefishHostTest;
 import com.android.tradefed.device.DeviceNotAvailableException;
 import com.android.tradefed.device.ITestDevice;
@@ -73,20 +72,26 @@ public class CuttlefishDisplayHotplugTest extends CuttlefishHostTest {
 
     private static final String CVD_BINARY_BASENAME = "cvd";
 
+    private static final String CVD_DISPLAY_BINARY_BASENAME = "cvd_internal_display";
+
     private CommandResult runCvdCommand(Collection<String> commandArgs) throws FileNotFoundException {
-        String cvdBinary = runner.getHostBinaryPath(CVD_BINARY_BASENAME);
+        // TODO: Switch back to using `cvd` after either:
+        //  * Commands under `cvd` can be used with instances launched through `launch_cvd`.
+        //  * ATP launches instances using `cvd start` instead of `launch_cvd`.
+        String cvdBinary = runner.getHostBinaryPath(CVD_DISPLAY_BINARY_BASENAME);
 
         List<String> fullCommand = new ArrayList<String>(commandArgs);
         fullCommand.add(0, cvdBinary);
+
+        // Remove the "display" part of the command until switching back to `cvd`.
+        fullCommand.remove(1);
+
         return runner.run(DEFAULT_TIMEOUT_MS, fullCommand.toArray(new String[0]));
     }
 
-    private File getApk(String fileName) throws FileNotFoundException {
-        CompatibilityBuildHelper buildHelper = new CompatibilityBuildHelper(getBuild());
-        return buildHelper.getTestFile(fileName);
-    }
-
     private static final String HELPER_APP_APK = "CuttlefishDisplayHotplugHelperApp.apk";
+
+    private static final String HELPER_APP_PKG = "com.android.cuttlefish.displayhotplughelper";
 
     private static final String HELPER_APP_ACTIVITY = "com.android.cuttlefish.displayhotplughelper/.DisplayHotplugHelperApp";
 
@@ -100,16 +105,13 @@ public class CuttlefishDisplayHotplugTest extends CuttlefishHostTest {
 
     @Before
     public void setUp() throws Exception {
-        getDevice().uninstallPackage(HELPER_APP_APK);
-        String[] options = {AbiUtils.createAbiFlag(getAbi().getName())};
-
-        String installError = getDevice().installPackage(getApk(HELPER_APP_APK), false, options);
-        assertThat(installError).isNull();
+        getDevice().uninstallPackage(HELPER_APP_PKG);
+        installPackage(HELPER_APP_APK);
     }
 
     @After
     public void tearDown() throws Exception {
-        getDevice().uninstallPackage(HELPER_APP_APK);
+        getDevice().uninstallPackage(HELPER_APP_PKG);
     }
 
     /**

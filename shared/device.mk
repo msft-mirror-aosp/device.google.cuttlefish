@@ -54,8 +54,6 @@ TARGET_USERDATAIMAGE_FILE_SYSTEM_TYPE ?= f2fs
 TARGET_USERDATAIMAGE_PARTITION_SIZE ?= 6442450944
 
 TARGET_VULKAN_SUPPORT ?= true
-TARGET_ENABLE_HOST_BLUETOOTH_EMULATION ?= true
-TARGET_USE_BTLINUX_HAL_IMPL ?= true
 
 # Enable Virtual A/B
 $(call inherit-product, $(SRC_TARGET_DIR)/product/virtual_ab_ota/android_t_baseline.mk)
@@ -510,14 +508,6 @@ PRODUCT_PACKAGES += \
 # Indicate that KeyMint includes support for the ATTEST_KEY key purpose.
 PRODUCT_COPY_FILES += \
     frameworks/native/data/etc/android.hardware.keystore.app_attest_key.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.keystore.app_attest_key.xml
-
-#
-# Dice HAL
-#
-ifneq ($(filter-out %_riscv64,$(TARGET_PRODUCT)),)
-PRODUCT_PACKAGES += \
-    android.hardware.security.dice-service.non-secure-software
-endif
 
 #
 # Power and PowerStats HALs
