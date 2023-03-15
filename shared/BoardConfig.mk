@@ -18,7 +18,7 @@
 # Common BoardConfig for all supported architectures.
 #
 
-TARGET_KERNEL_USE ?= 5.15
+TARGET_KERNEL_USE ?= 6.1
 TARGET_KERNEL_ARCH ?= $(TARGET_ARCH)
 SYSTEM_DLKM_SRC ?= kernel/prebuilts/$(TARGET_KERNEL_USE)/$(TARGET_KERNEL_ARCH)
 TARGET_KERNEL_PATH ?= $(SYSTEM_DLKM_SRC)/kernel-$(TARGET_KERNEL_USE)
@@ -312,7 +312,6 @@ BOARD_BOOTCONFIG += \
     kernel.vmw_vsock_virtio_transport_common.virtio_transport_max_vsock_pkt_buf_size=16384
 
 BOARD_BOOTCONFIG += \
-    androidboot.vendor.apex.com.android.wifi.hal=com.google.cf.wifi_hwsim \
     androidboot.vendor.apex.com.google.emulated.camera.provider.hal=com.google.emulated.camera.provider.hal \
 
 BOARD_INCLUDE_DTB_IN_BOOTIMG := true
