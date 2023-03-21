@@ -125,6 +125,8 @@ static bool LikelyFlag(const std::string& next_arg) {
   return android::base::StartsWith(next_arg, "-");
 }
 
+std::string BoolToString(bool val) { return val ? "true" : "false"; }
+
 Flag::FlagProcessResult Flag::Process(
     const std::string& arg, const std::optional<std::string>& next_arg) const {
   if (!setter_ && aliases_.size() > 0) {
@@ -409,10 +411,10 @@ static Flag GflagsCompatBoolFlagBase(const std::string& name) {
       .Alias({FlagAliasMode::kFlagExact, "--no" + name});
 }
 
-Flag HelpXmlFlag(const std::vector<Flag>& flags, std::ostream& out,
+Flag HelpXmlFlag(const std::vector<Flag>& flags, std::ostream& out, bool& value,
                  const std::string& text) {
   const std::string name = "helpxml";
-  auto setter = [name, &out, &text, &flags](const FlagMatch& match) {
+  auto setter = [name, &out, &value, &text, &flags](const FlagMatch& match) {
     bool print_xml = false;
     auto parse_success = GflagsCompatBoolFlagSetter(name, print_xml, match);
     if (!parse_success) {
@@ -424,7 +426,10 @@ Flag HelpXmlFlag(const std::vector<Flag>& flags, std::ostream& out,
     if (!text.empty()) {
       out << text << std::endl;
     }
+    value = print_xml;
+    out << "<?xml version=\"1.0\"?>" << std::endl << "<AllFlags>" << std::endl;
     WriteGflagsCompatXml(flags, out);
+    out << "</AllFlags>" << std::flush;
     return false;
   };
   return GflagsCompatBoolFlagBase(name).Setter(setter);
