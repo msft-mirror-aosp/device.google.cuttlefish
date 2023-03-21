@@ -31,6 +31,7 @@
 #include <cstdlib>
 #include <fstream>
 #include <iomanip>
+#include <iostream>
 #include <memory>
 #include <sstream>
 #include <string>
@@ -213,7 +214,10 @@ int StopCvdMain(int argc, char** argv) {
       GflagsCompatFlag("clear_instance_dirs", clear_instance_dirs)
           .Help("If provided, deletes the instance dir after attempting to "
                 "stop each instance."));
+
+  bool help_xml = false;
   flags.emplace_back(HelpFlag(flags));
+  flags.emplace_back(HelpXmlFlag(flags, std::cout, help_xml));
   flags.emplace_back(UnexpectedArgumentGuard());
   std::vector<std::string> args =
       ArgsToVec(argc - 1, argv + 1);  // Skip argv[0]
