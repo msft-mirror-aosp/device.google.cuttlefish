@@ -83,7 +83,9 @@ int CvdStatusMain(int argc, char** argv) {
       GflagsCompatFlag("all_instances", all_instances)
           .Help("List all instances status and instance config information."));
 
+  bool help_xml = false;
   flags.emplace_back(HelpFlag(flags));
+  flags.emplace_back(HelpXmlFlag(flags, std::cout, help_xml));
   flags.emplace_back(UnexpectedArgumentGuard());
 
   std::vector<std::string> args =
