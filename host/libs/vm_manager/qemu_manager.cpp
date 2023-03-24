@@ -292,7 +292,6 @@ Result<std::vector<Command>> QemuManager::StartCommands(
 
   bool is_arm = arch_ == Arch::Arm || arch_ == Arch::Arm64;
   bool is_x86 = arch_ == Arch::X86 || arch_ == Arch::X86_64;
-  bool is_arm64 = arch_ == Arch::Arm64;
   bool is_riscv64 = arch_ == Arch::RiscV64;
 
   auto access_kregistry_size_bytes = 0;
@@ -336,12 +335,10 @@ Result<std::vector<Command>> QemuManager::StartCommands(
   } else if (is_arm) {
     // QEMU doesn't support GICv3 with TCG yet
     machine += ",gic-version=2";
-    if (is_arm64) {
-      // Only enable MTE in TCG mode. We haven't started to run on ARMv8/ARMv9
-      // devices with KVM and MTE, so MTE will always require TCG
-      machine += ",mte=on";
-    }
     CF_EXPECT(instance.cpus() <= 8, "CPUs must be no more than 8 with GICv2");
+  }
+  if (instance.mte()) {
+    machine += ",mte=on";
   }
   qemu_cmd.AddParameter(machine, ",usb=off,dump-guest-core=off");
 
@@ -395,7 +392,7 @@ Result<std::vector<Command>> QemuManager::StartCommands(
     qemu_cmd.AddParameter("egl-headless");
 
     qemu_cmd.AddParameter("-vnc");
-    qemu_cmd.AddParameter(":", instance.qemu_vnc_server_port());
+    qemu_cmd.AddParameter("127.0.0.1:", instance.qemu_vnc_server_port());
   } else {
     qemu_cmd.AddParameter("-display");
     qemu_cmd.AddParameter("none");
@@ -601,17 +598,27 @@ Result<std::vector<Command>> QemuManager::StartCommands(
 
   qemu_cmd.AddParameter("-device");
   qemu_cmd.AddParameter("virtio-net-pci-non-transitional,netdev=hostnet1,id=net1");
-#ifndef ENFORCE_MAC80211_HWSIM
-  qemu_cmd.AddParameter("-netdev");
-  qemu_cmd.AddParameter("tap,id=hostnet2,ifname=", instance.wifi_tap_name(),
-                        ",script=no,downscript=no", vhost_net);
-  qemu_cmd.AddParameter("-device");
-  qemu_cmd.AddParameter("virtio-net-pci-non-transitional,netdev=hostnet2,id=net2");
-#endif
+  if (!config.virtio_mac80211_hwsim()) {
+    qemu_cmd.AddParameter("-netdev");
+    qemu_cmd.AddParameter("tap,id=hostnet2,ifname=", instance.wifi_tap_name(),
+                          ",script=no,downscript=no", vhost_net);
+    qemu_cmd.AddParameter("-device");
+    qemu_cmd.AddParameter(
+        "virtio-net-pci-non-transitional,netdev=hostnet2,id=net2");
+  }
 
   if (is_x86 || is_arm) {
     qemu_cmd.AddParameter("-cpu");
     qemu_cmd.AddParameter(IsHostCompatible(arch_) ? "host" : "max");
+  }
+
+  // Explicitly enable the optional extensions of interest, in case the default
+  // behavior changes upstream.
+  if (is_riscv64) {
+    qemu_cmd.AddParameter("-cpu");
+    qemu_cmd.AddParameter("rv64",
+                          ",v=true,elen=64,vlen=128",
+                          ",zba=true,zbb=true,zbs=true");
   }
 
   qemu_cmd.AddParameter("-msg");

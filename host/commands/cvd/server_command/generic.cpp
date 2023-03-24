@@ -35,6 +35,7 @@
 #include "host/commands/cvd/command_sequence.h"
 #include "host/commands/cvd/common_utils.h"
 #include "host/commands/cvd/instance_manager.h"
+#include "host/commands/cvd/selector/selector_constants.h"
 #include "host/commands/cvd/server_command/host_tool_target_manager.h"
 #include "host/commands/cvd/server_command/server_handler.h"
 #include "host/commands/cvd/server_command/subprocess_waiter.h"
@@ -123,8 +124,24 @@ CvdGenericCommandHandler::CvdGenericCommandHandler(
       command_to_binary_map_{
           {"host_bugreport", kHostBugreportBin},
           {"cvd_host_bugreport", kHostBugreportBin},
-          {"status", kStatusBin},
-          {"cvd_status", kStatusBin},
+          {"status",
+           [this](
+               const std::string& host_artifacts_path) -> Result<std::string> {
+             auto stat_bin = CF_EXPECT(host_tool_target_manager_.ExecBaseName({
+                 .artifacts_path = host_artifacts_path,
+                 .op = "status",
+             }));
+             return stat_bin;
+           }},
+          {"cvd_status",
+           [this](
+               const std::string& host_artifacts_path) -> Result<std::string> {
+             auto stat_bin = CF_EXPECT(host_tool_target_manager_.ExecBaseName({
+                 .artifacts_path = host_artifacts_path,
+                 .op = "status",
+             }));
+             return stat_bin;
+           }},
           {"stop",
            [this](
                const std::string& host_artifacts_path) -> Result<std::string> {
@@ -291,11 +308,13 @@ CvdGenericCommandHandler::CvdBinPath(const std::string& subcmd,
                                      const std::string& home,
                                      const uid_t uid) const {
   std::string host_artifacts_path;
-  auto assembly_info_result = instance_manager_.GetInstanceGroupInfo(uid, home);
+  auto instance_group_result = instance_manager_.FindGroup(
+      uid, InstanceManager::Query{selector::kHomeField, home});
+
   // the dir that "bin/<this subcmd bin file>" belongs to
   std::string tool_dir_path;
-  if (assembly_info_result.ok()) {
-    host_artifacts_path = assembly_info_result->host_artifacts_path;
+  if (instance_group_result.ok()) {
+    host_artifacts_path = instance_group_result->HostArtifactsPath();
     tool_dir_path = host_artifacts_path;
   } else {
     // if the group does not exist (e.g. cvd status --help)

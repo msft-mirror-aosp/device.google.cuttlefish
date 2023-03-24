@@ -31,7 +31,6 @@
 #include "common/libs/utils/contains.h"
 #include "common/libs/utils/files.h"
 #include "common/libs/utils/flag_parser.h"
-#include "common/libs/utils/json.h"
 #include "common/libs/utils/result.h"
 #include "common/libs/utils/subprocess.h"
 #include "host/commands/cvd/common_utils.h"
@@ -152,8 +151,8 @@ Result<void> InstanceManager::SetBuildId(const uid_t uid,
   return {};
 }
 
-void InstanceManager::RemoveInstanceGroup(
-    const uid_t uid, const InstanceManager::InstanceGroupDir& dir) {
+void InstanceManager::RemoveInstanceGroup(const uid_t uid,
+                                          const std::string& dir) {
   std::lock_guard assemblies_lock(instance_db_mutex_);
   auto& instance_db = GetInstanceDB(uid);
   auto result = instance_db.FindGroup({selector::kHomeField, dir});
@@ -162,45 +161,70 @@ void InstanceManager::RemoveInstanceGroup(
   instance_db.RemoveInstanceGroup(group);
 }
 
-Result<InstanceManager::InstanceGroupInfo>
-InstanceManager::GetInstanceGroupInfo(
-    const uid_t uid, const InstanceManager::InstanceGroupDir& dir) {
-  std::lock_guard assemblies_lock(instance_db_mutex_);
-  auto& instance_db = GetInstanceDB(uid);
-  auto group = CF_EXPECT(instance_db.FindGroup({selector::kHomeField, dir}));
-  InstanceGroupInfo info;
-  info.host_artifacts_path = group.Get().HostArtifactsPath();
-  const auto& instances = group.Get().Instances();
-  for (const auto& instance : instances) {
-    CF_EXPECT(instance != nullptr);
-    info.instances.insert(instance->InstanceId());
-  }
-  return {info};
+template <typename... Args>
+static Command GetCommand(const std::string& prog_path, Args&&... args) {
+  Command command(prog_path);
+  (command.AddParameter(args), ...);
+  return command;
 }
 
-struct StatusCommandOutput {
-  std::string stderr_msg;
-  Json::Value stdout_json;
+struct ExecCommandResult {
+  std::string stdout_buf;
+  std::string stderr_buf;
 };
 
-static Result<StatusCommandOutput> IssueStatusCommand(
-    const std::string& config_file_path,
-    const selector::LocalInstanceGroup& group) {
-  Command command(group.HostArtifactsPath() + "/bin/" + kStatusBin);
-  command.AddParameter("--print");
-  command.AddParameter("--all_instances");
-  command.AddEnvironmentVariable(kCuttlefishConfigEnvVarName, config_file_path);
-  StatusCommandOutput output;
-  std::string stdout_buf;
+static Result<ExecCommandResult> ExecCommand(Command&& command) {
+  ExecCommandResult command_result;
   CF_EXPECT_EQ(RunWithManagedStdio(std::move(command), /* stdin */ nullptr,
-                                   std::addressof(stdout_buf),
-                                   std::addressof(output.stderr_msg)),
+                                   std::addressof(command_result.stdout_buf),
+                                   std::addressof(command_result.stderr_buf)),
                0);
-  if (stdout_buf.empty()) {
-    Json::Reader().parse("{}", output.stdout_json);
+  return command_result;
+}
+
+Result<InstanceManager::StatusCommandOutput>
+InstanceManager::IssueStatusCommand(const selector::LocalInstanceGroup& group,
+                                    const SharedFD& err) {
+  std::string not_supported_version_msg = " does not comply with cvd fleet.\n";
+  const auto host_android_out = group.HostArtifactsPath();
+  auto status_bin = CF_EXPECT(host_tool_target_manager_.ExecBaseName({
+      .artifacts_path = host_android_out,
+      .op = "status",
+  }));
+  const auto prog_path = host_android_out + "/bin/" + status_bin;
+  Command with_args = GetCommand(prog_path, "--all_instances", "--print");
+  with_args.SetEnvironment({ConcatToString("HOME=", group.HomeDir())});
+  auto command_result = ExecCommand(std::move(with_args));
+  if (command_result.ok()) {
+    StatusCommandOutput output;
+    if (command_result->stdout_buf.empty()) {
+      WriteAll(err, ConcatToString(group.GroupName(), "-*",
+                                   not_supported_version_msg));
+      Json::Reader().parse("{}", output.stdout_json);
+      return output;
+    }
+    output.stdout_json = CF_EXPECT(ParseJson(command_result->stdout_buf));
     return output;
   }
-  output.stdout_json = CF_EXPECT(ParseJson(stdout_buf));
+  StatusCommandOutput output;
+  int index = 0;
+  for (const auto& instance_ref : CF_EXPECT(group.FindAllInstances())) {
+    const auto id = instance_ref.Get().InstanceId();
+    Command without_args = GetCommand(prog_path);
+    std::vector<std::string> new_envs{
+        ConcatToString("HOME=", group.HomeDir()),
+        ConcatToString(kCuttlefishInstanceEnvVarName, "=", std::to_string(id))};
+    without_args.SetEnvironment(new_envs);
+    auto second_command_result =
+        CF_EXPECT(ExecCommand(std::move(without_args)));
+    if (second_command_result.stdout_buf.empty()) {
+      WriteAll(err,
+               instance_ref.Get().DeviceName() + not_supported_version_msg);
+      second_command_result.stdout_buf.append("{}");
+    }
+    output.stdout_json[index] =
+        CF_EXPECT(ParseJson(second_command_result.stdout_buf));
+  }
   return output;
 }
 
@@ -217,25 +241,17 @@ Result<cvd::Status> InstanceManager::CvdFleetImpl(const uid_t uid,
 
   for (const auto& group : instance_groups) {
     CF_EXPECT(group != nullptr);
-    auto config_path = group->GetCuttlefishConfigPath();
-    if (config_path.ok()) {
-      auto result = IssueStatusCommand(*config_path, *group);
-      if (!result.ok()) {
-        WriteAll(err, "      (unknown instance status error)");
-      } else {
-        const auto [stderr_msg, stdout_json] = *result;
-        WriteAll(err, stderr_msg);
-        // TODO(kwstephenkim): build a data structure that also includes
-        // selector-related information, etc.
-        WriteAll(out, stdout_json.toStyledString());
-      }
-      // move on
+    auto result = IssueStatusCommand(*group, err);
+    if (!result.ok()) {
+      WriteAll(err, "      (unknown instance status error)");
     } else {
-      std::stringstream error_msg_stream;
-      error_msg_stream << "The config file for \"group\" " << group->GroupName()
-                       << " does not exist.\n";
-      WriteAll(err, error_msg_stream.str());
+      const auto [stderr_msg, stdout_json] = *result;
+      WriteAll(err, stderr_msg);
+      // TODO(kwstephenkim): build a data structure that also includes
+      // selector-related information, etc.
+      WriteAll(out, stdout_json.toStyledString());
     }
+    // move on
     if (group == *instance_groups.crbegin()) {
       continue;
     }
@@ -353,6 +369,63 @@ Result<std::optional<InstanceLockFile>> InstanceManager::TryAcquireLock(
     int instance_num) {
   std::lock_guard lock(instance_db_mutex_);
   return CF_EXPECT(lock_manager_.TryAcquireLock(instance_num));
+}
+
+Result<std::vector<InstanceManager::LocalInstanceGroup>>
+InstanceManager::FindGroups(const uid_t uid, const Query& query) const {
+  return CF_EXPECT(FindGroups(uid, Queries{query}));
+}
+
+Result<std::vector<InstanceManager::LocalInstanceGroup>>
+InstanceManager::FindGroups(const uid_t uid, const Queries& queries) const {
+  std::lock_guard lock(instance_db_mutex_);
+  if (!Contains(instance_dbs_, uid)) {
+    return {};
+  }
+  const auto& db = instance_dbs_.at(uid);
+  auto groups = CF_EXPECT(db.FindGroups(queries));
+  // create a copy as we are escaping the critical section
+  std::vector<LocalInstanceGroup> output;
+  for (const auto& group_ref : groups) {
+    output.push_back(group_ref.Get());
+  }
+  return output;
+}
+
+Result<std::vector<InstanceManager::LocalInstance::Copy>>
+InstanceManager::FindInstances(const uid_t uid, const Query& query) const {
+  return CF_EXPECT(FindInstances(uid, Queries{query}));
+}
+
+Result<std::vector<InstanceManager::LocalInstance::Copy>>
+InstanceManager::FindInstances(const uid_t uid, const Queries& queries) const {
+  std::lock_guard lock(instance_db_mutex_);
+  if (!Contains(instance_dbs_, uid)) {
+    return {};
+  }
+  const auto& db = instance_dbs_.at(uid);
+  auto instances = CF_EXPECT(db.FindInstances(queries));
+  // create a copy as we are escaping the critical section
+  std::vector<LocalInstance::Copy> output;
+  for (const auto& instance : instances) {
+    output.push_back(instance.Get().GetCopy());
+  }
+  return output;
+}
+
+Result<InstanceManager::LocalInstanceGroup> InstanceManager::FindGroup(
+    const uid_t uid, const Query& query) const {
+  return CF_EXPECT(FindGroup(uid, Queries{query}));
+}
+
+Result<InstanceManager::LocalInstanceGroup> InstanceManager::FindGroup(
+    const uid_t uid, const Queries& queries) const {
+  std::lock_guard lock(instance_db_mutex_);
+  CF_EXPECT(Contains(instance_dbs_, uid));
+  const auto& db = instance_dbs_.at(uid);
+  auto output = CF_EXPECT(db.FindGroups(queries));
+  CF_EXPECT_EQ(output.size(), 1);
+  return *(output.begin());
 }
 
 }  // namespace cuttlefish
