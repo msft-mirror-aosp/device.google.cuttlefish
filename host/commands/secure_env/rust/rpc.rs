@@ -79,7 +79,6 @@ impl<T: DeriveBytes> RetrieveRpcArtifacts for Artifacts<T> {
 
         let mut op = match dice_info.signing_algorithm {
             CsrSigningAlgorithm::ES256 => ec.begin_sign(private_key.into(), Digest::Sha256)?,
-            CsrSigningAlgorithm::ES384 => ec.begin_sign(private_key.into(), Digest::Sha384)?,
             CsrSigningAlgorithm::EdDSA => ec.begin_sign(private_key.into(), Digest::None)?,
         };
         op.update(data)?;

@@ -152,23 +152,6 @@ QemuManager::ConfigureGraphics(
         // OpenGL ES 3.0
         {"androidboot.opengles.version", "196608"},
     };
-  } else if (instance.gpu_mode() == kGpuModeGfxstream ||
-             instance.gpu_mode() == kGpuModeGfxstreamGuestAngle) {
-    const bool uses_angle = instance.gpu_mode() == kGpuModeGfxstreamGuestAngle;
-    const std::string gles_impl = uses_angle ? "angle" : "emulation";
-    const std::string gltransport =
-        (instance.guest_android_version() == "11.0.0") ? "virtio-gpu-pipe"
-                                                       : "virtio-gpu-asg";
-    bootconfig_args = {
-        {"androidboot.cpuvulkan.version", "0"},
-        {"androidboot.hardware.gralloc", "minigbm"},
-        {"androidboot.hardware.hwcomposer", instance.hwcomposer()},
-        {"androidboot.hardware.hwcomposer.display_finder_mode", "drm"},
-        {"androidboot.hardware.egl", gles_impl},
-        {"androidboot.hardware.vulkan", "ranchu"},
-        {"androidboot.hardware.gltransport", gltransport},
-        {"androidboot.opengles.version", "196609"},  // OpenGL ES 3.1
-    };
   } else if (instance.gpu_mode() == kGpuModeNone) {
     return {};
   } else {
@@ -410,10 +393,6 @@ Result<std::vector<Command>> QemuManager::StartCommands(
 
     qemu_cmd.AddParameter("-vnc");
     qemu_cmd.AddParameter("127.0.0.1:", instance.qemu_vnc_server_port());
-  } else if (instance.gpu_mode() == kGpuModeGfxstream ||
-             instance.gpu_mode() == kGpuModeGfxstreamGuestAngle) {
-    qemu_cmd.AddParameter("-vnc");
-    qemu_cmd.AddParameter("127.0.0.1:", instance.qemu_vnc_server_port());
   } else {
     qemu_cmd.AddParameter("-display");
     qemu_cmd.AddParameter("none");
@@ -426,18 +405,10 @@ Result<std::vector<Command>> QemuManager::StartCommands(
 
     qemu_cmd.AddParameter("-device");
 
-    std::string gpu_device;
-    if (instance.gpu_mode() == kGpuModeGuestSwiftshader ||
-        qemu_version.first < 6) {
-        gpu_device = "virtio-gpu-pci";
-    } else if (instance.gpu_mode() == kGpuModeDrmVirgl) {
-        gpu_device = "virtio-gpu-gl-pci";
-    } else if (instance.gpu_mode() == kGpuModeGfxstream ||
-               instance.gpu_mode() == kGpuModeGfxstreamGuestAngle) {
-        gpu_device = "virtio-gpu-rutabaga-pci";
-    }
-
-    qemu_cmd.AddParameter(gpu_device, ",id=gpu0",
+    bool use_gpu_gl = qemu_version.first >= 6 &&
+                      instance.gpu_mode() != kGpuModeGuestSwiftshader;
+    qemu_cmd.AddParameter(use_gpu_gl ?
+                              "virtio-gpu-gl-pci" : "virtio-gpu-pci", ",id=gpu0",
                           ",xres=", display_config.width,
                           ",yres=", display_config.height);
   }
@@ -627,18 +598,26 @@ Result<std::vector<Command>> QemuManager::StartCommands(
 
   qemu_cmd.AddParameter("-device");
   qemu_cmd.AddParameter("virtio-net-pci-non-transitional,netdev=hostnet1,id=net1");
-  if (!config.virtio_mac80211_hwsim()) {
-    qemu_cmd.AddParameter("-netdev");
-    qemu_cmd.AddParameter("tap,id=hostnet2,ifname=", instance.wifi_tap_name(),
-                          ",script=no,downscript=no", vhost_net);
-    qemu_cmd.AddParameter("-device");
-    qemu_cmd.AddParameter(
-        "virtio-net-pci-non-transitional,netdev=hostnet2,id=net2");
-  }
+#ifndef ENFORCE_MAC80211_HWSIM
+  qemu_cmd.AddParameter("-netdev");
+  qemu_cmd.AddParameter("tap,id=hostnet2,ifname=", instance.wifi_tap_name(),
+                        ",script=no,downscript=no", vhost_net);
+  qemu_cmd.AddParameter("-device");
+  qemu_cmd.AddParameter("virtio-net-pci-non-transitional,netdev=hostnet2,id=net2");
+#endif
 
   if (is_x86 || is_arm) {
     qemu_cmd.AddParameter("-cpu");
     qemu_cmd.AddParameter(IsHostCompatible(arch_) ? "host" : "max");
+  }
+
+  // Explicitly enable the optional extensions of interest, in case the default
+  // behavior changes upstream.
+  if (is_riscv64) {
+    qemu_cmd.AddParameter("-cpu");
+    qemu_cmd.AddParameter("rv64",
+                          ",v=true,elen=64,vlen=128",
+                          ",zba=true,zbb=true,zbs=true");
   }
 
   qemu_cmd.AddParameter("-msg");
