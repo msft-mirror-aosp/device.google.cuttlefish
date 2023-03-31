@@ -142,6 +142,8 @@ cvd_host_x86_64 = [
     "x86_64_linux_gnu_libgfxstream_backend.so_for_crosvm",
     "x86_64_linux_gnu_libminijail.so_for_crosvm",
     "x86_64_linux_gnu_libvirglrenderer.so.1_for_crosvm",
+    "x86_64_linux_gnu_libffi.so.7_for_crosvm",
+    "x86_64_linux_gnu_libwayland-client.so.0_for_crosvm",
 ]
 cvd_host_seccomp_policy_x86_64 = [
     "9p_device.policy_at_x86_64",
