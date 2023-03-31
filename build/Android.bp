@@ -186,6 +186,8 @@ cvd_host_aarch64 = [
     "aarch64_linux_gnu_libgfxstream_backend.so_for_crosvm",
     "aarch64_linux_gnu_libminijail.so_for_crosvm",
     "aarch64_linux_gnu_libvirglrenderer.so.1_for_crosvm",
+    "aarch64_linux_gnu_libffi.so.7_for_crosvm",
+    "aarch64_linux_gnu_libwayland-client.so.0_for_crosvm",
 ]
 cvd_host_seccomp_policy_aarch64 = [
     "9p_device.policy_at_aarch64",
