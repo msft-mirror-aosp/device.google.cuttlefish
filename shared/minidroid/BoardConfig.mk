@@ -37,6 +37,11 @@ RAMDISK_KERNEL_MODULES := \
     virtio-rng.ko \
     vmw_vsock_virtio_transport.ko \
 
+ifneq ($(filter-out 5.15,$(TARGET_KERNEL_USE)),)
+# GKI >5.15 will have and require virtio_pci_legacy_dev.ko
+RAMDISK_KERNEL_MODULES += virtio_pci_legacy_dev.ko
+endif
+
 BOARD_VENDOR_RAMDISK_KERNEL_MODULES := \
     $(patsubst %,$(KERNEL_MODULES_PATH)/%,$(RAMDISK_KERNEL_MODULES))
 
@@ -96,7 +101,13 @@ PRODUCT_COPY_FILES += \
     device/google/cuttlefish/dtb.img:dtb.img \
     device/google/cuttlefish/required_images:required_images \
 
+BOARD_BOOTLOADER_IN_UPDATE_PACKAGE := true
 BOARD_RAMDISK_USE_LZ4 := true
+
+# Default to minidroid, if not set.
+LOCAL_ANDROIDBOOT_HARDWARE ?= minidroid
+# Default to minidroid's primary init .rc, if not set.
+LOCAL_ANDROIDBOOT_INIT_RC ?= /system/etc/init/hw/init.minidroid.rc
 
 BOARD_KERNEL_CMDLINE += printk.devkmsg=on
 BOARD_KERNEL_CMDLINE += audit=1
@@ -106,12 +117,12 @@ BOARD_KERNEL_CMDLINE += cma=0
 BOARD_KERNEL_CMDLINE += firmware_class.path=/vendor/etc/
 BOARD_KERNEL_CMDLINE += loop.max_part=7
 BOARD_KERNEL_CMDLINE += init=/init
-BOARD_BOOTCONFIG += androidboot.hardware=minidroid
+BOARD_BOOTCONFIG += androidboot.hardware=$(LOCAL_ANDROIDBOOT_HARDWARE)
+BOARD_BOOTCONFIG += \
+    androidboot.init_rc=$(LOCAL_ANDROIDBOOT_INIT_RC)
 BOARD_BOOTCONFIG += kernel.mac80211_hwsim.radios=0
 BOARD_BOOTCONFIG += \
     kernel.vmw_vsock_virtio_transport_common.virtio_transport_max_vsock_pkt_buf_size=16384
-BOARD_BOOTCONFIG += \
-    androidboot.init_rc=/system/etc/init/hw/init.minidroid.rc
 BOARD_BOOTCONFIG += \
     androidboot.microdroid.debuggable=1 \
     androidboot.adb.enabled=1
@@ -130,6 +141,7 @@ BOARD_GOOGLE_SYSTEM_DYNAMIC_PARTITIONS_SIZE := 268435456
 BOARD_SUPER_PARTITION_SIZE := 269484032
 BOARD_SUPER_PARTITION_GROUPS := google_system_dynamic_partitions
 BOARD_BUILD_SUPER_IMAGE_BY_DEFAULT := true
+BOARD_SUPER_IMAGE_IN_UPDATE_PACKAGE := true
 
 TARGET_SKIP_OTA_PACKAGE := true
 TARGET_SKIP_OTATOOLS_PACKAGE := true

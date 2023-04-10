@@ -8,6 +8,7 @@
 /dev/block/by-name/vendor_boot_[ab] u:object_r:boot_block_device:s0
 /dev/block/by-name/vbmeta_[ab] u:object_r:ab_block_device:s0
 /dev/block/by-name/vbmeta_system_[ab] u:object_r:ab_block_device:s0
+/dev/block/by-name/vbmeta_vendor_dlkm_[ab] u:object_r:ab_block_device:s0
 /dev/block/by-name/super u:object_r:super_block_device:s0
 /dev/block/by-name/userdata u:object_r:userdata_block_device:s0
 /dev/block/by-name/metadata u:object_r:metadata_block_device:s0
@@ -34,8 +35,8 @@
 # hvc8 for confirmation UI
 /dev/hvc8  u:object_r:confirmationui_device:s0
 
-# hvc9 for metrics
-/dev/hvc9  u:object_r:metrics_helper_device:s0
+# hvc9 for uwb
+/dev/hvc9  u:object_r:uwb_device:s0
 
 # ARM serial console device
 /dev/ttyAMA[0-9]*  u:object_r:serial_device:s0

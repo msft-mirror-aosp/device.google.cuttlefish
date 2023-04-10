@@ -54,6 +54,15 @@ std::vector<std::string> VmManagerKernelCmdline(
         // In the virt.dts file, look for a uart node
         vm_manager_cmdline.push_back("earlycon=pl011,mmio32,0x9000000");
       }
+    } else if (target_arch == Arch::RiscV64) {
+        vm_manager_cmdline.push_back("console=hvc0");
+
+        // To update the uart8250 address:
+        // $ qemu-system-riscv64 -machine virt -machine dumpdtb=virt.dtb
+        // $ dtc -O dts -o virt.dts -I dtb virt.dtb
+        // In the virt.dts file, look for a uart node
+        // Only 'mmio' mode works; mmio32 does not
+        vm_manager_cmdline.push_back("earlycon=uart8250,mmio,0x10000000");
     } else {
       if (instance.enable_kernel_log()) {
         vm_manager_cmdline.push_back("console=hvc0");
@@ -72,7 +81,8 @@ std::vector<std::string> VmManagerKernelCmdline(
       // crosvm sets up the ramoops.xx= flags for us, but QEMU does not.
       // See external/crosvm/x86_64/src/lib.rs
       // this feature is not supported on aarch64
-      vm_manager_cmdline.push_back("ramoops.mem_address=0x100000000");
+      // check guest's /proc/iomem when you need to change mem_address or mem_size
+      vm_manager_cmdline.push_back("ramoops.mem_address=0x150000000");
       vm_manager_cmdline.push_back("ramoops.mem_size=0x200000");
       vm_manager_cmdline.push_back("ramoops.console_size=0x80000");
       vm_manager_cmdline.push_back("ramoops.record_size=0x80000");

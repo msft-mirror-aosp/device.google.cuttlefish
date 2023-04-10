@@ -40,7 +40,7 @@ class VmManager {
   // need to consume host resources, except for the PCI ID. Use this trick to
   // keep the number of PCI IDs assigned constant for all flags/vm manager
   // combinations
-  static const int kDefaultNumHvcs = 9;
+  static const int kDefaultNumHvcs = 10;
 
   // This is the number of virtual disks (block devices) that should be
   // configured by the VmManager. Related to the description above regarding
@@ -61,9 +61,12 @@ class VmManager {
   virtual ~VmManager() = default;
 
   virtual bool IsSupported() = 0;
-  virtual std::vector<std::string> ConfigureGraphics(
-      const CuttlefishConfig::InstanceSpecific& instance) = 0;
-  virtual std::string ConfigureBootDevices(int num_disks, bool have_gpu) = 0;
+
+  virtual Result<std::unordered_map<std::string, std::string>>
+  ConfigureGraphics(const CuttlefishConfig::InstanceSpecific& instance) = 0;
+
+  virtual Result<std::unordered_map<std::string, std::string>>
+  ConfigureBootDevices(int num_disks, bool have_gpu) = 0;
 
   // Starts the VMM. It will usually build a command and pass it to the
   // command_starter function, although it may start more than one. The
@@ -80,8 +83,9 @@ VmManagerComponent();
 
 std::unique_ptr<VmManager> GetVmManager(const std::string&, Arch arch);
 
-std::string ConfigureMultipleBootDevices(const std::string& pci_path, int pci_offset,
-                                         int num_disks);
+Result<std::unordered_map<std::string, std::string>>
+ConfigureMultipleBootDevices(const std::string& pci_path, int pci_offset,
+                             int num_disks);
 
 } // namespace vm_manager
 } // namespace cuttlefish

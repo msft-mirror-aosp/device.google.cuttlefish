@@ -26,7 +26,7 @@
 namespace cuttlefish {
 bool FileExists(const std::string& path, bool follow_symlinks = true);
 bool FileHasContent(const std::string& path);
-std::vector<std::string> DirectoryContents(const std::string& path);
+Result<std::vector<std::string>> DirectoryContents(const std::string& path);
 bool DirectoryExists(const std::string& path, bool follow_symlinks = true);
 Result<void> EnsureDirectoryExists(const std::string& directory_path);
 bool IsDirectoryEmpty(const std::string& path);
@@ -42,6 +42,9 @@ std::string cpp_dirname(const std::string& str);
 std::string cpp_basename(const std::string& str);
 // Whether a file exists and is a unix socket
 bool FileIsSocket(const std::string& path);
+// Get disk usage of a path. If this path is a directory, disk usage will
+// account for all files under this folder(recursively).
+int GetDiskUsage(const std::string& path);
 
 // The returned value may contain .. or . if these are present in the path
 // argument.
@@ -55,4 +58,13 @@ struct FileSizes {
   off_t disk_size;
 };
 FileSizes SparseFileSizes(const std::string& path);
+
+// Find file with name |target_name| under directory |path|, return path to
+// found file(if any)
+std::string FindFile(const std::string& path, const std::string& target_name);
+
+Result<void> WalkDirectory(
+    const std::string& dir,
+    const std::function<bool(const std::string&)>& callback);
+
 }  // namespace cuttlefish

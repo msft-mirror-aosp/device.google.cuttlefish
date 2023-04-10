@@ -18,12 +18,14 @@
 #include <sstream>
 #include <unordered_set>
 
+#include <android-base/file.h>
 #include <android-base/logging.h>
 #include <android-base/parseint.h>
 #include <gflags/gflags.h>
 
 #include "common/libs/fs/shared_buf.h"
 #include "common/libs/fs/shared_fd.h"
+#include "common/libs/utils/files.h"
 #include "common/libs/utils/subprocess.h"
 #include "host/commands/assemble_cvd/flags_defaults.h"
 #include "host/commands/start/filesystem_explorer.h"
@@ -69,8 +71,19 @@ DEFINE_bool(use_overlay, CF_DEFAULTS_USE_OVERLAY,
 
 namespace {
 
-std::string kAssemblerBin = cuttlefish::HostBinaryPath("assemble_cvd");
-std::string kRunnerBin = cuttlefish::HostBinaryPath("run_cvd");
+std::string SubtoolPath(const std::string& subtool_base) {
+  auto my_own_dir = android::base::GetExecutableDirectory();
+  std::stringstream subtool_path_stream;
+  subtool_path_stream << my_own_dir << "/" << subtool_base;
+  auto subtool_path = subtool_path_stream.str();
+  if (my_own_dir.empty() || !cuttlefish::FileExists(subtool_path)) {
+    return cuttlefish::HostBinaryPath(subtool_base);
+  }
+  return subtool_path;
+}
+
+std::string kAssemblerBin = SubtoolPath("assemble_cvd");
+std::string kRunnerBin = SubtoolPath("run_cvd");
 
 cuttlefish::Subprocess StartAssembler(cuttlefish::SharedFD assembler_stdin,
                                cuttlefish::SharedFD assembler_stdout,
@@ -331,7 +344,7 @@ int main(int argc, char** argv) {
   if (cuttlefish::CuttlefishConfig::ConfigExists()) {
     auto previous_config = cuttlefish::CuttlefishConfig::Get();
     CHECK(previous_config);
-    CHECK(previous_config->Instances().size() > 0);
+    CHECK(!previous_config->Instances().empty());
     auto previous_instance = previous_config->Instances()[0];
     const auto& disks = previous_instance.virtual_disk_paths();
     auto overlay = previous_instance.PerInstancePath("overlay.img");
@@ -344,7 +357,7 @@ int main(int argc, char** argv) {
         << "\" and any image files.";
   }
 
-  CHECK(instance_nums->size() > 0) << "Expected at least one instance";
+  CHECK(!instance_nums->empty()) << "Expected at least one instance";
   auto instance_num_str = std::to_string(*instance_nums->begin());
   setenv(cuttlefish::kCuttlefishInstanceEnvVarName, instance_num_str.c_str(),
          /* overwrite */ 1);

@@ -31,26 +31,6 @@
 namespace cuttlefish {
 namespace selector {
 
-// given /a/b/c/d/e, ensures
-// all directories from /a through /a/b/c/d/e exist
-Result<void> EnsureDirectoryExistsAllTheWay(const std::string& dir) {
-  std::string dir_absolute_path = AbsolutePath(dir);
-  if (dir_absolute_path == "/") {
-    return {};
-  }
-  std::string path_exclude_root = dir_absolute_path.substr(1);
-  std::vector<std::string> tokens =
-      android::base::Tokenize(path_exclude_root, "/");
-  std::string current_dir = "/";
-  for (int i = 0; i < tokens.size(); i++) {
-    current_dir.append(tokens[i]);
-    CF_EXPECT(EnsureDirectoryExists(current_dir),
-              current_dir << " does not exist and cannot be created.");
-    current_dir.append("/");
-  }
-  return {};
-}
-
 Result<std::string> GetCuttlefishConfigPath(const std::string& home) {
   std::string home_realpath;
   CF_EXPECT(DirectoryExists(home), "Invalid Home Directory");
@@ -122,7 +102,11 @@ bool PotentiallyHostArtifactsPath(const std::string& host_artifacts_path) {
     return false;
   }
   const auto host_bin_path = host_artifacts_path + "/bin";
-  std::vector<std::string> contents = DirectoryContents(host_bin_path);
+  auto contents_result = DirectoryContents(host_bin_path);
+  if (!contents_result.ok()) {
+    return false;
+  }
+  std::vector<std::string> contents = std::move(*contents_result);
   std::set<std::string> contents_set{std::move_iterator(contents.begin()),
                                      std::move_iterator(contents.end())};
   std::set<std::string> launchers = {"cvd", "launch_cvd"};

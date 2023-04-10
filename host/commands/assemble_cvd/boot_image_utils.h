@@ -21,6 +21,11 @@
 #include "common/libs/utils/result.h"
 
 namespace cuttlefish {
+
+// Taken from external/avb/libavb/avb_slot_verify.c; this define is not in the
+// headers
+static constexpr size_t VBMETA_MAX_SIZE = 65536ul;
+
 bool RepackBootImage(const std::string& new_kernel_path,
                      const std::string& boot_image_path,
                      const std::string& new_boot_image_path,
@@ -44,4 +49,9 @@ void RepackGem5BootImage(const std::string& initrd_path,
                          const std::string& input_ramdisk_path);
 Result<std::string> ReadAndroidVersionFromBootImage(
     const std::string& boot_image_path);
+
+void UnpackRamdisk(const std::string& original_ramdisk_path,
+                   const std::string& ramdisk_stage_dir);
+void PackRamdisk(const std::string& ramdisk_stage_dir,
+                 const std::string& output_ramdisk);
 }

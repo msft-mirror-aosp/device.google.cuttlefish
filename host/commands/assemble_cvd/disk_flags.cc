@@ -27,7 +27,6 @@
 #include <fstream>
 
 #include "common/libs/fs/shared_buf.h"
-#include "common/libs/utils/environment.h"
 #include "common/libs/utils/files.h"
 #include "common/libs/utils/size_utils.h"
 #include "common/libs/utils/subprocess.h"
@@ -36,16 +35,15 @@
 #include "host/commands/assemble_cvd/disk_builder.h"
 #include "host/commands/assemble_cvd/flags_defaults.h"
 #include "host/commands/assemble_cvd/super_image_mixer.h"
+#include "host/commands/assemble_cvd/vendor_dlkm_utils.h"
 #include "host/libs/config/bootconfig_args.h"
 #include "host/libs/config/cuttlefish_config.h"
 #include "host/libs/config/data_image.h"
 #include "host/libs/config/inject.h"
 #include "host/libs/config/instance_nums.h"
-#include "host/libs/vm_manager/crosvm_manager.h"
 #include "host/libs/vm_manager/gem5_manager.h"
 
-// Taken from external/avb/libavb/avb_slot_verify.c; this define is not in the headers
-#define VBMETA_MAX_SIZE 65536ul
+
 // Taken from external/avb/avbtool.py; this define is not in the headers
 #define MAX_AVB_METADATA_SIZE 69632ul
 
@@ -80,6 +78,12 @@ DEFINE_string(
     vbmeta_system_image, CF_DEFAULTS_VBMETA_SYSTEM_IMAGE,
     "Location of cuttlefish vbmeta_system image. If empty it is assumed to "
     "be vbmeta_system.img in the directory specified by -system_image_dir.");
+DEFINE_string(
+    vbmeta_vendor_dlkm_image, CF_DEFAULTS_VBMETA_VENDOR_DLKM_IMAGE,
+    "Location of cuttlefish vbmeta_vendor_dlkm image. If empty it is assumed "
+    "to "
+    "be vbmeta_vendor_dlkm.img in the directory specified by "
+    "-system_image_dir.");
 
 DEFINE_string(linux_kernel_path, CF_DEFAULTS_LINUX_KERNEL_PATH,
               "Location of linux kernel for cuttlefish otheros flow.");
@@ -133,6 +137,7 @@ Result<void> ResolveInstanceFiles() {
   std::string default_vendor_boot_image = "";
   std::string default_vbmeta_image = "";
   std::string default_vbmeta_system_image = "";
+  std::string default_vbmeta_vendor_dlkm_image = "";
 
   std::string cur_system_image_dir;
   std::string comma_str = "";
@@ -162,6 +167,8 @@ Result<void> ResolveInstanceFiles() {
     default_vendor_boot_image += comma_str + cur_system_image_dir + "/vendor_boot.img";
     default_vbmeta_image += comma_str + cur_system_image_dir + "/vbmeta.img";
     default_vbmeta_system_image += comma_str + cur_system_image_dir + "/vbmeta_system.img";
+    default_vbmeta_vendor_dlkm_image +=
+        comma_str + cur_system_image_dir + "/vbmeta_vendor_dlkm.img";
   }
   SetCommandLineOptionWithMode("boot_image", default_boot_image.c_str(),
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
@@ -185,6 +192,9 @@ Result<void> ResolveInstanceFiles() {
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
   SetCommandLineOptionWithMode("vbmeta_system_image",
                                default_vbmeta_system_image.c_str(),
+                               google::FlagSettingMode::SET_FLAGS_DEFAULT);
+  SetCommandLineOptionWithMode("vbmeta_vendor_dlkm_image",
+                               default_vbmeta_vendor_dlkm_image.c_str(),
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
 
   return {};
@@ -285,9 +295,29 @@ std::vector<ImagePartition> android_composite_disk_config(
       .image_file_path = AbsolutePath(instance.vbmeta_system_image()),
       .read_only = FLAGS_use_overlay,
   });
+  auto vbmeta_vendor_dlkm_img = instance.new_vbmeta_vendor_dlkm_image();
+  if (!FileExists(vbmeta_vendor_dlkm_img)) {
+    vbmeta_vendor_dlkm_img = instance.vbmeta_vendor_dlkm_image();
+  }
+  if (FileExists(vbmeta_vendor_dlkm_img)) {
+    partitions.push_back(ImagePartition{
+        .label = "vbmeta_vendor_dlkm_a",
+        .image_file_path = AbsolutePath(vbmeta_vendor_dlkm_img),
+        .read_only = FLAGS_use_overlay,
+    });
+    partitions.push_back(ImagePartition{
+        .label = "vbmeta_vendor_dlkm_b",
+        .image_file_path = AbsolutePath(vbmeta_vendor_dlkm_img),
+        .read_only = FLAGS_use_overlay,
+    });
+  }
+  auto super_image = instance.new_super_image();
+  if (!FileExists(super_image)) {
+    super_image = instance.super_image();
+  }
   partitions.push_back(ImagePartition{
       .label = "super",
-      .image_file_path = AbsolutePath(instance.super_image()),
+      .image_file_path = AbsolutePath(super_image),
       .read_only = FLAGS_use_overlay,
   });
   partitions.push_back(ImagePartition{
@@ -426,7 +456,7 @@ std::vector<ImagePartition> persistent_ap_composite_disk_config(
 }
 
 static uint64_t AvailableSpaceAtPath(const std::string& path) {
-  struct statvfs vfs;
+  struct statvfs vfs {};
   if (statvfs(path.c_str(), &vfs) != 0) {
     int error_num = errno;
     LOG(ERROR) << "Could not find space available at " << path << ", error was "
@@ -437,14 +467,15 @@ static uint64_t AvailableSpaceAtPath(const std::string& path) {
   return static_cast<uint64_t>(vfs.f_frsize) * vfs.f_bavail;
 }
 
-class BootImageRepacker : public SetupFeature {
+class KernelRamdiskRepacker : public SetupFeature {
  public:
-  INJECT(BootImageRepacker(const CuttlefishConfig& config,
-                           const CuttlefishConfig::InstanceSpecific& instance))
+  INJECT(
+      KernelRamdiskRepacker(const CuttlefishConfig& config,
+                            const CuttlefishConfig::InstanceSpecific& instance))
       : config_(config), instance_(instance) {}
 
   // SetupFeature
-  std::string Name() const override { return "BootImageRepacker"; }
+  std::string Name() const override { return "KernelRamdiskRepacker"; }
   std::unordered_set<SetupFeature*> Dependencies() const override { return {}; }
   bool Enabled() const override {
     // If we are booting a protected VM, for now, assume that image repacking
@@ -454,6 +485,59 @@ class BootImageRepacker : public SetupFeature {
   }
 
  protected:
+  bool RepackVendorDLKM(const std::string& superimg_build_dir,
+                        const std::string& vendor_dlkm_build_dir,
+                        const std::string& ramdisk_path) {
+    const auto new_vendor_dlkm_img =
+        superimg_build_dir + "/vendor_dlkm_repacked.img";
+    const auto tmp_vendor_dlkm_img = new_vendor_dlkm_img + ".tmp";
+    if (!EnsureDirectoryExists(vendor_dlkm_build_dir).ok()) {
+      LOG(ERROR) << "Failed to create directory " << vendor_dlkm_build_dir;
+      return false;
+    }
+    const auto ramdisk_stage_dir = instance_.instance_dir() + "/ramdisk_staged";
+    if (!SplitRamdiskModules(ramdisk_path, ramdisk_stage_dir,
+                             vendor_dlkm_build_dir)) {
+      LOG(ERROR) << "Failed to move ramdisk modules to vendor_dlkm";
+      return false;
+    }
+    // TODO(b/149866755) For now, we assume that vendor_dlkm is ext4. Add
+    // logic to handle EROFS once the feature stablizes.
+    if (!BuildVendorDLKM(vendor_dlkm_build_dir, false, tmp_vendor_dlkm_img)) {
+      LOG(ERROR) << "Failed to build vendor_dlkm image from "
+                 << vendor_dlkm_build_dir;
+      return false;
+    }
+    if (ReadFile(tmp_vendor_dlkm_img) == ReadFile(new_vendor_dlkm_img)) {
+      LOG(INFO) << "vendor_dlkm unchanged, skip super image rebuilding.";
+      return true;
+    }
+    if (!RenameFile(tmp_vendor_dlkm_img, new_vendor_dlkm_img)) {
+      return false;
+    }
+    const auto new_super_img = instance_.new_super_image();
+    if (!Copy(instance_.super_image(), new_super_img)) {
+      PLOG(ERROR) << "Failed to copy super image " << instance_.super_image()
+                  << " to " << new_super_img;
+      return false;
+    }
+    if (!RepackSuperWithVendorDLKM(new_super_img, new_vendor_dlkm_img)) {
+      LOG(ERROR) << "Failed to repack super image with new vendor dlkm image.";
+      return false;
+    }
+    if (!RebuildVbmetaVendor(new_vendor_dlkm_img,
+                             instance_.new_vbmeta_vendor_dlkm_image())) {
+      LOG(ERROR) << "Failed to rebuild vbmeta vendor.";
+      return false;
+    }
+    SetCommandLineOptionWithMode("super_image", new_super_img.c_str(),
+                                 google::FlagSettingMode::SET_FLAGS_DEFAULT);
+    SetCommandLineOptionWithMode(
+        "vbmeta_vendor_dlkm_image",
+        instance_.new_vbmeta_vendor_dlkm_image().c_str(),
+        google::FlagSettingMode::SET_FLAGS_DEFAULT);
+    return true;
+  }
   bool Setup() override {
     if (!FileHasContent(instance_.boot_image())) {
       LOG(ERROR) << "File not found: " << instance_.boot_image();
@@ -494,8 +578,21 @@ class BootImageRepacker : public SetupFeature {
           instance_.new_vendor_boot_image();
       // Repack the vendor boot images if kernels and/or ramdisks are passed in.
       if (instance_.initramfs_path().size()) {
+        const auto superimg_build_dir = instance_.instance_dir() + "/superimg";
+        const auto ramdisk_repacked =
+            instance_.instance_dir() + "/ramdisk_repacked";
+        if (!Copy(instance_.initramfs_path(), ramdisk_repacked)) {
+          LOG(ERROR) << "Failed to copy " << instance_.initramfs_path()
+                     << " to " << ramdisk_repacked;
+          return false;
+        }
+        const auto vendor_dlkm_build_dir = superimg_build_dir + "/vendor_dlkm";
+        if (!RepackVendorDLKM(superimg_build_dir, vendor_dlkm_build_dir,
+                              ramdisk_repacked)) {
+          return false;
+        }
         bool success = RepackVendorBootImage(
-            instance_.initramfs_path(), instance_.vendor_boot_image(),
+            ramdisk_repacked, instance_.vendor_boot_image(),
             new_vendor_boot_image_path, config_.assembly_dir(),
             instance_.bootconfig_supported());
         if (!success) {
@@ -529,11 +626,9 @@ class BootImageRepacker : public SetupFeature {
 
 class Gem5ImageUnpacker : public SetupFeature {
  public:
-  INJECT(Gem5ImageUnpacker(
-      const CuttlefishConfig& config,
-      BootImageRepacker& bir))
-      : config_(config),
-        bir_(bir) {}
+  INJECT(Gem5ImageUnpacker(const CuttlefishConfig& config,
+                           KernelRamdiskRepacker& bir))
+      : config_(config), bir_(bir) {}
 
   // SetupFeature
   std::string Name() const override { return "Gem5ImageUnpacker"; }
@@ -607,7 +702,7 @@ class Gem5ImageUnpacker : public SetupFeature {
 
  private:
   const CuttlefishConfig& config_;
-  BootImageRepacker& bir_;
+  KernelRamdiskRepacker& bir_;
 };
 
 class GeneratePersistentBootconfig : public SetupFeature {
@@ -646,10 +741,11 @@ class GeneratePersistentBootconfig : public SetupFeature {
     CF_EXPECT(bootconfig_fd->IsOpen(),
               "Unable to open bootconfig file: " << bootconfig_fd->StrError());
 
-    const std::string bootconfig =
-        android::base::Join(BootconfigArgsFromConfig(config_, instance_),
-                            "\n") +
-        "\n";
+    const auto bootconfig_args =
+        CF_EXPECT(BootconfigArgsFromConfig(config_, instance_));
+    const auto bootconfig =
+        CF_EXPECT(BootconfigArgsString(bootconfig_args, "\n")) + "\n";
+
     LOG(DEBUG) << "bootconfig size is " << bootconfig.size();
     ssize_t bytesWritten = WriteAll(bootconfig_fd, bootconfig);
     CF_EXPECT(WriteAll(bootconfig_fd, bootconfig) == bootconfig.size(),
@@ -1026,8 +1122,11 @@ class VbmetaEnforceMinimumSize : public SetupFeature {
     // libavb expects to be able to read the maximum vbmeta size, so we must
     // provide a partition which matches this or the read will fail
     for (const auto& vbmeta_image :
-         {instance_.vbmeta_image(), instance_.vbmeta_system_image()}) {
-      if (FileSize(vbmeta_image) != VBMETA_MAX_SIZE) {
+         {instance_.vbmeta_image(), instance_.vbmeta_system_image(),
+          instance_.vbmeta_vendor_dlkm_image()}) {
+      // In some configurations of cuttlefish, the vendor dlkm vbmeta image does
+      // not exist
+      if (FileExists(vbmeta_image) && FileSize(vbmeta_image) != VBMETA_MAX_SIZE) {
         auto fd = SharedFD::Open(vbmeta_image, O_RDWR);
         CF_EXPECT(fd->IsOpen(), "Could not open \"" << vbmeta_image << "\": "
                                                     << fd->StrError());
@@ -1070,7 +1169,7 @@ static fruit::Component<> DiskChangesComponent(
       .bindInstance(*config)
       .bindInstance(*instance)
       .addMultibinding<SetupFeature, InitializeMetadataImage>()
-      .addMultibinding<SetupFeature, BootImageRepacker>()
+      .addMultibinding<SetupFeature, KernelRamdiskRepacker>()
       .addMultibinding<SetupFeature, VbmetaEnforceMinimumSize>()
       .addMultibinding<SetupFeature, BootloaderPresentCheck>()
       .addMultibinding<SetupFeature, Gem5ImageUnpacker>()
@@ -1120,6 +1219,8 @@ Result<void> DiskImageFlagsVectorization(CuttlefishConfig& config, const Fetcher
       android::base::Split(FLAGS_vbmeta_image, ",");
   std::vector<std::string> vbmeta_system_image =
       android::base::Split(FLAGS_vbmeta_system_image, ",");
+  auto vbmeta_vendor_dlkm_image =
+      android::base::Split(FLAGS_vbmeta_vendor_dlkm_image, ",");
 
   std::vector<std::string> linux_kernel_path =
       android::base::Split(FLAGS_linux_kernel_path, ",");
@@ -1154,10 +1255,11 @@ Result<void> DiskImageFlagsVectorization(CuttlefishConfig& config, const Fetcher
   std::string cur_initramfs_path;
   std::string cur_boot_image;
   std::string cur_vendor_boot_image;
+  std::string cur_super_image;
   std::string cur_metadata_image;
   std::string cur_misc_image;
-  int cur_blank_metadata_image_mb;
-  int value;
+  int cur_blank_metadata_image_mb{};
+  int value{};
   int instance_index = 0;
   auto instance_nums =
       CF_EXPECT(InstanceNumsCalculator().FromGlobalGflags().Calculate());
@@ -1206,11 +1308,18 @@ Result<void> DiskImageFlagsVectorization(CuttlefishConfig& config, const Fetcher
     } else {
       instance.set_vbmeta_system_image(vbmeta_system_image[instance_index]);
     }
-    if (instance_index >= super_image.size()) {
-      instance.set_super_image(super_image[0]);
+    if (instance_index >= vbmeta_system_image.size()) {
+      instance.set_vbmeta_vendor_dlkm_image(vbmeta_vendor_dlkm_image[0]);
     } else {
-      instance.set_super_image(super_image[instance_index]);
+      instance.set_vbmeta_vendor_dlkm_image(
+          vbmeta_vendor_dlkm_image[instance_index]);
     }
+    if (instance_index >= super_image.size()) {
+      cur_super_image = super_image[0];
+    } else {
+      cur_super_image = super_image[instance_index];
+    }
+    instance.set_super_image(cur_super_image);
     if (instance_index >= data_image.size()) {
       instance.set_data_image(data_image[0]);
     } else {
@@ -1323,10 +1432,13 @@ Result<void> DiskImageFlagsVectorization(CuttlefishConfig& config, const Fetcher
       }
     }
 
-    if (SuperImageNeedsRebuilding(fetcher_config)) {
+    // We will need to rebuild vendor_dlkm if custom ramdisk is specified, as a
+    // result super image would need to be rebuilt as well.
+    if (SuperImageNeedsRebuilding(fetcher_config) ||
+        cur_initramfs_path.size()) {
       const std::string new_super_image_path =
           const_instance.PerInstancePath("super.img");
-      instance.set_super_image(new_super_image_path);
+      instance.set_new_super_image(new_super_image_path);
     }
 
     if (FileExists(cur_metadata_image) &&
@@ -1337,6 +1449,8 @@ Result<void> DiskImageFlagsVectorization(CuttlefishConfig& config, const Fetcher
           const_instance.PerInstancePath("metadata.img");
       instance.set_new_metadata_image(new_metadata_image_path);
     }
+    instance.set_new_vbmeta_vendor_dlkm_image(
+        const_instance.PerInstancePath("vbmeta_vendor_dlkm_repacked.img"));
 
     if (FileHasContent(cur_misc_image)) {
       instance.set_new_misc_image(cur_misc_image);

@@ -28,6 +28,7 @@
 #include <android-base/strings.h>
 
 #include "common/libs/utils/files.h"
+#include "common/libs/utils/result.h"
 #include "common/libs/utils/subprocess.h"
 
 const char TMP_EXTENSION[] = ".tmp";
@@ -76,22 +77,9 @@ void RepackVendorRamdisk(const std::string& kernel_modules_ramdisk_path,
                          const std::string& original_ramdisk_path,
                          const std::string& new_ramdisk_path,
                          const std::string& build_dir) {
-  int success = execute({"/bin/bash", "-c", HostBinaryPath("lz4") + " -c -d -l " +
-                        original_ramdisk_path + " > " + original_ramdisk_path + CPIO_EXT});
-  CHECK(success == 0) << "Unable to run lz4. Exited with status " << success;
-
+  int success = 0;
   const std::string ramdisk_stage_dir = build_dir + "/" + TMP_RD_DIR;
-  success =
-      mkdir(ramdisk_stage_dir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
-  CHECK(success == 0) << "Could not mkdir \"" << ramdisk_stage_dir
-                      << "\", error was " << strerror(errno);
-
-  success = execute(
-      {"/bin/bash", "-c",
-       "(cd " + ramdisk_stage_dir + " && while " + HostBinaryPath("toybox") +
-           " cpio -idu; do :; done) < " + original_ramdisk_path + CPIO_EXT});
-  CHECK(success == 0) << "Unable to run cd or cpio. Exited with status "
-                      << success;
+  UnpackRamdisk(original_ramdisk_path, ramdisk_stage_dir);
 
   success = execute({"rm", "-rf", ramdisk_stage_dir + "/lib/modules"});
   CHECK(success == 0) << "Could not rmdir \"lib/modules\" in TMP_RD_DIR. "
@@ -117,6 +105,39 @@ void RepackVendorRamdisk(const std::string& kernel_modules_ramdisk_path,
 }
 
 }  // namespace
+
+void PackRamdisk(const std::string& ramdisk_stage_dir,
+                 const std::string& output_ramdisk) {
+  int success = execute({"/bin/bash", "-c",
+                         HostBinaryPath("mkbootfs") + " " + ramdisk_stage_dir +
+                             " > " + output_ramdisk + CPIO_EXT});
+  CHECK(success == 0) << "Unable to run cd or cpio. Exited with status "
+                      << success;
+
+  success = execute({"/bin/bash", "-c",
+                     HostBinaryPath("lz4") + " -c -l -12 --favor-decSpeed " +
+                         output_ramdisk + CPIO_EXT + " > " + output_ramdisk});
+  CHECK(success == 0) << "Unable to run lz4. Exited with status " << success;
+}
+
+void UnpackRamdisk(const std::string& original_ramdisk_path,
+                   const std::string& ramdisk_stage_dir) {
+  int success =
+      execute({"/bin/bash", "-c",
+               HostBinaryPath("lz4") + " -c -d -l " + original_ramdisk_path +
+                   " > " + original_ramdisk_path + CPIO_EXT});
+  CHECK(success == 0) << "Unable to run lz4. Exited with status " << success;
+  const auto ret = EnsureDirectoryExists(ramdisk_stage_dir);
+  CHECK(ret.ok()) << ret.error().Message();
+
+  success = execute(
+      {"/bin/bash", "-c",
+       "(cd " + ramdisk_stage_dir + " && while " + HostBinaryPath("toybox") +
+           " cpio -idu; do :; done) < " + original_ramdisk_path + CPIO_EXT});
+  CHECK(success == 0) << "Unable to run cd or cpio. Exited with status "
+                      << success;
+}
+
 
 bool UnpackBootImage(const std::string& boot_image_path,
                      const std::string& unpack_dir) {

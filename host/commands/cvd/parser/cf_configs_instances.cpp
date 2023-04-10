@@ -19,7 +19,6 @@
 #include <android-base/logging.h>
 #include <iostream>
 
-#include "common/libs/utils/flags_validator.h"
 #include "host/commands/cvd/parser/cf_configs_common.h"
 #include "host/commands/cvd/parser/instance/cf_boot_configs.h"
 #include "host/commands/cvd/parser/instance/cf_graphics_configs.h"
@@ -28,48 +27,6 @@
 #include "host/commands/cvd/parser/instance/cf_vm_configs.h"
 
 namespace cuttlefish {
-
-static std::map<std::string, Json::ValueType> kInstanceKeyMap = {
-    {"vm", Json::ValueType::objectValue},
-    {"boot", Json::ValueType::objectValue},
-    {"security", Json::ValueType::objectValue},
-    {"disk", Json::ValueType::objectValue},
-    {"graphics", Json::ValueType::objectValue},
-    {"camera", Json::ValueType::objectValue},
-    {"connectivity", Json::ValueType::objectValue},
-    {"audio", Json::ValueType::objectValue},
-    {"streaming", Json::ValueType::objectValue},
-    {"adb", Json::ValueType::objectValue},
-    {"vehicle", Json::ValueType::objectValue},
-    {"location", Json::ValueType::objectValue}};
-
-Result<void> ValidateInstancesConfigs(const Json::Value& root) {
-  int num_instances = root.size();
-  for (unsigned int i = 0; i < num_instances; i++) {
-    CF_EXPECT(ValidateTypo(root[i], kInstanceKeyMap), "vm ValidateTypo fail");
-
-    if (root[i].isMember("vm")) {
-      CF_EXPECT(ValidateVmConfigs(root[i]["vm"]), "ValidateVmConfigs fail");
-    }
-
-    if (root[i].isMember("boot")) {
-      CF_EXPECT(ValidateBootConfigs(root[i]["boot"]), "ValidateBootConfigs fail");
-    }
-    if (root[i].isMember("security")) {
-      CF_EXPECT(ValidateSecurityConfigs(root[i]["security"]),
-                "ValidateSecurityConfigs fail");
-    }
-    if (root[i].isMember("graphics")) {
-      CF_EXPECT(ValidateGraphicsConfigs(root[i]["graphics"]),
-                "ValidateGraphicsConfigs fail");
-    }
-  }
-  CF_EXPECT(ValidateStringConfig(root, "vm", "setupwizard_mode",
-                                 ValidateStupWizardMode),
-            "Invalid value for setupwizard_mode flag");
-
-  return {};
-}
 
 void InitInstancesConfigs(Json::Value& root) {
   InitVmConfigs(root);

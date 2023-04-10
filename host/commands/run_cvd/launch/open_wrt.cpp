@@ -15,9 +15,12 @@
 
 #include "host/commands/run_cvd/launch/launch.h"
 
+#include <android-base/logging.h>
+
 #include "common/libs/utils/files.h"
 #include "common/libs/utils/network.h"
 #include "host/libs/config/known_paths.h"
+#include "host/libs/config/openwrt_args.h"
 #include "host/libs/vm_manager/crosvm_builder.h"
 #include "host/libs/vm_manager/crosvm_manager.h"
 
@@ -50,24 +53,6 @@ class OpenWrt : public CommandSource {
                                 config_.vhost_user_mac80211_hwsim());
     }
     SharedFD wifi_tap = ap_cmd.AddTap(instance_.wifi_tap_name());
-    // Only run the leases workaround if we are not using the new network
-    // bridge architecture - in that case, we have a wider DHCP address
-    // space and stale leases should be much less of an issue
-    if (!FileExists("/var/run/cuttlefish-dnsmasq-cvd-wbr.leases") &&
-        wifi_tap->IsOpen()) {
-      // TODO(schuffelen): QEMU also needs this and this is not the best place
-      // for this code. Find a better place to put it.
-      auto lease_file =
-          ForCurrentInstance("/var/run/cuttlefish-dnsmasq-cvd-wbr-") +
-          ".leases";
-      std::uint8_t dhcp_server_ip[] = {
-          192, 168, 96, (std::uint8_t)(ForCurrentInstance(1) * 4 - 3)};
-      if (!ReleaseDhcpLeases(lease_file, wifi_tap, dhcp_server_ip)) {
-        LOG(ERROR)
-            << "Failed to release wifi DHCP leases. Connecting to the wifi "
-            << "network may not work.";
-      }
-    }
     if (instance_.enable_sandbox()) {
       ap_cmd.Cmd().AddParameter("--seccomp-policy-dir=",
                                 instance_.seccomp_policy_dir());
@@ -82,6 +67,7 @@ class OpenWrt : public CommandSource {
     ap_cmd.AddSerialConsoleReadOnly(boot_logs_path);
     ap_cmd.AddHvcReadOnly(logs_path);
 
+    auto openwrt_args = OpenwrtArgsFromConfig(instance_);
     switch (instance_.ap_boot_flow()) {
       case APBootFlow::Grub:
         ap_cmd.AddReadWriteDisk(instance_.persistent_ap_composite_disk_path());
@@ -89,10 +75,9 @@ class OpenWrt : public CommandSource {
         break;
       case APBootFlow::LegacyDirect:
         ap_cmd.Cmd().AddParameter("--params=\"root=/dev/vda1\"");
-        ap_cmd.Cmd().AddParameter("--params=instance_num=" +
-                                  std::to_string(cuttlefish::GetInstance()));
-        if (NetworkInterfaceExists(instance_.wifi_bridge_name())) {
-          ap_cmd.Cmd().AddParameter("--params=bridged_host_network=true");
+        for (auto& openwrt_arg : openwrt_args) {
+          ap_cmd.Cmd().AddParameter("--params=" + openwrt_arg.first + "=" +
+                                    openwrt_arg.second);
         }
         ap_cmd.Cmd().AddParameter(config_.ap_kernel_image());
         break;

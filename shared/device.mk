@@ -41,6 +41,11 @@ PRODUCT_SHIPPING_API_LEVEL := 34
 PRODUCT_USE_DYNAMIC_PARTITIONS := true
 DISABLE_RILD_OEM_HOOK := true
 
+# TODO(b/205788876) remove this condition when openwrt has an image for arm.
+ifndef PRODUCT_ENFORCE_MAC80211_HWSIM
+PRODUCT_ENFORCE_MAC80211_HWSIM := true
+endif
+
 PRODUCT_SET_DEBUGFS_RESTRICTIONS := true
 
 PRODUCT_FS_COMPRESSION := 1
@@ -49,8 +54,6 @@ TARGET_USERDATAIMAGE_FILE_SYSTEM_TYPE ?= f2fs
 TARGET_USERDATAIMAGE_PARTITION_SIZE ?= 6442450944
 
 TARGET_VULKAN_SUPPORT ?= true
-TARGET_ENABLE_HOST_BLUETOOTH_EMULATION ?= true
-TARGET_USE_BTLINUX_HAL_IMPL ?= true
 
 # Enable Virtual A/B
 $(call inherit-product, $(SRC_TARGET_DIR)/product/virtual_ab_ota/android_t_baseline.mk)
@@ -66,7 +69,8 @@ $(call inherit-product, $(SRC_TARGET_DIR)/product/emulated_storage.mk)
 # partition, instead of the vendor partition, and do not need vendor
 # sepolicy
 PRODUCT_PRODUCT_PROPERTIES += \
-    persist.device_config.remote_key_provisioning_native.enable_rkpd=true \
+    remote_provisioning.enable_rkpd=true \
+    remote_provisioning.hostname=autopush-remoteprovisioning.sandbox.googleapis.com \
     persist.adb.tcp.port=5555 \
     ro.com.google.locationfeatures=1 \
     persist.sys.fuse.passthrough.enable=true \
@@ -195,13 +199,19 @@ PRODUCT_PACKAGES += \
 
 endif
 
+#
+# Satellite vendor service for CF
+#
+PRODUCT_PACKAGES += CFSatelliteService
+
 # PRODUCT_AAPT_CONFIG and PRODUCT_AAPT_PREF_CONFIG are intentionally not set to
 # pick up every density resources.
 
 #
 # Common manifest for all targets
 #
-DEVICE_MANIFEST_FILE += device/google/cuttlefish/shared/config/manifest.xml
+LOCAL_DEVICE_FCM_MANIFEST_FILE ?= device/google/cuttlefish/shared/config/manifest.xml
+DEVICE_MANIFEST_FILE += $(LOCAL_DEVICE_FCM_MANIFEST_FILE)
 
 #
 # General files
@@ -253,11 +263,13 @@ PRODUCT_COPY_FILES += \
     frameworks/av/media/libstagefright/data/media_codecs_google_audio.xml:$(TARGET_COPY_OUT_VENDOR)/etc/media_codecs_google_audio.xml \
     frameworks/av/media/libstagefright/data/media_codecs_google_telephony.xml:$(TARGET_COPY_OUT_VENDOR)/etc/media_codecs_google_telephony.xml \
     frameworks/av/services/audiopolicy/config/bluetooth_audio_policy_configuration_7_0.xml:$(TARGET_COPY_OUT_VENDOR)/etc/bluetooth_audio_policy_configuration_7_0.xml \
+    frameworks/av/services/audiopolicy/config/usb_audio_policy_configuration.xml:$(TARGET_COPY_OUT_VENDOR)/etc/usb_audio_policy_configuration.xml \
     frameworks/av/services/audiopolicy/config/r_submix_audio_policy_configuration.xml:$(TARGET_COPY_OUT_VENDOR)/etc/r_submix_audio_policy_configuration.xml \
     frameworks/av/services/audiopolicy/config/audio_policy_volumes.xml:$(TARGET_COPY_OUT_VENDOR)/etc/audio_policy_volumes.xml \
     frameworks/av/services/audiopolicy/config/default_volume_tables.xml:$(TARGET_COPY_OUT_VENDOR)/etc/default_volume_tables.xml \
     frameworks/av/services/audiopolicy/config/surround_sound_configuration_5_0.xml:$(TARGET_COPY_OUT_VENDOR)/etc/surround_sound_configuration_5_0.xml \
     device/google/cuttlefish/shared/config/task_profiles.json:$(TARGET_COPY_OUT_VENDOR)/etc/task_profiles.json \
+    frameworks/native/data/etc/android.software.credentials.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.credentials.xml \
 
 ifeq ($(LOCAL_PREFER_VENDOR_APEX),true)
 PRODUCT_PACKAGES += com.google.cf.input.config
@@ -345,7 +357,27 @@ LOCAL_AUDIO_PRODUCT_PACKAGE := \
     android.hardware.audio@7.1-impl.ranchu \
     android.hardware.audio.effect@7.0-impl \
     android.hardware.audio.service-aidl.example \
-    android.hardware.audio.effect.service-aidl.example
+    android.hardware.audio.effect.service-aidl.example \
+    libaecsw \
+    libagc1sw \
+    libagc2sw \
+    libbassboostsw \
+    libbundleaidl \
+    libdownmixaidl \
+    libdynamicsprocessingaidl \
+    libenvreverbsw \
+    libequalizersw \
+    libextensioneffect \
+    libhapticgeneratoraidl \
+    libloudnessenhanceraidl \
+    libnssw \
+    libpreprocessingaidl \
+    libpresetreverbsw \
+    libreverbaidl \
+    libtinyxml2 \
+    libvirtualizersw \
+    libvisualizeraidl \
+    libvolumesw
 DEVICE_MANIFEST_FILE += \
     device/google/cuttlefish/guest/hals/audio/effects/manifest.xml
 endif
@@ -470,7 +502,7 @@ PRODUCT_PACKAGES += \
 # KeyMint HAL
 #
 ifeq ($(LOCAL_KEYMINT_PRODUCT_PACKAGE),)
-    LOCAL_KEYMINT_PRODUCT_PACKAGE := android.hardware.security.keymint-service.remote
+    LOCAL_KEYMINT_PRODUCT_PACKAGE := android.hardware.security.keymint-service.rust
 endif
 
 ifeq ($(LOCAL_KEYMINT_PRODUCT_PACKAGE),android.hardware.security.keymint-service.rust)
@@ -481,17 +513,10 @@ endif
 
 PRODUCT_PACKAGES += \
     $(LOCAL_KEYMINT_PRODUCT_PACKAGE) \
-    RemoteProvisioner
 
 # Indicate that KeyMint includes support for the ATTEST_KEY key purpose.
 PRODUCT_COPY_FILES += \
     frameworks/native/data/etc/android.hardware.keystore.app_attest_key.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.keystore.app_attest_key.xml
-
-#
-# Dice HAL
-#
-PRODUCT_PACKAGES += \
-    android.hardware.security.dice-service.non-secure-software
 
 #
 # Power and PowerStats HALs
@@ -514,8 +539,8 @@ PRODUCT_PACKAGES += \
 #
 # Thermal HAL
 #
-PRODUCT_PACKAGES += \
-    android.hardware.thermal-service.example
+LOCAL_THERMAL_HAL_PRODUCT_PACKAGE ?= android.hardware.thermal-service.example
+PRODUCT_PACKAGES += $(LOCAL_THERMAL_HAL_PRODUCT_PACKAGE)
 
 #
 # NeuralNetworks HAL
@@ -582,18 +607,23 @@ endif
 
 # wifi
 ifeq ($(LOCAL_PREFER_VENDOR_APEX),true)
-PRODUCT_SOONG_NAMESPACES += device/google/cuttlefish/apex/com.google.cf.wifi_hwsim
-PRODUCT_PACKAGES += com.google.cf.wifi_hwsim
+# Add com.android.hardware.wifi for android.hardware.wifi-service
 PRODUCT_PACKAGES += com.android.hardware.wifi
+# Add com.google.cf.wifi for hostapd, wpa_supplicant, etc.
+PRODUCT_PACKAGES += com.google.cf.wifi
 $(call add_soong_config_namespace, wpa_supplicant)
 $(call add_soong_config_var_value, wpa_supplicant, platform_version, $(PLATFORM_VERSION))
 $(call add_soong_config_var_value, wpa_supplicant, nl80211_driver, CONFIG_DRIVER_NL80211_QCA)
-PRODUCT_VENDOR_PROPERTIES += ro.vendor.wifi_impl=mac8011_hwsim_virtio
-else
 
+else
 PRODUCT_PACKAGES += \
     rename_netiface \
-    wpa_supplicant
+    wpa_supplicant \
+    setup_wifi \
+    mac80211_create_radios \
+    hostapd \
+    android.hardware.wifi-service \
+    init.wifi
 PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/config/wpa_supplicant.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/wpa_supplicant.rc
 
@@ -607,30 +637,35 @@ PRODUCT_VENDOR_PROPERTIES += ro.vendor.virtwifi.port=${DEVICE_VIRTWIFI_PORT}
 ifndef LOCAL_WPA_SUPPLICANT_OVERLAY
 LOCAL_WPA_SUPPLICANT_OVERLAY := $(LOCAL_PATH)/config/wpa_supplicant_overlay.conf
 endif
+
 ifndef LOCAL_P2P_SUPPLICANT
 LOCAL_P2P_SUPPLICANT := $(LOCAL_PATH)/config/p2p_supplicant.conf
 endif
+
 PRODUCT_COPY_FILES += \
     external/wpa_supplicant_8/wpa_supplicant/wpa_supplicant_template.conf:$(TARGET_COPY_OUT_VENDOR)/etc/wifi/wpa_supplicant.conf \
     $(LOCAL_WPA_SUPPLICANT_OVERLAY):$(TARGET_COPY_OUT_VENDOR)/etc/wifi/wpa_supplicant_overlay.conf \
     $(LOCAL_P2P_SUPPLICANT):$(TARGET_COPY_OUT_VENDOR)/etc/wifi/p2p_supplicant.conf
-PRODUCT_PACKAGES += \
-    mac80211_create_radios \
-    hostapd \
-    android.hardware.wifi-service \
-    init.wifi
-PRODUCT_VENDOR_PROPERTIES += ro.vendor.wifi_impl=mac8011_hwsim_virtio
-
 endif
-
-# UWB HAL
-PRODUCT_PACKAGES += \
-    android.hardware.uwb-service
 
 # Wifi Runtime Resource Overlay
 PRODUCT_PACKAGES += \
     CuttlefishTetheringOverlay \
     CuttlefishWifiOverlay
+
+ifeq ($(PRODUCT_ENFORCE_MAC80211_HWSIM),true)
+PRODUCT_VENDOR_PROPERTIES += ro.vendor.wifi_impl=mac8011_hwsim_virtio
+$(call soong_config_append,cvdhost,enforce_mac80211_hwsim,true)
+else
+PRODUCT_VENDOR_PROPERTIES += ro.vendor.wifi_impl=virt_wifi
+endif
+
+# UWB HAL
+PRODUCT_PACKAGES += \
+    android.hardware.uwb-service
+PRODUCT_COPY_FILES += \
+    device/google/cuttlefish/guest/hals/uwb/uwb-service.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/uwb-service.rc
+
 
 # Host packages to install
 PRODUCT_HOST_PACKAGES += socket_vsock_proxy

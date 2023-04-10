@@ -53,7 +53,7 @@ cvd_host_tools = [
     "allocd_client",
     "assemble_cvd",
     "avbtool",
-    "bt_connector",
+    "tcp_connector",
     "common_crosvm",
     "config_server",
     "console_forwarder",
@@ -61,6 +61,7 @@ cvd_host_tools = [
     "cvd",
     "cvd_internal_display",
     "cvd_internal_env",
+    "echo_server",
     "cvd_internal_host_bugreport",
     "cvd_internal_start",
     "cvd_internal_status",
@@ -69,9 +70,11 @@ cvd_host_tools = [
     "cvd_status",
     "cvd_test_gce_driver",
     "cvdremote",
+    "e2fsdroid",
     "extract-ikconfig",
     "extract-vmlinux",
     "fastboot",
+    "fec",
     "fsck.f2fs",
     "gnss_grpc_proxy",
     "health",
@@ -90,6 +93,8 @@ cvd_host_tools = [
     "mkbootfs",
     "mkbootimg",
     "mkenvimage_slim",
+    "mke2fs",
+    "mkuserimg_mke2fs",
     "modem_simulator",
     "ms-tpm-20-ref",
     "mcopy",
@@ -98,15 +103,19 @@ cvd_host_tools = [
     "netsim",
     "netsimd",
     "newfs_msdos",
+    "openwrt_control_server",
+    "pica",
     "powerwash_cvd",
     "process_restarter",
     "restart_cvd",
     "root-canal",
     "run_cvd",
     "secure_env",
+    "sefcontext_compile",
     "cvd_send_sms",
     "cvd_update_location",
     "cvd_import_locations",
+    "simg2img",
     "socket_vsock_proxy",
     "stop_cvd",
     "test_cvd_load_parser",
@@ -162,6 +171,10 @@ cvd_host_model_simulator_files = [
     "iccprofile_for_sim0.xml_host",
     "iccprofile_for_sim0_for_CtsCarrierApiTestCases.xml_host",
     "numeric_operator.xml_host",
+]
+
+cvd_host_acloud_data = [
+    "default.config_host",
 ]
 
 cvd_host_seccomp_policy_x86_64 = [
@@ -229,9 +242,10 @@ cvd_host_seccomp_policy_aarch64 = [
 cvd_host_bootloader = [
     "bootloader_crosvm_x86_64",
     "bootloader_crosvm_aarch64",
-    "bootloader_qemu_x86_64",
     "bootloader_qemu_aarch64",
     "bootloader_qemu_arm",
+    "bootloader_qemu_riscv64",
+    "bootloader_qemu_x86_64",
 ]
 
 prebuilt_etc_host {
@@ -254,6 +268,7 @@ cvd_host_package_customization {
             deps: cvd_host_webrtc_assets +
                 cvd_host_avb_testkey +
                 cvd_host_model_simulator_files +
+                cvd_host_acloud_data +
                 cvd_host_bootloader +
                 cvd_bluetooth_config_files +
                 cvd_openwrt_images,

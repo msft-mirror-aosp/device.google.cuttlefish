@@ -20,8 +20,8 @@
 
 TARGET_KERNEL_USE ?= 5.15
 TARGET_KERNEL_ARCH ?= $(TARGET_ARCH)
-BOARD_SYSTEM_DLKM_SRC ?= kernel/prebuilts/$(TARGET_KERNEL_USE)/$(TARGET_KERNEL_ARCH)
-TARGET_KERNEL_PATH ?= $(BOARD_SYSTEM_DLKM_SRC)/kernel-$(TARGET_KERNEL_USE)
+SYSTEM_DLKM_SRC ?= kernel/prebuilts/$(TARGET_KERNEL_USE)/$(TARGET_KERNEL_ARCH)
+TARGET_KERNEL_PATH ?= $(SYSTEM_DLKM_SRC)/kernel-$(TARGET_KERNEL_USE)
 KERNEL_MODULES_PATH ?= \
     kernel/prebuilts/common-modules/virtual-device/$(TARGET_KERNEL_USE)/$(subst _,-,$(TARGET_KERNEL_ARCH))
 PRODUCT_COPY_FILES += $(TARGET_KERNEL_PATH):kernel
@@ -40,9 +40,17 @@ RAMDISK_KERNEL_MODULES := \
     virtio_input.ko \
     virtio_net.ko \
     virtio_pci.ko \
-    virtio_pci_modern_dev.ko \
     virtio-rng.ko \
     vmw_vsock_virtio_transport.ko \
+
+ifneq ($(filter-out 5.4 5.10,$(TARGET_KERNEL_USE)),)
+ifneq ($(filter-out 5.15,$(TARGET_KERNEL_USE)),)
+# GKI >5.15 will have and require virtio_pci_legacy_dev.ko
+RAMDISK_KERNEL_MODULES += virtio_pci_legacy_dev.ko
+endif
+# GKI >5.10 will have and require virtio_pci_modern_dev.ko
+RAMDISK_KERNEL_MODULES += virtio_pci_modern_dev.ko
+endif
 
 BOARD_VENDOR_RAMDISK_KERNEL_MODULES := \
     $(patsubst %,$(KERNEL_MODULES_PATH)/%,$(RAMDISK_KERNEL_MODULES))
@@ -59,7 +67,9 @@ TARGET_NO_BOOTLOADER := $(__TARGET_NO_BOOTLOADER)
 BOARD_VENDOR_KERNEL_MODULES_BLOCKLIST_FILE := \
     device/google/cuttlefish/shared/modules.blocklist
 
+ifndef TARGET_BOOTLOADER_BOARD_NAME
 TARGET_BOOTLOADER_BOARD_NAME := cutf
+endif
 
 BOARD_SYSTEMIMAGE_FILE_SYSTEM_TYPE := $(TARGET_RO_FILE_SYSTEM_TYPE)
 
@@ -111,7 +121,7 @@ TARGET_COPY_OUT_ODM_DLKM := odm_dlkm
 BOARD_USES_SYSTEM_DLKMIMAGE := true
 BOARD_SYSTEM_DLKMIMAGE_FILE_SYSTEM_TYPE := $(TARGET_RO_FILE_SYSTEM_TYPE)
 TARGET_COPY_OUT_SYSTEM_DLKM := system_dlkm
-BOARD_SYSTEM_KERNEL_MODULES := $(wildcard $(BOARD_SYSTEM_DLKM_SRC)/*.ko)
+BOARD_SYSTEM_KERNEL_MODULES := $(wildcard $(SYSTEM_DLKM_SRC)/*.ko)
 
 # Enable AVB
 BOARD_AVB_ENABLE := true
@@ -136,6 +146,15 @@ BOARD_AVB_INIT_BOOT_KEY_PATH := external/avb/test/data/testkey_rsa4096.pem
 BOARD_AVB_INIT_BOOT_ALGORITHM := SHA256_RSA4096
 BOARD_AVB_INIT_BOOT_ROLLBACK_INDEX := $(PLATFORM_SECURITY_PATCH_TIMESTAMP)
 BOARD_AVB_INIT_BOOT_ROLLBACK_INDEX_LOCATION := 3
+
+# Enabled chained vbmeta for vendor_dlkm
+BOARD_AVB_VBMETA_CUSTOM_PARTITIONS := vendor_dlkm
+BOARD_AVB_VBMETA_VENDOR_DLKM := vendor_dlkm
+BOARD_AVB_VBMETA_VENDOR_DLKM_KEY_PATH := external/avb/test/data/testkey_rsa4096.pem
+BOARD_AVB_VBMETA_VENDOR_DLKM_ALGORITHM := SHA256_RSA4096
+BOARD_AVB_VBMETA_VENDOR_DLKM_ROLLBACK_INDEX := $(PLATFORM_SECURITY_PATCH_TIMESTAMP)
+BOARD_AVB_VBMETA_VENDOR_DLKM_ROLLBACK_INDEX_LOCATION := 4
+
 
 # Using sha256 for dm-verity partitions. b/178983355
 # system, system_other, product.
@@ -169,10 +188,10 @@ TARGET_USES_HWC2 := true
 # The compiler will occasionally generate movaps, etc.
 BOARD_MALLOC_ALIGNMENT := 16
 
-# Disable sparse on all filesystem images
-TARGET_USERIMAGES_SPARSE_EROFS_DISABLED ?= true
-TARGET_USERIMAGES_SPARSE_EXT_DISABLED ?= true
-TARGET_USERIMAGES_SPARSE_F2FS_DISABLED ?= true
+# Enable sparse on all filesystem images
+TARGET_USERIMAGES_SPARSE_EROFS_DISABLED ?= false
+TARGET_USERIMAGES_SPARSE_EXT_DISABLED ?= false
+TARGET_USERIMAGES_SPARSE_F2FS_DISABLED ?= false
 
 # Make the userdata partition 6G to accommodate ASAN and CTS
 BOARD_USERDATAIMAGE_PARTITION_SIZE := $(TARGET_USERDATAIMAGE_PARTITION_SIZE)
@@ -293,7 +312,6 @@ BOARD_BOOTCONFIG += \
     kernel.vmw_vsock_virtio_transport_common.virtio_transport_max_vsock_pkt_buf_size=16384
 
 BOARD_BOOTCONFIG += \
-    androidboot.vendor.apex.com.android.wifi.hal=com.google.cf.wifi_hwsim \
     androidboot.vendor.apex.com.google.emulated.camera.provider.hal=com.google.emulated.camera.provider.hal \
 
 BOARD_INCLUDE_DTB_IN_BOOTIMG := true
@@ -332,6 +350,9 @@ AB_OTA_UPDATER := true
 ifneq ($(PRODUCT_BUILD_VENDOR_IMAGE), false)
 AB_OTA_PARTITIONS += vendor
 AB_OTA_PARTITIONS += vendor_dlkm
+ifneq ($(BOARD_AVB_VBMETA_VENDOR_DLKM),)
+AB_OTA_PARTITIONS += vbmeta_vendor_dlkm
+endif
 endif
 
 ifneq ($(PRODUCT_BUILD_BOOT_IMAGE), false)

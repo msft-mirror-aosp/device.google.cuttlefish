@@ -300,7 +300,7 @@ class DeviceConnection {
   }
 
   async #useDevice(
-      in_use, senders_arr, device_opt, requestedFn = () => {in_use}) {
+      in_use, senders_arr, device_opt, requestedFn = () => {in_use}, enabledFn = (stream) => {}) {
     // An empty array means no tracks are currently in use
     if (senders_arr.length > 0 === !!in_use) {
       return in_use;
@@ -314,6 +314,7 @@ class DeviceConnection {
         if (!!in_use != requestedFn()) {
           return requestedFn();
         }
+        enabledFn(stream);
         stream.getTracks().forEach(track => {
           console.info(`Using ${track.kind} device: ${track.label}`);
           senders_arr.push(this.#pc.addTrack(track));
@@ -337,7 +338,7 @@ class DeviceConnection {
       senders_arr.length = 0;
     }
     if (renegotiation_needed) {
-      this.#control.renegotiateConnection();
+      await this.#control.renegotiateConnection();
     }
     // Return the new state
     return senders_arr.length > 0;
@@ -360,7 +361,8 @@ class DeviceConnection {
     this.#cameraRequested = !!in_use;
     return this.#useDevice(
         in_use, this.#micSenders, {audio: false, video: true},
-        () => this.#cameraRequested);
+        () => this.#cameraRequested,
+        (stream) => this.sendCameraResolution(stream));
   }
 
   sendCameraResolution(stream) {
@@ -445,6 +447,7 @@ class DeviceConnection {
 class Controller {
   #pc;
   #serverConnector;
+  #connectedPr = Promise.resolve({});
 
   constructor(serverConnector) {
     this.#serverConnector = serverConnector;
@@ -514,7 +517,35 @@ class Controller {
     this.#pc.addIceCandidate(iceCandidate);
   }
 
-  ConnectDevice(pc, infraConfig) {
+  // This effectively ensures work that changes connection state doesn't run
+  // concurrently.
+  // Returns a promise that resolves if the connection is successfully
+  // established after the provided work is done.
+  #onReadyToNegotiate(work_cb) {
+    const connectedPr = this.#connectedPr.then(() => {
+      const controller = new AbortController();
+      const pr = new Promise((resolve, reject) => {
+        this.#pc.addEventListener('connectionstatechange', evt => {
+          let state = this.#pc.connectionState;
+          if (state == 'connected') {
+            resolve(evt);
+          } else if (state == 'failed') {
+            reject(evt);
+          }
+        }, {signal: controller.signal});
+      });
+      // Remove the listener once the promise fulfills.
+      pr.finally(() => controller.abort());
+      work_cb();
+      // Don't return pr.finally() since that is never rejected.
+      return pr;
+    });
+    // A failure is also a sign that renegotiation is possible again
+    this.#connectedPr = connectedPr.catch(_ => {});
+    return connectedPr;
+  }
+
+  async ConnectDevice(pc, infraConfig) {
     this.#pc = pc;
     console.debug('ConnectDevice');
     // ICE candidates will be generated when we add the offer. Adding it here
@@ -524,16 +555,20 @@ class Controller {
     this.#pc.addEventListener('icecandidate', evt => {
       if (evt.candidate) this.#sendIceCandidate(evt.candidate);
     });
-    this.#serverConnector.sendToDevice(
+    return this.#onReadyToNegotiate(_ => {
+      this.#serverConnector.sendToDevice(
         {type: 'request-offer', ice_servers: infraConfig.ice_servers});
+    });
   }
 
   async renegotiateConnection() {
-    console.debug('Re-negotiating connection');
-    let offer = await this.#pc.createOffer();
-    console.debug('Local description (offer): ', offer);
-    await this.#pc.setLocalDescription(offer);
-    this.#serverConnector.sendToDevice({type: 'offer', sdp: offer.sdp});
+    return this.#onReadyToNegotiate(async () => {
+      console.debug('Re-negotiating connection');
+      let offer = await this.#pc.createOffer();
+      console.debug('Local description (offer): ', offer);
+      await this.#pc.setLocalDescription(offer);
+      this.#serverConnector.sendToDevice({type: 'offer', sdp: offer.sdp});
+    });
   }
 }
 
@@ -566,15 +601,5 @@ export async function Connect(deviceId, serverConnector) {
   let deviceConnection = new DeviceConnection(pc, control);
   deviceConnection.description = deviceInfo;
 
-  return new Promise((resolve, reject) => {
-    pc.addEventListener('connectionstatechange', evt => {
-      let state = pc.connectionState;
-      if (state == 'connected') {
-        resolve(deviceConnection);
-      } else if (state == 'failed') {
-        reject(evt);
-      }
-    });
-    control.ConnectDevice(pc, infraConfig);
-  });
+  return control.ConnectDevice(pc, infraConfig).then(_ => deviceConnection);
 }

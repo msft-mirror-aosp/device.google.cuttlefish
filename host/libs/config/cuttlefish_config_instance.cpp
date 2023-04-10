@@ -23,7 +23,6 @@
 #include "common/libs/utils/flags_validator.h"
 #include "host/libs/vm_manager/crosvm_manager.h"
 #include "host/libs/vm_manager/gem5_manager.h"
-#include "host/libs/vm_manager/qemu_manager.h"
 
 namespace cuttlefish {
 namespace {
@@ -109,6 +108,14 @@ void CuttlefishConfig::MutableInstanceSpecific::set_super_image(
     const std::string& super_image) {
   (*Dictionary())[kSuperImage] = super_image;
 }
+static constexpr char kNewSuperImage[] = "new_super_image";
+std::string CuttlefishConfig::InstanceSpecific::new_super_image() const {
+  return (*Dictionary())[kNewSuperImage].asString();
+}
+void CuttlefishConfig::MutableInstanceSpecific::set_new_super_image(
+    const std::string& super_image) {
+  (*Dictionary())[kNewSuperImage] = super_image;
+}
 static constexpr char kMiscImage[] = "misc_image";
 std::string CuttlefishConfig::InstanceSpecific::misc_image() const {
   return (*Dictionary())[kMiscImage].asString();
@@ -180,6 +187,25 @@ std::string CuttlefishConfig::InstanceSpecific::vbmeta_system_image() const {
 void CuttlefishConfig::MutableInstanceSpecific::set_vbmeta_system_image(
     const std::string& vbmeta_system_image) {
   (*Dictionary())[kVbmetaSystemImage] = vbmeta_system_image;
+}
+static constexpr char kVbmetaVendorDlkmImage[] = "vbmeta_vendor_dlkm_image";
+std::string CuttlefishConfig::InstanceSpecific::vbmeta_vendor_dlkm_image()
+    const {
+  return (*Dictionary())[kVbmetaVendorDlkmImage].asString();
+}
+void CuttlefishConfig::MutableInstanceSpecific::set_vbmeta_vendor_dlkm_image(
+    const std::string& image) {
+  (*Dictionary())[kVbmetaVendorDlkmImage] = image;
+}
+static constexpr char kNewVbmetaVendorDlkmImage[] =
+    "new_vbmeta_vendor_dlkm_image";
+std::string CuttlefishConfig::InstanceSpecific::new_vbmeta_vendor_dlkm_image()
+    const {
+  return (*Dictionary())[kNewVbmetaVendorDlkmImage].asString();
+}
+void CuttlefishConfig::MutableInstanceSpecific::
+    set_new_vbmeta_vendor_dlkm_image(const std::string& image) {
+  (*Dictionary())[kNewVbmetaVendorDlkmImage] = image;
 }
 static constexpr char kOtherosEspImage[] = "otheros_esp_image";
 std::string CuttlefishConfig::InstanceSpecific::otheros_esp_image() const {
@@ -572,6 +598,30 @@ void CuttlefishConfig::MutableInstanceSpecific::set_gpu_mode(const std::string& 
   (*Dictionary())[kGpuMode] = name;
 }
 
+static constexpr char kGpuAngleFeatureOverridesEnabled[] =
+    "gpu_angle_feature_overrides_enabled";
+std::string
+CuttlefishConfig::InstanceSpecific::gpu_angle_feature_overrides_enabled()
+    const {
+  return (*Dictionary())[kGpuAngleFeatureOverridesEnabled].asString();
+}
+void CuttlefishConfig::MutableInstanceSpecific::
+    set_gpu_angle_feature_overrides_enabled(const std::string& overrides) {
+  (*Dictionary())[kGpuAngleFeatureOverridesEnabled] = overrides;
+}
+
+static constexpr char kGpuAngleFeatureOverridesDisabled[] =
+    "gpu_angle_feature_overrides_disabled";
+std::string
+CuttlefishConfig::InstanceSpecific::gpu_angle_feature_overrides_disabled()
+    const {
+  return (*Dictionary())[kGpuAngleFeatureOverridesDisabled].asString();
+}
+void CuttlefishConfig::MutableInstanceSpecific::
+    set_gpu_angle_feature_overrides_disabled(const std::string& overrides) {
+  (*Dictionary())[kGpuAngleFeatureOverridesDisabled] = overrides;
+}
+
 static constexpr char kGpuCaptureBinary[] = "gpu_capture_binary";
 std::string CuttlefishConfig::InstanceSpecific::gpu_capture_binary() const {
   return (*Dictionary())[kGpuCaptureBinary].asString();
@@ -602,14 +652,6 @@ void CuttlefishConfig::MutableInstanceSpecific::set_enable_gpu_udmabuf(const boo
 }
 bool CuttlefishConfig::InstanceSpecific::enable_gpu_udmabuf() const {
   return (*Dictionary())[kEnableGpuUdmabuf].asBool();
-}
-
-static constexpr char kEnableGpuAngle[] = "enable_gpu_angle";
-void CuttlefishConfig::MutableInstanceSpecific::set_enable_gpu_angle(const bool enable_gpu_angle) {
-  (*Dictionary())[kEnableGpuAngle] = enable_gpu_angle;
-}
-bool CuttlefishConfig::InstanceSpecific::enable_gpu_angle() const {
-  return (*Dictionary())[kEnableGpuAngle].asBool();
 }
 
 static constexpr char kEnableAudio[] = "enable_audio";
@@ -668,6 +710,14 @@ void CuttlefishConfig::MutableInstanceSpecific::set_protected_vm(bool protected_
 }
 bool CuttlefishConfig::InstanceSpecific::protected_vm() const {
   return (*Dictionary())[kProtectedVm].asBool();
+}
+
+static constexpr char kMte[] = "mte";
+void CuttlefishConfig::MutableInstanceSpecific::set_mte(bool mte) {
+  (*Dictionary())[kMte] = mte;
+}
+bool CuttlefishConfig::InstanceSpecific::mte() const {
+  return (*Dictionary())[kMte].asBool();
 }
 
 static constexpr char kEnableKernelLog[] = "enable_kernel_log";
@@ -873,7 +923,8 @@ std::string CuttlefishConfig::InstanceSpecific::console_dev() const {
     // console can't be used since uboot doesn't support it.
     console_dev = "hvc1";
   } else {
-    // crosvm ARM does not support ttyAMA. ttyAMA is a part of ARM arch.
+    // QEMU and Gem5 emulate pl011 on ARM/ARM64, but QEMU and crosvm on other
+    // architectures emulate ns16550a/uart8250 instead.
     Arch target = target_arch();
     if ((target == Arch::Arm64 || target == Arch::Arm) &&
         config_->vm_manager() != vm_manager::CrosvmManager::name()) {
@@ -1025,6 +1076,17 @@ void CuttlefishConfig::MutableInstanceSpecific::set_mobile_tap_name(
   (*Dictionary())[kMobileTapName] = mobile_tap_name;
 }
 
+static constexpr char kMobileMac[] = "mobile_mac";
+std::string CuttlefishConfig::InstanceSpecific::mobile_mac() const {
+  return (*Dictionary())[kMobileMac].asString();
+}
+void CuttlefishConfig::MutableInstanceSpecific::set_mobile_mac(
+    const std::string& mac) {
+  (*Dictionary())[kMobileMac] = mac;
+}
+
+// TODO(b/199103204): remove this as well when
+// PRODUCT_ENFORCE_MAC80211_HWSIM is removed
 static constexpr char kWifiTapName[] = "wifi_tap_name";
 std::string CuttlefishConfig::InstanceSpecific::wifi_tap_name() const {
   return (*Dictionary())[kWifiTapName].asString();
@@ -1041,6 +1103,24 @@ std::string CuttlefishConfig::InstanceSpecific::wifi_bridge_name() const {
 void CuttlefishConfig::MutableInstanceSpecific::set_wifi_bridge_name(
     const std::string& wifi_bridge_name) {
   (*Dictionary())[kWifiBridgeName] = wifi_bridge_name;
+}
+
+static constexpr char kWifiMac[] = "wifi_mac";
+std::string CuttlefishConfig::InstanceSpecific::wifi_mac() const {
+  return (*Dictionary())[kWifiMac].asString();
+}
+void CuttlefishConfig::MutableInstanceSpecific::set_wifi_mac(
+    const std::string& mac) {
+  (*Dictionary())[kWifiMac] = mac;
+}
+
+static constexpr char kUseBridgedWifiTap[] = "use_bridged_wifi_tap";
+bool CuttlefishConfig::InstanceSpecific::use_bridged_wifi_tap() const {
+  return (*Dictionary())[kUseBridgedWifiTap].asBool();
+}
+void CuttlefishConfig::MutableInstanceSpecific::set_use_bridged_wifi_tap(
+    bool use_bridged_wifi_tap) {
+  (*Dictionary())[kUseBridgedWifiTap] = use_bridged_wifi_tap;
 }
 
 static constexpr char kEthernetTapName[] = "ethernet_tap_name";
@@ -1264,6 +1344,15 @@ void CuttlefishConfig::MutableInstanceSpecific::set_start_rootcanal(
 }
 bool CuttlefishConfig::InstanceSpecific::start_rootcanal() const {
   return (*Dictionary())[kStartRootcanal].asBool();
+}
+
+static constexpr char kStartPica[] = "start_pica";
+void CuttlefishConfig::MutableInstanceSpecific::set_start_pica(
+    bool start) {
+  (*Dictionary())[kStartPica] = start;
+}
+bool CuttlefishConfig::InstanceSpecific::start_pica() const {
+  return (*Dictionary())[kStartPica].asBool();
 }
 
 static constexpr char kStartNetsim[] = "start_netsim";

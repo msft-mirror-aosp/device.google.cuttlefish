@@ -25,32 +25,6 @@
 
 namespace cuttlefish {
 
-std::map<std::string, Json::ValueType> kCrosvmKeyMap = {
-    {"enable_sandbox", Json::ValueType::booleanValue},
-};
-
-static std::map<std::string, Json::ValueType> kVmKeyMap = {
-    {"cpus", Json::ValueType::intValue},
-    {"memory_mb", Json::ValueType::intValue},
-    {"use_sdcard", Json::ValueType::booleanValue},
-    {"setupwizard_mode", Json::ValueType::stringValue},
-    {"uuid", Json::ValueType::stringValue},
-    {"crosvm", Json::ValueType::objectValue},
-    {"qemu", Json::ValueType::objectValue},
-    {"gem5", Json::ValueType::objectValue},
-    {"custom_actions", Json::ValueType::arrayValue},
-};
-
-Result<void> ValidateVmConfigs(const Json::Value& root) {
-  CF_EXPECT(ValidateTypo(root, kVmKeyMap),
-            "ValidateVmConfigs ValidateTypo fail");
-  if (root.isMember("crosvm")) {
-    CF_EXPECT(ValidateTypo(root["crosvm"], kCrosvmKeyMap),
-              "ValidateVmConfigs ValidateTypo crosvm fail");
-  }
-  return {};
-}
-
 void InitVmManagerConfig(Json::Value& instances) {
   // Allocate and initialize with default values
   int size = instances.size();
@@ -101,11 +75,11 @@ std::vector<std::string> GenerateCustomConfigsFlags(
       mapped_text =
           android::base::StringReplace(mapped_text, "\"", "\\\"", true);
       std::stringstream buff;
-      buff << "--custom_actions=\"" << mapped_text << "\"";
+      buff << "--custom_actions=" << mapped_text;
       result.emplace_back(buff.str());
     } else {
       // custom_actions parameter doesn't exist in the configuration file
-      result.emplace_back("--custom_actions=\"unset\"");
+      result.emplace_back("--custom_actions=unset");
     }
   }
   return result;

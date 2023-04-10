@@ -47,8 +47,8 @@ struct StreamerConfig {
   ServerConfig operator_server;
   // The port ranges webrtc is allowed to use.
   // [0,0] means all ports
-  std::pair<uint16_t, uint16_t> udp_port_range = {15550, 15558};
-  std::pair<uint16_t, uint16_t> tcp_port_range = {15550, 15558};
+  std::pair<uint16_t, uint16_t> udp_port_range = {15550, 15599};
+  std::pair<uint16_t, uint16_t> tcp_port_range = {15550, 15599};
 };
 
 class OperatorObserver {
@@ -68,7 +68,7 @@ class Streamer {
   // client connection. Unregister() needs to be called to stop accepting
   // connections.
   static std::unique_ptr<Streamer> Create(
-      const StreamerConfig& cfg,
+      const StreamerConfig& cfg, LocalRecorder* recorder,
       std::shared_ptr<ConnectionObserverFactory> factory);
   ~Streamer() = default;
 
@@ -109,7 +109,6 @@ class Streamer {
   void Register(std::weak_ptr<OperatorObserver> operator_observer);
   void Unregister();
 
-  void RecordDisplays(LocalRecorder& recorder);
  private:
   /*
    * Private Implementation idiom.
