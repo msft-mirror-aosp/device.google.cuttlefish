@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2022 The Android Open Source Project
+ * Copyright (C) 2023 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,11 +18,12 @@
 
 #include <fruit/fruit.h>
 
-#include "host/commands/cvd/command_sequence.h"
+#include "host/commands/cvd/instance_manager.h"
+#include "host/commands/cvd/server_command/subprocess_waiter.h"
 
 namespace cuttlefish {
 
-fruit::Component<fruit::Required<CommandSequenceExecutor>>
-AcloudCommandComponent();
+fruit::Component<fruit::Required<InstanceManager, SubprocessWaiter>>
+CvdEnvComponent();
 
-}
+}  // namespace cuttlefish

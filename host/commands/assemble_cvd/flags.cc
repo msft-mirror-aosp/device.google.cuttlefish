@@ -161,6 +161,13 @@ DEFINE_int32(
     "with rootcanal_instance_num. Else, launch a new rootcanal instance");
 DEFINE_string(rootcanal_args, CF_DEFAULTS_ROOTCANAL_ARGS,
               "Space-separated list of rootcanal args. ");
+DEFINE_bool(enable_host_uwb, CF_DEFAULTS_ENABLE_HOST_UWB,
+            "Enable Pica in the host.");
+DEFINE_int32(
+    pica_instance_num, CF_DEFAULTS_ENABLE_PICA_INSTANCE_NUM,
+    "If it is greater than 0, use an existing pica instance which is "
+    "launched from cuttlefish instance "
+    "with pica_instance_num. Else, launch a new pica instance");
 DEFINE_bool(netsim, CF_DEFAULTS_NETSIM,
             "[Experimental] Connect all radios to netsim.");
 
@@ -826,6 +833,12 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
 
   tmp_config_obj.set_enable_metrics(FLAGS_report_anonymous_usage_stats);
 
+#ifdef ENFORCE_MAC80211_HWSIM
+  tmp_config_obj.set_virtio_mac80211_hwsim(true);
+#else
+  tmp_config_obj.set_virtio_mac80211_hwsim(false);
+#endif
+
   tmp_config_obj.set_vhost_user_mac80211_hwsim(FLAGS_vhost_user_mac80211_hwsim);
 
   if ((FLAGS_ap_rootfs_image.empty()) != (FLAGS_ap_kernel_image.empty())) {
@@ -997,6 +1010,18 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
   tmp_config_obj.set_rootcanal_link_ble_port(7600 + rootcanal_instance_num);
   LOG(DEBUG) << "rootcanal_instance_num: " << rootcanal_instance_num;
   LOG(DEBUG) << "launch rootcanal: " << (FLAGS_rootcanal_instance_num <= 0);
+
+  // crosvm should create fifos for UWB
+  auto pica_instance_num = *instance_nums.begin() - 1;
+  if (FLAGS_pica_instance_num > 0) {
+    pica_instance_num = FLAGS_pica_instance_num - 1;
+  }
+  tmp_config_obj.set_enable_host_uwb(FLAGS_enable_host_uwb);
+  tmp_config_obj.set_enable_host_uwb_connector(FLAGS_enable_host_uwb);
+  tmp_config_obj.set_pica_uci_port(7000 + pica_instance_num);
+  LOG(DEBUG) << "pica_instance_num: " << pica_instance_num;
+  LOG(DEBUG) << "launch pica: " << (FLAGS_pica_instance_num <= 0);
+
   bool is_first_instance = true;
   int instance_index = 0;
   auto num_to_webrtc_device_id_flag_map =
@@ -1146,13 +1171,8 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     instance.set_ethernet_bridge_name("cvd-ebr");
     instance.set_mobile_tap_name(iface_config.mobile_tap.name);
 
-#ifdef ENFORCE_MAC80211_HWSIM
-    const bool enforce_mac80211_hwsim = true;
-#else
-    const bool enforce_mac80211_hwsim = false;
-#endif
     if (NetworkInterfaceExists(iface_config.non_bridged_wireless_tap.name) &&
-        enforce_mac80211_hwsim) {
+        tmp_config_obj.virtio_mac80211_hwsim()) {
       instance.set_use_bridged_wifi_tap(false);
       instance.set_wifi_tap_name(iface_config.non_bridged_wireless_tap.name);
     } else {
@@ -1376,7 +1396,7 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
 
     // Start wmediumd process for the first instance if
     // vhost_user_mac80211_hwsim is not specified.
-    const bool start_wmediumd = enforce_mac80211_hwsim &&
+    const bool start_wmediumd = tmp_config_obj.virtio_mac80211_hwsim() &&
                                 FLAGS_vhost_user_mac80211_hwsim.empty() &&
                                 is_first_instance;
     if (start_wmediumd) {
@@ -1397,6 +1417,8 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
 
     instance.set_start_rootcanal(is_first_instance && !is_bt_netsim &&
                                  (FLAGS_rootcanal_instance_num <= 0));
+
+    instance.set_start_pica(is_first_instance);
 
     if (!FLAGS_ap_rootfs_image.empty() && !FLAGS_ap_kernel_image.empty() && start_wmediumd) {
       // TODO(264537774): Ubuntu grub modules / grub monoliths cannot be used to boot
