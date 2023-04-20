@@ -121,6 +121,12 @@ class CuttlefishConfig {
   void set_gem5_debug_flags(const std::string& gem5_debug_flags);
   std::string gem5_debug_flags() const;
 
+  void set_enable_host_uwb(bool enable_host_uwb);
+  bool enable_host_uwb() const;
+
+  void set_enable_host_uwb_connector(bool enable_host_uwb);
+  bool enable_host_uwb_connector() const;
+
   void set_enable_host_bluetooth(bool enable_host_bluetooth);
   bool enable_host_bluetooth() const;
 
@@ -187,6 +193,9 @@ class CuttlefishConfig {
   void set_host_tools_version(const std::map<std::string, uint32_t>&);
   std::map<std::string, uint32_t> host_tools_version() const;
 
+  void set_virtio_mac80211_hwsim(bool virtio_mac80211_hwsim);
+  bool virtio_mac80211_hwsim() const;
+
   void set_vhost_user_mac80211_hwsim(const std::string& path);
   std::string vhost_user_mac80211_hwsim() const;
 
@@ -201,6 +210,9 @@ class CuttlefishConfig {
 
   void set_wmediumd_config(const std::string& path);
   std::string wmediumd_config() const;
+
+  void set_pica_uci_port(int pica_uci_port);
+  int pica_uci_port() const;
 
   void set_rootcanal_args(const std::string& rootcanal_args);
   std::vector<std::string> rootcanal_args() const;
@@ -402,6 +414,9 @@ class CuttlefishConfig {
     // Whether this instance should start a rootcanal instance
     bool start_rootcanal() const;
 
+    // Whether this instance should start a pica instance
+    bool start_pica() const;
+
     // Whether this instance should start a netsim instance
     bool start_netsim() const;
 
@@ -539,6 +554,8 @@ class CuttlefishConfig {
     std::string vbmeta_system_image() const;
     std::string vbmeta_vendor_dlkm_image() const;
     std::string new_vbmeta_vendor_dlkm_image() const;
+    std::string vbmeta_system_dlkm_image() const;
+    std::string new_vbmeta_system_dlkm_image() const;
 
     // otheros artifacts
     std::string otheros_esp_image() const;
@@ -613,6 +630,7 @@ class CuttlefishConfig {
     void set_start_webrtc_sig_server_proxy(bool start);
     void set_start_wmediumd(bool start);
     void set_start_rootcanal(bool start);
+    void set_start_pica(bool start);
     void set_start_netsim(bool start);
     void set_ap_boot_flow(InstanceSpecific::APBootFlow flow);
     // Wifi MAC address inside the guest
@@ -712,6 +730,10 @@ class CuttlefishConfig {
         const std::string& vbmeta_vendor_dlkm_image);
     void set_new_vbmeta_vendor_dlkm_image(
         const std::string& vbmeta_vendor_dlkm_image);
+    void set_vbmeta_system_dlkm_image(
+        const std::string& vbmeta_system_dlkm_image);
+    void set_new_vbmeta_system_dlkm_image(
+        const std::string& vbmeta_system_dlkm_image);
     void set_otheros_esp_image(const std::string& otheros_esp_image);
     void set_linux_kernel_path(const std::string& linux_kernel_path);
     void set_linux_initramfs_path(const std::string& linux_initramfs_path);

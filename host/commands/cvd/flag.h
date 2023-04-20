@@ -101,7 +101,7 @@ class CvdFlag {
 
   // Parses the arguments. If flag is given, returns the parsed value. If not,
   // returns the default value if any. If no default value, it returns CF_ERR.
-  Result<T> ParseFlag(cvd_common::Args& args) const {
+  Result<T> CalculateFlag(cvd_common::Args& args) const {
     auto value_opt = CF_EXPECT(FilterFlag(args));
     if (!value_opt) {
       CF_EXPECT(default_value_ != std::nullopt);
@@ -132,6 +132,20 @@ class CvdFlagProxy {
     kInt32,
     kString,
   };
+
+  static std::string ToString(const FlagType flag_type) {
+    switch (flag_type) {
+      case FlagType::kUnknown:
+        return "kUnknown";
+      case FlagType::kBool:
+        return "bool";
+      case FlagType::kInt32:
+        return "std::int32_t";
+      case FlagType::kString:
+        return "std::string";
+    }
+  }
+
   template <typename T>
   CvdFlagProxy(CvdFlag<T>&& flag) : flag_{std::move(flag)} {}
 
@@ -167,25 +181,24 @@ class CvdFlagProxy {
   // returns CF_ERR if parsing error,
   // returns std::nullopt if parsing was okay but the flag wasn't given
   template <typename T>
-  Result<void> FilterFlag(cvd_common::Args& args,
-                          std::optional<T>& output) const {
-    output = std::nullopt;
+  Result<std::optional<T>> FilterFlag(cvd_common::Args& args) const {
+    std::optional<T> output;
     const auto* ptr = CF_EXPECT(std::get_if<CvdFlag<T>>(&flag_));
     CF_EXPECT(ptr != nullptr);
     output = CF_EXPECT(ptr->FilterFlag(args));
-    return {};
+    return output;
   }
 
   // Parses the arguments. If flag is given, returns the parsed value. If not,
   // returns the default value if any. If no default value, it returns CF_ERR.
   template <typename T>
-  Result<void> ParseFlag(cvd_common::Args& args, T& output) const {
+  Result<T> CalculateFlag(cvd_common::Args& args) const {
     bool has_default_value = CF_EXPECT(HasDefaultValue());
     CF_EXPECT(has_default_value == true);
     const auto* ptr = CF_EXPECT(std::get_if<CvdFlag<T>>(&flag_));
     CF_EXPECT(ptr != nullptr);
-    output = CF_EXPECT(ptr->ParseFlag(args));
-    return {};
+    T output = CF_EXPECT(ptr->CalculateFlag(args));
+    return output;
   }
 
   using ValueVariant = std::variant<std::int32_t, bool, std::string>;
@@ -229,12 +242,42 @@ class FlagCollection {
   std::vector<CvdFlagProxy> Flags() const;
 
   struct FlagValuePair {
-    std::optional<ValueVariant> value_opt;
+    ValueVariant value;
     CvdFlagProxy flag;
   };
 
+  /* does not consider default values
+   * so, if not default value and the flag wasn't given, it won't be found
+   * in the returned map
+   */
   Result<std::unordered_map<std::string, FlagValuePair>> FilterFlags(
       cvd_common::Args& args) const;
+
+  /* considers default values
+   * so, if the flag wasn't given, the default value will be used to fill
+   * out the returned map. If a default value isn't available and the flag
+   * isn't given either, the entry won't be in the returned map
+   */
+  Result<std::unordered_map<std::string, FlagValuePair>> CalculateFlags(
+      cvd_common::Args& args) const;
+
+  template <typename T>
+  static Result<T> GetValue(const ValueVariant& value_variant) {
+    auto* value_ptr = std::get_if<T>(std::addressof(value_variant));
+    CF_EXPECT(value_ptr != nullptr,
+              "GetValue template function was instantiated with a wrong type.");
+    return *value_ptr;
+  }
+
+  template <typename T>
+  static Result<T> GetValue(const FlagValuePair& flag_and_value) {
+    std::string flag_type_string =
+        CvdFlagProxy::ToString(flag_and_value.flag.GetType());
+    auto* value_ptr = std::get_if<T>(std::addressof(flag_and_value.value));
+    CF_EXPECT(value_ptr != nullptr,
+              "The actual flag type is " << flag_type_string);
+    return *value_ptr;
+  }
 
  private:
   std::unordered_map<std::string, CvdFlagProxy> name_flag_map_;
