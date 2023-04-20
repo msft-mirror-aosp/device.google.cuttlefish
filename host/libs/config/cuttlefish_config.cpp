@@ -86,7 +86,8 @@ const char* kInstances = "instances";
 
 const char* const kGpuModeAuto = "auto";
 const char* const kGpuModeDrmVirgl = "drm_virgl";
-const char* const kGpuModeGfxStream = "gfxstream";
+const char* const kGpuModeGfxstream = "gfxstream";
+const char* const kGpuModeGfxstreamGuestAngle = "gfxstream_guest_angle";
 const char* const kGpuModeGuestSwiftshader = "guest_swiftshader";
 const char* const kGpuModeNone = "none";
 
@@ -255,6 +256,30 @@ std::map<std::string, uint32_t> CuttlefishConfig::host_tools_version() const {
   return versions;
 }
 
+static constexpr char kenableHostUwb[] = "enable_host_uwb";
+void CuttlefishConfig::set_enable_host_uwb(bool enable_host_uwb) {
+  (*dictionary_)[kenableHostUwb] = enable_host_uwb;
+}
+bool CuttlefishConfig::enable_host_uwb() const {
+  return (*dictionary_)[kenableHostUwb].asBool();
+}
+
+static constexpr char kenableHostUwbConnector[] = "enable_host_uwb_connector";
+void CuttlefishConfig::set_enable_host_uwb_connector(bool enable_host_uwb) {
+  (*dictionary_)[kenableHostUwbConnector] = enable_host_uwb;
+}
+bool CuttlefishConfig::enable_host_uwb_connector() const {
+  return (*dictionary_)[kenableHostUwbConnector].asBool();
+}
+
+static constexpr char kPicaUciPort[] = "pica_uci_port";
+int CuttlefishConfig::pica_uci_port() const {
+  return (*dictionary_)[kPicaUciPort].asInt();
+}
+void CuttlefishConfig::set_pica_uci_port(int pica_uci_port) {
+  (*dictionary_)[kPicaUciPort] = pica_uci_port;
+}
+
 static constexpr char kenableHostBluetooth[] = "enable_host_bluetooth";
 void CuttlefishConfig::set_enable_host_bluetooth(bool enable_host_bluetooth) {
   (*dictionary_)[kenableHostBluetooth] = enable_host_bluetooth;
@@ -346,6 +371,14 @@ std::vector<std::string> CuttlefishConfig::extra_bootconfig_args() const {
     bootconfig.push_back(arg.asString());
   }
   return bootconfig;
+}
+
+static constexpr char kVirtioMac80211Hwsim[] = "virtio_mac80211_hwsim";
+void CuttlefishConfig::set_virtio_mac80211_hwsim(bool virtio_mac80211_hwsim) {
+  (*dictionary_)[kVirtioMac80211Hwsim] = virtio_mac80211_hwsim;
+}
+bool CuttlefishConfig::virtio_mac80211_hwsim() const {
+  return (*dictionary_)[kVirtioMac80211Hwsim].asBool();
 }
 
 static constexpr char kVhostUserMac80211Hwsim[] = "vhost_user_mac80211_hwsim";

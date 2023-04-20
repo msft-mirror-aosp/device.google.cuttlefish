@@ -56,6 +56,7 @@
 #include "host/libs/config/esp.h"
 #include "host/libs/config/host_tools_version.h"
 #include "host/libs/config/instance_nums.h"
+#include "host/libs/graphics_detector/graphics_configuration.h"
 #include "host/libs/graphics_detector/graphics_detector.h"
 #include "host/libs/vm_manager/crosvm_manager.h"
 #include "host/libs/vm_manager/gem5_manager.h"
@@ -136,12 +137,9 @@ DEFINE_vec(hwcomposer, CF_DEFAULTS_HWCOMPOSER,
 DEFINE_vec(gpu_capture_binary, CF_DEFAULTS_GPU_CAPTURE_BINARY,
               "Path to the GPU capture binary to use when capturing GPU traces"
               "(ngfx, renderdoc, etc)");
-DEFINE_vec(enable_gpu_udmabuf, cuttlefish::BoolToString(CF_DEFAULTS_ENABLE_GPU_UDMABUF),
-            "Use the udmabuf driver for zero-copy virtio-gpu");
-DEFINE_vec(enable_gpu_angle,
-           cuttlefish::BoolToString(CF_DEFAULTS_ENABLE_GPU_ANGLE),
-           "Use ANGLE to provide GLES implementation (always true for"
-           " guest_swiftshader");
+DEFINE_vec(enable_gpu_udmabuf,
+           cuttlefish::BoolToString(CF_DEFAULTS_ENABLE_GPU_UDMABUF),
+           "Use the udmabuf driver for zero-copy virtio-gpu");
 
 DEFINE_vec(use_allocd, CF_DEFAULTS_USE_ALLOCD?"true":"false",
             "Acquire static resources from the resource allocator daemon.");
@@ -163,6 +161,13 @@ DEFINE_int32(
     "with rootcanal_instance_num. Else, launch a new rootcanal instance");
 DEFINE_string(rootcanal_args, CF_DEFAULTS_ROOTCANAL_ARGS,
               "Space-separated list of rootcanal args. ");
+DEFINE_bool(enable_host_uwb, CF_DEFAULTS_ENABLE_HOST_UWB,
+            "Enable Pica in the host.");
+DEFINE_int32(
+    pica_instance_num, CF_DEFAULTS_ENABLE_PICA_INSTANCE_NUM,
+    "If it is greater than 0, use an existing pica instance which is "
+    "launched from cuttlefish instance "
+    "with pica_instance_num. Else, launch a new pica instance");
 DEFINE_bool(netsim, CF_DEFAULTS_NETSIM,
             "[Experimental] Connect all radios to netsim.");
 
@@ -391,6 +396,8 @@ DEFINE_vec(use_sdcard, CF_DEFAULTS_USE_SDCARD?"true":"false",
 DEFINE_vec(protected_vm, cuttlefish::BoolToString(CF_DEFAULTS_PROTECTED_VM),
             "Boot in Protected VM mode");
 
+DEFINE_vec(mte, cuttlefish::BoolToString(CF_DEFAULTS_MTE), "Enable MTE");
+
 DEFINE_vec(enable_audio, cuttlefish::BoolToString(CF_DEFAULTS_ENABLE_AUDIO),
             "Whether to play or capture audio");
 
@@ -616,7 +623,7 @@ Result<bool> ParseBool(const std::string& flag_str,
 
 Result<std::unordered_map<int, std::string>> CreateNumToWebrtcDeviceIdMap(
     const CuttlefishConfig& tmp_config_obj,
-    const std::set<std::int32_t>& instance_nums,
+    const std::vector<std::int32_t>& instance_nums,
     const std::string& webrtc_device_id_flag) {
   std::unordered_map<int, std::string> output_map;
   if (webrtc_device_id_flag.empty()) {
@@ -826,6 +833,12 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
 
   tmp_config_obj.set_enable_metrics(FLAGS_report_anonymous_usage_stats);
 
+#ifdef ENFORCE_MAC80211_HWSIM
+  tmp_config_obj.set_virtio_mac80211_hwsim(true);
+#else
+  tmp_config_obj.set_virtio_mac80211_hwsim(false);
+#endif
+
   tmp_config_obj.set_vhost_user_mac80211_hwsim(FLAGS_vhost_user_mac80211_hwsim);
 
   if ((FLAGS_ap_rootfs_image.empty()) != (FLAGS_ap_kernel_image.empty())) {
@@ -925,6 +938,7 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
       CF_EXPECT(GET_FLAG_STR_VALUE(gem5_debug_file));
   std::vector<bool> protected_vm_vec = CF_EXPECT(GET_FLAG_BOOL_VALUE(
       protected_vm));
+  std::vector<bool> mte_vec = CF_EXPECT(GET_FLAG_BOOL_VALUE(mte));
   std::vector<bool> enable_kernel_log_vec = CF_EXPECT(GET_FLAG_BOOL_VALUE(
       enable_kernel_log));
   std::vector<bool> kgdb_vec = CF_EXPECT(GET_FLAG_BOOL_VALUE(kgdb));
@@ -955,10 +969,8 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
       restart_subprocesses));
   std::vector<std::string> hwcomposer_vec =
       CF_EXPECT(GET_FLAG_STR_VALUE(hwcomposer));
-  std::vector<bool> enable_gpu_udmabuf_vec = CF_EXPECT(GET_FLAG_BOOL_VALUE(
-      enable_gpu_udmabuf));
-  std::vector<bool> enable_gpu_angle_vec = CF_EXPECT(GET_FLAG_BOOL_VALUE(
-      enable_gpu_angle));
+  std::vector<bool> enable_gpu_udmabuf_vec =
+      CF_EXPECT(GET_FLAG_BOOL_VALUE(enable_gpu_udmabuf));
   std::vector<bool> smt_vec = CF_EXPECT(GET_FLAG_BOOL_VALUE(smt));
   std::vector<std::string> crosvm_binary_vec =
       CF_EXPECT(GET_FLAG_STR_VALUE(crosvm_binary));
@@ -998,6 +1010,18 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
   tmp_config_obj.set_rootcanal_link_ble_port(7600 + rootcanal_instance_num);
   LOG(DEBUG) << "rootcanal_instance_num: " << rootcanal_instance_num;
   LOG(DEBUG) << "launch rootcanal: " << (FLAGS_rootcanal_instance_num <= 0);
+
+  // crosvm should create fifos for UWB
+  auto pica_instance_num = *instance_nums.begin() - 1;
+  if (FLAGS_pica_instance_num > 0) {
+    pica_instance_num = FLAGS_pica_instance_num - 1;
+  }
+  tmp_config_obj.set_enable_host_uwb(FLAGS_enable_host_uwb);
+  tmp_config_obj.set_enable_host_uwb_connector(FLAGS_enable_host_uwb);
+  tmp_config_obj.set_pica_uci_port(7000 + pica_instance_num);
+  LOG(DEBUG) << "pica_instance_num: " << pica_instance_num;
+  LOG(DEBUG) << "launch pica: " << (FLAGS_pica_instance_num <= 0);
+
   bool is_first_instance = true;
   int instance_index = 0;
   auto num_to_webrtc_device_id_flag_map =
@@ -1032,6 +1056,7 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     instance.set_record_screen(record_screen_vec[instance_index]);
     instance.set_gem5_debug_file(gem5_debug_file_vec[instance_index]);
     instance.set_protected_vm(protected_vm_vec[instance_index]);
+    instance.set_mte(mte_vec[instance_index]);
     instance.set_enable_kernel_log(enable_kernel_log_vec[instance_index]);
     if (!boot_slot_vec[instance_index].empty()) {
       instance.set_boot_slot(boot_slot_vec[instance_index]);
@@ -1124,7 +1149,7 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     instance.set_display_configs(display_configs);
 
     instance.set_memory_mb(memory_mb_vec[instance_index]);
-    instance.set_ddr_mem_mb(memory_mb_vec[instance_index] * 2);
+    instance.set_ddr_mem_mb(memory_mb_vec[instance_index] * 1.2);
     instance.set_setupwizard_mode(setupwizard_mode_vec[instance_index]);
     instance.set_userdata_format(userdata_format_vec[instance_index]);
     instance.set_guest_enforce_security(guest_enforce_security_vec[instance_index]);
@@ -1146,13 +1171,8 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     instance.set_ethernet_bridge_name("cvd-ebr");
     instance.set_mobile_tap_name(iface_config.mobile_tap.name);
 
-#ifdef ENFORCE_MAC80211_HWSIM
-    const bool enforce_mac80211_hwsim = true;
-#else
-    const bool enforce_mac80211_hwsim = false;
-#endif
     if (NetworkInterfaceExists(iface_config.non_bridged_wireless_tap.name) &&
-        enforce_mac80211_hwsim) {
+        tmp_config_obj.virtio_mac80211_hwsim()) {
       instance.set_use_bridged_wifi_tap(false);
       instance.set_wifi_tap_name(iface_config.non_bridged_wireless_tap.name);
     } else {
@@ -1173,10 +1193,17 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     instance.set_fastboot_host_port(7520 + num - 1);
 
     std::uint8_t ethernet_mac[6] = {};
+    std::uint8_t mobile_mac[6] = {};
+    std::uint8_t wifi_mac[6] = {};
     std::uint8_t ethernet_ipv6[16] = {};
     GenerateEthMacForInstance(num - 1, ethernet_mac);
+    GenerateMobileMacForInstance(num - 1, mobile_mac);
+    GenerateWifiMacForInstance(num - 1, wifi_mac);
     GenerateCorrespondingIpv6ForMac(ethernet_mac, ethernet_ipv6);
+
     instance.set_ethernet_mac(MacAddressToString(ethernet_mac));
+    instance.set_mobile_mac(MacAddressToString(mobile_mac));
+    instance.set_wifi_mac(MacAddressToString(wifi_mac));
     instance.set_ethernet_ipv6(Ipv6ToString(ethernet_ipv6));
 
     instance.set_tombstone_receiver_port(calc_vsock_port(6600));
@@ -1185,48 +1212,56 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     instance.set_config_server_port(calc_vsock_port(6800));
 
     // gpu related settings
-    instance.set_gpu_mode(gpu_mode_vec[instance_index]);
-    if (gpu_mode_vec[instance_index] != kGpuModeAuto &&
-        gpu_mode_vec[instance_index] != kGpuModeDrmVirgl &&
-        gpu_mode_vec[instance_index] != kGpuModeGfxStream &&
-        gpu_mode_vec[instance_index] != kGpuModeGuestSwiftshader &&
-        gpu_mode_vec[instance_index] != kGpuModeNone) {
-      LOG(FATAL) << "Invalid gpu_mode: " << gpu_mode_vec[instance_index];
+    auto gpu_mode = gpu_mode_vec[instance_index];
+    if (gpu_mode != kGpuModeAuto && gpu_mode != kGpuModeDrmVirgl &&
+        gpu_mode != kGpuModeGfxstream &&
+        gpu_mode != kGpuModeGfxstreamGuestAngle &&
+        gpu_mode != kGpuModeGuestSwiftshader && gpu_mode != kGpuModeNone) {
+      LOG(FATAL) << "Invalid gpu_mode: " << gpu_mode;
     }
-    if (gpu_mode_vec[instance_index] == kGpuModeAuto) {
+    if (gpu_mode == kGpuModeAuto) {
       if (ShouldEnableAcceleratedRendering(graphics_availability)) {
         LOG(INFO) << "GPU auto mode: detected prerequisites for accelerated "
             "rendering support.";
         if (vm_manager_vec[0] == QemuManager::name()) {
           LOG(INFO) << "Enabling --gpu_mode=drm_virgl.";
-          instance.set_gpu_mode(kGpuModeDrmVirgl);
+          gpu_mode = kGpuModeDrmVirgl;
         } else {
           LOG(INFO) << "Enabling --gpu_mode=gfxstream.";
-          instance.set_gpu_mode(kGpuModeGfxStream);
+          gpu_mode = kGpuModeGfxstream;
         }
       } else {
         LOG(INFO) << "GPU auto mode: did not detect prerequisites for "
             "accelerated rendering support, enabling "
             "--gpu_mode=guest_swiftshader.";
-        instance.set_gpu_mode(kGpuModeGuestSwiftshader);
+        gpu_mode = kGpuModeGuestSwiftshader;
       }
-    } else if (gpu_mode_vec[instance_index] == kGpuModeGfxStream ||
-               gpu_mode_vec[instance_index] == kGpuModeDrmVirgl) {
+    } else if (gpu_mode == kGpuModeGfxstream ||
+               gpu_mode == kGpuModeGfxstreamGuestAngle ||
+               gpu_mode == kGpuModeDrmVirgl) {
       if (!ShouldEnableAcceleratedRendering(graphics_availability)) {
-        LOG(ERROR) << "--gpu_mode="
-                   << gpu_mode_vec[instance_index]
+        LOG(ERROR) << "--gpu_mode=" << gpu_mode
                    << " was requested but the prerequisites for accelerated "
-                   "rendering were not detected so the device may not "
-                   "function correctly. Please consider switching to "
-                   "--gpu_mode=auto or --gpu_mode=guest_swiftshader.";
+                      "rendering were not detected so the device may not "
+                      "function correctly. Please consider switching to "
+                      "--gpu_mode=auto or --gpu_mode=guest_swiftshader.";
       }
     }
+    instance.set_gpu_mode(gpu_mode);
+
+    const auto angle_features = CF_EXPECT(GetNeededAngleFeatures(
+        CF_EXPECT(GetRenderingMode(gpu_mode)), graphics_availability));
+    instance.set_gpu_angle_feature_overrides_enabled(
+        angle_features.angle_feature_overrides_enabled);
+    instance.set_gpu_angle_feature_overrides_disabled(
+        angle_features.angle_feature_overrides_disabled);
 
     instance.set_restart_subprocesses(restart_subprocesses_vec[instance_index]);
     instance.set_gpu_capture_binary(gpu_capture_binary_vec[instance_index]);
     if (!gpu_capture_binary_vec[instance_index].empty()) {
-      CF_EXPECT(gpu_mode_vec[instance_index] == kGpuModeGfxStream,
-          "GPU capture only supported with --gpu_mode=gfxstream");
+      CF_EXPECT(gpu_mode == kGpuModeGfxstream ||
+                    gpu_mode == kGpuModeGfxstreamGuestAngle,
+                "GPU capture only supported with --gpu_mode=gfxstream");
 
       // GPU capture runs in a detached mode where the "launcher" process
       // intentionally exits immediately.
@@ -1237,15 +1272,15 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     instance.set_hwcomposer(hwcomposer_vec[instance_index]);
     if (!hwcomposer_vec[instance_index].empty()) {
       if (hwcomposer_vec[instance_index] == kHwComposerRanchu) {
-        CF_EXPECT(gpu_mode_vec[instance_index] != kGpuModeDrmVirgl,
-            "ranchu hwcomposer not supported with --gpu_mode=drm_virgl");
+        CF_EXPECT(gpu_mode != kGpuModeDrmVirgl,
+                  "ranchu hwcomposer not supported with --gpu_mode=drm_virgl");
       }
     }
 
     if (hwcomposer_vec[instance_index] == kHwComposerAuto) {
-      if (gpu_mode_vec[instance_index] == kGpuModeDrmVirgl) {
+      if (gpu_mode == kGpuModeDrmVirgl) {
         instance.set_hwcomposer(kHwComposerDrm);
-      } else if (gpu_mode_vec[instance_index] == kGpuModeNone) {
+      } else if (gpu_mode == kGpuModeNone) {
         instance.set_hwcomposer(kHwComposerNone);
       } else {
         instance.set_hwcomposer(kHwComposerRanchu);
@@ -1253,7 +1288,6 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     }
 
     instance.set_enable_gpu_udmabuf(enable_gpu_udmabuf_vec[instance_index]);
-    instance.set_enable_gpu_angle(enable_gpu_angle_vec[instance_index]);
 
     // 1. Keep original code order SetCommandLineOptionWithMode("enable_sandbox")
     // then set_enable_sandbox later.
@@ -1263,7 +1297,7 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     // 3. Sepolicy rules need to be updated to support gpu mode. Temporarily disable
     // auto-enabling sandbox when gpu is enabled (b/152323505).
     default_enable_sandbox += comma_str;
-    if ((gpu_mode_vec[instance_index] != kGpuModeGuestSwiftshader) || console_vec[instance_index]) {
+    if ((gpu_mode != kGpuModeGuestSwiftshader) || console_vec[instance_index]) {
       // original code, just moved to each instance setting block
       default_enable_sandbox += "false";
     } else {
@@ -1271,14 +1305,12 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     }
     comma_str = ",";
 
-    if (!vmm->ConfigureGraphics(const_instance).ok()) {
-      LOG(FATAL) << "Invalid (gpu_mode=," << gpu_mode_vec[instance_index] <<
-      " hwcomposer= " << hwcomposer_vec[instance_index] <<
-      ") does not work with vm_manager=" << vm_manager_vec[0];
+    auto graphics_check = vmm->ConfigureGraphics(const_instance);
+    if (!graphics_check.ok()) {
+      LOG(FATAL) << graphics_check.error().Message();
     }
 
-    if (gpu_mode_vec[instance_index] != kGpuModeDrmVirgl &&
-        gpu_mode_vec[instance_index] != kGpuModeGfxStream) {
+    if (gpu_mode != kGpuModeDrmVirgl && gpu_mode != kGpuModeGfxstream) {
       if (vm_manager_vec[0] == QemuManager::name()) {
         instance.set_keyboard_server_port(calc_vsock_port(7000));
         instance.set_touch_server_port(calc_vsock_port(7100));
@@ -1364,7 +1396,7 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
 
     // Start wmediumd process for the first instance if
     // vhost_user_mac80211_hwsim is not specified.
-    const bool start_wmediumd = enforce_mac80211_hwsim &&
+    const bool start_wmediumd = tmp_config_obj.virtio_mac80211_hwsim() &&
                                 FLAGS_vhost_user_mac80211_hwsim.empty() &&
                                 is_first_instance;
     if (start_wmediumd) {
@@ -1385,6 +1417,8 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
 
     instance.set_start_rootcanal(is_first_instance && !is_bt_netsim &&
                                  (FLAGS_rootcanal_instance_num <= 0));
+
+    instance.set_start_pica(is_first_instance);
 
     if (!FLAGS_ap_rootfs_image.empty() && !FLAGS_ap_kernel_image.empty() && start_wmediumd) {
       // TODO(264537774): Ubuntu grub modules / grub monoliths cannot be used to boot

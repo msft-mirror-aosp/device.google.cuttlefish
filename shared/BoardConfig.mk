@@ -18,7 +18,7 @@
 # Common BoardConfig for all supported architectures.
 #
 
-TARGET_KERNEL_USE ?= 5.15
+TARGET_KERNEL_USE ?= 6.1
 TARGET_KERNEL_ARCH ?= $(TARGET_ARCH)
 SYSTEM_DLKM_SRC ?= kernel/prebuilts/$(TARGET_KERNEL_USE)/$(TARGET_KERNEL_ARCH)
 TARGET_KERNEL_PATH ?= $(SYSTEM_DLKM_SRC)/kernel-$(TARGET_KERNEL_USE)
@@ -148,12 +148,18 @@ BOARD_AVB_INIT_BOOT_ROLLBACK_INDEX := $(PLATFORM_SECURITY_PATCH_TIMESTAMP)
 BOARD_AVB_INIT_BOOT_ROLLBACK_INDEX_LOCATION := 3
 
 # Enabled chained vbmeta for vendor_dlkm
-BOARD_AVB_VBMETA_CUSTOM_PARTITIONS := vendor_dlkm
+BOARD_AVB_VBMETA_CUSTOM_PARTITIONS := vendor_dlkm system_dlkm
 BOARD_AVB_VBMETA_VENDOR_DLKM := vendor_dlkm
 BOARD_AVB_VBMETA_VENDOR_DLKM_KEY_PATH := external/avb/test/data/testkey_rsa4096.pem
 BOARD_AVB_VBMETA_VENDOR_DLKM_ALGORITHM := SHA256_RSA4096
 BOARD_AVB_VBMETA_VENDOR_DLKM_ROLLBACK_INDEX := $(PLATFORM_SECURITY_PATCH_TIMESTAMP)
 BOARD_AVB_VBMETA_VENDOR_DLKM_ROLLBACK_INDEX_LOCATION := 4
+
+BOARD_AVB_VBMETA_SYSTEM_DLKM := system_dlkm
+BOARD_AVB_VBMETA_SYSTEM_DLKM_KEY_PATH := external/avb/test/data/testkey_rsa4096.pem
+BOARD_AVB_VBMETA_SYSTEM_DLKM_ALGORITHM := SHA256_RSA4096
+BOARD_AVB_VBMETA_SYSTEM_DLKM_ROLLBACK_INDEX := $(PLATFORM_SECURITY_PATCH_TIMESTAMP)
+BOARD_AVB_VBMETA_SYSTEM_DLKM_ROLLBACK_INDEX_LOCATION := 5
 
 
 # Using sha256 for dm-verity partitions. b/178983355
@@ -188,10 +194,10 @@ TARGET_USES_HWC2 := true
 # The compiler will occasionally generate movaps, etc.
 BOARD_MALLOC_ALIGNMENT := 16
 
-# Disable sparse on all filesystem images
-TARGET_USERIMAGES_SPARSE_EROFS_DISABLED ?= true
-TARGET_USERIMAGES_SPARSE_EXT_DISABLED ?= true
-TARGET_USERIMAGES_SPARSE_F2FS_DISABLED ?= true
+# Enable sparse on all filesystem images
+TARGET_USERIMAGES_SPARSE_EROFS_DISABLED ?= false
+TARGET_USERIMAGES_SPARSE_EXT_DISABLED ?= false
+TARGET_USERIMAGES_SPARSE_F2FS_DISABLED ?= false
 
 # Make the userdata partition 6G to accommodate ASAN and CTS
 BOARD_USERDATAIMAGE_PARTITION_SIZE := $(TARGET_USERDATAIMAGE_PARTITION_SIZE)
@@ -217,14 +223,10 @@ BOARD_FLASH_BLOCK_SIZE := 512
 USE_OPENGL_RENDERER := true
 
 # Wifi.
-ifeq ($(PRODUCT_ENFORCE_MAC80211_HWSIM),true)
 BOARD_WLAN_DEVICE           := emulator
 BOARD_HOSTAPD_PRIVATE_LIB   := lib_driver_cmd_simulated_cf
 WIFI_HIDL_FEATURE_DUAL_INTERFACE := true
 WIFI_HAL_INTERFACE_COMBINATIONS := {{{STA}, 1}, {{AP}, 1}, {{P2P}, 1}}
-else
-BOARD_WLAN_DEVICE           := wlan0
-endif
 BOARD_HOSTAPD_DRIVER        := NL80211
 BOARD_WPA_SUPPLICANT_DRIVER := NL80211
 BOARD_WPA_SUPPLICANT_PRIVATE_LIB := lib_driver_cmd_simulated_cf
@@ -316,7 +318,6 @@ BOARD_BOOTCONFIG += \
     kernel.vmw_vsock_virtio_transport_common.virtio_transport_max_vsock_pkt_buf_size=16384
 
 BOARD_BOOTCONFIG += \
-    androidboot.vendor.apex.com.android.wifi.hal=com.google.cf.wifi_hwsim \
     androidboot.vendor.apex.com.google.emulated.camera.provider.hal=com.google.emulated.camera.provider.hal \
 
 BOARD_INCLUDE_DTB_IN_BOOTIMG := true

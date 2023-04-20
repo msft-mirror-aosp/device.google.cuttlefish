@@ -20,6 +20,7 @@
 
 #include <memory>
 #include <mutex>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -28,42 +29,71 @@
 
 namespace cuttlefish {
 
-struct RunCvdProcInfo {
-  pid_t pid_;
-  std::string home_;
-  std::string exec_path_;
-  cvd_common::Envs envs_;
-  cvd_common::Args cmd_args_;
-  std::string stop_cvd_path_;
-  bool is_cvd_server_started_;
-};
-
 class RunCvdProcessManager {
+  struct RunCvdProcInfo {
+    pid_t pid_;
+    std::string home_;
+    std::string exec_path_;
+    cvd_common::Envs envs_;
+    cvd_common::Args cmd_args_;
+    std::string stop_cvd_path_;
+    bool is_cvd_server_started_;
+    std::optional<std::string> android_host_out_;
+    unsigned id_;
+  };
+
+  struct GroupProcInfo {
+    std::string home_;
+    std::string exec_path_;
+    std::string stop_cvd_path_;
+    bool is_cvd_server_started_;
+    std::optional<std::string> android_host_out_;
+    struct InstanceInfo {
+      std::set<pid_t> pids_;
+      cvd_common::Envs envs_;
+      cvd_common::Args cmd_args_;
+      unsigned id_;
+    };
+    // instance id to instance info mapping
+    std::unordered_map<unsigned, InstanceInfo> instances_;
+  };
+
  public:
   static Result<RunCvdProcessManager> Get();
   RunCvdProcessManager(const RunCvdProcessManager&) = delete;
   RunCvdProcessManager(RunCvdProcessManager&&) = default;
-  void ShowAll();
   Result<void> KillAllCuttlefishInstances(const bool cvd_server_children_only,
                                           const bool clear_runtime_dirs) {
     auto stop_cvd_result =
-        RunStopCvdForEach(cvd_server_children_only, clear_runtime_dirs);
+        RunStopCvdAll(cvd_server_children_only, clear_runtime_dirs);
     if (!stop_cvd_result.ok()) {
       LOG(ERROR) << stop_cvd_result.error().Message();
     }
-    CF_EXPECT(SendSignals(cvd_server_children_only));
+    auto send_signals_result = SendSignals(cvd_server_children_only);
+    if (!send_signals_result.ok()) {
+      LOG(ERROR) << send_signals_result.error().Message();
+    }
+    DeleteLockFiles(cvd_server_children_only);
+    cf_groups_.clear();
+    auto recollect_info_result = CollectInfo();
+    if (!recollect_info_result.ok()) {
+      LOG(ERROR) << "Recollecting run_cvd processes information failed.";
+      LOG(ERROR) << recollect_info_result.error().Trace();
+    }
     return {};
   }
 
  private:
   RunCvdProcessManager() = default;
-  static Result<void> RunStopCvd(const RunCvdProcInfo& run_cvd_info,
+  static Result<void> RunStopCvd(const GroupProcInfo& run_cvd_info,
                                  const bool clear_runtime_dirs);
-  Result<void> RunStopCvdForEach(const bool cvd_server_children_only,
-                                 const bool clear_runtime_dirs);
+  Result<void> RunStopCvdAll(const bool cvd_server_children_only,
+                             const bool clear_runtime_dirs);
   Result<void> SendSignals(const bool cvd_server_children_only);
-  Result<std::vector<RunCvdProcInfo>> CollectInfo();
-  std::vector<RunCvdProcInfo> run_cvd_processes_;
+  Result<RunCvdProcInfo> AnalyzeRunCvdProcess(const pid_t pid);
+  void DeleteLockFiles(const bool cvd_server_children_only);
+  Result<std::vector<GroupProcInfo>> CollectInfo();
+  std::vector<GroupProcInfo> cf_groups_;
 };
 
 struct DeviceClearOptions {

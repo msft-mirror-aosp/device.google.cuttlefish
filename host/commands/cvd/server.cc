@@ -28,8 +28,8 @@
 
 #include <android-base/file.h>
 #include <android-base/logging.h>
+#include <android-base/strings.h>
 #include <fruit/fruit.h>
-#include <json/json.h>
 
 #include "cvd_server.pb.h"
 
@@ -42,15 +42,22 @@
 #include "common/libs/utils/scope_guard.h"
 #include "common/libs/utils/shared_fd_flag.h"
 #include "common/libs/utils/subprocess.h"
-#include "host/commands/cvd/acloud_command.h"
 #include "host/commands/cvd/build_api.h"
 #include "host/commands/cvd/command_sequence.h"
 #include "host/commands/cvd/demo_multi_vd.h"
 #include "host/commands/cvd/epoll_loop.h"
 #include "host/commands/cvd/logger.h"
+#include "host/commands/cvd/server_command/acloud.h"
+#include "host/commands/cvd/server_command/cmd_list.h"
+#include "host/commands/cvd/server_command/crosvm.h"
+#include "host/commands/cvd/server_command/display.h"
+#include "host/commands/cvd/server_command/env.h"
 #include "host/commands/cvd/server_command/generic.h"
+#include "host/commands/cvd/server_command/handler_proxy.h"
 #include "host/commands/cvd/server_command/load_configs.h"
 #include "host/commands/cvd/server_command/operation_to_bins_map.h"
+#include "host/commands/cvd/server_command/power.h"
+#include "host/commands/cvd/server_command/reset.h"
 #include "host/commands/cvd/server_command/start.h"
 #include "host/commands/cvd/server_command/subcmd.h"
 #include "host/commands/cvd/server_constants.h"
@@ -71,7 +78,8 @@ CvdServer::CvdServer(BuildApi& build_api, EpollPool& epoll_pool,
       instance_manager_(instance_manager),
       host_tool_target_manager_(host_tool_target_manager),
       server_logger_(server_logger),
-      running_(true) {
+      running_(true),
+      optout_(false) {
   std::scoped_lock lock(threads_mutex_);
   for (auto i = 0; i < kNumThreads; i++) {
     threads_.emplace_back([this]() {
@@ -101,14 +109,24 @@ fruit::Component<> CvdServer::RequestComponent(CvdServer* server) {
       .bindInstance(server->instance_manager_)
       .bindInstance(server->build_api_)
       .bindInstance(server->host_tool_target_manager_)
-      .install(AcloudCommandComponent)
+      .bindInstance<
+          fruit::Annotated<AcloudTranslatorOptOut, std::atomic<bool>>>(
+          server->optout_)
+      .install(CvdAcloudComponent)
+      .install(CvdCmdlistComponent)
       .install(CommandSequenceExecutorComponent)
+      .install(CvdCrosVmComponent)
       .install(cvdCommandComponent)
+      .install(CvdDevicePowerComponent)
+      .install(CvdDisplayComponent)
+      .install(CvdEnvComponent)
       .install(cvdGenericCommandComponent)
+      .install(CvdHandlerProxyComponent)
       .install(CvdHelpComponent)
+      .install(CvdResetComponent)
       .install(CvdRestartComponent)
       .install(cvdShutdownComponent)
-      .install(cvdStartCommandComponent)
+      .install(CvdStartCommandComponent)
       .install(cvdVersionComponent)
       .install(DemoMultiVdComponent)
       .install(LoadConfigsComponent);
@@ -179,7 +197,7 @@ Result<void> CvdServer::Exec(SharedFD new_exe, SharedFD client_fd) {
   android::base::unique_fd client_dup{client_fd->UNMANAGED_Dup()};
   CF_EXPECT(client_dup.get() >= 0, "dup: \"" << server_fd_->StrError() << "\"");
   std::vector<std::string> argv_str = {
-      "cvd_server",
+      kServerExecPath,
       "-INTERNAL_server_fd=" + std::to_string(server_dup.get()),
       "-INTERNAL_carryover_client_fd=" + std::to_string(client_dup.get()),
   };
@@ -296,54 +314,73 @@ Result<void> CvdServer::HandleMessage(EpollEvent event) {
   return {};
 }
 
-static bool IsCmdListRequest(const RequestWithStdio& request) {
-  const auto& args = request.Message().command_request().args();
-  if (args.size() < 2) {
-    return false;
+// convert HOME, ANDROID_HOST_OUT, ANDROID_SOONG_HOST_OUT
+// and ANDROID_PRODUCT_OUT into absolute paths if any.
+static Result<RequestWithStdio> ConvertDirPathToAbsolute(
+    const RequestWithStdio& request) {
+  if (request.Message().contents_case() !=
+      cvd::Request::ContentsCase::kCommandRequest) {
+    return request;
   }
-  return (args[1] == "cmd-list");
-}
+  if (request.Message().command_request().env().empty()) {
+    return request;
+  }
+  auto envs =
+      cvd_common::ConvertToEnvs(request.Message().command_request().env());
+  std::unordered_set<std::string> interested_envs{
+      kAndroidHostOut, kAndroidSoongHostOut, "HOME", kAndroidProductOut};
+  const auto& current_dir =
+      request.Message().command_request().working_directory();
 
-/**
- * Returns the list of valid subcommands that cvd server can handle.
- *
- * The server is in the best position to list all the subcommands. This list
- * is, however, needed by the parser. For now, the parser is in the client
- * side, and is planned to be moved to the server side eventually. Until it
- * is done, we offer an undocumented (not present in the help message) subcmd
- * that is "subcmd-list."  This is the implementation.
- *
- * TODO(kwstephenkim): move the argument separator parser from the client to
- * the server side, and delete this function.
- *
- */
-static Result<cvd::Response> HandleCmdList(
-    const RequestWithStdio& request,
-    const std::vector<CvdServerHandler*>& handlers) {
-  std::unordered_set<std::string> subcmds;
-  for (const auto& handler : handlers) {
-    auto&& cmds_list = handler->CmdList();
-    for (const auto& cmd : cmds_list) {
-      subcmds.insert(cmd);
+  // make sure that "~" is not included
+  for (const auto& key : interested_envs) {
+    if (!Contains(envs, key)) {
+      continue;
     }
+    const auto& dir = envs.at(key);
+    CF_EXPECT(dir != "~" && !android::base::StartsWith(dir, "~/"),
+              "The " << key << " directory should not start with ~");
   }
-  CF_EXPECT(!subcmds.empty());
 
-  cvd::Response response;
-  response.mutable_command_response();
-  response.mutable_status()->set_code(cvd::Status::OK);
+  for (const auto& key : interested_envs) {
+    if (!Contains(envs, key)) {
+      continue;
+    }
+    const auto dir = envs.at(key);
+    envs[key] =
+        CF_EXPECT(EmulateAbsolutePath({.current_working_dir = current_dir,
+                                       .home_dir = std::nullopt,  // unused
+                                       .path_to_convert = dir,
+                                       .follow_symlink = false}));
+  }
 
-  // duplication removed
-  std::vector<std::string> subcmds_vec{subcmds.begin(), subcmds.end()};
-  const auto subcmds_str = android::base::Join(subcmds_vec, ",");
-  Json::Value subcmd_info;
-  subcmd_info["subcmd"] = subcmds_str;
-  WriteAll(request.Out(), subcmd_info.toStyledString());
-  return response;
+  auto cmd_args =
+      cvd_common::ConvertToArgs(request.Message().command_request().args());
+  auto selector_args = cvd_common::ConvertToArgs(
+      request.Message().command_request().selector_opts().args());
+  RequestWithStdio new_request(
+      request.Client(),
+      MakeRequest({.cmd_args = std::move(cmd_args),
+                   .selector_args = std::move(selector_args),
+                   .env = std::move(envs),
+                   .working_dir = current_dir},
+                  request.Message().command_request().wait_behavior()),
+      request.FileDescriptors(), request.Credentials());
+  return new_request;
 }
 
-Result<cvd::Response> CvdServer::HandleRequest(RequestWithStdio request,
+static Result<void> VerifyUser(const RequestWithStdio& request) {
+  CF_EXPECT(request.Credentials(),
+            "ucred is not available while it is necessary.");
+  const uid_t client_uid = request.Credentials()->uid;
+  CF_EXPECT_EQ(client_uid, getuid(), "Cvd server process is one per user.");
+  return {};
+}
+
+Result<cvd::Response> CvdServer::HandleRequest(RequestWithStdio orig_request,
                                                SharedFD client) {
+  CF_EXPECT(VerifyUser(orig_request));
+  auto request = CF_EXPECT(ConvertDirPathToAbsolute(orig_request));
   fruit::Injector<> injector(RequestComponent, this);
 
   for (auto& late_injected : injector.getMultibindings<LateInjected>()) {
@@ -351,10 +388,6 @@ Result<cvd::Response> CvdServer::HandleRequest(RequestWithStdio request,
   }
 
   auto possible_handlers = injector.getMultibindings<CvdServerHandler>();
-  if (IsCmdListRequest(request)) {
-    auto response = CF_EXPECT(HandleCmdList(request, possible_handlers));
-    return response;
-  }
 
   // Even if the interrupt callback outlives the request handler, it'll only
   // hold on to this struct which will be cleaned out when the request handler
