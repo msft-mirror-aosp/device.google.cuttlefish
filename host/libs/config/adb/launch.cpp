@@ -15,6 +15,16 @@
  */
 #include "host/libs/config/adb/adb.h"
 
+#include <string>
+#include <unordered_set>
+#include <utility>
+#include <vector>
+
+#include <fruit/fruit.h>
+
+#include "common/libs/utils/result.h"
+#include "host/commands/kernel_log_monitor/utils.h"
+#include "host/libs/config/command_source.h"
 #include "host/libs/config/cuttlefish_config.h"
 #include "host/libs/config/known_paths.h"
 
@@ -68,8 +78,7 @@ class AdbConnector : public CommandSource {
   INJECT(AdbConnector(const AdbHelper& helper)) : helper_(helper) {}
 
   // CommandSource
-  Result<std::vector<Command>> Commands() override {
-    Command console_forwarder_cmd(ConsoleForwarderBinary());
+  Result<std::vector<MonitorCommand>> Commands() override {
     Command adb_connector(AdbConnectorBinary());
     std::set<std::string> addresses;
 
@@ -89,9 +98,10 @@ class AdbConnector : public CommandSource {
     }
     address_arg.pop_back();
     adb_connector.AddParameter(address_arg);
-    std::vector<Command> commands;
+
+    std::vector<MonitorCommand> commands;
     commands.emplace_back(std::move(adb_connector));
-    return std::move(commands);
+    return commands;
   }
 
   // SetupFeature
@@ -117,11 +127,10 @@ class SocketVsockProxy : public CommandSource, public KernelLogPipeConsumer {
         log_pipe_provider_(log_pipe_provider) {}
 
   // CommandSource
-  Result<std::vector<Command>> Commands() override {
-    std::vector<Command> commands;
+  Result<std::vector<MonitorCommand>> Commands() override {
+    std::vector<MonitorCommand> commands;
     if (helper_.VsockTunnelEnabled()) {
       Command adb_tunnel(SocketVsockProxyBinary());
-      adb_tunnel.AddParameter("-adbd_events_fd=", kernel_log_pipe_);
       /**
        * This socket_vsock_proxy (a.k.a. sv proxy) runs on the host. It assumes
        * that another sv proxy runs inside the guest. see:
@@ -136,6 +145,8 @@ class SocketVsockProxy : public CommandSource, public KernelLogPipeConsumer {
        * instance.adb_host_port()
        *
        */
+      adb_tunnel.AddParameter("--events_fd=", kernel_log_pipe_);
+      adb_tunnel.AddParameter("--start_event_id=", monitor::Event::AdbdStarted);
       adb_tunnel.AddParameter("--server_type=tcp");
       adb_tunnel.AddParameter("--server_fd=", tcp_server_);
       adb_tunnel.AddParameter("--client_type=vsock");
@@ -145,7 +156,6 @@ class SocketVsockProxy : public CommandSource, public KernelLogPipeConsumer {
     }
     if (helper_.VsockHalfTunnelEnabled()) {
       Command adb_tunnel(SocketVsockProxyBinary());
-      adb_tunnel.AddParameter("-adbd_events_fd=", kernel_log_pipe_);
       /*
        * This socket_vsock_proxy (a.k.a. sv proxy) runs on the host, and
        * cooperates with the adbd inside the guest. See this file:
@@ -156,6 +166,8 @@ class SocketVsockProxy : public CommandSource, public KernelLogPipeConsumer {
        * should be therefore tcp, and the port should differ from instance to
        * instance and be equal to instance.adb_host_port()
        */
+      adb_tunnel.AddParameter("--events_fd=", kernel_log_pipe_);
+      adb_tunnel.AddParameter("--start_event_id=", monitor::Event::AdbdStarted);
       adb_tunnel.AddParameter("--server_type=tcp");
       adb_tunnel.AddParameter("--server_fd=", tcp_server_);
       adb_tunnel.AddParameter("--client_type=vsock");
