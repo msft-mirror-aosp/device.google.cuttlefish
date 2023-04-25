@@ -30,11 +30,13 @@
 #include <algorithm>
 #include <cstdlib>
 #include <fstream>
+#include <future>
 #include <iomanip>
 #include <iostream>
 #include <memory>
 #include <sstream>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include <android-base/strings.h>
@@ -229,34 +231,46 @@ int StopCvdMain(int argc, char** argv) {
     return FallBackStop(FallbackDirs());
   }
 
-  int ret = 0;
-  for (const auto& instance : config->Instances()) {
-    auto session_id = instance.session_id();
-    int exit_status = StopInstance(*config, instance, wait_for_launcher);
-    if (exit_status == 0 && instance.use_allocd()) {
-      // only release session resources if the instance was stopped
-      SharedFD allocd_sock =
-          SharedFD::SocketLocalClient(kDefaultLocation, false, SOCK_STREAM);
-      if (!allocd_sock->IsOpen()) {
-        LOG(ERROR) << "Unable to connect to allocd on "
-                   << kDefaultLocation << ": "
-                   << allocd_sock->StrError();
-      }
+  int exit_code = 0;
+  auto instances = config->Instances();
+  std::vector<std::future<int>> exit_state_futures;
+  exit_state_futures.reserve(instances.size());
+  for (const auto& instance : instances) {
+    std::future<int> exit_code_from_thread = std::async(
+        std::launch::async,
+        [&instance, &config, &wait_for_launcher,
+         &clear_instance_dirs]() -> int {
+          int exit_status = StopInstance(*config, instance, wait_for_launcher);
+          {
+            auto session_id = instance.session_id();
+            if (exit_status == 0 && instance.use_allocd()) {
+              // only release session resources if the instance was stopped
+              SharedFD allocd_sock = SharedFD::SocketLocalClient(
+                  kDefaultLocation, false, SOCK_STREAM);
+              if (!allocd_sock->IsOpen()) {
+                LOG(ERROR) << "Unable to connect to allocd on "
+                           << kDefaultLocation << ": "
+                           << allocd_sock->StrError();
+              }
+              ReleaseAllocdResources(allocd_sock, session_id);
+            }
+          }
 
-      ReleaseAllocdResources(allocd_sock, session_id);
-    }
-    if (clear_instance_dirs) {
-      if (DirectoryExists(instance.instance_dir())) {
-        LOG(INFO) << "Deleting instance dir " << instance.instance_dir();
-        if (!RecursivelyRemoveDirectory(instance.instance_dir())) {
-          LOG(ERROR) << "Unable to rmdir " << instance.instance_dir();
-        }
-      }
-    }
-    ret |= exit_status;
+          if (clear_instance_dirs && DirectoryExists(instance.instance_dir())) {
+            LOG(INFO) << "Deleting instance dir " << instance.instance_dir();
+            if (!RecursivelyRemoveDirectory(instance.instance_dir())) {
+              LOG(ERROR) << "Unable to rmdir " << instance.instance_dir();
+            }
+          }
+          return exit_status;
+        });
+    exit_state_futures.push_back(std::move(exit_code_from_thread));
+  }
+  for (auto& exit_status : exit_state_futures) {
+    exit_code |= exit_status.get();
   }
 
-  return ret;
+  return exit_code;
 }
 
 } // namespace
