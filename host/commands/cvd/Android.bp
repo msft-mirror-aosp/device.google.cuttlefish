@@ -31,6 +31,7 @@ cc_binary_host {
         "server.cc",
         "server_client.cpp",
         "server_command.cpp",
+        "server_constants.cpp",
         "server_shutdown.cpp",
         "server_version.cpp",
     ],

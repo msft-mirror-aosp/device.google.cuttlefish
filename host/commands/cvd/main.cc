@@ -25,7 +25,6 @@
 
 #include <android-base/file.h>
 #include <android-base/logging.h>
-#include <android-base/result.h>
 #include <build/version.h>
 
 #include "cvd_server.pb.h"
@@ -46,23 +45,11 @@
 namespace cuttlefish {
 namespace {
 
-Result<SharedFD> ConnectToServer() {
-  auto connection =
-      SharedFD::SocketLocalClient(cvd::kServerSocketPath,
-                                  /*is_abstract=*/true, SOCK_SEQPACKET);
-  if (!connection->IsOpen()) {
-    auto connection =
-        SharedFD::SocketLocalClient(cvd::kServerSocketPath,
-                                    /*is_abstract=*/true, SOCK_STREAM);
-  }
-  if (!connection->IsOpen()) {
-    return CF_ERR("Failed to connect to server" << connection->StrError());
-  }
-  return connection;
-}
-
 class CvdClient {
  public:
+  CvdClient(const std::string& server_socket_path = ServerSocketPath())
+      : server_socket_path_(server_socket_path) {}
+
   Result<void> EnsureCvdServerRunning(const std::string& host_tool_directory,
                                       int num_retries = 1) {
     cvd::Request request;
@@ -201,7 +188,23 @@ class CvdClient {
   }
 
  private:
+  std::string server_socket_path_;
   std::optional<UnixMessageSocket> server_;
+
+  Result<SharedFD> ConnectToServer() {
+    auto connection =
+        SharedFD::SocketLocalClient(server_socket_path_,
+                                    /*is_abstract=*/true, SOCK_SEQPACKET);
+    if (!connection->IsOpen()) {
+      auto connection =
+          SharedFD::SocketLocalClient(server_socket_path_,
+                                      /*is_abstract=*/true, SOCK_STREAM);
+    }
+    if (!connection->IsOpen()) {
+      return CF_ERR("Failed to connect to server" << connection->StrError());
+    }
+    return connection;
+  }
 
   Result<void> SetServer(const SharedFD& server) {
     CF_EXPECT(!server_, "Already have a server");
@@ -249,7 +252,7 @@ class CvdClient {
 
   Result<void> StartCvdServer(const std::string& host_tool_directory) {
     SharedFD server_fd =
-        SharedFD::SocketLocalServer(cvd::kServerSocketPath,
+        SharedFD::SocketLocalServer(server_socket_path_,
                                     /*is_abstract=*/true, SOCK_SEQPACKET, 0666);
     CF_EXPECT(server_fd->IsOpen(), server_fd->StrError());
 
@@ -263,7 +266,7 @@ class CvdClient {
     command.Start(options);
 
     // Connect to the server_fd, which waits for startup.
-    CF_EXPECT(SetServer(SharedFD::SocketLocalClient(cvd::kServerSocketPath,
+    CF_EXPECT(SetServer(SharedFD::SocketLocalClient(server_socket_path_,
                                                     /*is_abstract=*/true,
                                                     SOCK_SEQPACKET)));
     return {};
@@ -299,8 +302,31 @@ class CvdClient {
   abort();
 }
 
+/**
+ * Terminates a cvd server listening on "cvd_server"
+ *
+ * So far, the server processes across users were listing on the "cvd_server"
+ * socket. And, so far, we had one user. Now, we have multiple users. Each
+ * server listens to cvd_server_<uid>. The thing is if there is a server process
+ * started out of an old executable it will be listening to "cvd_server," and
+ * thus we should kill the server process first.
+ */
+Result<void> KillOldServer() {
+  CvdClient client_to_old_server("cvd_server");
+  auto result = client_to_old_server.StopCvdServer(/*clear=*/true);
+  if (!result.ok()) {
+    LOG(ERROR) << "Old server listening on \"cvd_server\" socket "
+               << "must be killed first but failed to terminate it.";
+    LOG(ERROR) << "Perhaps, try cvd reset -y";
+    return CF_ERR(result.error().message());
+  }
+  return {};
+}
+
 Result<int> CvdMain(int argc, char** argv, char** envp) {
   android::base::InitLogging(argv, android::base::StderrLogger);
+  CF_EXPECT(KillOldServer(),
+            "Failed to kill an old server process listening on \"cvd_server\"");
 
   std::vector<std::string> args = ArgsToVec(argc, argv);
   std::vector<Flag> flags;
