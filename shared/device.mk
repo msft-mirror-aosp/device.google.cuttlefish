@@ -37,7 +37,7 @@ PRODUCT_VENDOR_PROPERTIES += \
 
 PRODUCT_SOONG_NAMESPACES += device/generic/goldfish # for audio and wifi
 
-PRODUCT_SHIPPING_API_LEVEL := 34
+PRODUCT_SHIPPING_API_LEVEL := 35
 PRODUCT_USE_DYNAMIC_PARTITIONS := true
 DISABLE_RILD_OEM_HOOK := true
 
@@ -544,10 +544,6 @@ PRODUCT_PACKAGES += \
 PRODUCT_PACKAGES += \
     com.android.hardware.usb
 
-# USB Gadget
-PRODUCT_PACKAGES += \
-    android.hardware.usb.gadget-service.example
-
 # Vibrator HAL
 ifeq ($(LOCAL_PREFER_VENDOR_APEX),true)
 PRODUCT_PACKAGES += com.android.hardware.vibrator
@@ -555,6 +551,12 @@ else
 PRODUCT_PACKAGES += \
     android.hardware.vibrator-service.example
 endif
+
+PRODUCT_PACKAGES += \
+    android.hardware.secure_element-service.example
+
+PRODUCT_COPY_FILES += \
+    frameworks/native/data/etc/android.hardware.se.omapi.ese.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.se.omapi.ese.xml
 
 # BootControl HAL
 PRODUCT_PACKAGES += \

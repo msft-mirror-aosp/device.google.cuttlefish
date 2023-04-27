@@ -212,6 +212,13 @@ static const std::set<std::string> kAlwaysMissingAidl = {
      * run during normal boot, only in recovery/fastboot mode.
      */
     "android.hardware.fastboot",
+    /**
+     * No implementation for usb gadget HAL because cuttlefish doesn't
+     * support usb gadget configfs, and currently there is no
+     * plan to add this support.
+     * Context: (b/130076572, g/android-idl-discuss/c/0SaiY0p-vJw/)
+     */
+    "android.hardware.usb.gadget",
 };
 
 /*
@@ -228,7 +235,6 @@ static const std::vector<VersionedAidlPackage> kKnownMissingAidl = {
     {"android.hardware.identity.", 5, 266869317},
 
     {"android.se.omapi.", 1, 266870904},
-    {"android.hardware.secure_element.", 1, 123254068},
     {"android.hardware.soundtrigger3.", 1, 266941225},
     {"android.media.soundtrigger.", 1, 266941225},
     {"android.hardware.media.c2.", 1, 251850069},
