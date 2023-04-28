@@ -18,7 +18,7 @@
 # Common BoardConfig for all supported architectures.
 #
 
-TARGET_KERNEL_USE ?= 5.15
+TARGET_KERNEL_USE ?= 6.1
 TARGET_KERNEL_ARCH ?= $(TARGET_ARCH)
 SYSTEM_DLKM_SRC ?= kernel/prebuilts/$(TARGET_KERNEL_USE)/$(TARGET_KERNEL_ARCH)
 TARGET_KERNEL_PATH ?= $(SYSTEM_DLKM_SRC)/kernel-$(TARGET_KERNEL_USE)
@@ -43,17 +43,14 @@ RAMDISK_KERNEL_MODULES := \
     virtio-rng.ko \
     vmw_vsock_virtio_transport.ko \
 
-ifneq ($(filter-out 5.4 5.10,$(TARGET_KERNEL_USE)),)
-ifneq ($(filter-out 5.15,$(TARGET_KERNEL_USE)),)
-# GKI >5.15 will have and require virtio_pci_legacy_dev.ko
-RAMDISK_KERNEL_MODULES += virtio_pci_legacy_dev.ko
-endif
-# GKI >5.10 will have and require virtio_pci_modern_dev.ko
-RAMDISK_KERNEL_MODULES += virtio_pci_modern_dev.ko
-endif
-
 BOARD_VENDOR_RAMDISK_KERNEL_MODULES := \
     $(patsubst %,$(KERNEL_MODULES_PATH)/%,$(RAMDISK_KERNEL_MODULES))
+
+# GKI >5.15 will have and require virtio_pci_legacy_dev.ko
+BOARD_VENDOR_RAMDISK_KERNEL_MODULES += $(wildcard $(KERNEL_MODULES_PATH)/virtio_pci_legacy_dev.ko)
+# GKI >5.10 will have and require virtio_pci_modern_dev.ko
+BOARD_VENDOR_RAMDISK_KERNEL_MODULES += $(wildcard $(KERNEL_MODULES_PATH)/virtio_pci_modern_dev.ko)
+
 ALL_KERNEL_MODULES := $(wildcard $(KERNEL_MODULES_PATH)/*.ko)
 BOARD_VENDOR_KERNEL_MODULES := \
     $(filter-out $(BOARD_VENDOR_RAMDISK_KERNEL_MODULES),\
@@ -148,12 +145,18 @@ BOARD_AVB_INIT_BOOT_ROLLBACK_INDEX := $(PLATFORM_SECURITY_PATCH_TIMESTAMP)
 BOARD_AVB_INIT_BOOT_ROLLBACK_INDEX_LOCATION := 3
 
 # Enabled chained vbmeta for vendor_dlkm
-BOARD_AVB_VBMETA_CUSTOM_PARTITIONS := vendor_dlkm
+BOARD_AVB_VBMETA_CUSTOM_PARTITIONS := vendor_dlkm system_dlkm
 BOARD_AVB_VBMETA_VENDOR_DLKM := vendor_dlkm
 BOARD_AVB_VBMETA_VENDOR_DLKM_KEY_PATH := external/avb/test/data/testkey_rsa4096.pem
 BOARD_AVB_VBMETA_VENDOR_DLKM_ALGORITHM := SHA256_RSA4096
 BOARD_AVB_VBMETA_VENDOR_DLKM_ROLLBACK_INDEX := $(PLATFORM_SECURITY_PATCH_TIMESTAMP)
 BOARD_AVB_VBMETA_VENDOR_DLKM_ROLLBACK_INDEX_LOCATION := 4
+
+BOARD_AVB_VBMETA_SYSTEM_DLKM := system_dlkm
+BOARD_AVB_VBMETA_SYSTEM_DLKM_KEY_PATH := external/avb/test/data/testkey_rsa4096.pem
+BOARD_AVB_VBMETA_SYSTEM_DLKM_ALGORITHM := SHA256_RSA4096
+BOARD_AVB_VBMETA_SYSTEM_DLKM_ROLLBACK_INDEX := $(PLATFORM_SECURITY_PATCH_TIMESTAMP)
+BOARD_AVB_VBMETA_SYSTEM_DLKM_ROLLBACK_INDEX_LOCATION := 5
 
 
 # Using sha256 for dm-verity partitions. b/178983355
