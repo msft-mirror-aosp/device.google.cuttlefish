@@ -21,7 +21,7 @@
 #include <string>
 
 #include "common/libs/utils/result.h"
-#include "host/commands/cvd/selector/flag.h"
+#include "host/commands/cvd/flag.h"
 
 namespace cuttlefish {
 namespace selector {
@@ -70,11 +70,15 @@ class SelectorFlags {
   static constexpr char kAcquireFileLockEnv[] = "CVD_ACQUIRE_FILE_LOCK";
   static constexpr char kDisableDefaultGroup[] = "disable_default_group";
   static const SelectorFlags& Get();
+  static const SelectorFlags New();
 
-  Result<SelectorFlagProxy> GetFlag(const std::string& search_key) const {
+  Result<CvdFlagProxy> GetFlag(const std::string& search_key) const {
     auto flag = CF_EXPECT(flags_.GetFlag(search_key));
     return flag;
   }
+
+  std::vector<CvdFlagProxy> Flags() const { return flags_.Flags(); }
+  const auto& FlagsAsCollection() const { return flags_; }
 
  private:
   SelectorFlags() {
@@ -84,12 +88,12 @@ class SelectorFlags {
     flags_.EnrollFlag(AcquireFileLockFlag(kAcquireFileLock, true));
   }
 
-  SelectorFlag<std::string> GroupNameFlag(const std::string& name);
-  SelectorFlag<std::string> InstanceNameFlag(const std::string& name);
-  SelectorFlag<bool> DisableDefaultGroupFlag(const std::string& name,
-                                             const bool default_val);
-  SelectorFlag<bool> AcquireFileLockFlag(const std::string& name,
-                                         const bool default_val);
+  CvdFlag<std::string> GroupNameFlag(const std::string& name);
+  CvdFlag<std::string> InstanceNameFlag(const std::string& name);
+  CvdFlag<bool> DisableDefaultGroupFlag(const std::string& name,
+                                        const bool default_val);
+  CvdFlag<bool> AcquireFileLockFlag(const std::string& name,
+                                    const bool default_val);
 
   FlagCollection flags_;
 };

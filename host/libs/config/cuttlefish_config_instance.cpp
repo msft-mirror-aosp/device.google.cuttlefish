@@ -23,7 +23,6 @@
 #include "common/libs/utils/flags_validator.h"
 #include "host/libs/vm_manager/crosvm_manager.h"
 #include "host/libs/vm_manager/gem5_manager.h"
-#include "host/libs/vm_manager/qemu_manager.h"
 
 namespace cuttlefish {
 namespace {
@@ -663,14 +662,6 @@ bool CuttlefishConfig::InstanceSpecific::enable_audio() const {
   return (*Dictionary())[kEnableAudio].asBool();
 }
 
-static constexpr char kEnableVehicleHalServer[] = "enable_vehicle_hal_server";
-void CuttlefishConfig::MutableInstanceSpecific::set_enable_vehicle_hal_grpc_server(bool enable_vehicle_hal_grpc_server) {
-  (*Dictionary())[kEnableVehicleHalServer] = enable_vehicle_hal_grpc_server;
-}
-bool CuttlefishConfig::InstanceSpecific::enable_vehicle_hal_grpc_server() const {
-  return (*Dictionary())[kEnableVehicleHalServer].asBool();
-}
-
 static constexpr char kEnableGnssGrpcProxy[] = "enable_gnss_grpc_proxy";
 void CuttlefishConfig::MutableInstanceSpecific::set_enable_gnss_grpc_proxy(const bool enable_gnss_grpc_proxy) {
   (*Dictionary())[kEnableGnssGrpcProxy] = enable_gnss_grpc_proxy;
@@ -711,6 +702,14 @@ void CuttlefishConfig::MutableInstanceSpecific::set_protected_vm(bool protected_
 }
 bool CuttlefishConfig::InstanceSpecific::protected_vm() const {
   return (*Dictionary())[kProtectedVm].asBool();
+}
+
+static constexpr char kMte[] = "mte";
+void CuttlefishConfig::MutableInstanceSpecific::set_mte(bool mte) {
+  (*Dictionary())[kMte] = mte;
+}
+bool CuttlefishConfig::InstanceSpecific::mte() const {
+  return (*Dictionary())[kMte].asBool();
 }
 
 static constexpr char kEnableKernelLog[] = "enable_kernel_log";
@@ -1069,6 +1068,17 @@ void CuttlefishConfig::MutableInstanceSpecific::set_mobile_tap_name(
   (*Dictionary())[kMobileTapName] = mobile_tap_name;
 }
 
+static constexpr char kMobileMac[] = "mobile_mac";
+std::string CuttlefishConfig::InstanceSpecific::mobile_mac() const {
+  return (*Dictionary())[kMobileMac].asString();
+}
+void CuttlefishConfig::MutableInstanceSpecific::set_mobile_mac(
+    const std::string& mac) {
+  (*Dictionary())[kMobileMac] = mac;
+}
+
+// TODO(b/199103204): remove this as well when
+// PRODUCT_ENFORCE_MAC80211_HWSIM is removed
 static constexpr char kWifiTapName[] = "wifi_tap_name";
 std::string CuttlefishConfig::InstanceSpecific::wifi_tap_name() const {
   return (*Dictionary())[kWifiTapName].asString();
@@ -1085,6 +1095,15 @@ std::string CuttlefishConfig::InstanceSpecific::wifi_bridge_name() const {
 void CuttlefishConfig::MutableInstanceSpecific::set_wifi_bridge_name(
     const std::string& wifi_bridge_name) {
   (*Dictionary())[kWifiBridgeName] = wifi_bridge_name;
+}
+
+static constexpr char kWifiMac[] = "wifi_mac";
+std::string CuttlefishConfig::InstanceSpecific::wifi_mac() const {
+  return (*Dictionary())[kWifiMac].asString();
+}
+void CuttlefishConfig::MutableInstanceSpecific::set_wifi_mac(
+    const std::string& mac) {
+  (*Dictionary())[kWifiMac] = mac;
 }
 
 static constexpr char kUseBridgedWifiTap[] = "use_bridged_wifi_tap";
@@ -1243,14 +1262,6 @@ void CuttlefishConfig::MutableInstanceSpecific::set_tombstone_receiver_port(int 
   (*Dictionary())[kTombstoneReceiverPort] = tombstone_receiver_port;
 }
 
-static constexpr char kVehicleHalServerPort[] = "vehicle_hal_server_port";
-int CuttlefishConfig::InstanceSpecific::vehicle_hal_server_port() const {
-  return (*Dictionary())[kVehicleHalServerPort].asInt();
-}
-void CuttlefishConfig::MutableInstanceSpecific::set_vehicle_hal_server_port(int vehicle_hal_server_port) {
-  (*Dictionary())[kVehicleHalServerPort] = vehicle_hal_server_port;
-}
-
 static constexpr char kAudioControlServerPort[] = "audiocontrol_server_port";
 int CuttlefishConfig::InstanceSpecific::audiocontrol_server_port() const {
   return (*Dictionary())[kAudioControlServerPort].asInt();
@@ -1317,6 +1328,15 @@ void CuttlefishConfig::MutableInstanceSpecific::set_start_rootcanal(
 }
 bool CuttlefishConfig::InstanceSpecific::start_rootcanal() const {
   return (*Dictionary())[kStartRootcanal].asBool();
+}
+
+static constexpr char kStartPica[] = "start_pica";
+void CuttlefishConfig::MutableInstanceSpecific::set_start_pica(
+    bool start) {
+  (*Dictionary())[kStartPica] = start;
+}
+bool CuttlefishConfig::InstanceSpecific::start_pica() const {
+  return (*Dictionary())[kStartPica].asBool();
 }
 
 static constexpr char kStartNetsim[] = "start_netsim";
