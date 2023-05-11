@@ -150,10 +150,9 @@ static const std::set<std::string> kAutomotiveOnlyAidl = {
     /**
      * These types are only used in Android Automotive, so don't expect them
      * on phones.
-     * TODO(b/266868868) This test should run on Automotive devices to enforce
-     * the same requirements
      */
     "android.automotive.watchdog",
+    "android.frameworks.automotive.display",
     "android.frameworks.automotive.powerpolicy.internal",
     "android.frameworks.automotive.telemetry",
     "android.hardware.automotive.audiocontrol",
@@ -207,6 +206,8 @@ static const std::set<std::string> kAlwaysMissingAidl = {
     "android.hardware.uwb.fira_android",
     "android.hardware.keymaster",
     "android.hardware.automotive.vehicle.property",
+    // not on Cuttlefish since it's needed only on systems using HIDL audio HAL
+    "android.hardware.audio.sounddose",
 
     // android.hardware.media.bufferpool2 is a HAL-less interface.
     // It could be used for buffer recycling and caching by using the interface.
@@ -238,7 +239,6 @@ static const std::vector<VersionedAidlPackage> kKnownMissingAidl = {
 
     {"android.automotive.computepipe.registry.", 2, 273549907},
     {"android.automotive.computepipe.runner.", 2, 273549907},
-    {"android.frameworks.automotive.display.", 2, 274161444},
     {"android.frameworks.automotive.powerpolicy.", 2, 274160980},
     {"android.hardware.automotive.evs.", 2, 274162534},
     {"android.hardware.automotive.ivn.", 1, 274139217},

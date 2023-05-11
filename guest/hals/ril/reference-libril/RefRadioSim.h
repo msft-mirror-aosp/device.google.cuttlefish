@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2022 The Android Open Source Project
+ * Copyright (C) 2023 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,15 +14,18 @@
  * limitations under the License.
  */
 
-#include "host/commands/cvd/build_api.h"
+#pragma once
 
-#include "host/libs/web/http_client/http_client.h"
+#include <libradiocompat/RadioSim.h>
 
-namespace cuttlefish {
+namespace cf::ril {
 
-fruit::Component<BuildApi> BuildApiModule() {
-  return fruit::createComponent().registerProvider(
-      []() { return new BuildApi(); });
-}
+class RefRadioSim : public android::hardware::radio::compat::RadioSim {
+  public:
+    using android::hardware::radio::compat::RadioSim::RadioSim;
 
-}  // namespace cuttlefish
+    ::ndk::ScopedAStatus iccCloseLogicalChannelWithSessionInfo(
+            int32_t serial,
+            const ::aidl::android::hardware::radio::sim::SessionInfo& SessionInfo) override;
+};
+}  // namespace cf::ril

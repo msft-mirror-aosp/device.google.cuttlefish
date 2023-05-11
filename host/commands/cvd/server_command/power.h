@@ -16,34 +16,17 @@
 
 #pragma once
 
-#include <atomic>
-
 #include <fruit/fruit.h>
 
-#include "host/commands/cvd/server_client.h"
+#include "host/commands/cvd/instance_manager.h"
+#include "host/commands/cvd/server_command/host_tool_target_manager.h"
+#include "host/commands/cvd/server_command/subprocess_waiter.h"
 
 namespace cuttlefish {
 
-struct ConvertedAcloudCreateCommand {
-  std::vector<RequestWithStdio> prep_requests;
-  RequestWithStdio start_request;
-};
-
-class ConvertAcloudCreateCommand {
- public:
-  virtual Result<ConvertedAcloudCreateCommand> Convert(
-      const RequestWithStdio& request) = 0;
-  virtual const std::string& FetchCvdArgsFile() const = 0;
-  virtual const std::string& FetchCommandString() const = 0;
-  virtual bool Verbose() const = 0;
-  /*
-   * Android prouction build system appears to mandate virtual
-   * destructor.
-   */
-  virtual ~ConvertAcloudCreateCommand() = 0;
-};
-
-fruit::Component<ConvertAcloudCreateCommand>
-AcloudCreateConvertCommandComponent();
+// restart, powerwash
+fruit::Component<
+    fruit::Required<HostToolTargetManager, InstanceManager, SubprocessWaiter>>
+CvdDevicePowerComponent();
 
 }  // namespace cuttlefish

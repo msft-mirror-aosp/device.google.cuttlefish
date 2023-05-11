@@ -31,13 +31,15 @@ class UwbConnector : public CommandSource {
       : config_(config), instance_(instance) {}
 
   // CommandSource
-  Result<std::vector<Command>> Commands() override {
+  Result<std::vector<MonitorCommand>> Commands() override {
     Command command(HostBinaryPath("tcp_connector"));
     command.AddParameter("-fifo_out=", fifos_[0]);
     command.AddParameter("-fifo_in=", fifos_[1]);
     command.AddParameter("-data_port=", config_.pica_uci_port());
     command.AddParameter("-buffer_size=", kBufferSize);
-    return single_element_emplace(std::move(command));
+    std::vector<MonitorCommand> commands;
+    commands.emplace_back(std::move(command));
+    return commands;
   }
 
   // SetupFeature

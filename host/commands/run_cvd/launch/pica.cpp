@@ -33,7 +33,7 @@ class Pica : public CommandSource {
       : config_(config), instance_(instance), log_tee_(log_tee) {}
 
   // CommandSource
-  Result<std::vector<Command>> Commands() override {
+  Result<std::vector<MonitorCommand>> Commands() override {
     if (!Enabled()) {
       return {};
     }
@@ -43,8 +43,8 @@ class Pica : public CommandSource {
     command.AddParameter("--uci-port=", config_.pica_uci_port());
 
 
-    std::vector<Command> commands;
-    commands.emplace_back(log_tee_.CreateLogTee(command, "pica"));
+    std::vector<MonitorCommand> commands;
+    commands.emplace_back(std::move(log_tee_.CreateLogTee(command, "pica")));
     commands.emplace_back(std::move(command));
     return commands;
   }

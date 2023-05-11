@@ -147,7 +147,7 @@
 #define CF_DEFAULTS_WMEDIUMD_CONFIG CF_DEFAULTS_DYNAMIC_STRING
 
 // UWB default parameters
-#define CF_DEFAULTS_ENABLE_HOST_UWB true
+#define CF_DEFAULTS_ENABLE_HOST_UWB false
 #define CF_DEFAULTS_ENABLE_PICA_INSTANCE_NUM 0
 
 // Bluetooth default parameters
@@ -188,9 +188,6 @@
 // GflagsCompatFlag
 #define CF_DEFAULTS_RUN_ADB_CONNECTOR true
 #define CF_DEFAULTS_ADB_MODE "vsock_half_tunnel"
-
-// Vehicle default parameters
-#define CF_DEFAULTS_ENABLE_VEHICLE_HAL_GRPC_SERVER true
 
 // Location default parameters
 #define CF_DEFAULTS_START_GNSS_PROXY true
