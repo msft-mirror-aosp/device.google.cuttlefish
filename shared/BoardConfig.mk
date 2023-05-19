@@ -196,7 +196,8 @@ TARGET_USERIMAGES_SPARSE_EROFS_DISABLED ?= false
 TARGET_USERIMAGES_SPARSE_EXT_DISABLED ?= false
 TARGET_USERIMAGES_SPARSE_F2FS_DISABLED ?= false
 
-# Make the userdata partition 6G to accommodate ASAN and CTS
+# Make the userdata partition 8G to accommodate ASAN, CTS and provide
+# enough space for other cases (such as remount, etc)
 BOARD_USERDATAIMAGE_PARTITION_SIZE := $(TARGET_USERDATAIMAGE_PARTITION_SIZE)
 BOARD_USERDATAIMAGE_FILE_SYSTEM_TYPE := $(TARGET_USERDATAIMAGE_FILE_SYSTEM_TYPE)
 TARGET_USERIMAGES_USE_F2FS := true
@@ -354,6 +355,9 @@ AB_OTA_PARTITIONS += vendor_dlkm
 ifneq ($(BOARD_AVB_VBMETA_VENDOR_DLKM),)
 AB_OTA_PARTITIONS += vbmeta_vendor_dlkm
 endif
+endif
+ifneq ($(BOARD_AVB_VBMETA_SYSTEM_DLKM),)
+AB_OTA_PARTITIONS += vbmeta_system_dlkm
 endif
 
 ifneq ($(PRODUCT_BUILD_BOOT_IMAGE), false)

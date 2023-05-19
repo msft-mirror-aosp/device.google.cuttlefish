@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 #include <aidl/metadata.h>
 #include <android-base/logging.h>
 #include <android-base/properties.h>
@@ -24,13 +25,20 @@
 #include <hidl/metadata.h>
 #include <vintf/VintfObject.h>
 
+#include <algorithm>
+#include <cstddef>
+#include <map>
+#include <mutex>
+#include <set>
+#include <string>
+#include <vector>
+
 using namespace android;
 
 // clang-format off
 static const std::set<std::string> kAutomotiveOnlyHidl = {
     "android.frameworks.automotive.display@1.0",
     "android.hardware.automotive.can@1.0",
-    "android.hardware.automotive.evs@1.1",
     "android.hardware.broadcastradio@2.0",
 };
 
@@ -52,6 +60,7 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hardware.audio.effect@6.0",
     "android.hardware.automotive.audiocontrol@1.0",
     "android.hardware.automotive.audiocontrol@2.0",
+    "android.hardware.automotive.evs@1.1",
     "android.hardware.automotive.sv@1.0",
     "android.hardware.automotive.vehicle@2.0",
     "android.hardware.biometrics.fingerprint@2.3", // converted to AIDL, see b/152416783

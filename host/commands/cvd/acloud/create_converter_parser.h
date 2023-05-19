@@ -16,14 +16,22 @@
 
 #pragma once
 
-#include <fruit/fruit.h>
+#include <optional>
+#include <string>
 
-#include "host/commands/cvd/instance_manager.h"
-#include "host/commands/cvd/server_command/subprocess_waiter.h"
+#include "common/libs/utils/result.h"
+#include "host/commands/cvd/types.h"
 
 namespace cuttlefish {
+namespace acloud_impl {
 
-fruit::Component<fruit::Required<InstanceManager, SubprocessWaiter>>
-CvdCrosVmComponent();
+struct ConverterParsed {
+  bool local_instance_set;
+  std::optional<int> local_instance;
+  std::optional<std::string> flavor;
+};
 
+Result<ConverterParsed> ParseAcloudCreateFlags(cvd_common::Args& arguments);
+
+}  // namespace acloud_impl
 }  // namespace cuttlefish
