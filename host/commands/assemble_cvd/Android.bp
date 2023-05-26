@@ -31,6 +31,7 @@ cc_binary {
         "flag_feature.cpp",
         "misc_info.cc",
         "super_image_mixer.cc",
+        "vendor_dlkm_utils.cc",
     ],
     header_libs: [
         "bootimg_headers",
@@ -54,6 +55,7 @@ cc_binary {
         "libimage_aggregator",
         "libsparse",
         "libcuttlefish_display_flags",
+        "libcuttlefish_graphics_configuration",
         "libcuttlefish_graphics_detector",
         "libcuttlefish_host_config",
         "libcuttlefish_host_config_adb",
