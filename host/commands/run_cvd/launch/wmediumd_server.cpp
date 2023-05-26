@@ -103,12 +103,16 @@ class ValidateWmediumdService : public SetupFeature {
       const CuttlefishConfig::InstanceSpecific& instance))
       : config_(config), instance_(instance) {}
   std::string Name() const override { return "ValidateWmediumdService"; }
-  bool Enabled() const override { return !instance_.start_wmediumd(); }
+  bool Enabled() const override {
+    return config_.virtio_mac80211_hwsim() && !instance_.start_wmediumd();
+  }
 
  private:
   std::unordered_set<SetupFeature*> Dependencies() const override { return {}; }
   Result<void> ResultSetup() override {
-    CF_EXPECT(WaitForUnixSocket(config_.wmediumd_api_server_socket(), 30));
+    if (!config_.wmediumd_api_server_socket().empty()) {
+      CF_EXPECT(WaitForUnixSocket(config_.wmediumd_api_server_socket(), 30));
+    }
     CF_EXPECT(WaitForUnixSocket(config_.vhost_user_mac80211_hwsim(), 30));
 
     return {};

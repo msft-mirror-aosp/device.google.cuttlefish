@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 #include <aidl/metadata.h>
 #include <android-base/logging.h>
 #include <android-base/properties.h>
@@ -24,13 +25,20 @@
 #include <hidl/metadata.h>
 #include <vintf/VintfObject.h>
 
+#include <algorithm>
+#include <cstddef>
+#include <map>
+#include <mutex>
+#include <set>
+#include <string>
+#include <vector>
+
 using namespace android;
 
 // clang-format off
 static const std::set<std::string> kAutomotiveOnlyHidl = {
     "android.frameworks.automotive.display@1.0",
     "android.hardware.automotive.can@1.0",
-    "android.hardware.automotive.evs@1.1",
     "android.hardware.broadcastradio@2.0",
 };
 
@@ -52,6 +60,7 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hardware.audio.effect@6.0",
     "android.hardware.automotive.audiocontrol@1.0",
     "android.hardware.automotive.audiocontrol@2.0",
+    "android.hardware.automotive.evs@1.1",
     "android.hardware.automotive.sv@1.0",
     "android.hardware.automotive.vehicle@2.0",
     "android.hardware.biometrics.fingerprint@2.3", // converted to AIDL, see b/152416783
@@ -96,7 +105,7 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hardware.memtrack@1.0",
     "android.hardware.neuralnetworks@1.3", // converted to AIDL, see b/161428342
     "android.hardware.nfc@1.2",
-    "android.hardware.oemlock@1.0",
+    "android.hardware.oemlock@1.0", // converted to AIDL, see b/176107318 b/282160400
     "android.hardware.power@1.3",
     "android.hardware.power.stats@1.0",
     "android.hardware.radio@1.6", // converted to AIDL
@@ -212,6 +221,13 @@ static const std::set<std::string> kAlwaysMissingAidl = {
      * run during normal boot, only in recovery/fastboot mode.
      */
     "android.hardware.fastboot",
+    /**
+     * No implementation for usb gadget HAL because cuttlefish doesn't
+     * support usb gadget configfs, and currently there is no
+     * plan to add this support.
+     * Context: (b/130076572, g/android-idl-discuss/c/0SaiY0p-vJw/)
+     */
+    "android.hardware.usb.gadget",
 };
 
 /*
@@ -228,7 +244,6 @@ static const std::vector<VersionedAidlPackage> kKnownMissingAidl = {
     {"android.hardware.identity.", 5, 266869317},
 
     {"android.se.omapi.", 1, 266870904},
-    {"android.hardware.secure_element.", 1, 123254068},
     {"android.hardware.soundtrigger3.", 1, 266941225},
     {"android.media.soundtrigger.", 1, 266941225},
     {"android.hardware.media.c2.", 1, 251850069},

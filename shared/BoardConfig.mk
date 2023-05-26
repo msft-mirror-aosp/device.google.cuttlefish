@@ -43,17 +43,20 @@ RAMDISK_KERNEL_MODULES := \
     virtio-rng.ko \
     vmw_vsock_virtio_transport.ko \
 
-ifneq ($(filter-out 5.4 5.10,$(TARGET_KERNEL_USE)),)
-ifneq ($(filter-out 5.15,$(TARGET_KERNEL_USE)),)
-# GKI >5.15 will have and require virtio_pci_legacy_dev.ko
-RAMDISK_KERNEL_MODULES += virtio_pci_legacy_dev.ko
-endif
-# GKI >5.10 will have and require virtio_pci_modern_dev.ko
-RAMDISK_KERNEL_MODULES += virtio_pci_modern_dev.ko
+ifeq ($(TARGET_KERNEL_ARCH),arm64)
+BOARD_KERNEL_PATH_16K := kernel/prebuilts/mainline/$(TARGET_KERNEL_ARCH)/16k/kernel-mainline
+BOARD_KERNEL_MODULES_16K += $(wildcard kernel/prebuilts/mainline/$(TARGET_KERNEL_ARCH)/16k/*.ko)
+BOARD_KERNEL_MODULES_16K += $(wildcard kernel/prebuilts/common-modules/virtual-device/mainline/$(TARGET_KERNEL_ARCH)/16k/*.ko)
 endif
 
 BOARD_VENDOR_RAMDISK_KERNEL_MODULES := \
     $(patsubst %,$(KERNEL_MODULES_PATH)/%,$(RAMDISK_KERNEL_MODULES))
+
+# GKI >5.15 will have and require virtio_pci_legacy_dev.ko
+BOARD_VENDOR_RAMDISK_KERNEL_MODULES += $(wildcard $(KERNEL_MODULES_PATH)/virtio_pci_legacy_dev.ko)
+# GKI >5.10 will have and require virtio_pci_modern_dev.ko
+BOARD_VENDOR_RAMDISK_KERNEL_MODULES += $(wildcard $(KERNEL_MODULES_PATH)/virtio_pci_modern_dev.ko)
+
 ALL_KERNEL_MODULES := $(wildcard $(KERNEL_MODULES_PATH)/*.ko)
 BOARD_VENDOR_KERNEL_MODULES := \
     $(filter-out $(BOARD_VENDOR_RAMDISK_KERNEL_MODULES),\
@@ -199,7 +202,8 @@ TARGET_USERIMAGES_SPARSE_EROFS_DISABLED ?= false
 TARGET_USERIMAGES_SPARSE_EXT_DISABLED ?= false
 TARGET_USERIMAGES_SPARSE_F2FS_DISABLED ?= false
 
-# Make the userdata partition 6G to accommodate ASAN and CTS
+# Make the userdata partition 8G to accommodate ASAN, CTS and provide
+# enough space for other cases (such as remount, etc)
 BOARD_USERDATAIMAGE_PARTITION_SIZE := $(TARGET_USERDATAIMAGE_PARTITION_SIZE)
 BOARD_USERDATAIMAGE_FILE_SYSTEM_TYPE := $(TARGET_USERDATAIMAGE_FILE_SYSTEM_TYPE)
 TARGET_USERIMAGES_USE_F2FS := true
@@ -345,8 +349,6 @@ BOARD_MOVE_GSI_AVB_KEYS_TO_VENDOR_BOOT := true
 
 BOARD_GENERIC_RAMDISK_KERNEL_MODULES_LOAD := dm-user.ko
 
-BOARD_HAVE_BLUETOOTH := true
-
 # Enable the new fingerprint format on cuttlefish
 BOARD_USE_VBMETA_DIGTEST_IN_FINGERPRINT := true
 
@@ -359,6 +361,9 @@ AB_OTA_PARTITIONS += vendor_dlkm
 ifneq ($(BOARD_AVB_VBMETA_VENDOR_DLKM),)
 AB_OTA_PARTITIONS += vbmeta_vendor_dlkm
 endif
+endif
+ifneq ($(BOARD_AVB_VBMETA_SYSTEM_DLKM),)
+AB_OTA_PARTITIONS += vbmeta_system_dlkm
 endif
 
 ifneq ($(PRODUCT_BUILD_BOOT_IMAGE), false)
