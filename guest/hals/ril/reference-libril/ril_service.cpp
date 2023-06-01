@@ -3379,12 +3379,7 @@ Return<void> RadioImpl_1_6::stopKeepalive(int32_t serial, int32_t sessionHandle)
 #if VDBG
     RLOGD("%s(): %d", __FUNCTION__, serial);
 #endif
-    RequestInfo *pRI = android::addRequestToList(serial, mSlotId, RIL_REQUEST_STOP_KEEPALIVE);
-    if (pRI == NULL) {
-        return Void();
-    }
-
-    CALL_ONREQUEST(pRI->pCI->requestNumber, &sessionHandle, sizeof(uint32_t), pRI, mSlotId);
+    dispatchInts(serial, mSlotId, RIL_REQUEST_STOP_KEEPALIVE, 1, sessionHandle);
     return Void();
 }
 
@@ -11072,8 +11067,8 @@ void convertRilDataCallToHal(RIL_Data_Call_Response_v11* dcResponse,
         ::android::hardware::radio::V1_5::LinkAddress la;
         la.address = hidl_string(tok);
         la.properties = 0;
-        la.deprecationTime = 0;
-        la.expirationTime = 0;
+        la.deprecationTime = INT64_MAX;  // LinkAddress.java LIFETIME_PERMANENT = Long.MAX_VALUE
+        la.expirationTime = INT64_MAX;  // --"--
         linkAddresses.push_back(la);
     }
 
@@ -11101,8 +11096,8 @@ void convertRilDataCallToHal(RIL_Data_Call_Response_v11* dcResponse,
         ::android::hardware::radio::V1_5::LinkAddress la;
         la.address = hidl_string(tok);
         la.properties = 0;
-        la.deprecationTime = 0;
-        la.expirationTime = 0;
+        la.deprecationTime = INT64_MAX;  // LinkAddress.java LIFETIME_PERMANENT = Long.MAX_VALUE
+        la.expirationTime = INT64_MAX;  // --"--
         linkAddresses.push_back(la);
     }
 

@@ -93,12 +93,18 @@ CrosvmManager::ConfigureGraphics(
         {"androidboot.opengles.version", "196608"},  // OpenGL ES 3.0
     };
   } else if (instance.gpu_mode() == kGpuModeGfxstream ||
-             instance.gpu_mode() == kGpuModeGfxstreamGuestAngle) {
-    const bool uses_angle = instance.gpu_mode() == kGpuModeGfxstreamGuestAngle;
+             instance.gpu_mode() == kGpuModeGfxstreamGuestAngle ||
+             instance.gpu_mode() ==
+                 kGpuModeGfxstreamGuestAngleHostSwiftShader) {
+    const bool uses_angle =
+        instance.gpu_mode() == kGpuModeGfxstreamGuestAngle ||
+        instance.gpu_mode() == kGpuModeGfxstreamGuestAngleHostSwiftShader;
+
     const std::string gles_impl = uses_angle ? "angle" : "emulation";
     const std::string gltransport =
         (instance.guest_android_version() == "11.0.0") ? "virtio-gpu-pipe"
                                                        : "virtio-gpu-asg";
+
     bootconfig_args = {
         {"androidboot.cpuvulkan.version", "0"},
         {"androidboot.hardware.gralloc", "minigbm"},
@@ -181,8 +187,11 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
   const auto gpu_capture_enabled = !instance.gpu_capture_binary().empty();
   const auto gpu_mode = instance.gpu_mode();
 
-  const std::string gpu_angle_string =
-      gpu_mode == kGpuModeGfxstreamGuestAngle ? ",angle=true" : "";
+  const std::string gles_string =
+      gpu_mode == kGpuModeGfxstreamGuestAngle ||
+              gpu_mode == kGpuModeGfxstreamGuestAngleHostSwiftShader
+          ? ",gles=false"
+          : ",gles=true";
   // 256MB so it is small enough for a 32-bit kernel.
   const std::string gpu_pci_bar_size = ",pci-bar-size=268435456";
   const std::string gpu_udmabuf_string =
@@ -190,19 +199,33 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
 
   const std::string gpu_common_string = gpu_udmabuf_string + gpu_pci_bar_size;
   const std::string gpu_common_3d_string =
-      gpu_common_string + ",egl=true,surfaceless=true,glx=false,gles=true";
+      gpu_common_string + ",egl=true,surfaceless=true,glx=false" + gles_string;
 
   if (gpu_mode == kGpuModeGuestSwiftshader) {
     crosvm_cmd.Cmd().AddParameter("--gpu=backend=2D", gpu_common_string);
   } else if (gpu_mode == kGpuModeDrmVirgl) {
     crosvm_cmd.Cmd().AddParameter("--gpu=backend=virglrenderer",
                                   gpu_common_3d_string);
-  } else if (gpu_mode == kGpuModeGfxstream ||
-             gpu_mode == kGpuModeGfxstreamGuestAngle) {
-    const std::string capset_names = ",context-types=gfxstream";
-    crosvm_cmd.Cmd().AddParameter("--gpu=backend=gfxstream,gles31=true",
-                                  gpu_common_3d_string, gpu_angle_string,
-                                  capset_names);
+  } else if (gpu_mode == kGpuModeGfxstream) {
+    crosvm_cmd.Cmd().AddParameter(
+        "--gpu=context-types=gfxstream-gles:gfxstream-vulkan:gfxstream-"
+        "composer",
+        gpu_common_3d_string);
+  } else if (gpu_mode == kGpuModeGfxstreamGuestAngle ||
+             gpu_mode == kGpuModeGfxstreamGuestAngleHostSwiftShader) {
+    crosvm_cmd.Cmd().AddParameter(
+        "--gpu=context-types=gfxstream-vulkan:gfxstream-composer",
+        gpu_common_3d_string);
+
+    if (gpu_mode == kGpuModeGfxstreamGuestAngleHostSwiftShader) {
+      // See https://github.com/KhronosGroup/Vulkan-Loader.
+      const std::string swiftshader_icd_json =
+          HostUsrSharePath("vulkan/icd.d/vk_swiftshader_icd.json");
+      crosvm_cmd.Cmd().AddEnvironmentVariable("VK_DRIVER_FILES",
+                                              swiftshader_icd_json);
+      crosvm_cmd.Cmd().AddEnvironmentVariable("VK_ICD_FILENAMES",
+                                              swiftshader_icd_json);
+    }
   }
 
   if (instance.hwcomposer() != kHwComposerNone) {
@@ -314,6 +337,7 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
     crosvm_cmd.Cmd().AddParameter("--cid=", instance.vsock_guest_cid());
   }
 
+  // /dev/hvc0 = kernel console
   // If kernel log is enabled, the virtio-console port will be specified as
   // a true console for Linux, and kernel messages will be printed there.
   // Otherwise, the port will still be set up for bootloader and userspace
@@ -324,6 +348,7 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
   crosvm_cmd.AddHvcReadOnly(instance.kernel_log_pipe_name(),
                             instance.enable_kernel_log());
 
+  // /dev/hvc1 = serial console
   if (instance.console()) {
     // stdin is the only currently supported way to write data to a serial port
     // in crosvm. A file (named pipe) is used here instead of stdout to ensure
@@ -381,16 +406,20 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
     return StopperResult::kStopSuccess;
   });
 
+  // /dev/hvc2 = serial logging
   // Serial port for logcat, redirected to a pipe
   crosvm_cmd.AddHvcReadOnly(instance.logcat_pipe_name());
 
+  // /dev/hvc3 = keymaster (C++ implementation)
   crosvm_cmd.AddHvcReadWrite(
       instance.PerInstanceInternalPath("keymaster_fifo_vm.out"),
       instance.PerInstanceInternalPath("keymaster_fifo_vm.in"));
+  // /dev/hvc4 = gatekeeper
   crosvm_cmd.AddHvcReadWrite(
       instance.PerInstanceInternalPath("gatekeeper_fifo_vm.out"),
       instance.PerInstanceInternalPath("gatekeeper_fifo_vm.in"));
 
+  // /dev/hvc5 = bt
   if (config.enable_host_bluetooth()) {
     crosvm_cmd.AddHvcReadWrite(
         instance.PerInstanceInternalPath("bt_fifo_vm.out"),
@@ -398,6 +427,9 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
   } else {
     crosvm_cmd.AddHvcSink();
   }
+
+  // /dev/hvc6 = gnss
+  // /dev/hvc7 = location
   if (instance.enable_gnss_grpc_proxy()) {
     crosvm_cmd.AddHvcReadWrite(
         instance.PerInstanceInternalPath("gnsshvc_fifo_vm.out"),
@@ -411,10 +443,12 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
     }
   }
 
+  // /dev/hvc8 = confirmationui
   crosvm_cmd.AddHvcReadWrite(
       instance.PerInstanceInternalPath("confui_fifo_vm.out"),
       instance.PerInstanceInternalPath("confui_fifo_vm.in"));
 
+  // /dev/hvc9 = uwb
   if (config.enable_host_uwb()) {
     crosvm_cmd.AddHvcReadWrite(
         instance.PerInstanceInternalPath("uwb_fifo_vm.out"),
@@ -422,6 +456,16 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
   } else {
     crosvm_cmd.AddHvcSink();
   }
+
+  // /dev/hvc10 = oemlock
+  crosvm_cmd.AddHvcReadWrite(
+      instance.PerInstanceInternalPath("oemlock_fifo_vm.out"),
+      instance.PerInstanceInternalPath("oemlock_fifo_vm.in"));
+
+  // /dev/hvc11 = keymint (Rust implementation)
+  crosvm_cmd.AddHvcReadWrite(
+      instance.PerInstanceInternalPath("keymint_fifo_vm.out"),
+      instance.PerInstanceInternalPath("keymint_fifo_vm.in"));
 
   for (auto i = 0; i < VmManager::kMaxDisks - disk_num; i++) {
     crosvm_cmd.AddHvcSink();

@@ -134,8 +134,8 @@ QemuManager::ConfigureGraphics(
   // HALs.
 
   std::unordered_map<std::string, std::string> bootconfig_args;
-
-  if (instance.gpu_mode() == kGpuModeGuestSwiftshader) {
+  auto gpu_mode = instance.gpu_mode();
+  if (gpu_mode == kGpuModeGuestSwiftshader) {
     bootconfig_args = {
         {"androidboot.cpuvulkan.version", std::to_string(VK_API_VERSION_1_2)},
         {"androidboot.hardware.gralloc", "minigbm"},
@@ -145,7 +145,7 @@ QemuManager::ConfigureGraphics(
         // OpenGL ES 3.1
         {"androidboot.opengles.version", "196609"},
     };
-  } else if (instance.gpu_mode() == kGpuModeDrmVirgl) {
+  } else if (gpu_mode == kGpuModeDrmVirgl) {
     bootconfig_args = {
         {"androidboot.cpuvulkan.version", "0"},
         {"androidboot.hardware.gralloc", "minigbm"},
@@ -156,9 +156,12 @@ QemuManager::ConfigureGraphics(
         // OpenGL ES 3.0
         {"androidboot.opengles.version", "196608"},
     };
-  } else if (instance.gpu_mode() == kGpuModeGfxstream ||
-             instance.gpu_mode() == kGpuModeGfxstreamGuestAngle) {
-    const bool uses_angle = instance.gpu_mode() == kGpuModeGfxstreamGuestAngle;
+  } else if (gpu_mode == kGpuModeGfxstream ||
+             gpu_mode == kGpuModeGfxstreamGuestAngle ||
+             gpu_mode == kGpuModeGfxstreamGuestAngleHostSwiftShader) {
+    const bool uses_angle =
+        gpu_mode == kGpuModeGfxstreamGuestAngle ||
+        gpu_mode == kGpuModeGfxstreamGuestAngleHostSwiftShader;
     const std::string gles_impl = uses_angle ? "angle" : "emulation";
     const std::string gltransport =
         (instance.guest_android_version() == "11.0.0") ? "virtio-gpu-pipe"
@@ -347,7 +350,7 @@ Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
   qemu_cmd.AddParameter("guest=", instance.instance_name(), ",debug-threads=on");
 
   qemu_cmd.AddParameter("-machine");
-  std::string machine = is_x86 ? "pc-i440fx-2.8,nvdimm=on" : "virt";
+  std::string machine = is_x86 ? "pc,nvdimm=on" : "virt";
   if (IsHostCompatible(arch_)) {
     machine += ",accel=kvm";
     if (is_arm) {
@@ -408,14 +411,17 @@ Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
   qemu_cmd.AddParameter("-mon");
   qemu_cmd.AddParameter("chardev=charmonitor,id=monitor,mode=control");
 
-  if (instance.gpu_mode() == kGpuModeDrmVirgl) {
+  auto gpu_mode = instance.gpu_mode();
+  if (gpu_mode == kGpuModeDrmVirgl) {
     qemu_cmd.AddParameter("-display");
     qemu_cmd.AddParameter("egl-headless");
 
     qemu_cmd.AddParameter("-vnc");
     qemu_cmd.AddParameter("127.0.0.1:", instance.qemu_vnc_server_port());
-  } else if (instance.gpu_mode() == kGpuModeGfxstream ||
-             instance.gpu_mode() == kGpuModeGfxstreamGuestAngle) {
+  } else if (gpu_mode == kGpuModeGuestSwiftshader ||
+             gpu_mode == kGpuModeGfxstream ||
+             gpu_mode == kGpuModeGfxstreamGuestAngle ||
+             gpu_mode == kGpuModeGfxstreamGuestAngleHostSwiftShader) {
     qemu_cmd.AddParameter("-vnc");
     qemu_cmd.AddParameter("127.0.0.1:", instance.qemu_vnc_server_port());
   } else {
@@ -431,14 +437,29 @@ Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
     qemu_cmd.AddParameter("-device");
 
     std::string gpu_device;
-    if (instance.gpu_mode() == kGpuModeGuestSwiftshader ||
-        qemu_version.first < 6) {
-        gpu_device = "virtio-gpu-pci";
-    } else if (instance.gpu_mode() == kGpuModeDrmVirgl) {
-        gpu_device = "virtio-gpu-gl-pci";
-    } else if (instance.gpu_mode() == kGpuModeGfxstream ||
-               instance.gpu_mode() == kGpuModeGfxstreamGuestAngle) {
-        gpu_device = "virtio-gpu-gl-pci,capset_names=gfxstream,hostmem=256M";
+    if (gpu_mode == kGpuModeGuestSwiftshader || qemu_version.first < 6) {
+      gpu_device = "virtio-gpu-pci";
+    } else if (gpu_mode == kGpuModeDrmVirgl) {
+      gpu_device = "virtio-gpu-gl-pci";
+    } else if (gpu_mode == kGpuModeGfxstream) {
+      gpu_device =
+          "virtio-gpu-rutabaga-pci,capset_names=gfxstream-gles:gfxstream-"
+          "vulkan:gfxstream-composer,hostmem=256M";
+    } else if (gpu_mode == kGpuModeGfxstreamGuestAngle ||
+               gpu_mode == kGpuModeGfxstreamGuestAngleHostSwiftShader) {
+      gpu_device =
+          "virtio-gpu-rutabaga-pci,capset_names=gfxstream-vulkan:gfxstream-"
+          "composer,hostmem=256M";
+
+      if (gpu_mode == kGpuModeGfxstreamGuestAngleHostSwiftShader) {
+        // See https://github.com/KhronosGroup/Vulkan-Loader.
+        const std::string swiftshader_icd_json =
+            HostUsrSharePath("vulkan/icd.d/vk_swiftshader_icd.json");
+        qemu_cmd.AddEnvironmentVariable("VK_DRIVER_FILES",
+                                        swiftshader_icd_json);
+        qemu_cmd.AddEnvironmentVariable("VK_ICD_FILENAMES",
+                                        swiftshader_icd_json);
+      }
     }
 
     qemu_cmd.AddParameter(gpu_device, ",id=gpu0",
@@ -457,6 +478,7 @@ Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
     }
   }
 
+  // /dev/hvc0 = kernel console
   // If kernel log is enabled, the virtio-console port will be specified as
   // a true console for Linux, and kernel messages will be printed there.
   // Otherwise, the port will still be set up for bootloader and userspace
@@ -469,6 +491,7 @@ Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
   //  actually managed by the kernel as a console is handled elsewhere.)
   add_hvc_ro(instance.kernel_log_pipe_name());
 
+  // /dev/hvc1 = serial console
   if (instance.console()) {
     if (instance.kgdb() || instance.use_bootloader()) {
       add_serial_console(instance.console_pipe_prefix());
@@ -495,17 +518,23 @@ Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
     add_hvc_sink();
   }
 
+  // /dev/hvc2 = serial logging
   // Serial port for logcat, redirected to a pipe
   add_hvc_ro(instance.logcat_pipe_name());
 
+  // /dev/hvc3 = keymaster (C++ implementation)
   add_hvc(instance.PerInstanceInternalPath("keymaster_fifo_vm"));
+  // /dev/hvc4 = gatekeeper
   add_hvc(instance.PerInstanceInternalPath("gatekeeper_fifo_vm"));
+  // /dev/hvc5 = bt
   if (config.enable_host_bluetooth()) {
     add_hvc(instance.PerInstanceInternalPath("bt_fifo_vm"));
   } else {
     add_hvc_sink();
   }
 
+  // /dev/hvc6 = gnss
+  // /dev/hvc7 = location
   if (instance.enable_gnss_grpc_proxy()) {
     add_hvc(instance.PerInstanceInternalPath("gnsshvc_fifo_vm"));
     add_hvc(instance.PerInstanceInternalPath("locationhvc_fifo_vm"));
@@ -526,13 +555,21 @@ Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
    * confui_fifo_vm.{in/out} are created along with the streamer process,
    * which is not created w/ QEMU.
    */
+  // /dev/hvc8 = confirmationui
   add_hvc_sink();
 
+  // /dev/hvc9 = uwb
   if (config.enable_host_uwb()) {
     add_hvc("uwb_fifo_vm");
   } else {
     add_hvc_sink();
   }
+
+  // /dev/hvc10 = oemlock
+  add_hvc(instance.PerInstanceInternalPath("oemlock_fifo_vm"));
+
+  // /dev/hvc11 = keymint (Rust implementation)
+  add_hvc(instance.PerInstanceInternalPath("keymint_fifo_vm"));
 
   auto disk_num = instance.virtual_disk_paths().size();
 
