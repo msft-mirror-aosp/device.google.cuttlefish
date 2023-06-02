@@ -108,6 +108,7 @@ DEFINE_string(x_res, "0", "Width of the screen in pixels");
 DEFINE_string(y_res, "0", "Height of the screen in pixels");
 DEFINE_string(dpi, "0", "Pixels per inch for the screen");
 DEFINE_string(refresh_rate_hz, "60", "Screen refresh rate in Hertz");
+DEFINE_bool(use_16k, false, "Launch using 16k kernel");
 DEFINE_vec(kernel_path, CF_DEFAULTS_KERNEL_PATH,
               "Path to the kernel. Overrides the one from the boot image");
 DEFINE_vec(initramfs_path, CF_DEFAULTS_INITRAMFS_PATH,
@@ -785,8 +786,11 @@ Result<std::string> SelectGpuMode(
         LOG(INFO) << "Enabling --gpu_mode=drm_virgl.";
         return kGpuModeDrmVirgl;
       } else {
-        LOG(INFO) << "Enabling --gpu_mode=gfxstream.";
-        return kGpuModeGfxstream;
+        // TODO (284204884) accelerated gfx detection on launch_cvd startup
+        // broken atm. Until it can be fixed - default to guest swiftshader.
+        LOG(INFO) << "GPU auto mode: prereq detection for accel gfx is "
+                     "broken. Switching to --gpu_mode=guest_swiftshader.";
+        return kGpuModeGuestSwiftshader;
       }
     } else {
       LOG(INFO) << "GPU auto mode: did not detect prerequisites for "
@@ -1328,6 +1332,8 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
       if (vm_manager_vec[0] == QemuManager::name()) {
         instance.set_keyboard_server_port(calc_vsock_port(7000));
         instance.set_touch_server_port(calc_vsock_port(7100));
+        // intentionally do not set up rotary vsocks for QEMU.
+        // vsoc_input_service is deprecated and should be removed
       }
     }
     // end of gpu related settings
@@ -1354,7 +1360,12 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     persistent_disk &= !protected_vm_vec[instance_index];
     persistent_disk &= vm_manager_vec[0] != Gem5Manager::name();
     if (persistent_disk) {
-      auto path = const_instance.PerInstancePath("persistent_composite.img");
+      const bool is_vm_qemu_cli = (tmp_config_obj.vm_manager() == "qemu_cli");
+      const std::string persistent_composite_img_base =
+          is_vm_qemu_cli ? "persistent_composite_overlay.img"
+                         : "persistent_composite.img";
+      auto path =
+          const_instance.PerInstancePath(persistent_composite_img_base.data());
       virtual_disk_paths.push_back(path);
     }
 

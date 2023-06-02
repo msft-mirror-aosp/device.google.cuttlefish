@@ -71,6 +71,7 @@ enum class SecureHal {
   Unknown,
   Keymint,
   Gatekeeper,
+  Oemlock,
 };
 
 // Holds the configuration of the cuttlefish instances.
@@ -328,6 +329,7 @@ class CuttlefishConfig {
     std::string instance_internal_dir() const;
 
     std::string touch_socket_path(int screen_idx) const;
+    std::string rotary_socket_path() const;
     std::string keyboard_socket_path() const;
     std::string switches_socket_path() const;
     std::string frames_socket_path() const;
@@ -361,8 +363,9 @@ class CuttlefishConfig {
     std::string sdcard_path() const;
 
     std::string persistent_composite_disk_path() const;
-
+    std::string persistent_composite_overlay_path() const;
     std::string persistent_ap_composite_disk_path() const;
+    std::string persistent_ap_composite_overlay_path() const;
 
     std::string os_composite_disk_path() const;
 
