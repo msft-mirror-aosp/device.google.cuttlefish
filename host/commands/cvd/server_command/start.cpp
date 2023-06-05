@@ -172,22 +172,25 @@ Result<void> CvdStartCommandHandler::AcloudCompatActions(
         ConcatToString(acloud_compat_home_prefix, instance.instance_id_));
   }
   for (const auto acloud_compat_home : acloud_compat_homes) {
-    bool result_id = false;
+    bool result_deleted = true;
     std::stringstream acloud_compat_home_stream;
     if (!FileExists(acloud_compat_home)) {
       continue;
     }
-    if (!DirectoryExists(acloud_compat_home, /*follow_symlinks=*/false)) {
-      // cvd created a symbolic link
-      result_id = RemoveFile(acloud_compat_home);
-    } else {
-      // acloud created a directory
-      // rm -fr isn't supporetd by TreeHugger, so if we fork-and-exec to
-      // literally run "rm -fr", the presubmit testing may fail if ever this
-      // code is tested in the future.
-      result_id = RecursivelyRemoveDirectory(acloud_compat_home);
+    if (!Contains(group_creation_info.envs, kLaunchedByAcloud) ||
+        group_creation_info.envs.at(kLaunchedByAcloud) != "true") {
+      if (!DirectoryExists(acloud_compat_home, /*follow_symlinks=*/false)) {
+        // cvd created a symbolic link
+        result_deleted = RemoveFile(acloud_compat_home);
+      } else {
+        // acloud created a directory
+        // rm -fr isn't supporetd by TreeHugger, so if we fork-and-exec to
+        // literally run "rm -fr", the presubmit testing may fail if ever this
+        // code is tested in the future.
+        result_deleted = RecursivelyRemoveDirectory(acloud_compat_home);
+      }
     }
-    if (!result_id) {
+    if (!result_deleted) {
       LOG(ERROR) << "Removing " << acloud_compat_home << " failed.";
       continue;
     }
@@ -212,7 +215,7 @@ Result<void> CvdStartCommandHandler::AcloudCompatActions(
   const std::string& android_host_out = group_creation_info.host_artifacts_path;
   request_forms.push_back(
       {.working_dir = client_pwd,
-       .cmd_args = cvd_common::Args{"ln", "-f", "-s", android_host_out,
+       .cmd_args = cvd_common::Args{"ln", "-T", "-f", "-s", android_host_out,
                                     home_dir + "/host_bins"},
        .env = common_envs,
        .selector_args = cvd_common::Args{}});
@@ -241,8 +244,8 @@ Result<void> CvdStartCommandHandler::AcloudCompatActions(
     }
     request_forms.push_back({
         .working_dir = client_pwd,
-        .cmd_args =
-            cvd_common::Args{"ln", "-f", "-s", home_dir, acloud_compat_home},
+        .cmd_args = cvd_common::Args{"ln", "-T", "-f", "-s", home_dir,
+                                     acloud_compat_home},
         .env = common_envs,
         .selector_args = cvd_common::Args{},
     });
