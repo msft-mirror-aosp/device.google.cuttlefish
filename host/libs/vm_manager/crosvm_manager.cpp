@@ -48,7 +48,7 @@ namespace {
 std::string GetControlSocketPath(
     const CuttlefishConfig::InstanceSpecific& instance,
     const std::string& socket_name) {
-  return instance.PerInstanceInternalPath(socket_name.c_str());
+  return instance.PerInstanceInternalUdsPath(socket_name.c_str());
 }
 
 }  // namespace
@@ -177,6 +177,10 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
 
   if (instance.protected_vm()) {
     crosvm_cmd.Cmd().AddParameter("--protected-vm");
+  }
+
+  if (!instance.crosvm_use_balloon()) {
+    crosvm_cmd.Cmd().AddParameter("--no-balloon");
   }
 
   if (instance.gdb_port() > 0) {
