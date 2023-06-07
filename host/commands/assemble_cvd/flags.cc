@@ -580,7 +580,6 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
     instance.set_audiocontrol_server_port(9410);  /* OK to use the same port number across instances */
 
     instance.set_tombstone_receiver_port(6600 + num - 1);
-    instance.set_logcat_port(6700 + num - 1);
     instance.set_config_server_port(6800 + num - 1);
 
     if (FLAGS_gpu_mode != cuttlefish::kGpuModeDrmVirgl &&

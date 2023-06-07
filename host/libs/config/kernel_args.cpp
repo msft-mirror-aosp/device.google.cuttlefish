@@ -208,10 +208,6 @@ std::vector<std::string> KernelCommandLineFromConfig(const cuttlefish::Cuttlefis
   kernel_cmdline.push_back(concat("androidboot.vsock_gatekeeper_port=",
                                   instance.gatekeeper_vsock_port()));
 
-  if (instance.logcat_port()) {
-    kernel_cmdline.push_back(concat("androidboot.vsock_logcat_port=", instance.logcat_port()));
-  }
-
   if (instance.config_server_port()) {
     kernel_cmdline.push_back(concat("androidboot.cuttlefish_config_server_port=", instance.config_server_port()));
   }

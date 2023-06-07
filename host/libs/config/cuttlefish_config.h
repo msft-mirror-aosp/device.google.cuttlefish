@@ -346,8 +346,6 @@ class CuttlefishConfig {
     int audiocontrol_server_port() const;
     // Port number to connect to the tombstone receiver on the host
     int tombstone_receiver_port() const;
-    // Port number to connect to the logcat receiver on the host
-    int logcat_port() const;
     // Port number to connect to the config server on the host
     int config_server_port() const;
     // Port number to connect to the keyboard server on the host. (Only
@@ -446,7 +444,6 @@ class CuttlefishConfig {
     void set_vehicle_hal_server_port(int vehicle_server_port);
     void set_audiocontrol_server_port(int audiocontrol_server_port);
     void set_tombstone_receiver_port(int tombstone_receiver_port);
-    void set_logcat_port(int logcat_port);
     void set_config_server_port(int config_server_port);
     void set_gatekeeper_vsock_port(int gatekeeper_vsock_port);
     void set_keymaster_vsock_port(int keymaster_vsock_port);

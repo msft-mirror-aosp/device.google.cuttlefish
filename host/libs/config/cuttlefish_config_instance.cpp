@@ -42,7 +42,6 @@ const char *kHostPort = "host_port";
 const char *kAdbIPAndPort = "adb_ip_and_port";
 
 const char *kConfigServerPort = "config_server_port";
-const char *kLogcatPort = "logcat_port";
 const char *kVncServerPort = "vnc_server_port";
 const char *kTombstoneReceiverPort = "tombstone_receiver_port";
 const char *kVehicleHalServerPort = "vehicle_hal_server_port";
@@ -327,15 +326,6 @@ void CuttlefishConfig::MutableInstanceSpecific::set_audiocontrol_server_port(
 void CuttlefishConfig::MutableInstanceSpecific::set_vehicle_hal_server_port(
     int vehicle_hal_server_port) {
   (*Dictionary())[kVehicleHalServerPort] = vehicle_hal_server_port;
-}
-
-int CuttlefishConfig::InstanceSpecific::logcat_port() const {
-  return (*Dictionary())[kLogcatPort].asInt();
-}
-
-void CuttlefishConfig::MutableInstanceSpecific::set_logcat_port(
-    int logcat_port) {
-  (*Dictionary())[kLogcatPort] = logcat_port;
 }
 
 int CuttlefishConfig::InstanceSpecific::config_server_port() const {
