@@ -211,6 +211,8 @@ class ServerLoopImpl : public ServerLoop,
         instance_.logcat_pipe_name(),
         instance_.PerInstanceInternalPath("keymaster_fifo_vm.in"),
         instance_.PerInstanceInternalPath("keymaster_fifo_vm.out"),
+        instance_.PerInstanceInternalPath("keymint_fifo_vm.in"),
+        instance_.PerInstanceInternalPath("keymint_fifo_vm.out"),
         instance_.PerInstanceInternalPath("gatekeeper_fifo_vm.in"),
         instance_.PerInstanceInternalPath("gatekeeper_fifo_vm.out"),
         instance_.PerInstanceInternalPath("oemlock_fifo_vm.in"),
@@ -235,7 +237,7 @@ class ServerLoopImpl : public ServerLoop,
     DeleteFifos();
 
     // TODO(b/269669405): Figure out why this file is not being deleted
-    unlink(instance_.PerInstanceInternalPath("crosvm_control.sock").c_str());
+    unlink(instance_.PerInstanceInternalUdsPath("crosvm_control.sock").c_str());
 
     // TODO(schuffelen): Clean up duplication with assemble_cvd
     unlink(instance_.PerInstancePath("NVChip").c_str());
