@@ -604,7 +604,7 @@ int main(int argc, char** argv) {
 
   LaunchLogcatReceiver(*config, &process_monitor);
   LaunchConfigServer(*config, &process_monitor);
-  LaunchTombstoneReceiverIfEnabled(*config, &process_monitor);
+  LaunchTombstoneReceiver(*config, &process_monitor);
   LaunchSecureEnvironment(&process_monitor, *config);
 
   LaunchVerhicleHalServerIfEnabled(*config, &process_monitor);
@@ -633,8 +633,8 @@ int main(int argc, char** argv) {
   }
 
   // Start other host processes
-  LaunchSocketVsockProxyIfEnabled(&process_monitor, *config);
-  LaunchAdbConnectorIfEnabled(&process_monitor, *config, adbd_events_pipe);
+  LaunchSocketVsockProxyIfEnabled(&process_monitor, *config, adbd_events_pipe);
+  LaunchAdbConnectorIfEnabled(&process_monitor, *config);
 
   ServerLoop(launcher_monitor_socket, &process_monitor); // Should not return
   LOG(ERROR) << "The server loop returned, it should never happen!!";

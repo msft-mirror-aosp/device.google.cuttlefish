@@ -116,7 +116,7 @@ DEFINE_string(
 
 DEFINE_string(
         webrtc_public_ip,
-        "127.0.0.1",
+        "0.0.0.0",
         "[Deprecated] Ignored, webrtc can figure out its IP address");
 
 DEFINE_bool(
@@ -130,7 +130,7 @@ DEFINE_bool(
     "the first instance, if multiple instances are launched they'll share the "
     "same signaling server, which is owned by the first one.");
 
-DEFINE_string(webrtc_sig_server_addr, "127.0.0.1",
+DEFINE_string(webrtc_sig_server_addr, "0.0.0.0",
               "The address of the webrtc signaling server.");
 
 DEFINE_int32(
@@ -170,7 +170,7 @@ DEFINE_string(adb_mode, "vsock_half_tunnel",
               "vsock, 'vsock_half_tunnel' for a TCP connection forwarded to "
               "the guest ADB server, or a comma separated list of types as in "
               "'native_vsock,vsock_half_tunnel'");
-DEFINE_bool(run_adb_connector, true,
+DEFINE_bool(run_adb_connector, !cuttlefish::IsRunningInContainer(),
             "Maintain adb connection by sending 'adb connect' commands to the "
             "server. Only relevant with -adb_mode=tunnel or vsock_tunnel");
 
@@ -194,8 +194,6 @@ DEFINE_string(crosvm_binary,
               cuttlefish::DefaultHostArtifactsPath("bin/crosvm"),
               "The Crosvm binary to use");
 DEFINE_bool(restart_subprocesses, true, "Restart any crashed host process");
-DEFINE_bool(enable_tombstone_receiver, true, "Enables the tombstone logger on "
-            "both the guest and the host");
 DEFINE_bool(enable_vehicle_hal_grpc_server, true, "Enables the vehicle HAL "
             "emulation gRPC server on the host");
 DEFINE_string(custom_action_config, "",
@@ -232,11 +230,19 @@ DEFINE_bool(console, false, "Enable the serial console");
 
 DEFINE_int32(vsock_guest_cid,
              cuttlefish::GetDefaultVsockCid(),
-             "Override vsock cid with this option if vsock cid the instance should be"
-             "separated from the instance number: e.g. cuttlefish instance inside a container."
-             "If --vsock_guest_cid=C --num_instances=N are given,"
-             "the vsock cid of the i th instance would be C + i where i is in [1, N]"
-             "If --num_instances is not given, the default value of N is used.");
+             "vsock_guest_cid is used to determine the guest vsock cid as well as all the ports"
+             "of all vsock servers such as tombstone or modem simulator(s)."
+             "The vsock ports and guest vsock cid are a function of vsock_guest_cid and instance number."
+             "An instance number of i th instance is determined by --num_instances=N and --base_instance_num=B"
+             "The instance number of i th instance is B + i where i in [0, N-1] and B >= 1."
+             "See --num_instances, and --base_instance_num for more information"
+             "If --vsock_guest_cid=C is given and C >= 3, the guest vsock cid is C + i. Otherwise,"
+             "the guest vsock cid is 2 + instance number, which is 2 + (B + i)."
+             "If --vsock_guest_cid is not given, each vsock server port number for i th instance is"
+             "base + instance number - 1. vsock_guest_cid is by default B + i + 2."
+             "Thus, by default, each port is base + vsock_guest_cid - 3."
+             "The same formula holds when --vsock_guest_cid=C is given, for algorithm's sake."
+             "Each vsock server port number is base + C - 3.");
 
 DEFINE_bool(use_overlay, true,
             "Capture disk writes an overlay. This is a "
@@ -428,29 +434,15 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
   }
 
   tmp_config_obj.set_deprecated_boot_completed(FLAGS_deprecated_boot_completed);
-  tmp_config_obj.set_logcat_receiver_binary(
-      cuttlefish::DefaultHostArtifactsPath("bin/logcat_receiver"));
-  tmp_config_obj.set_config_server_binary(
-      cuttlefish::DefaultHostArtifactsPath("bin/config_server"));
 
   tmp_config_obj.set_qemu_binary(FLAGS_qemu_binary);
   tmp_config_obj.set_crosvm_binary(FLAGS_crosvm_binary);
-  tmp_config_obj.set_console_forwarder_binary(
-      cuttlefish::DefaultHostArtifactsPath("bin/console_forwarder"));
-  tmp_config_obj.set_kernel_log_monitor_binary(
-      cuttlefish::DefaultHostArtifactsPath("bin/kernel_log_monitor"));
 
   tmp_config_obj.set_enable_vnc_server(FLAGS_start_vnc_server);
-  tmp_config_obj.set_vnc_server_binary(
-      cuttlefish::DefaultHostArtifactsPath("bin/vnc_server"));
 
   tmp_config_obj.set_enable_webrtc(FLAGS_start_webrtc);
-  tmp_config_obj.set_webrtc_binary(
-      cuttlefish::DefaultHostArtifactsPath("bin/webRTC"));
   tmp_config_obj.set_webrtc_assets_dir(FLAGS_webrtc_assets_dir);
   tmp_config_obj.set_webrtc_certs_dir(FLAGS_webrtc_certs_dir);
-  tmp_config_obj.set_sig_server_binary(
-      cuttlefish::DefaultHostArtifactsPath("bin/webrtc_operator"));
   // Note: This will be overridden if the sig server is started by us
   tmp_config_obj.set_sig_server_port(FLAGS_webrtc_sig_server_port);
   tmp_config_obj.set_sig_server_address(FLAGS_webrtc_sig_server_addr);
@@ -463,8 +455,6 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
   tmp_config_obj.set_webrtc_udp_port_range(udp_range);
 
   tmp_config_obj.set_enable_modem_simulator(FLAGS_enable_modem_simulator);
-  tmp_config_obj.set_modem_simulator_binary(
-      cuttlefish::DefaultHostArtifactsPath("bin/modem_simulator"));
   tmp_config_obj.set_modem_simulator_instance_number(
       FLAGS_modem_simulator_count);
   tmp_config_obj.set_modem_simulator_sim_type(FLAGS_modem_simulator_sim_type);
@@ -474,19 +464,11 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
 
   tmp_config_obj.set_restart_subprocesses(FLAGS_restart_subprocesses);
   tmp_config_obj.set_run_adb_connector(FLAGS_run_adb_connector);
-  tmp_config_obj.set_adb_connector_binary(
-      cuttlefish::DefaultHostArtifactsPath("bin/adb_connector"));
-  tmp_config_obj.set_socket_vsock_proxy_binary(
-      cuttlefish::DefaultHostArtifactsPath("bin/socket_vsock_proxy"));
   tmp_config_obj.set_run_as_daemon(FLAGS_daemon);
 
   tmp_config_obj.set_data_policy(FLAGS_data_policy);
   tmp_config_obj.set_blank_data_image_mb(FLAGS_blank_data_image_mb);
   tmp_config_obj.set_blank_data_image_fmt(FLAGS_blank_data_image_fmt);
-
-  tmp_config_obj.set_enable_tombstone_receiver(FLAGS_enable_tombstone_receiver);
-  tmp_config_obj.set_tombstone_receiver_binary(
-      cuttlefish::DefaultHostArtifactsPath("bin/tombstone_receiver"));
 
   tmp_config_obj.set_enable_vehicle_hal_grpc_server(FLAGS_enable_vehicle_hal_grpc_server);
   tmp_config_obj.set_vehicle_hal_grpc_server_binary(
@@ -563,35 +545,38 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
     } else {
       instance.set_serial_number(FLAGS_serial_number + std::to_string(num));
     }
+    // call this before all stuff that has vsock server: e.g. touchpad, keyboard, etc
+    const auto vsock_guest_cid = FLAGS_vsock_guest_cid + num - cuttlefish::GetInstance();
+    instance.set_vsock_guest_cid(vsock_guest_cid);
+    auto calc_vsock_port = [vsock_guest_cid](const int base_port) {
+      // a base (vsock) port is like 9200 for modem_simulator, etc
+      return cuttlefish::GetVsockServerPort(base_port, vsock_guest_cid);
+    };
 
     instance.set_mobile_bridge_name(StrForInstance("cvd-mbr-", num));
     instance.set_mobile_tap_name(StrForInstance("cvd-mtap-", num));
 
     instance.set_wifi_tap_name(StrForInstance("cvd-wtap-", num));
 
-    instance.set_vsock_guest_cid(FLAGS_vsock_guest_cid + num - cuttlefish::GetInstance());
-
     instance.set_uuid(FLAGS_uuid);
 
     instance.set_vnc_server_port(6444 + num - 1);
     instance.set_host_port(6520 + num - 1);
-    instance.set_adb_ip_and_port("127.0.0.1:" + std::to_string(6520 + num - 1));
-
+    instance.set_adb_ip_and_port("0.0.0.0:" + std::to_string(6520 + num - 1));
     instance.set_vehicle_hal_server_port(9210 + num - 1);
     instance.set_audiocontrol_server_port(9410);  /* OK to use the same port number across instances */
 
-    instance.set_tombstone_receiver_port(6600 + num - 1);
-    instance.set_logcat_port(6700 + num - 1);
-    instance.set_config_server_port(6800 + num - 1);
+    instance.set_tombstone_receiver_port(calc_vsock_port(6600));
+    instance.set_config_server_port(calc_vsock_port(6800));
 
     if (FLAGS_gpu_mode != cuttlefish::kGpuModeDrmVirgl &&
         FLAGS_gpu_mode != cuttlefish::kGpuModeGfxStream) {
-      instance.set_frames_server_port(6900 + num - 1);
+      instance.set_frames_server_port(calc_vsock_port(6900));
     }
 
     if (FLAGS_vm_manager == cuttlefish::vm_manager::QemuManager::name()) {
-      instance.set_keyboard_server_port(7000 + num - 1);
-      instance.set_touch_server_port(7100 + num - 1);
+      instance.set_keyboard_server_port(calc_vsock_port(7000));
+      instance.set_touch_server_port(calc_vsock_port(7100));
     }
 
     instance.set_keymaster_vsock_port(7200 + num - 1);
@@ -642,15 +627,19 @@ cuttlefish::CuttlefishConfig InitializeCuttlefishConfiguration(
       instance.set_start_webrtc_signaling_server(false);
     }
     is_first_instance = false;
-    std::stringstream ss;
-    auto base_port = 9200 + num - 2;
-    for (auto index = 0; index < FLAGS_modem_simulator_count; ++index) {
-      ss << base_port + 1 << ",";
+
+    // instance.modem_simulator_ports := "" or "[port,]*port"
+    if (FLAGS_modem_simulator_count > 0) {
+      std::stringstream modem_ports;
+      for (auto index {0}; index < FLAGS_modem_simulator_count - 1; index++) {
+        modem_ports << calc_vsock_port(9200) << ",";
+      }
+      modem_ports << calc_vsock_port(9200);
+      instance.set_modem_simulator_ports(modem_ports.str());
+    } else {
+      instance.set_modem_simulator_ports("");
     }
-    std::string modem_simulator_ports = ss.str();
-    modem_simulator_ports.pop_back();
-    instance.set_modem_simulator_ports(modem_simulator_ports);
-  }
+  } // end of num_instances loop
 
   return tmp_config_obj;
 }

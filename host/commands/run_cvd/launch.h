@@ -14,10 +14,10 @@ std::vector <cuttlefish::SharedFD> LaunchKernelLogMonitor(
     cuttlefish::ProcessMonitor* process_monitor,
     unsigned int number_of_event_pipes);
 void LaunchAdbConnectorIfEnabled(cuttlefish::ProcessMonitor* process_monitor,
-                                 const cuttlefish::CuttlefishConfig& config,
-                                 cuttlefish::SharedFD adbd_events_pipe);
-void LaunchSocketVsockProxyIfEnabled(cuttlefish::ProcessMonitor* process_monitor,
                                  const cuttlefish::CuttlefishConfig& config);
+void LaunchSocketVsockProxyIfEnabled(cuttlefish::ProcessMonitor* process_monitor,
+                                     const cuttlefish::CuttlefishConfig& config,
+                                     cuttlefish::SharedFD adbd_events_pipe);
 void LaunchModemSimulatorIfEnabled(const cuttlefish::CuttlefishConfig& config,
                                    cuttlefish::ProcessMonitor* process_monitor);
 
@@ -29,8 +29,8 @@ StreamerLaunchResult LaunchVNCServer(
     cuttlefish::ProcessMonitor* process_monitor,
     std::function<bool(cuttlefish::MonitorEntry*)> callback);
 
-void LaunchTombstoneReceiverIfEnabled(
-    const cuttlefish::CuttlefishConfig& config, cuttlefish::ProcessMonitor* process_monitor);
+void LaunchTombstoneReceiver(const cuttlefish::CuttlefishConfig& config,
+                             cuttlefish::ProcessMonitor* process_monitor);
 void LaunchLogcatReceiver(const cuttlefish::CuttlefishConfig& config,
     cuttlefish::ProcessMonitor* process_monitor);
 void LaunchConfigServer(const cuttlefish::CuttlefishConfig& config,

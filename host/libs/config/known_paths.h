@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2018 The Android Open Source Project
+ * Copyright (C) 2020 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,11 +19,16 @@
 
 namespace cuttlefish {
 
-std::string StringFromEnv(const std::string& varname,
-                          const std::string& defval);
+std::string AdbConnectorBinary();
+std::string ConfigServerBinary();
+std::string ConsoleForwarderBinary();
+std::string KernelLogMonitorBinary();
+std::string LogcatReceiverBinary();
+std::string ModemSimulatorBinary();
+std::string SocketVsockProxyBinary();
+std::string TombstoneReceiverBinary();
+std::string WebRtcBinary();
+std::string WebRtcSigServerBinary();
+std::string VncServerBinary();
 
-std::string HostArch();
-
-bool IsRunningInContainer();
-
-}  // namespace cuttlefish
+} // namespace cuttlefish

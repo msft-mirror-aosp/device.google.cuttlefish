@@ -11,6 +11,7 @@
 #include "common/libs/utils/size_utils.h"
 #include "host/commands/run_cvd/pre_launch_initializers.h"
 #include "host/commands/run_cvd/runner_defs.h"
+#include "host/libs/config/known_paths.h"
 #include "host/libs/vm_manager/crosvm_manager.h"
 #include "host/libs/vm_manager/qemu_manager.h"
 
@@ -22,7 +23,7 @@ namespace {
 
 std::string GetAdbConnectorTcpArg(const cuttlefish::CuttlefishConfig& config) {
   auto instance = config.ForDefaultInstance();
-  return std::string{"127.0.0.1:"} + std::to_string(instance.host_port());
+  return std::string{"0.0.0.0:"} + std::to_string(instance.host_port());
 }
 
 std::string GetAdbConnectorVsockArg(const cuttlefish::CuttlefishConfig& config) {
@@ -138,7 +139,7 @@ std::vector<cuttlefish::SharedFD> LaunchKernelLogMonitor(
   // due to the usage counters in the kernel reaching zero. If this is not done
   // and the kernel_log_monitor crashes for some reason the VMM may get SIGPIPE.
   pipe = cuttlefish::SharedFD::Open(log_name.c_str(), O_RDWR);
-  cuttlefish::Command command(config.kernel_log_monitor_binary());
+  cuttlefish::Command command(cuttlefish::KernelLogMonitorBinary());
   command.AddParameter("-log_pipe_fd=", pipe);
 
   std::vector<cuttlefish::SharedFD> ret;
@@ -182,7 +183,7 @@ void LaunchLogcatReceiver(const cuttlefish::CuttlefishConfig& config,
   // due to the usage counters in the kernel reaching zero. If this is not done
   // and the logcat_receiver crashes for some reason the VMM may get SIGPIPE.
   pipe = cuttlefish::SharedFD::Open(log_name.c_str(), O_RDWR);
-  cuttlefish::Command command(config.logcat_receiver_binary());
+  cuttlefish::Command command(cuttlefish::LogcatReceiverBinary());
   command.AddParameter("-log_pipe_fd=", pipe);
 
   process_monitor->StartSubprocess(std::move(command),
@@ -200,18 +201,15 @@ void LaunchConfigServer(const cuttlefish::CuttlefishConfig& config,
                << socket->StrError();
     std::exit(RunnerExitCodes::kConfigServerError);
   }
-  cuttlefish::Command cmd(config.config_server_binary());
+  cuttlefish::Command cmd(cuttlefish::ConfigServerBinary());
   cmd.AddParameter("-server_fd=", socket);
   process_monitor->StartSubprocess(std::move(cmd),
                                    GetOnSubprocessExitCallback(config));
   return;
 }
 
-void LaunchTombstoneReceiverIfEnabled(const cuttlefish::CuttlefishConfig& config,
-                                      cuttlefish::ProcessMonitor* process_monitor) {
-  if (!config.enable_tombstone_receiver()) {
-    return;
-  }
+void LaunchTombstoneReceiver(const cuttlefish::CuttlefishConfig& config,
+                             cuttlefish::ProcessMonitor* process_monitor) {
   auto instance = config.ForDefaultInstance();
 
   std::string tombstoneDir = instance.PerInstancePath("tombstones");
@@ -234,7 +232,7 @@ void LaunchTombstoneReceiverIfEnabled(const cuttlefish::CuttlefishConfig& config
     std::exit(RunnerExitCodes::kTombstoneServerError);
     return;
   }
-  cuttlefish::Command cmd(config.tombstone_receiver_binary());
+  cuttlefish::Command cmd(cuttlefish::TombstoneReceiverBinary());
   cmd.AddParameter("-server_fd=", socket);
   cmd.AddParameter("-tombstone_dir=", tombstoneDir);
 
@@ -249,7 +247,7 @@ StreamerLaunchResult LaunchVNCServer(
   auto instance = config.ForDefaultInstance();
   // Launch the vnc server, don't wait for it to complete
   auto port_options = "-port=" + std::to_string(instance.vnc_server_port());
-  cuttlefish::Command vnc_server(config.vnc_server_binary());
+  cuttlefish::Command vnc_server(cuttlefish::VncServerBinary());
   vnc_server.AddParameter(port_options);
 
   auto server_ret = CreateStreamerServers(&vnc_server, config);
@@ -260,10 +258,8 @@ StreamerLaunchResult LaunchVNCServer(
 }
 
 void LaunchAdbConnectorIfEnabled(cuttlefish::ProcessMonitor* process_monitor,
-                                 const cuttlefish::CuttlefishConfig& config,
-                                 cuttlefish::SharedFD adbd_events_pipe) {
-  cuttlefish::Command adb_connector(config.adb_connector_binary());
-  adb_connector.AddParameter("-adbd_events_fd=", adbd_events_pipe);
+                                 const cuttlefish::CuttlefishConfig& config) {
+  cuttlefish::Command adb_connector(cuttlefish::AdbConnectorBinary());
   std::set<std::string> addresses;
 
   if (AdbTcpConnectorEnabled(config)) {
@@ -289,7 +285,7 @@ StreamerLaunchResult LaunchWebRTC(cuttlefish::ProcessMonitor* process_monitor,
                                   const cuttlefish::CuttlefishConfig& config,
                                   cuttlefish::SharedFD kernel_log_events_pipe) {
   if (config.ForDefaultInstance().start_webrtc_sig_server()) {
-    cuttlefish::Command sig_server(config.sig_server_binary());
+    cuttlefish::Command sig_server(cuttlefish::WebRtcSigServerBinary());
     sig_server.AddParameter("-assets_dir=", config.webrtc_assets_dir());
     if (!config.webrtc_certs_dir().empty()) {
       sig_server.AddParameter("-certs_dir=", config.webrtc_certs_dir());
@@ -307,7 +303,7 @@ StreamerLaunchResult LaunchWebRTC(cuttlefish::ProcessMonitor* process_monitor,
   // when connecting to the websocket, so it shouldn't be an issue most of the
   // time.
 
-  cuttlefish::Command webrtc(config.webrtc_binary());
+  cuttlefish::Command webrtc(cuttlefish::WebRtcBinary());
 
   auto server_ret = CreateStreamerServers(&webrtc, config);
   webrtc.AddParameter("-kernel_log_events_fd=", kernel_log_events_pipe);
@@ -373,7 +369,7 @@ void LaunchModemSimulatorIfEnabled(
   }
 
   cuttlefish::Command cmd(
-      config.modem_simulator_binary(), [](cuttlefish::Subprocess* proc) {
+      cuttlefish::ModemSimulatorBinary(), [](cuttlefish::Subprocess* proc) {
         auto stopped = StopModemSimulator();
         if (stopped) {
           return true;
@@ -414,10 +410,27 @@ void LaunchModemSimulatorIfEnabled(
 }
 
 void LaunchSocketVsockProxyIfEnabled(cuttlefish::ProcessMonitor* process_monitor,
-                                     const cuttlefish::CuttlefishConfig& config) {
+                                     const cuttlefish::CuttlefishConfig& config,
+                                     cuttlefish::SharedFD adbd_events_pipe) {
   auto instance = config.ForDefaultInstance();
+  auto append = [](const std::string& s, const int i) -> std::string {
+    return s + std::to_string(i);
+  };
   if (AdbVsockTunnelEnabled(config)) {
-    cuttlefish::Command adb_tunnel(config.socket_vsock_proxy_binary());
+    cuttlefish::Command adb_tunnel(cuttlefish::SocketVsockProxyBinary());
+    adb_tunnel.AddParameter("-adbd_events_fd=", adbd_events_pipe);
+    /**
+     * This socket_vsock_proxy (a.k.a. sv proxy) runs on the host. It assumes that
+     * another sv proxy runs inside the guest. see: shared/config/init.vendor.rc
+     * The sv proxy in the guest exposes vsock:cid:6520 across the cuttlefish instances
+     * in multi-tenancy. cid is different per instance.
+     *
+     * This host sv proxy should cooperate with the guest sv proxy. Thus, one end of
+     * the tunnel is vsock:cid:6520 regardless of instance number. Another end faces
+     * the host adb daemon via tcp. Thus, the server type is tcp here. The tcp port
+     * differs from instance to instance, and is instance.host_port()
+     *
+     */
     adb_tunnel.AddParameter("--server=tcp");
     adb_tunnel.AddParameter("--vsock_port=6520");
     adb_tunnel.AddParameter(std::string{"--tcp_port="} +
@@ -428,13 +441,22 @@ void LaunchSocketVsockProxyIfEnabled(cuttlefish::ProcessMonitor* process_monitor
                                      GetOnSubprocessExitCallback(config));
   }
   if (AdbVsockHalfTunnelEnabled(config)) {
-    cuttlefish::Command adb_tunnel(config.socket_vsock_proxy_binary());
+    cuttlefish::Command adb_tunnel(cuttlefish::SocketVsockProxyBinary());
+    adb_tunnel.AddParameter("-adbd_events_fd=", adbd_events_pipe);
+    /*
+     * This socket_vsock_proxy (a.k.a. sv proxy) runs on the host, and cooperates with
+     * the adbd inside the guest. See this file:
+     *  shared/device.mk, especially the line says "persist.adb.tcp.port="
+     *
+     * The guest adbd is listening on vsock:cid:5555 across cuttlefish instances.
+     * Sv proxy faces the host adb daemon via tcp. The server type should be therefore
+     * tcp, and the port should differ from instance to instance and be equal to
+     * instance.host_port()
+     */
     adb_tunnel.AddParameter("--server=tcp");
-    adb_tunnel.AddParameter("--vsock_port=5555");
-    adb_tunnel.AddParameter(std::string{"--tcp_port="} +
-                            std::to_string(instance.host_port()));
-    adb_tunnel.AddParameter(std::string{"--vsock_cid="} +
-                            std::to_string(instance.vsock_guest_cid()));
+    adb_tunnel.AddParameter(append("--vsock_port=", 5555));
+    adb_tunnel.AddParameter(append("--tcp_port=", instance.host_port()));
+    adb_tunnel.AddParameter(append("--vsock_cid=", instance.vsock_guest_cid()));
     process_monitor->StartSubprocess(std::move(adb_tunnel),
                                      GetOnSubprocessExitCallback(config));
   }
@@ -506,7 +528,7 @@ void LaunchConsoleForwarderIfEnabled(const cuttlefish::CuttlefishConfig& config,
         return;
     }
 
-    cuttlefish::Command console_forwarder_cmd(config.console_forwarder_binary());
+    cuttlefish::Command console_forwarder_cmd(cuttlefish::ConsoleForwarderBinary());
     auto instance = config.ForDefaultInstance();
 
     auto console_in_pipe_name = instance.console_in_pipe_name();
