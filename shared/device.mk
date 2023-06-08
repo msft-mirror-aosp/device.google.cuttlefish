@@ -443,6 +443,8 @@ PRODUCT_PACKAGES += \
 #
 # Oemlock
 #
+LOCAL_ENABLE_OEMLOCK ?= true
+ifeq ($(LOCAL_ENABLE_OEMLOCK),true)
 ifeq ($(LOCAL_OEMLOCK_PRODUCT_PACKAGE),)
     LOCAL_OEMLOCK_PRODUCT_PACKAGE := android.hardware.oemlock-service.remote
 endif
@@ -450,6 +452,7 @@ PRODUCT_PACKAGES += \
     $(LOCAL_OEMLOCK_PRODUCT_PACKAGE)
 
 PRODUCT_VENDOR_PROPERTIES += ro.oem_unlock_supported=1
+endif
 
 #
 # GPS
