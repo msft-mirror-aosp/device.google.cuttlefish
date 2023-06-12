@@ -53,14 +53,32 @@ class OpenWrt : public CommandSource {
                                  kOpenwrtVmResetExitCode);
     ap_cmd.Cmd().AddParameter("run");
     ap_cmd.AddControlSocket(
-        instance_.PerInstanceInternalPath(crosvm_for_ap_socket),
+        instance_.PerInstanceInternalUdsPath(crosvm_for_ap_socket),
         instance_.crosvm_binary());
 
     if (!config_.vhost_user_mac80211_hwsim().empty()) {
       ap_cmd.Cmd().AddParameter("--vhost-user-mac80211-hwsim=",
                                 config_.vhost_user_mac80211_hwsim());
     }
-    SharedFD wifi_tap = ap_cmd.AddTap(instance_.wifi_tap_name());
+    SharedFD wifi_tap;
+    if (config_.enable_wifi()) {
+      wifi_tap = ap_cmd.AddTap(instance_.wifi_tap_name());
+    }
+
+    /* TODO(kwstephenkim): delete this code when Minidroid completely disables
+     * the AP VM itself
+     */
+    if (!instance_.crosvm_use_balloon()) {
+      ap_cmd.Cmd().AddParameter("--no-balloon");
+    }
+
+    /* TODO(kwstephenkim): delete this code when Minidroid completely disables
+     * the AP VM itself
+     */
+    if (!instance_.crosvm_use_rng()) {
+      ap_cmd.Cmd().AddParameter("--no-rng");
+    }
+
     if (instance_.enable_sandbox()) {
       ap_cmd.Cmd().AddParameter("--seccomp-policy-dir=",
                                 instance_.seccomp_policy_dir());
@@ -78,7 +96,13 @@ class OpenWrt : public CommandSource {
     auto openwrt_args = OpenwrtArgsFromConfig(instance_);
     switch (instance_.ap_boot_flow()) {
       case APBootFlow::Grub:
-        ap_cmd.AddReadWriteDisk(instance_.persistent_ap_composite_disk_path());
+        if (config_.vm_manager() == "qemu_cli") {
+          ap_cmd.AddReadWriteDisk(
+              instance_.persistent_ap_composite_overlay_path());
+        } else {
+          ap_cmd.AddReadWriteDisk(
+              instance_.persistent_ap_composite_disk_path());
+        }
         ap_cmd.Cmd().AddParameter("--bios=", instance_.bootloader());
         break;
       case APBootFlow::LegacyDirect:

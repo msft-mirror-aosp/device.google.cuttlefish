@@ -21,9 +21,12 @@
 #include <map>
 #include <memory>
 #include <optional>
-#include <string>
 #include <set>
+#include <string>
+#include <string_view>
 #include <vector>
+
+#include <fmt/ostream.h>
 
 #include "common/libs/utils/environment.h"
 #include "common/libs/utils/result.h"
@@ -74,6 +77,15 @@ enum class SecureHal {
   Oemlock,
 };
 
+enum class ExternalNetworkMode {
+  kUnknown,
+  kTap,
+  kSlirp,
+};
+
+std::ostream& operator<<(std::ostream&, ExternalNetworkMode);
+Result<ExternalNetworkMode> ParseExternalNetworkMode(std::string_view);
+
 // Holds the configuration of the cuttlefish instances.
 class CuttlefishConfig {
  public:
@@ -102,6 +114,9 @@ class CuttlefishConfig {
 
   std::string assembly_dir() const;
   std::string AssemblyPath(const std::string&) const;
+
+  std::string instances_uds_dir() const;
+  std::string InstancesUdsPath(const std::string&) const;
 
   std::string vm_manager() const;
   void set_vm_manager(const std::string& name);
@@ -134,6 +149,9 @@ class CuttlefishConfig {
   // Bluetooth is enabled by bt_connector and rootcanal
   void set_enable_host_bluetooth_connector(bool enable_host_bluetooth);
   bool enable_host_bluetooth_connector() const;
+
+  void set_enable_wifi(const bool enable_wifi);
+  bool enable_wifi() const;
 
   // Flags for the set of radios that are connected to netsim
   enum NetsimRadio {
@@ -274,12 +292,6 @@ class CuttlefishConfig {
     int tombstone_receiver_port() const;
     // Port number to connect to the config server on the host
     int config_server_port() const;
-    // Port number to connect to the keyboard server on the host. (Only
-    // operational if QEMU is the vmm.)
-    int keyboard_server_port() const;
-    // Port number to connect to the touch server on the host. (Only
-    // operational if QEMU is the vmm.)
-    int touch_server_port() const;
     // Port number to connect to the vehicle HAL server on the host
     int vehicle_hal_server_port() const;
     // Port number to connect to the audiocontrol server on the guest
@@ -319,16 +331,27 @@ class CuttlefishConfig {
 
     // Returns the path to a file with the given name in the instance
     // directory..
-    std::string PerInstancePath(const char* file_name) const;
-    std::string PerInstanceInternalPath(const char* file_name) const;
+    std::string PerInstancePath(const std::string& file_name) const;
+    std::string PerInstanceInternalPath(const std::string& file_name) const;
     std::string PerInstanceLogPath(const std::string& file_name) const;
-    std::string PerInstanceGrpcSocketPath(const std::string& socket_name) const;
 
     std::string instance_dir() const;
 
     std::string instance_internal_dir() const;
 
+    // Return the Unix domain socket path with given name. Because the
+    // length limitation of Unix domain socket name, it needs to be in
+    // the another directory than normal Instance path.
+    std::string PerInstanceUdsPath(const std::string& file_name) const;
+    std::string PerInstanceInternalUdsPath(const std::string& file_name) const;
+    std::string PerInstanceGrpcSocketPath(const std::string& socket_name) const;
+
+    std::string instance_uds_dir() const;
+
+    std::string instance_internal_uds_dir() const;
+
     std::string touch_socket_path(int screen_idx) const;
+    std::string rotary_socket_path() const;
     std::string keyboard_socket_path() const;
     std::string switches_socket_path() const;
     std::string frames_socket_path() const;
@@ -360,10 +383,12 @@ class CuttlefishConfig {
     std::string launcher_monitor_socket_path() const;
 
     std::string sdcard_path() const;
+    std::string sdcard_overlay_path() const;
 
     std::string persistent_composite_disk_path() const;
-
+    std::string persistent_composite_overlay_path() const;
     std::string persistent_ap_composite_disk_path() const;
+    std::string persistent_ap_composite_overlay_path() const;
 
     std::string os_composite_disk_path() const;
 
@@ -433,6 +458,10 @@ class CuttlefishConfig {
       LegacyDirect
     };
     APBootFlow ap_boot_flow() const;
+
+    bool crosvm_use_balloon() const;
+    bool crosvm_use_rng() const;
+    bool use_pmem() const;
 
     // Wifi MAC address inside the guest
     int wifi_mac_prefix() const;
@@ -538,6 +567,7 @@ class CuttlefishConfig {
     std::string new_boot_image() const;
     std::string init_boot_image() const;
     std::string data_image() const;
+    std::string new_data_image() const;
     std::string super_image() const;
     std::string new_super_image() const;
     std::string misc_image() const;
@@ -578,6 +608,7 @@ class CuttlefishConfig {
     std::string guest_android_version() const;
     bool bootconfig_supported() const;
     std::string filename_encryption_mode() const;
+    ExternalNetworkMode external_network_mode() const;
   };
 
   // A view into an existing CuttlefishConfig object for a particular instance.
@@ -632,6 +663,9 @@ class CuttlefishConfig {
     void set_start_pica(bool start);
     void set_start_netsim(bool start);
     void set_ap_boot_flow(InstanceSpecific::APBootFlow flow);
+    void set_crosvm_use_balloon(const bool use_balloon);
+    void set_crosvm_use_rng(const bool use_rng);
+    void set_use_pmem(const bool use_pmem);
     // Wifi MAC address inside the guest
     void set_wifi_mac_prefix(const int wifi_mac_prefix);
     // Gnss grpc proxy server port inside the host
@@ -714,6 +748,7 @@ class CuttlefishConfig {
     void set_new_boot_image(const std::string& new_boot_image);
     void set_init_boot_image(const std::string& init_boot_image);
     void set_data_image(const std::string& data_image);
+    void set_new_data_image(const std::string& new_data_image);
     void set_super_image(const std::string& super_image);
     void set_new_super_image(const std::string& super_image);
     void set_misc_image(const std::string& misc_image);
@@ -751,6 +786,7 @@ class CuttlefishConfig {
     void set_guest_android_version(const std::string& guest_android_version);
     void set_bootconfig_supported(bool bootconfig_supported);
     void set_filename_encryption_mode(const std::string& userdata_format);
+    void set_external_network_mode(ExternalNetworkMode network_mode);
 
    private:
     void SetPath(const std::string& key, const std::string& path);

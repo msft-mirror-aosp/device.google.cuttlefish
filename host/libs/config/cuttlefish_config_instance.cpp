@@ -16,7 +16,10 @@
 
 #include "host/libs/config/cuttlefish_config.h"
 
+#include <string_view>
+
 #include <android-base/logging.h>
+#include <android-base/strings.h>
 #include <json/json.h>
 
 #include "common/libs/utils/files.h"
@@ -34,6 +37,29 @@ const char* kInstances = "instances";
 std::string IdToName(const std::string& id) { return kCvdNamePrefix + id; }
 
 }  // namespace
+
+std::ostream& operator<<(std::ostream& out, ExternalNetworkMode net) {
+  switch (net) {
+    case ExternalNetworkMode::kUnknown:
+      return out << "unknown";
+    case ExternalNetworkMode::kTap:
+      return out << "tap";
+    case ExternalNetworkMode::kSlirp:
+      return out << "slirp";
+  }
+}
+Result<ExternalNetworkMode> ParseExternalNetworkMode(std::string_view str) {
+  if (android::base::EqualsIgnoreCase(str, "tap")) {
+    return ExternalNetworkMode::kTap;
+  } else if (android::base::EqualsIgnoreCase(str, "slirp")) {
+    return ExternalNetworkMode::kSlirp;
+  } else {
+    return CF_ERRF(
+        "\"{}\" is not a valid ExternalNetworkMode. Valid values are \"tap\" "
+        "and \"slirp\"",
+        str);
+  }
+}
 
 static constexpr char kInstanceDir[] = "instance_dir";
 CuttlefishConfig::MutableInstanceSpecific::MutableInstanceSpecific(
@@ -57,6 +83,15 @@ std::string CuttlefishConfig::InstanceSpecific::instance_dir() const {
 
 std::string CuttlefishConfig::InstanceSpecific::instance_internal_dir() const {
   return PerInstancePath(kInternalDirName);
+}
+
+std::string CuttlefishConfig::InstanceSpecific::instance_uds_dir() const {
+  return config_->InstancesUdsPath(IdToName(id_));
+}
+
+std::string CuttlefishConfig::InstanceSpecific::instance_internal_uds_dir()
+    const {
+  return PerInstanceUdsPath(kInternalDirName);
 }
 
 // TODO (b/163575714) add virtio console support to the bootloader so the
@@ -99,6 +134,14 @@ std::string CuttlefishConfig::InstanceSpecific::data_image() const {
 void CuttlefishConfig::MutableInstanceSpecific::set_data_image(
     const std::string& data_image) {
   (*Dictionary())[kDataImage] = data_image;
+}
+static constexpr char kNewDataImage[] = "new_data_image";
+std::string CuttlefishConfig::InstanceSpecific::new_data_image() const {
+  return (*Dictionary())[kNewDataImage].asString();
+}
+void CuttlefishConfig::MutableInstanceSpecific::set_new_data_image(
+    const std::string& new_data_image) {
+  (*Dictionary())[kNewDataImage] = new_data_image;
 }
 static constexpr char kSuperImage[] = "super_image";
 std::string CuttlefishConfig::InstanceSpecific::super_image() const {
@@ -403,6 +446,17 @@ void CuttlefishConfig::MutableInstanceSpecific::set_filename_encryption_mode(
   auto fmt = filename_encryption_mode;
   std::transform(fmt.begin(), fmt.end(), fmt.begin(), ::tolower);
   (*Dictionary())[kFilenameEncryptionMode] = fmt;
+}
+
+static constexpr char kExternalNetworkMode[] = "external_network_mode";
+ExternalNetworkMode CuttlefishConfig::InstanceSpecific::external_network_mode()
+    const {
+  auto str = (*Dictionary())[kExternalNetworkMode].asString();
+  return ParseExternalNetworkMode(str).value_or(ExternalNetworkMode::kUnknown);
+}
+void CuttlefishConfig::MutableInstanceSpecific::set_external_network_mode(
+    ExternalNetworkMode mode) {
+  (*Dictionary())[kExternalNetworkMode] = fmt::format("{}", mode);
 }
 
 std::string CuttlefishConfig::InstanceSpecific::kernel_log_pipe_name() const {
@@ -998,7 +1052,7 @@ std::string CuttlefishConfig::InstanceSpecific::logcat_path() const {
 
 std::string CuttlefishConfig::InstanceSpecific::launcher_monitor_socket_path()
     const {
-  return AbsolutePath(PerInstancePath("launcher_monitor.sock"));
+  return AbsolutePath(PerInstanceUdsPath("launcher_monitor.sock"));
 }
 
 static constexpr char kModemSimulatorPorts[] = "modem_simulator_ports";
@@ -1018,14 +1072,29 @@ std::string CuttlefishConfig::InstanceSpecific::sdcard_path() const {
   return AbsolutePath(PerInstancePath("sdcard.img"));
 }
 
+std::string CuttlefishConfig::InstanceSpecific::sdcard_overlay_path() const {
+  return AbsolutePath(PerInstancePath("sdcard_overlay.img"));
+}
+
 std::string CuttlefishConfig::InstanceSpecific::persistent_composite_disk_path()
     const {
   return AbsolutePath(PerInstancePath("persistent_composite.img"));
 }
 
+std::string
+CuttlefishConfig::InstanceSpecific::persistent_composite_overlay_path() const {
+  return AbsolutePath(PerInstancePath("persistent_composite_overlay.img"));
+}
+
 std::string CuttlefishConfig::InstanceSpecific::persistent_ap_composite_disk_path()
     const {
   return AbsolutePath(PerInstancePath("ap_persistent_composite.img"));
+}
+
+std::string
+CuttlefishConfig::InstanceSpecific::persistent_ap_composite_overlay_path()
+    const {
+  return AbsolutePath(PerInstancePath("ap_persistent_composite_overlay.img"));
 }
 
 std::string CuttlefishConfig::InstanceSpecific::os_composite_disk_path()
@@ -1073,7 +1142,7 @@ std::string CuttlefishConfig::InstanceSpecific::ap_esp_grub_config() const {
 static constexpr char kMobileBridgeName[] = "mobile_bridge_name";
 
 std::string CuttlefishConfig::InstanceSpecific::audio_server_path() const {
-  return AbsolutePath(PerInstanceInternalPath("audio_server.sock"));
+  return AbsolutePath(PerInstanceInternalUdsPath("audio_server.sock"));
 }
 
 CuttlefishConfig::InstanceSpecific::BootFlow CuttlefishConfig::InstanceSpecific::boot_flow() const {
@@ -1281,23 +1350,6 @@ void CuttlefishConfig::MutableInstanceSpecific::set_qemu_vnc_server_port(
   (*Dictionary())[kQemuVncServerPort] = qemu_vnc_server_port;
 }
 
-static constexpr char kTouchServerPort[] = "touch_server_port";
-int CuttlefishConfig::InstanceSpecific::touch_server_port() const {
-  return (*Dictionary())[kTouchServerPort].asInt();
-}
-
-void CuttlefishConfig::MutableInstanceSpecific::set_touch_server_port(int touch_server_port) {
-  (*Dictionary())[kTouchServerPort] = touch_server_port;
-}
-
-static constexpr char kKeyboardServerPort[] = "keyboard_server_port";
-int CuttlefishConfig::InstanceSpecific::keyboard_server_port() const {
-  return (*Dictionary())[kKeyboardServerPort].asInt();
-}
-void CuttlefishConfig::MutableInstanceSpecific::set_keyboard_server_port(int keyboard_server_port) {
-  (*Dictionary())[kKeyboardServerPort] = keyboard_server_port;
-}
-
 static constexpr char kTombstoneReceiverPort[] = "tombstone_receiver_port";
 int CuttlefishConfig::InstanceSpecific::tombstone_receiver_port() const {
   return (*Dictionary())[kTombstoneReceiverPort].asInt();
@@ -1407,22 +1459,53 @@ APBootFlow CuttlefishConfig::InstanceSpecific::ap_boot_flow() const {
   return static_cast<APBootFlow>((*Dictionary())[kApBootFlow].asInt());
 }
 
+static constexpr char kCrosvmUseBalloon[] = "crosvm_use_balloon";
+void CuttlefishConfig::MutableInstanceSpecific::set_crosvm_use_balloon(
+    const bool use_balloon) {
+  (*Dictionary())[kCrosvmUseBalloon] = use_balloon;
+}
+bool CuttlefishConfig::InstanceSpecific::crosvm_use_balloon() const {
+  return (*Dictionary())[kCrosvmUseBalloon].asBool();
+}
+
+static constexpr char kCrosvmUseRng[] = "crosvm_use_rng";
+void CuttlefishConfig::MutableInstanceSpecific::set_crosvm_use_rng(
+    const bool use_rng) {
+  (*Dictionary())[kCrosvmUseRng] = use_rng;
+}
+bool CuttlefishConfig::InstanceSpecific::crosvm_use_rng() const {
+  return (*Dictionary())[kCrosvmUseRng].asBool();
+}
+
+static constexpr char kCrosvmUsePmem[] = "use_pmem";
+void CuttlefishConfig::MutableInstanceSpecific::set_use_pmem(
+    const bool use_pmem) {
+  (*Dictionary())[kCrosvmUsePmem] = use_pmem;
+}
+bool CuttlefishConfig::InstanceSpecific::use_pmem() const {
+  return (*Dictionary())[kCrosvmUsePmem].asBool();
+}
+
 std::string CuttlefishConfig::InstanceSpecific::touch_socket_path(
     int screen_idx) const {
-  return PerInstanceInternalPath(
+  return PerInstanceInternalUdsPath(
       ("touch_" + std::to_string(screen_idx) + ".sock").c_str());
 }
 
+std::string CuttlefishConfig::InstanceSpecific::rotary_socket_path() const {
+  return PerInstanceInternalPath("rotary.sock");
+}
+
 std::string CuttlefishConfig::InstanceSpecific::keyboard_socket_path() const {
-  return PerInstanceInternalPath("keyboard.sock");
+  return PerInstanceInternalUdsPath("keyboard.sock");
 }
 
 std::string CuttlefishConfig::InstanceSpecific::switches_socket_path() const {
-  return PerInstanceInternalPath("switches.sock");
+  return PerInstanceInternalUdsPath("switches.sock");
 }
 
 std::string CuttlefishConfig::InstanceSpecific::frames_socket_path() const {
-  return PerInstanceInternalPath("frames.sock");
+  return PerInstanceInternalUdsPath("frames.sock");
 }
 
 static constexpr char kWifiMacPrefix[] = "wifi_mac_prefix";
@@ -1444,12 +1527,12 @@ std::string CuttlefishConfig::InstanceSpecific::persistent_bootconfig_path()
 }
 
 std::string CuttlefishConfig::InstanceSpecific::PerInstancePath(
-    const char* file_name) const {
+    const std::string& file_name) const {
   return (instance_dir() + "/") + file_name;
 }
 
 std::string CuttlefishConfig::InstanceSpecific::PerInstanceInternalPath(
-    const char* file_name) const {
+    const std::string& file_name) const {
   if (file_name[0] == '\0') {
     // Don't append a / if file_name is empty.
     return PerInstancePath(kInternalDirName);
@@ -1458,14 +1541,29 @@ std::string CuttlefishConfig::InstanceSpecific::PerInstanceInternalPath(
   return PerInstancePath(relative_path.c_str());
 }
 
+std::string CuttlefishConfig::InstanceSpecific::PerInstanceUdsPath(
+    const std::string& file_name) const {
+  return (instance_uds_dir() + "/") + file_name;
+}
+
+std::string CuttlefishConfig::InstanceSpecific::PerInstanceInternalUdsPath(
+    const std::string& file_name) const {
+  if (file_name[0] == '\0') {
+    // Don't append a / if file_name is empty.
+    return PerInstanceUdsPath(kInternalDirName);
+  }
+  auto relative_path = (std::string(kInternalDirName) + "/") + file_name;
+  return PerInstanceUdsPath(relative_path.c_str());
+}
+
 std::string CuttlefishConfig::InstanceSpecific::PerInstanceGrpcSocketPath(
     const std::string& socket_name) const {
   if (socket_name.size() == 0) {
     // Don't append a / if file_name is empty.
-    return PerInstancePath(kGrpcSocketDirName);
+    return PerInstanceUdsPath(kGrpcSocketDirName);
   }
   auto relative_path = (std::string(kGrpcSocketDirName) + "/") + socket_name;
-  return PerInstancePath(relative_path.c_str());
+  return PerInstanceUdsPath(relative_path.c_str());
 }
 
 std::string CuttlefishConfig::InstanceSpecific::PerInstanceLogPath(

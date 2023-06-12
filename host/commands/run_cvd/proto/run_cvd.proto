@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 The Android Open Source Project
+ * Copyright (C) 2023 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,20 +14,25 @@
  * limitations under the License.
  */
 
-#include "log/log.h"
-#include <gflags/gflags.h>
+syntax = "proto3";
 
-#include "vsoc_input_service.h"
+package cuttlefish.run_cvd;
 
-int main(int argc, char* argv[]) {
-  gflags::ParseCommandLineFlags(&argc, &argv, true);
-  cuttlefish_input_service::VSoCInputService service;
-  if (!service.SetUpDevices()) {
-    return -1;
+message Action {
+  oneof actions {
+    Powerwash powerwash = 1;
+    Restart restart = 2;
+    Status status = 3;
+    Stop stop = 4;
+    Suspend suspend = 5;
   }
-
-  if (!service.ProcessEvents()) {
-    return -2;
-  }
-  return 0;
 }
+
+message Powerwash {}
+message Restart {}
+/**
+ * TODO(*): Add fields to status action
+ */
+message Status {}
+message Stop {}
+message Suspend {}

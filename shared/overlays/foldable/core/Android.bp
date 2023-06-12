@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2021 The Android Open Source Project
+// Copyright (C) 2023 The Android Open Source Project
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,24 +17,9 @@ package {
     default_applicable_licenses: ["Android-Apache-2.0"],
 }
 
-cc_library_static {
-    name: "libcuttlefish_wmediumd_controller",
-    srcs: [
-        "wmediumd_api_protocol.cpp",
-        "wmediumd_controller.cpp",
-    ],
-    export_include_dirs: [
-        ".",
-    ],
-    header_libs: [
-        "wmediumd_headers",
-    ],
-    shared_libs: [
-        "libbase",
-        "libcuttlefish_fs",
-        "libcuttlefish_utils",
-    ],
-    static_libs: [
-    ],
-    defaults: ["cuttlefish_host"],
+runtime_resource_overlay {
+    name: "aosp_cuttlefish_foldable_overlay_frameworks_base",
+    soc_specific: true,
+    sdk_version: "current",
+    aaptflags: ["--auto-add-overlay", "--keep-raw-values"],
 }

@@ -1,6 +1,5 @@
-#pragma once
 /*
- * Copyright (C) 2017 The Android Open Source Project
+ * Copyright (C) 2023 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,17 +14,19 @@
  * limitations under the License.
  */
 
-#include "virtual_device_base.h"
-
-namespace cuttlefish_input_service {
-
-class VirtualKeyboard : public VirtualDeviceBase {
- public:
-  VirtualKeyboard();
-
- protected:
-  const std::vector<const uint32_t>& GetEventTypes() const override;
-  const std::vector<const uint32_t>& GetKeys() const override;
-};
-
-}  // namespace cuttlefish_input_service
+cc_library_static {
+    name: "libcuttlefish_run_cvd_proto",
+    host_supported: true,
+    proto: {
+        export_proto_headers: true,
+        type: "full",
+    },
+    srcs: [
+        "run_cvd.proto",
+    ],
+    defaults: [
+        "cuttlefish_host",
+        "cuttlefish_libicuuc",
+        "cvd_cc_defaults",
+    ],
+}

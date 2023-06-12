@@ -14,6 +14,9 @@
  * limitations under the License.
  */
 #pragma once
+
+#include "host/libs/config/cuttlefish_config.h"
+
 #define CF_DEFAULTS_DYNAMIC_STRING ""
 #define CF_DEFAULTS_DYNAMIC_INT 0
 
@@ -55,6 +58,7 @@
 #define CF_DEFAULTS_TRACK_HOST_TOOLS_CRC false
 // TODO: defined twice, please remove redundant definitions
 #define CF_DEFAULTS_USE_OVERLAY true
+#define CF_DEFAULTS_DEVICE_EXTERNAL_NETWORK "tap"
 
 // crosvm default parameters
 #define CF_DEFAULTS_CROSVM_BINARY HostBinaryPath("crosvm")
