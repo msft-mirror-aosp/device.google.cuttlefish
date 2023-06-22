@@ -1,3 +1,4 @@
+//
 // Copyright (C) 2023 The Android Open Source Project
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,29 +13,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-syntax = "proto3";
-
-package openwrtcontrolserver;
-
-import "google/protobuf/empty.proto";
-
-service OpenwrtControlService {
-  rpc LuciRpc (LuciRpcRequest) returns (LuciRpcReply) {}
-  rpc OpenwrtIpaddr (google.protobuf.Empty) returns (OpenwrtIpaddrReply) {}
+package {
+    default_applicable_licenses: ["Android-Apache-2.0"],
 }
 
-message LuciRpcRequest {
-  string subpath = 1;
-  string method = 2;
-  repeated string params = 3;
-}
-
-message LuciRpcReply {
-  int32 id = 1;
-  string error = 2;
-  string result = 3;
-}
-
-message OpenwrtIpaddrReply {
-  string ipaddr = 1;
+prebuilt_etc {
+    name: "tv_excluded_hardware.prebuilt.xml",
+    src: "tv_excluded_hardware.xml",
+    relative_install_path: "permissions",
+    soc_specific: true,
 }

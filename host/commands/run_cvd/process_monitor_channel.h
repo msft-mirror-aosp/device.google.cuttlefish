@@ -16,12 +16,32 @@
 
 #pragma once
 
-#include <json/json.h>
+#include <cstdint>
 
+#include "common/libs/fs/shared_fd.h"
 #include "common/libs/utils/result.h"
 
 namespace cuttlefish {
+namespace process_monitor_impl {
 
-Result<void> ValidateCfConfigs(const Json::Value& root);
+enum class ParentToChildMessageType : std::uint8_t {
+  kStop = 1,
+  kHostResume = 2,
+  kHostSuspend = 3,
+  kError = 4,
+};
 
+class ParentToChildMessage {
+ public:
+  ParentToChildMessage(const ParentToChildMessageType type);
+  Result<void> Write(const SharedFD& fd);
+  static Result<ParentToChildMessage> Read(const SharedFD& fd);
+  bool Stop() const { return type_ == ParentToChildMessageType::kStop; }
+  auto Type() const { return type_; }
+
+ private:
+  ParentToChildMessageType type_;
+};
+
+}  // namespace process_monitor_impl
 }  // namespace cuttlefish
