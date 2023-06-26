@@ -137,7 +137,7 @@ QemuManager::ConfigureGraphics(
 
   if (instance.gpu_mode() == kGpuModeGuestSwiftshader) {
     bootconfig_args = {
-        {"androidboot.cpuvulkan.version", std::to_string(VK_API_VERSION_1_2)},
+        {"androidboot.cpuvulkan.version", std::to_string(VK_API_VERSION_1_3)},
         {"androidboot.hardware.gralloc", "minigbm"},
         {"androidboot.hardware.hwcomposer", instance.hwcomposer()},
         {"androidboot.hardware.egl", "angle"},
