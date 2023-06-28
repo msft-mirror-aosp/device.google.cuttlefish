@@ -15,23 +15,30 @@
  */
 
 #pragma once
+
+#include <optional>
+#include <string>
+#include <vector>
+
 #include <json/json.h>
 
 namespace cuttlefish {
 
-struct FetchCvdDeviceConfigs {
-  bool use_fetch_artifact;
-  std::string default_build;
-  std::string system_build;
-  std::string kernel_build;
-  std::string host_artifacts_dir;
+struct FetchCvdInstanceConfig {
+  bool should_fetch = false;
+  // this subdirectory is relative to FetchCvdConfig::target_directory
+  std::string target_subdirectory;
+  std::optional<std::string> default_build;
+  std::optional<std::string> system_build;
+  std::optional<std::string> kernel_build;
 };
 
-struct FetchCvdConfigs {
-  std::string credential;
-  std::vector<FetchCvdDeviceConfigs> instances;
+struct FetchCvdConfig {
+  std::string target_directory;
+  std::optional<std::string> credential_source;
+  std::vector<FetchCvdInstanceConfig> instances;
 };
 
-FetchCvdConfigs ParseFetchCvdConfigs(Json::Value& root);
+FetchCvdConfig ParseFetchCvdConfigs(Json::Value& root);
 
 };  // namespace cuttlefish

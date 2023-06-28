@@ -22,6 +22,7 @@
 #include <cstring>
 #include <functional>
 #include <iostream>
+#include <iterator>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -33,10 +34,12 @@
 
 #include <android-base/logging.h>
 #include <android-base/parsebool.h>
+#include <android-base/scopeguard.h>
 #include <android-base/strings.h>
 #include <fmt/format.h>
 
 #include "common/libs/utils/result.h"
+#include "common/libs/utils/tee_logging.h"
 
 namespace cuttlefish {
 
@@ -350,8 +353,31 @@ std::vector<std::string> ArgsToVec(int argc, char** argv) {
   return args;
 }
 
-bool ParseFlags(const std::vector<Flag>& flags,
-                std::vector<std::string>& args) {
+struct Separated {
+  std::vector<std::string> args_before_mark;
+  std::vector<std::string> args_after_mark;
+};
+static Separated SeparateByEndOfOptionMark(std::vector<std::string> args) {
+  std::vector<std::string> args_before_mark;
+  std::vector<std::string> args_after_mark;
+
+  auto itr = std::find(args.begin(), args.end(), "--");
+  bool has_mark = (itr != args.end());
+  if (!has_mark) {
+    args_before_mark = std::move(args);
+  } else {
+    args_before_mark.insert(args_before_mark.end(), args.begin(), itr);
+    args_after_mark.insert(args_after_mark.end(), itr + 1, args.end());
+  }
+
+  return Separated{
+      .args_before_mark = std::move(args_before_mark),
+      .args_after_mark = std::move(args_after_mark),
+  };
+}
+
+static bool ParseFlagsImpl(const std::vector<Flag>& flags,
+                           std::vector<std::string>& args) {
   for (const auto& flag : flags) {
     if (!flag.Parse(args)) {
       return false;
@@ -360,14 +386,38 @@ bool ParseFlags(const std::vector<Flag>& flags,
   return true;
 }
 
-bool ParseFlags(const std::vector<Flag>& flags,
-                std::vector<std::string>&& args) {
+static bool ParseFlagsImpl(const std::vector<Flag>& flags,
+                           std::vector<std::string>&& args) {
   for (const auto& flag : flags) {
     if (!flag.Parse(args)) {
       return false;
     }
   }
   return true;
+}
+
+bool ParseFlags(const std::vector<Flag>& flags, std::vector<std::string>& args,
+                const bool recognize_end_of_option_mark) {
+  if (!recognize_end_of_option_mark) {
+    return ParseFlagsImpl(flags, args);
+  }
+  auto separated = SeparateByEndOfOptionMark(std::move(args));
+  args.clear();
+  auto result = ParseFlagsImpl(flags, separated.args_before_mark);
+  args = std::move(separated.args_before_mark);
+  args.insert(args.end(),
+              std::make_move_iterator(separated.args_after_mark.begin()),
+              std::make_move_iterator(separated.args_after_mark.end()));
+  return result;
+}
+
+bool ParseFlags(const std::vector<Flag>& flags, std::vector<std::string>&& args,
+                const bool recognize_end_of_option_mark) {
+  if (!recognize_end_of_option_mark) {
+    return ParseFlagsImpl(flags, std::move(args));
+  }
+  auto separated = SeparateByEndOfOptionMark(std::move(args));
+  return ParseFlagsImpl(flags, std::move(separated.args_before_mark));
 }
 
 bool WriteGflagsCompatXml(const std::vector<Flag>& flags, std::ostream& out) {
@@ -377,6 +427,22 @@ bool WriteGflagsCompatXml(const std::vector<Flag>& flags, std::ostream& out) {
     }
   }
   return true;
+}
+
+Flag VerbosityFlag(android::base::LogSeverity& value) {
+  return GflagsCompatFlag("verbosity")
+      .Getter([&value]() { return FromSeverity(value); })
+      .Setter([&value](const FlagMatch& match) {
+        Result<android::base::LogSeverity> result = ToSeverity(match.value);
+        if (!result.ok()) {
+          LOG(ERROR) << "Unable to convert \"" << match.value
+                     << "\" to a LogSeverity";
+          return false;
+        }
+        value = result.value();
+        return true;
+      })
+      .Help("Used to set the verbosity level for logging.");
 }
 
 Flag HelpFlag(const std::vector<Flag>& flags, const std::string& text) {

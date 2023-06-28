@@ -143,6 +143,17 @@ Result<void> ResolveInstanceFiles() {
               "--use_16k is not compatible with --initramfs_path");
   }
 
+  // It is conflict (invalid) to pass both kernel_path/initramfs_path
+  // and image file paths.
+  bool flags_kernel_initramfs_has_input = (FLAGS_kernel_path != "")
+                                          || (FLAGS_initramfs_path != "");
+  bool flags_image_has_input =
+      (FLAGS_super_image != "") || (FLAGS_vendor_boot_image != "") ||
+      (FLAGS_vbmeta_vendor_dlkm_image != "") ||
+      (FLAGS_vbmeta_system_dlkm_image != "") || (FLAGS_boot_image != "");
+  CF_EXPECT(!(flags_kernel_initramfs_has_input && flags_image_has_input),
+             "Cannot pass both kernel_path/initramfs_path and image file paths");
+
   std::vector<std::string> system_image_dir =
       android::base::Split(FLAGS_system_image_dir, ",");
   std::string default_boot_image = "";
@@ -383,9 +394,13 @@ std::vector<ImagePartition> android_composite_disk_config(
       .image_file_path = AbsolutePath(super_image),
       .read_only = FLAGS_use_overlay,
   });
+  auto data_image = instance.new_data_image();
+  if (!FileExists(data_image)) {
+    data_image = instance.data_image();
+  }
   partitions.push_back(ImagePartition{
       .label = "userdata",
-      .image_file_path = AbsolutePath(instance.data_image()),
+      .image_file_path = AbsolutePath(data_image),
       .read_only = FLAGS_use_overlay,
   });
   partitions.push_back(ImagePartition{
@@ -587,8 +602,9 @@ class InitializePstore : public SetupFeature {
 
 class InitializeSdCard : public SetupFeature {
  public:
-  INJECT(InitializeSdCard(const CuttlefishConfig::InstanceSpecific& instance))
-      : instance_(instance) {}
+  INJECT(InitializeSdCard(const CuttlefishConfig& config,
+                          const CuttlefishConfig::InstanceSpecific& instance))
+      : config_{config}, instance_(instance) {}
 
   // SetupFeature
   std::string Name() const override { return "InitializeSdCard"; }
@@ -605,9 +621,17 @@ class InitializeSdCard : public SetupFeature {
     CF_EXPECT(CreateBlankImage(instance_.sdcard_path(),
                                instance_.blank_sdcard_image_mb(), "sdcard"),
               "Failed to create \"" << instance_.sdcard_path() << "\"");
+    if (IsVmManagerQemu()) {
+      const std::string crosvm_path = instance_.crosvm_binary();
+      CreateQcowOverlay(crosvm_path, instance_.sdcard_path(),
+                        instance_.sdcard_overlay_path());
+    }
     return {};
   }
 
+  bool IsVmManagerQemu() const { return config_.vm_manager() == "qemu_cli"; }
+
+  const CuttlefishConfig& config_;
   const CuttlefishConfig::InstanceSpecific& instance_;
 };
 
@@ -637,6 +661,8 @@ class VbmetaEnforceMinimumSize : public SetupFeature {
         CF_EXPECTF(fd->Truncate(VBMETA_MAX_SIZE) == 0,
                    "`truncate --size={} {}` failed: {}", VBMETA_MAX_SIZE,
                    vbmeta_image, fd->StrError());
+        CF_EXPECTF(fd->Fsync() == 0, "fsync on `{}` failed: {}", vbmeta_image,
+                   fd->StrError());
       }
     }
     return {};
@@ -937,6 +963,13 @@ Result<void> DiskImageFlagsVectorization(CuttlefishConfig& config, const Fetcher
           const_instance.PerInstancePath("boot_repacked.img");
       // change the new flag value to corresponding instance
       instance.set_new_boot_image(new_boot_image_path.c_str());
+    }
+
+    instance.set_new_data_image(const_instance.PerInstancePath("userdata.img"));
+    if (instance_index >= data_image.size()) {
+      instance.set_data_image(data_image[0]);
+    } else {
+      instance.set_data_image(data_image[instance_index]);
     }
 
     if (cur_kernel_path.size() || cur_initramfs_path.size()) {

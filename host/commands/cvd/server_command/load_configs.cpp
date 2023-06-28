@@ -16,12 +16,16 @@
 #include "host/commands/cvd/server_command/load_configs.h"
 
 #include <chrono>
+#include <iostream>
 #include <mutex>
 #include <sstream>
 #include <string>
+#include <vector>
 
-#include <fruit/fruit.h>
 #include <android-base/parseint.h>
+#include <android-base/strings.h>
+#include <fruit/fruit.h>
+#include <json/json.h>
 
 #include "common/libs/fs/shared_buf.h"
 #include "common/libs/utils/flag_parser.h"
@@ -29,6 +33,7 @@
 #include "host/commands/cvd/command_sequence.h"
 #include "host/commands/cvd/common_utils.h"
 #include "host/commands/cvd/parser/cf_configs_common.h"
+#include "host/commands/cvd/parser/fetch_cvd_parser.h"
 #include "host/commands/cvd/parser/load_configs_parser.h"
 #include "host/commands/cvd/selector/selector_constants.h"
 #include "host/commands/cvd/server_client.h"
@@ -36,25 +41,15 @@
 #include "host/commands/cvd/types.h"
 
 namespace cuttlefish {
-
 namespace {
 
-std::string GenerateSystemImageFlag(
-    const std::vector<FetchCvdDeviceConfigs>& configs) {
-  std::string result = "";
-
-  for (const auto& config : configs) {
-    // concatenate host_artifacts_dir parameter with a comma separator instead
-    // of a space
-    result += config.host_artifacts_dir + ",";
+std::string GenerateSystemImageFlag(const FetchCvdConfig& config) {
+  std::vector<std::string> paths;
+  for (const auto& instance : config.instances) {
+    paths.emplace_back(config.target_directory + "/" +
+                       instance.target_subdirectory);
   }
-
-  // remove the last comma character from the final string, if it exists
-  if (!result.empty()) {
-    result.pop_back();
-  }
-
-  return "--system_image_dir=" + result;
+  return "--system_image_dir=" + android::base::Join(paths, ',');
 }
 
 std::string GenerateParentDirectory() {
@@ -69,25 +64,38 @@ std::string GenerateParentDirectory() {
   return ss.str();
 }
 
-std::string GenerateHostArtifactsDirectoryName(int64_t time,
-                                        int instance_index) {
-  // Concatenates the string using GenerateParentDirectory and std::to_string.
-  std::string host_artifacts_dir = GenerateParentDirectory() +
-                         std::to_string(time) + "_" +
-                         std::to_string(instance_index) + "/";
-
-  return host_artifacts_dir;
+std::string GenerateHostArtifactsDirectory(int64_t time) {
+  return GenerateParentDirectory() + std::to_string(time);
 }
 
 std::string GenerateHomeDirectoryName(int64_t time) {
-  // Concatenates the string using GenerateParentDirectory and std::to_string.
-  std::string home_dir =
-      GenerateParentDirectory() + std::to_string(time) + "_home/";
-
-  return home_dir;
+  return GenerateParentDirectory() + std::to_string(time) + "_home/";
 }
 
 using DemoCommandSequence = std::vector<RequestWithStdio>;
+
+void AddFetchCommandArgs(cvd::CommandRequest& command,
+                         const FetchCvdConfig& config,
+                         const FetchCvdInstanceConfig& instance_config) {
+  command.set_working_directory(config.target_directory);
+  command.add_args("cvd");
+  command.add_args("fetch");
+  command.add_args("--target_directory=" + config.target_directory);
+  command.add_args("--target_subdirectory=" +
+                   instance_config.target_subdirectory);
+  if (config.credential_source) {
+    command.add_args("--credential_source=" + *config.credential_source);
+  }
+  if (instance_config.default_build) {
+    command.add_args("--default_build=" + *instance_config.default_build);
+  }
+  if (instance_config.system_build) {
+    command.add_args("--system_build=" + *instance_config.system_build);
+  }
+  if (instance_config.kernel_build) {
+    command.add_args("--kernel_build=" + *instance_config.kernel_build);
+  }
+}
 
 }  // namespace
 
@@ -213,37 +221,27 @@ class LoadConfigsCommand : public CvdServerHandler {
     return jsonValue;
   }
 
-  bool HasValidDotSeparatedPrefix(const std::string& str) {
+  Result<void> ValidateArgFormat(const std::string& str) {
     auto equalsPos = str.find('=');
-    if (equalsPos == std::string::npos) {
-      return false;
-    }
+    CF_EXPECT(equalsPos != std::string::npos,
+              "equal value is not provided in the argument");
     std::string prefix = str.substr(0, equalsPos);
-    // return false if prefix is empty, has no dots, start with dots, end with dot
-    // or has cosequence of dots
-    if (prefix.empty() || prefix.find('.') == std::string::npos ||
-        prefix.find('.') == 0 || prefix.find("..") != std::string::npos ||
-        prefix.back() == '.') {
-      return false;
-    }
-    return true;
+    CF_EXPECT(!prefix.empty(), "argument value should not be empty");
+    CF_EXPECT(prefix.find('.') != std::string::npos,
+              "argument value must be dot separated");
+    CF_EXPECT(prefix[0] != '.', "argument value should not start with a dot");
+    CF_EXPECT(prefix.find("..") == std::string::npos,
+              "argument value should not contain two consecutive dots");
+    CF_EXPECT(prefix.back() != '.', "argument value should not end with a dot");
+    return {};
   }
 
-  bool hasEqualsWithValidDotSeparatedPrefix(const std::string& str) {
-    auto equalsPos = str.find('=');
-    return equalsPos != std::string::npos && equalsPos < str.length() - 1 &&
-           HasValidDotSeparatedPrefix(str);
-  }
-
-  bool ValidateArgsFormat(const std::vector<std::string>& strings) {
+  Result<void> ValidateArgsFormat(const std::vector<std::string>& strings) {
     for (const auto& str : strings) {
-      if (!hasEqualsWithValidDotSeparatedPrefix(str)) {
-        LOG(ERROR) << "Invalid  argument format. " << str
-                   << " Please use arg=value";
-        return false;
-      }
+      CF_EXPECT(ValidateArgFormat(str),
+                "Invalid  argument format. " << str << " Please use arg=value");
     }
-    return true;
+    return {};
   }
 
   Result<DemoCommandSequence> CreateCommandSequence(
@@ -252,79 +250,76 @@ class LoadConfigsCommand : public CvdServerHandler {
 
     std::vector<Flag> flags;
     flags.emplace_back(GflagsCompatFlag("help", help));
-    std::string config_path;
-    flags.emplace_back(GflagsCompatFlag("config_path", config_path));
-
+    std::vector<std::string> overrides;
+    FlagAlias alias = {FlagAliasMode::kFlagPrefix, "--override="};
+    flags.emplace_back(
+        Flag().Alias(alias).Setter([&overrides](const FlagMatch& m) {
+          overrides.push_back(m.value);
+          return true;
+        }));
     auto args = ParseInvocation(request.Message()).arguments;
     CF_EXPECT(ParseFlags(flags, args));
+    CF_EXPECT(args.size() > 0,
+              "No arguments provided to cvd load command, please provide at "
+              "least one argument (help or path to json file)");
 
-    Json::Value json_configs;
     if (help) {
       std::stringstream help_msg_stream;
-      help_msg_stream << "Usage: cvd " << kLoadSubCmd << std::endl;
+      help_msg_stream << "Usage: cvd " << kLoadSubCmd;
       const auto help_msg = help_msg_stream.str();
       CF_EXPECT(WriteAll(request.Out(), help_msg) == help_msg.size());
       return {};
-    } else {
-      json_configs =
-          CF_EXPECT(ParseJsonFile(config_path), "parsing input file failed");
+    }
 
-      if (args.size() > 0) {
-        for (auto& single_arg : args) {
-          LOG(INFO) << "Filtered args " << single_arg;
-        }
-        // Validate all arguments follow specific pattern
-        if (!ValidateArgsFormat(args)) {
-          return {};
-        }
-        // Convert all arguments to json tree
-        auto args_tree = ParseArgsToJson(args);
-        MergeTwoJsonObjs(json_configs, args_tree);
-      }
+    // Extract the config_path from the arguments
+    std::string config_path = args.front();
+    Json::Value json_configs =
+        CF_EXPECT(ParseJsonFile(config_path), "parsing input file failed");
+
+    // remove the config_path from the arguments
+    args.erase(args.begin());
+
+    // Handle the rest of the arguments (Overrides)
+    if (overrides.size() > 0) {
+      // Validate all arguments follow specific pattern
+      CF_EXPECT(ValidateArgsFormat(overrides),
+                "override parameters are not in the correct format");
+
+      // Convert all arguments to json tree
+      auto args_tree = ParseArgsToJson(overrides);
+      MergeTwoJsonObjs(json_configs, args_tree);
     }
 
     auto cvd_flags =
         CF_EXPECT(ParseCvdConfigs(json_configs), "parsing json configs failed");
 
-    // return if the length of fetch_cvd_flags.instances is 0
-    int num_devices = cvd_flags.fetch_cvd_flags.instances.size();
-    CF_EXPECT_GT(num_devices, 0, "No instances to load");
+    int num_instances = cvd_flags.fetch_cvd_flags.instances.size();
+    CF_EXPECT_GT(num_instances, 0, "No instances to load");
 
     std::vector<cvd::Request> req_protos;
 
     const auto& client_env = request.Message().command_request().env();
 
     auto time = std::chrono::system_clock::now().time_since_epoch().count();
-    // set the home directory for each device
-    for (int instance_index = 0; instance_index < num_devices; instance_index++) {
-      cvd_flags.fetch_cvd_flags.instances[instance_index].host_artifacts_dir =
-          GenerateHostArtifactsDirectoryName(time, instance_index);
-      LOG(INFO) << "Home directory for device " << instance_index << " is "
-                << cvd_flags.fetch_cvd_flags.instances[instance_index].host_artifacts_dir;
+    cvd_flags.fetch_cvd_flags.target_directory =
+        GenerateHostArtifactsDirectory(time);
+    for (int instance_index = 0; instance_index < num_instances;
+         instance_index++) {
+      LOG(INFO) << "Instance " << instance_index << " directory is "
+                << cvd_flags.fetch_cvd_flags.target_directory << "/"
+                << std::to_string(instance_index);
+      cvd_flags.fetch_cvd_flags.instances[instance_index].target_subdirectory =
+          std::to_string(instance_index);
     }
 
-    for (const auto& device : cvd_flags.fetch_cvd_flags.instances) {
-      auto& mkdir_cmd = *req_protos.emplace_back().mutable_command_request();
-      *mkdir_cmd.mutable_env() = client_env;
-      mkdir_cmd.add_args("cvd");
-      mkdir_cmd.add_args("mkdir");
-      mkdir_cmd.add_args("-p");
-      mkdir_cmd.add_args(device.host_artifacts_dir);
-
-      if (device.use_fetch_artifact) {
-        // TODO(moelsherif):Separate fetch from launch command
+    for (const auto& instance : cvd_flags.fetch_cvd_flags.instances) {
+      if (instance.should_fetch) {
         auto& fetch_cmd = *req_protos.emplace_back().mutable_command_request();
         *fetch_cmd.mutable_env() = client_env;
-        fetch_cmd.set_working_directory(device.host_artifacts_dir);
-        fetch_cmd.add_args("cvd");
-        fetch_cmd.add_args("fetch");
-        fetch_cmd.add_args("--directory=" + device.host_artifacts_dir);
-        fetch_cmd.add_args("-default_build=" + device.default_build);
-        // TODO: other flags like system_build, kernel_build and credential
-        // optionally later fetch_cmd.add_args("-credential_source=" +
-        // cvd_flags.fetch_cvd_flags.credential);
+        AddFetchCommandArgs(fetch_cmd, cvd_flags.fetch_cvd_flags, instance);
       }
     }
+
     // Create the launch home directory
     std::string launch_home_dir = GenerateHomeDirectoryName(time);
     auto& mkdir_cmd = *req_protos.emplace_back().mutable_command_request();
@@ -338,7 +333,8 @@ class LoadConfigsCommand : public CvdServerHandler {
     auto& launch_cmd = *req_protos.emplace_back().mutable_command_request();
 
     auto first_instance_dir =
-        cvd_flags.fetch_cvd_flags.instances[0].host_artifacts_dir;
+        cvd_flags.fetch_cvd_flags.target_directory + "/" +
+        cvd_flags.fetch_cvd_flags.instances[0].target_subdirectory;
     *launch_cmd.mutable_env() = client_env;
     launch_cmd.set_working_directory(first_instance_dir);
     (*launch_cmd.mutable_env())["HOME"] = launch_home_dir;
@@ -361,8 +357,7 @@ class LoadConfigsCommand : public CvdServerHandler {
       launch_cmd.add_args(parsed_flag);
     }
     // Add system flag for multi-build scenario
-    launch_cmd.add_args(
-        GenerateSystemImageFlag(cvd_flags.fetch_cvd_flags.instances));
+    launch_cmd.add_args(GenerateSystemImageFlag(cvd_flags.fetch_cvd_flags));
 
     launch_cmd.mutable_selector_opts()->add_args(
         std::string("--") + selector::SelectorFlags::kDisableDefaultGroup);

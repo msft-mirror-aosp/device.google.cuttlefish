@@ -69,7 +69,6 @@ $(call inherit-product, $(SRC_TARGET_DIR)/product/emulated_storage.mk)
 # partition, instead of the vendor partition, and do not need vendor
 # sepolicy
 PRODUCT_PRODUCT_PROPERTIES += \
-    remote_provisioning.enable_rkpd=true \
     remote_provisioning.hostname=staging-remoteprovisioning.sandbox.googleapis.com \
     persist.adb.tcp.port=5555 \
     ro.com.google.locationfeatures=1 \
@@ -232,6 +231,7 @@ PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/config/media_codecs_google_video.xml:$(TARGET_COPY_OUT_VENDOR)/etc/media_codecs_google_video.xml \
     device/google/cuttlefish/shared/config/media_codecs_performance.xml:$(TARGET_COPY_OUT_VENDOR)/etc/media_codecs_performance.xml \
     device/google/cuttlefish/shared/config/media_profiles.xml:$(TARGET_COPY_OUT_VENDOR)/etc/media_profiles_V1_0.xml \
+    device/google/cuttlefish/shared/config/media_profiles.xml:$(TARGET_COPY_OUT_VENDOR)/etc/media_profiles_vendor.xml \
     device/google/cuttlefish/shared/permissions/privapp-permissions-cuttlefish.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/privapp-permissions-cuttlefish.xml \
     frameworks/av/media/libeffects/data/audio_effects.xml:$(TARGET_COPY_OUT_VENDOR)/etc/audio_effects.xml \
     hardware/interfaces/audio/aidl/default/audio_effects_config.xml:$(TARGET_COPY_OUT_VENDOR)/etc/audio_effects_config.xml \
@@ -398,6 +398,8 @@ PRODUCT_PACKAGES += \
 #
 # Oemlock
 #
+LOCAL_ENABLE_OEMLOCK ?= true
+ifeq ($(LOCAL_ENABLE_OEMLOCK),true)
 ifeq ($(LOCAL_OEMLOCK_PRODUCT_PACKAGE),)
     LOCAL_OEMLOCK_PRODUCT_PACKAGE := android.hardware.oemlock-service.remote
 endif
@@ -405,6 +407,7 @@ PRODUCT_PACKAGES += \
     $(LOCAL_OEMLOCK_PRODUCT_PACKAGE)
 
 PRODUCT_VENDOR_PROPERTIES += ro.oem_unlock_supported=1
+endif
 
 #
 # GPS
@@ -442,12 +445,11 @@ PRODUCT_PACKAGES += \
 # Sensors
 #
 ifeq ($(LOCAL_SENSOR_PRODUCT_PACKAGE),)
-# TODO(b/210883464): Convert the sensors APEX to use the new AIDL impl.
-#ifeq ($(LOCAL_PREFER_VENDOR_APEX),true)
-#       LOCAL_SENSOR_PRODUCT_PACKAGE := com.android.hardware.sensors
-#else
+ifeq ($(LOCAL_PREFER_VENDOR_APEX),true)
+       LOCAL_SENSOR_PRODUCT_PACKAGE := com.android.hardware.sensors
+else
        LOCAL_SENSOR_PRODUCT_PACKAGE := android.hardware.sensors-service.example
-#endif
+endif
 endif
 PRODUCT_PACKAGES += \
     $(LOCAL_SENSOR_PRODUCT_PACKAGE)
