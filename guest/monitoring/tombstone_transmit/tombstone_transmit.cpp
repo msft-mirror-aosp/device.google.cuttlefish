@@ -32,26 +32,26 @@
 
 static const char TOMBSTONE_DIR[] = "/data/tombstones/";
 
-// returns a fd which when read from, provides inotify events when tombstones
-// are created
-static int new_tombstone_create_notifier(void) {
-  int file_create_notification_handle = inotify_init();
-  if (file_create_notification_handle == -1) {
+// returns a fd which when read from, provides inotify events when tombstone
+// creations are completed.
+static int new_tombstone_creation_complete_notifier(void) {
+  int file_close_notification_handle = inotify_init();
+  if (file_close_notification_handle == -1) {
     ALOGE("%s: inotify_init failure error: '%s' (%d)", __FUNCTION__,
       strerror(errno), errno);
     return -1;
   }
 
-  int watch_descriptor = inotify_add_watch(file_create_notification_handle,
-    TOMBSTONE_DIR, IN_CREATE);
+  int watch_descriptor = inotify_add_watch(file_close_notification_handle,
+                                           TOMBSTONE_DIR, IN_CLOSE_WRITE);
   if (watch_descriptor == -1) {
     ALOGE("%s: Could not add watch for '%s', error: '%s' (%d)", __FUNCTION__,
       TOMBSTONE_DIR, strerror(errno), errno);
-    close(file_create_notification_handle);
+    close(file_close_notification_handle);
     return -1;
   }
 
-  return file_create_notification_handle;
+  return file_close_notification_handle;
 }
 
 #define INOTIFY_MAX_EVENT_SIZE (sizeof(struct inotify_event) + NAME_MAX + 1)
@@ -80,8 +80,8 @@ static std::vector<std::string> get_next_tombstones_path_blocking(int fd) {
       ALOGE("%s: inotify event didn't contain filename", __FUNCTION__);
       continue;
     }
-    if (!(event->mask & IN_CREATE)) {
-      ALOGE("%s: inotify event didn't pertain to file creation", __FUNCTION__);
+    if (!(event->mask & IN_CLOSE_WRITE)) {
+      ALOGE("%s: inotify event didn't pertain to file closing", __FUNCTION__);
       continue;
     }
     tombstone_paths.push_back(std::string(TOMBSTONE_DIR) +
@@ -106,14 +106,17 @@ int main(int argc, char** argv) {
     while(1) {sleep(1);};
   }
 
-  int file_create_notification_handle = new_tombstone_create_notifier();
-  if (file_create_notification_handle == -1) {return -1;}
+  int tombstone_create_notification_handle =
+      new_tombstone_creation_complete_notifier();
+  if (tombstone_create_notification_handle == -1) {
+    return -1;
+  }
 
   LOG(INFO) << "tombstone watcher successfully initialized";
 
   while (true) {
     std::vector<std::string> ts_paths =
-        get_next_tombstones_path_blocking(file_create_notification_handle);
+        get_next_tombstones_path_blocking(tombstone_create_notification_handle);
     for (auto& ts_path : ts_paths) {
       auto log_fd =
           cuttlefish::SharedFD::VsockClient(FLAGS_cid, FLAGS_port, SOCK_STREAM);
