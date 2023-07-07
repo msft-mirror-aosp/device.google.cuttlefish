@@ -86,7 +86,8 @@ const char* kInstances = "instances";
 
 const char* const kGpuModeAuto = "auto";
 const char* const kGpuModeDrmVirgl = "drm_virgl";
-const char* const kGpuModeGfxStream = "gfxstream";
+const char* const kGpuModeGfxstream = "gfxstream";
+const char* const kGpuModeGfxstreamGuestAngle = "gfxstream_guest_angle";
 const char* const kGpuModeGuestSwiftshader = "guest_swiftshader";
 const char* const kGpuModeNone = "none";
 
@@ -255,6 +256,30 @@ std::map<std::string, uint32_t> CuttlefishConfig::host_tools_version() const {
   return versions;
 }
 
+static constexpr char kenableHostUwb[] = "enable_host_uwb";
+void CuttlefishConfig::set_enable_host_uwb(bool enable_host_uwb) {
+  (*dictionary_)[kenableHostUwb] = enable_host_uwb;
+}
+bool CuttlefishConfig::enable_host_uwb() const {
+  return (*dictionary_)[kenableHostUwb].asBool();
+}
+
+static constexpr char kenableHostUwbConnector[] = "enable_host_uwb_connector";
+void CuttlefishConfig::set_enable_host_uwb_connector(bool enable_host_uwb) {
+  (*dictionary_)[kenableHostUwbConnector] = enable_host_uwb;
+}
+bool CuttlefishConfig::enable_host_uwb_connector() const {
+  return (*dictionary_)[kenableHostUwbConnector].asBool();
+}
+
+static constexpr char kPicaUciPort[] = "pica_uci_port";
+int CuttlefishConfig::pica_uci_port() const {
+  return (*dictionary_)[kPicaUciPort].asInt();
+}
+void CuttlefishConfig::set_pica_uci_port(int pica_uci_port) {
+  (*dictionary_)[kPicaUciPort] = pica_uci_port;
+}
+
 static constexpr char kenableHostBluetooth[] = "enable_host_bluetooth";
 void CuttlefishConfig::set_enable_host_bluetooth(bool enable_host_bluetooth) {
   (*dictionary_)[kenableHostBluetooth] = enable_host_bluetooth;
@@ -346,6 +371,14 @@ std::vector<std::string> CuttlefishConfig::extra_bootconfig_args() const {
     bootconfig.push_back(arg.asString());
   }
   return bootconfig;
+}
+
+static constexpr char kVirtioMac80211Hwsim[] = "virtio_mac80211_hwsim";
+void CuttlefishConfig::set_virtio_mac80211_hwsim(bool virtio_mac80211_hwsim) {
+  (*dictionary_)[kVirtioMac80211Hwsim] = virtio_mac80211_hwsim;
+}
+bool CuttlefishConfig::virtio_mac80211_hwsim() const {
+  return (*dictionary_)[kVirtioMac80211Hwsim].asBool();
 }
 
 static constexpr char kVhostUserMac80211Hwsim[] = "vhost_user_mac80211_hwsim";
@@ -545,6 +578,25 @@ std::string CuttlefishConfig::AssemblyPath(
   return AbsolutePath(assembly_dir() + "/" + file_name);
 }
 
+std::string CuttlefishConfig::instances_uds_dir() const {
+  // Try to use /tmp/cf_avd_{uid}/ for UDS directory.
+  // If it fails, use HOME directory(legacy) instead.
+
+  auto defaultPath = AbsolutePath("/tmp/cf_avd_" + std::to_string(getuid()));
+
+  if (!DirectoryExists(defaultPath) ||
+      CanAccess(defaultPath, R_OK | W_OK | X_OK)) {
+    return defaultPath;
+  }
+
+  return instances_dir();
+}
+
+std::string CuttlefishConfig::InstancesUdsPath(
+    const std::string& file_name) const {
+  return AbsolutePath(instances_uds_dir() + "/" + file_name);
+}
+
 CuttlefishConfig::MutableInstanceSpecific CuttlefishConfig::ForInstance(int num) {
   return MutableInstanceSpecific(this, std::to_string(num));
 }
@@ -575,6 +627,7 @@ std::vector<std::string> CuttlefishConfig::instance_dirs() const {
   std::vector<std::string> result;
   for (const auto& instance : Instances()) {
     result.push_back(instance.instance_dir());
+    result.push_back(instance.instance_uds_dir());
   }
   return result;
 }

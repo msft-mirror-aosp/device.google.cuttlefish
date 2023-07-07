@@ -15,10 +15,16 @@
 
 #include "host/commands/run_cvd/launch/launch.h"
 
+#include <string>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
+#include <fruit/fruit.h>
+
+#include "common/libs/utils/result.h"
 #include "host/commands/run_cvd/launch/log_tee_creator.h"
+#include "host/libs/config/command_source.h"
 #include "host/libs/config/cuttlefish_config.h"
 #include "host/libs/config/known_paths.h"
 
@@ -33,35 +39,60 @@ class RootCanal : public CommandSource {
       : config_(config), instance_(instance), log_tee_(log_tee) {}
 
   // CommandSource
-  Result<std::vector<Command>> Commands() override {
-    if (!Enabled()) {
-      return {};
-    }
-    Command command(RootCanalBinary());
+  Result<std::vector<MonitorCommand>> Commands() override {
+    // Create the root-canal command with the process_restarter
+    // as runner to restart root-canal when it crashes.
+    Command rootcanal(ProcessRestarterBinary());
+    rootcanal.AddParameter("-when_killed");
+    rootcanal.AddParameter("-when_dumped");
+    rootcanal.AddParameter("-when_exited_with_failure");
+    rootcanal.AddParameter("--");
+    rootcanal.AddParameter(RootCanalBinary());
 
-    // Test port
-    command.AddParameter("--test_port=", config_.rootcanal_test_port());
-    // HCI server port
-    command.AddParameter("--hci_port=", config_.rootcanal_hci_port());
-    // Link server port
-    command.AddParameter("--link_port=", config_.rootcanal_link_port());
-    // Link ble server port
-    command.AddParameter("--link_ble_port=", config_.rootcanal_link_ble_port());
-    // Bluetooth controller properties file
-    command.AddParameter("--controller_properties_file=",
-                         config_.rootcanal_config_file());
-    // Default commands file
-    command.AddParameter("--default_commands_file=",
-                         config_.rootcanal_default_commands_file());
+    // Port configuration.
+    rootcanal.AddParameter("--test_port=", config_.rootcanal_test_port());
+    rootcanal.AddParameter("--hci_port=", config_.rootcanal_hci_port());
+    rootcanal.AddParameter("--link_port=", config_.rootcanal_link_port());
+    rootcanal.AddParameter("--link_ble_port=",
+                           config_.rootcanal_link_ble_port());
+
+    // Bluetooth configuration.
+    rootcanal.AddParameter("--controller_properties_file=",
+                           config_.rootcanal_config_file());
+    rootcanal.AddParameter("--default_commands_file=",
+                           config_.rootcanal_default_commands_file());
 
     // Add parameters from passthrough option --rootcanal-args
     for (auto const& arg : config_.rootcanal_args()) {
-      command.AddParameter(arg);
+      rootcanal.AddParameter(arg);
     }
 
-    std::vector<Command> commands;
-    commands.emplace_back(log_tee_.CreateLogTee(command, "rootcanal"));
-    commands.emplace_back(std::move(command));
+    // Add command for forwarding the HCI port to a vsock server.
+    Command hci_vsock_proxy(SocketVsockProxyBinary());
+    hci_vsock_proxy.AddParameter("--server_type=vsock");
+    hci_vsock_proxy.AddParameter("--server_vsock_port=",
+                                 config_.rootcanal_hci_port());
+    hci_vsock_proxy.AddParameter("--client_type=tcp");
+    hci_vsock_proxy.AddParameter("--client_tcp_host=127.0.0.1");
+    hci_vsock_proxy.AddParameter("--client_tcp_port=",
+                                 config_.rootcanal_hci_port());
+
+    // Add command for forwarding the test port to a vsock server.
+    Command test_vsock_proxy(SocketVsockProxyBinary());
+    test_vsock_proxy.AddParameter("--server_type=vsock");
+    test_vsock_proxy.AddParameter("--server_vsock_port=",
+                                  config_.rootcanal_test_port());
+    test_vsock_proxy.AddParameter("--client_type=tcp");
+    test_vsock_proxy.AddParameter("--client_tcp_host=127.0.0.1");
+    test_vsock_proxy.AddParameter("--client_tcp_port=",
+                                  config_.rootcanal_test_port());
+
+    std::vector<MonitorCommand> commands;
+    commands.emplace_back(
+        std::move(log_tee_.CreateLogTee(rootcanal, "rootcanal")));
+    commands.emplace_back(std::move(rootcanal));
+    commands.emplace_back(std::move(hci_vsock_proxy));
+    commands.emplace_back(std::move(test_vsock_proxy));
     return commands;
   }
 

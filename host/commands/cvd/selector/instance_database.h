@@ -41,14 +41,22 @@ class InstanceDatabase {
   InstanceDatabase();
   bool IsEmpty() const;
 
+  struct AddInstanceGroupParam {
+    std::string group_name;
+    std::string home_dir;
+    std::string host_artifacts_path;
+    std::string product_out_path;
+  };
   /** Adds instance group.
    *
    * If group_name or home_dir is already taken or host_artifacts_path is
    * not likely an artifacts path, CF_ERR is returned.
    */
   Result<ConstRef<LocalInstanceGroup>> AddInstanceGroup(
-      const std::string& group_name, const std::string& home_dir,
-      const std::string& host_artifacts_path);
+      const AddInstanceGroupParam& param);
+
+  Json::Value Serialize() const;
+  Result<void> LoadFromJson(const Json::Value&);
 
   /**
    * Adds instance to the group.
@@ -56,14 +64,25 @@ class InstanceDatabase {
    * If id is duplicated in the scope of the InstanceDatabase or instance_name
    * is not unique within the group, CF_ERR is returned.
    */
-  Result<void> AddInstance(const LocalInstanceGroup& group, const unsigned id,
+  Result<void> AddInstance(const std::string& group_name, const unsigned id,
                            const std::string& instance_name);
+
+  struct InstanceInfo {
+    const unsigned id;
+    const std::string name;
+  };
+  Result<void> AddInstances(const std::string& group_name,
+                            const std::vector<InstanceInfo>& instances);
+
+  Result<void> SetBuildId(const std::string& group_name,
+                          const std::string& build_id);
 
   /*
    *  auto group = CF_EXPEC(FindGroups(...));
    *  RemoveInstanceGroup(group)
    */
   bool RemoveInstanceGroup(const LocalInstanceGroup& group);
+  bool RemoveInstanceGroup(const std::string& group_name);
   void Clear();
 
   Result<Set<ConstRef<LocalInstanceGroup>>> FindGroups(
@@ -116,12 +135,20 @@ class InstanceDatabase {
   Result<Set<ConstRef<LocalInstanceGroup>>> FindGroupsByInstanceName(
       const Value& instance_name) const;
   Result<Set<ConstRef<LocalInstance>>> FindInstancesById(const Value& id) const;
-  Result<Set<ConstRef<LocalInstance>>> FindInstancesByInstanceName(
+  Result<Set<ConstRef<LocalInstance>>> FindInstancesByGroupName(
       const Value& instance_specific_name) const;
+  Result<Set<ConstRef<LocalInstance>>> FindInstancesByInstanceName(
+      const Value& group_name) const;
+
+  Result<LocalInstanceGroup*> FindMutableGroup(const std::string& group_name);
+
+  Result<void> LoadGroupFromJson(const Json::Value& group_json);
 
   std::vector<std::unique_ptr<LocalInstanceGroup>> local_instance_groups_;
   Map<FieldName, ConstGroupHandler> group_handlers_;
   Map<FieldName, ConstInstanceHandler> instance_handlers_;
+
+  static constexpr const char kJsonGroups[] = "Groups";
 };
 
 }  // namespace selector

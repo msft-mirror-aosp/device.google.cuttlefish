@@ -15,6 +15,17 @@
 
 #include "host/commands/run_cvd/launch/launch.h"
 
+#include <string>
+#include <unordered_set>
+#include <utility>
+#include <vector>
+
+#include <fruit/fruit.h>
+
+#include "common/libs/utils/result.h"
+#include "host/libs/config/command_source.h"
+#include "host/libs/config/known_paths.h"
+
 namespace cuttlefish {
 namespace {
 
@@ -28,8 +39,8 @@ class SecureEnvironment : public CommandSource, public KernelLogPipeConsumer {
         kernel_log_pipe_provider_(kernel_log_pipe_provider) {}
 
   // CommandSource
-  Result<std::vector<Command>> Commands() override {
-    Command command(HostBinaryPath("secure_env"));
+  Result<std::vector<MonitorCommand>> Commands() override {
+    Command command(SecureEnvBinary());
     command.AddParameter("-confui_server_fd=", confui_server_fd_);
     command.AddParameter("-keymaster_fd_out=", fifos_[0]);
     command.AddParameter("-keymaster_fd_in=", fifos_[1]);
@@ -47,10 +58,11 @@ class SecureEnvironment : public CommandSource, public KernelLogPipeConsumer {
     bool secure_gatekeeper = secure_hals.count(SecureHal::Gatekeeper) > 0;
     auto gatekeeper_impl = secure_gatekeeper ? "tpm" : "software";
     command.AddParameter("-gatekeeper_impl=", gatekeeper_impl);
-
     command.AddParameter("-kernel_events_fd=", kernel_log_pipe_);
 
-    return single_element_emplace(std::move(command));
+    std::vector<MonitorCommand> commands;
+    commands.emplace_back(std::move(command));
+    return commands;
   }
 
   // SetupFeature
@@ -79,7 +91,7 @@ class SecureEnvironment : public CommandSource, public KernelLogPipeConsumer {
     }
 
     auto confui_socket_path =
-        instance_.PerInstanceInternalPath("confui_sign.sock");
+        instance_.PerInstanceInternalUdsPath("confui_sign.sock");
     confui_server_fd_ = SharedFD::SocketLocalServer(confui_socket_path, false,
                                                     SOCK_STREAM, 0600);
     CF_EXPECT(confui_server_fd_->IsOpen(),

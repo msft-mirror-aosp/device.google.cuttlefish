@@ -15,9 +15,20 @@
 
 #include "host/commands/run_cvd/launch/launch.h"
 
+#include <string>
+#include <unordered_set>
+#include <utility>
+#include <vector>
+
+#include <android-base/logging.h>
+#include <fruit/fruit.h>
+
 #include "common/libs/utils/files.h"
 #include "common/libs/utils/network.h"
+#include "common/libs/utils/result.h"
+#include "host/libs/config/command_source.h"
 #include "host/libs/config/known_paths.h"
+#include "host/libs/config/openwrt_args.h"
 #include "host/libs/vm_manager/crosvm_builder.h"
 #include "host/libs/vm_manager/crosvm_manager.h"
 
@@ -34,7 +45,7 @@ class OpenWrt : public CommandSource {
       : config_(config), instance_(instance), log_tee_(log_tee) {}
 
   // CommandSource
-  Result<std::vector<Command>> Commands() override {
+  Result<std::vector<MonitorCommand>> Commands() override {
     constexpr auto crosvm_for_ap_socket = "ap_control.sock";
 
     CrosvmBuilder ap_cmd;
@@ -42,32 +53,16 @@ class OpenWrt : public CommandSource {
                                  kOpenwrtVmResetExitCode);
     ap_cmd.Cmd().AddParameter("run");
     ap_cmd.AddControlSocket(
-        instance_.PerInstanceInternalPath(crosvm_for_ap_socket),
+        instance_.PerInstanceInternalUdsPath(crosvm_for_ap_socket),
         instance_.crosvm_binary());
+
+    ap_cmd.Cmd().AddParameter("--core-scheduling=false");
 
     if (!config_.vhost_user_mac80211_hwsim().empty()) {
       ap_cmd.Cmd().AddParameter("--vhost-user-mac80211-hwsim=",
                                 config_.vhost_user_mac80211_hwsim());
     }
     SharedFD wifi_tap = ap_cmd.AddTap(instance_.wifi_tap_name());
-    // Only run the leases workaround if we are not using the new network
-    // bridge architecture - in that case, we have a wider DHCP address
-    // space and stale leases should be much less of an issue
-    if (!FileExists("/var/run/cuttlefish-dnsmasq-cvd-wbr.leases") &&
-        wifi_tap->IsOpen()) {
-      // TODO(schuffelen): QEMU also needs this and this is not the best place
-      // for this code. Find a better place to put it.
-      auto lease_file =
-          ForCurrentInstance("/var/run/cuttlefish-dnsmasq-cvd-wbr-") +
-          ".leases";
-      std::uint8_t dhcp_server_ip[] = {
-          192, 168, 96, (std::uint8_t)(ForCurrentInstance(1) * 4 - 3)};
-      if (!ReleaseDhcpLeases(lease_file, wifi_tap, dhcp_server_ip)) {
-        LOG(ERROR)
-            << "Failed to release wifi DHCP leases. Connecting to the wifi "
-            << "network may not work.";
-      }
-    }
     if (instance_.enable_sandbox()) {
       ap_cmd.Cmd().AddParameter("--seccomp-policy-dir=",
                                 instance_.seccomp_policy_dir());
@@ -82,6 +77,7 @@ class OpenWrt : public CommandSource {
     ap_cmd.AddSerialConsoleReadOnly(boot_logs_path);
     ap_cmd.AddHvcReadOnly(logs_path);
 
+    auto openwrt_args = OpenwrtArgsFromConfig(instance_);
     switch (instance_.ap_boot_flow()) {
       case APBootFlow::Grub:
         ap_cmd.AddReadWriteDisk(instance_.persistent_ap_composite_disk_path());
@@ -89,10 +85,9 @@ class OpenWrt : public CommandSource {
         break;
       case APBootFlow::LegacyDirect:
         ap_cmd.Cmd().AddParameter("--params=\"root=/dev/vda1\"");
-        ap_cmd.Cmd().AddParameter("--params=instance_num=" +
-                                  std::to_string(cuttlefish::GetInstance()));
-        if (NetworkInterfaceExists(instance_.wifi_bridge_name())) {
-          ap_cmd.Cmd().AddParameter("--params=bridged_host_network=true");
+        for (auto& openwrt_arg : openwrt_args) {
+          ap_cmd.Cmd().AddParameter("--params=" + openwrt_arg.first + "=" +
+                                    openwrt_arg.second);
         }
         ap_cmd.Cmd().AddParameter(config_.ap_kernel_image());
         break;
@@ -101,8 +96,9 @@ class OpenWrt : public CommandSource {
         break;
     }
 
-    std::vector<Command> commands;
-    commands.emplace_back(log_tee_.CreateLogTee(ap_cmd.Cmd(), "openwrt"));
+    std::vector<MonitorCommand> commands;
+    commands.emplace_back(
+        std::move(log_tee_.CreateLogTee(ap_cmd.Cmd(), "openwrt")));
     commands.emplace_back(std::move(ap_cmd.Cmd()));
     return commands;
   }

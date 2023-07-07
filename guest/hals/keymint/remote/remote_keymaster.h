@@ -19,20 +19,20 @@
 
 #include <keymaster/android_keymaster_messages.h>
 
-#include "common/libs/security/keymaster_channel.h"
+#include "common/libs/security/keymaster_channel_sharedfd.h"
 
 namespace keymaster {
 
 class RemoteKeymaster {
  private:
-  cuttlefish::KeymasterChannel* channel_;
+  cuttlefish::SharedFdKeymasterChannel* channel_;
   const int32_t message_version_;
 
   void ForwardCommand(AndroidKeymasterCommand command, const Serializable& req,
                       KeymasterResponse* rsp);
 
  public:
-  RemoteKeymaster(cuttlefish::KeymasterChannel*,
+  RemoteKeymaster(cuttlefish::SharedFdKeymasterChannel*,
                   int32_t message_version = kDefaultMessageVersion);
   ~RemoteKeymaster();
   bool Initialize();
@@ -100,6 +100,8 @@ class RemoteKeymaster {
   GetHwInfoResponse GetHwInfo();
   SetAttestationIdsResponse SetAttestationIds(
       const SetAttestationIdsRequest& request);
+  SetAttestationIdsKM3Response SetAttestationIdsKM3(
+      const SetAttestationIdsKM3Request& request);
 
   // CF HAL and remote sides are always compiled together, so will never
   // disagree about message versions.

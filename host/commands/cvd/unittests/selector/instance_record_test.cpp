@@ -25,8 +25,11 @@ namespace selector {
  * Note that invalid inputs must be tested at the InstanceDatabase level
  */
 TEST(CvdInstanceRecordUnitTest, Fields) {
-  LocalInstanceGroup parent_group("super", "/home/user",
-                                  "/home/user/download/bin");
+  LocalInstanceGroup parent_group(
+      {.group_name = "super",
+       .home_dir = "/home/user",
+       .host_artifacts_path = "/home/user/download/bin",
+       .product_out_path = "/home/user/download/bin"});
   if (!parent_group.AddInstance(3, "phone").ok()) {
     /*
      * Here's why we skip the test rather than see it as a failure.
@@ -49,6 +52,38 @@ TEST(CvdInstanceRecordUnitTest, Fields) {
   ASSERT_EQ(instance->DeviceName(), "super-phone");
   ASSERT_EQ(std::addressof(instance->ParentGroup()),
             std::addressof(parent_group));
+}
+
+/**
+ * Note that invalid inputs must be tested at the InstanceDatabase level
+ */
+TEST(CvdInstanceRecordUnitTest, Copy) {
+  LocalInstanceGroup parent_group(
+      {.group_name = "super",
+       .home_dir = "/home/user",
+       .host_artifacts_path = "/home/user/download/bin",
+       .product_out_path = "/home/user/download/bin"});
+  if (!parent_group.AddInstance(3, "phone").ok()) {
+    /*
+     * Here's why we skip the test rather than see it as a failure.
+     *
+     * 1. The test is specifically designed for operations in
+     *    LocalInstanceRecord.
+     * 2. Adding instance to a group is tested in another test suites designed
+     *    for LocalInstanceGroup. It's a failure there but not here.
+     *
+     */
+    GTEST_SKIP() << "Failed to add instance group. Set up failed.";
+  }
+  auto& instances = parent_group.Instances();
+  auto& instance = *instances.cbegin();
+  auto copy = instance->GetCopy();
+
+  ASSERT_EQ(instance->InstanceId(), copy.InstanceId());
+  ASSERT_EQ(instance->InternalName(), copy.InternalName());
+  ASSERT_EQ(instance->PerInstanceName(), copy.PerInstanceName());
+  ASSERT_EQ(instance->InternalDeviceName(), copy.InternalDeviceName());
+  ASSERT_EQ(instance->DeviceName(), copy.DeviceName());
 }
 
 }  // namespace selector

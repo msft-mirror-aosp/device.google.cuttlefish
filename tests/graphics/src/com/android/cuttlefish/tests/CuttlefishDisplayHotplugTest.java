@@ -19,7 +19,6 @@ import static com.google.common.truth.Truth.assertThat;
 
 import android.platform.test.annotations.LargeTest;
 
-import com.android.compatibility.common.tradefed.build.CompatibilityBuildHelper;
 import com.android.cuttlefish.tests.utils.CuttlefishHostTest;
 import com.android.tradefed.device.DeviceNotAvailableException;
 import com.android.tradefed.device.ITestDevice;
@@ -73,20 +72,26 @@ public class CuttlefishDisplayHotplugTest extends CuttlefishHostTest {
 
     private static final String CVD_BINARY_BASENAME = "cvd";
 
+    private static final String CVD_DISPLAY_BINARY_BASENAME = "cvd_internal_display";
+
     private CommandResult runCvdCommand(Collection<String> commandArgs) throws FileNotFoundException {
-        String cvdBinary = runner.getHostBinaryPath(CVD_BINARY_BASENAME);
+        // TODO: Switch back to using `cvd` after either:
+        //  * Commands under `cvd` can be used with instances launched through `launch_cvd`.
+        //  * ATP launches instances using `cvd start` instead of `launch_cvd`.
+        String cvdBinary = runner.getHostBinaryPath(CVD_DISPLAY_BINARY_BASENAME);
 
         List<String> fullCommand = new ArrayList<String>(commandArgs);
         fullCommand.add(0, cvdBinary);
+
+        // Remove the "display" part of the command until switching back to `cvd`.
+        fullCommand.remove(1);
+
         return runner.run(DEFAULT_TIMEOUT_MS, fullCommand.toArray(new String[0]));
     }
 
-    private File getApk(String fileName) throws FileNotFoundException {
-        CompatibilityBuildHelper buildHelper = new CompatibilityBuildHelper(getBuild());
-        return buildHelper.getTestFile(fileName);
-    }
-
     private static final String HELPER_APP_APK = "CuttlefishDisplayHotplugHelperApp.apk";
+
+    private static final String HELPER_APP_PKG = "com.android.cuttlefish.displayhotplughelper";
 
     private static final String HELPER_APP_ACTIVITY = "com.android.cuttlefish.displayhotplughelper/.DisplayHotplugHelperApp";
 
@@ -96,20 +101,21 @@ public class CuttlefishDisplayHotplugTest extends CuttlefishHostTest {
 
     private static final int HELPER_APP_LOG_CHECK_TIMEOUT_MILLISECONDS = 200;
 
+    private static final int CHECK_FOR_UPDATED_GUEST_DISPLAYS_ATTEMPTS = 5;
+
+    private static final int CHECK_FOR_UPDATED_GUEST_DISPLAYS_SLEEP_MILLISECONDS = 500;
+
     private static final Splitter LOGCAT_NEWLINE_SPLITTER = Splitter.on('\n').trimResults();
 
     @Before
     public void setUp() throws Exception {
-        getDevice().uninstallPackage(HELPER_APP_APK);
-        String[] options = {AbiUtils.createAbiFlag(getAbi().getName())};
-
-        String installError = getDevice().installPackage(getApk(HELPER_APP_APK), false, options);
-        assertThat(installError).isNull();
+        getDevice().uninstallPackage(HELPER_APP_PKG);
+        installPackage(HELPER_APP_APK);
     }
 
     @After
     public void tearDown() throws Exception {
-        getDevice().uninstallPackage(HELPER_APP_APK);
+        getDevice().uninstallPackage(HELPER_APP_PKG);
     }
 
     /**
@@ -361,7 +367,9 @@ public class CuttlefishDisplayHotplugTest extends CuttlefishHostTest {
         // Perform the hotplug connect.
         addDisplays(params);
 
-        // Check that Crosvm is aware of the new display.
+        // Check that Crosvm is aware of the new display (the added displays should
+        // be visible immediately after the host command completes and this should
+        // not need retries).
         Map<Integer, HostDisplayInfo> afterAddHostDisplays = getHostDisplays();
         assertThat(afterAddHostDisplays).isNotNull();
 
@@ -377,11 +385,28 @@ public class CuttlefishDisplayHotplugTest extends CuttlefishHostTest {
             .containsExactlyElementsIn(params);
 
         // Check that SurfaceFlinger and DisplayManager are aware of the new display.
-        Map<Integer, GuestDisplayInfo> afterAddGuestDisplays = getGuestDisplays();
-        assertThat(afterAddGuestDisplays).isNotNull();
+        Map<Integer, GuestDisplayInfo> afterAddGuestDisplays = null;
+        for (int attempt = 0; attempt < CHECK_FOR_UPDATED_GUEST_DISPLAYS_ATTEMPTS; attempt++) {
+            // Guest components (HWComposer/SurfaceFlinger/etc) may take some time to process.
+            Thread.sleep(CHECK_FOR_UPDATED_GUEST_DISPLAYS_SLEEP_MILLISECONDS);
 
+            afterAddGuestDisplays = getGuestDisplays();
+            assertThat(afterAddGuestDisplays).isNotNull();
+
+            int expectedNumberOfGuestDisplaysAfterAdd =
+                originalGuestDisplays.size() + params.size();
+
+            int numberOfGuestDisplaysAfterAdd = afterAddGuestDisplays.size();
+            if (numberOfGuestDisplaysAfterAdd == expectedNumberOfGuestDisplaysAfterAdd) {
+                break;
+            }
+
+            CLog.i("Number of guest displays after add command did not yet match expected on " +
+                    "attempt %d (actual:%d vs expected:%d)",
+                    attempt, numberOfGuestDisplaysAfterAdd, expectedNumberOfGuestDisplaysAfterAdd);
+        }
         MapDifference<Integer, GuestDisplayInfo> addedGuestDisplaysDiff =
-            Maps.difference(afterAddGuestDisplays, originalGuestDisplays);
+            Maps.difference(afterAddGuestDisplays, originalGuestDisplays);;
         assertThat(addedGuestDisplaysDiff.entriesOnlyOnLeft()).hasSize(params.size());
         assertThat(addedGuestDisplaysDiff.entriesOnlyOnRight()).isEmpty();
 
@@ -398,7 +423,9 @@ public class CuttlefishDisplayHotplugTest extends CuttlefishHostTest {
         }
         removeDisplays(addedHostDisplayIds);
 
-        // Check that Crosvm does not show the removed display.
+        // Check that Crosvm does not show the removed display (the removed displays
+        // should be visible immediately after the host command completes and this
+        // should not need retries).
         Map<Integer, HostDisplayInfo> afterRemoveHostDisplays = getHostDisplays();
         assertThat(afterRemoveHostDisplays).isNotNull();
 
@@ -407,11 +434,28 @@ public class CuttlefishDisplayHotplugTest extends CuttlefishHostTest {
         assertThat(removedHostDisplaysDiff.entriesDiffering()).isEmpty();
 
         // Check that SurfaceFlinger and DisplayManager do not show the removed display.
-        Map<Integer, GuestDisplayInfo> afterRemoveGuestDisplays = getGuestDisplays();
-        assertThat(afterRemoveGuestDisplays).isNotNull();
+        Map<Integer, GuestDisplayInfo> afterRemoveGuestDisplays = null;
+        for (int attempt = 0; attempt < CHECK_FOR_UPDATED_GUEST_DISPLAYS_ATTEMPTS; attempt++) {
+            // Guest components (HWComposer/SurfaceFlinger/etc) may take some time to process.
+            Thread.sleep(CHECK_FOR_UPDATED_GUEST_DISPLAYS_SLEEP_MILLISECONDS);
 
-        MapDifference<Integer, GuestDisplayInfo> removedGuestDisplaysDiff =
-            Maps.difference(afterRemoveGuestDisplays, originalGuestDisplays);
+            afterRemoveGuestDisplays = getGuestDisplays();
+            assertThat(afterRemoveGuestDisplays).isNotNull();
+
+            int expectedNumberOfGuestDisplaysAfterRemove = originalGuestDisplays.size();
+
+            int numberOfGuestDisplaysAfterRemove = afterRemoveGuestDisplays.size();
+            if (numberOfGuestDisplaysAfterRemove == expectedNumberOfGuestDisplaysAfterRemove) {
+                break;
+            }
+
+            CLog.i("Number of guest displays after remove command did not yet match expected on " +
+                   "attempt %d (actual:%d vs expected:%d)",
+                   attempt, numberOfGuestDisplaysAfterRemove,
+                   expectedNumberOfGuestDisplaysAfterRemove);
+        }
+        MapDifference<Integer, GuestDisplayInfo> removedGuestDisplaysDiff
+            = Maps.difference(afterRemoveGuestDisplays, originalGuestDisplays);
         assertThat(removedGuestDisplaysDiff.entriesDiffering()).isEmpty();
     }
 

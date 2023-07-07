@@ -60,17 +60,33 @@ namespace {
 
 std::string kFetcherConfigFile = "fetcher_config.json";
 
-FetcherConfig FindFetcherConfig(const std::vector<std::string>& files) {
+struct LocatedFetcherConfig {
   FetcherConfig fetcher_config;
+  std::optional<std::string> working_dir;
+};
+
+LocatedFetcherConfig FindFetcherConfig(const std::vector<std::string>& files) {
+  LocatedFetcherConfig located_fetcher_config;
   for (const auto& file : files) {
     if (android::base::EndsWith(file, kFetcherConfigFile)) {
-      if (fetcher_config.LoadFromFile(file)) {
-        return fetcher_config;
+      std::string home_directory = StringFromEnv("HOME", CurrentDirectory());
+      std::string fetcher_file = file;
+      if (!FileExists(file) &&
+          FileExists(home_directory + "/" + fetcher_file)) {
+        LOG(INFO) << "Found " << fetcher_file << " in HOME directory ('"
+                  << home_directory << "') and not current working directory";
+
+        located_fetcher_config.working_dir = home_directory;
+        fetcher_file = home_directory + "/" + fetcher_file;
+      }
+
+      if (located_fetcher_config.fetcher_config.LoadFromFile(fetcher_file)) {
+        return located_fetcher_config;
       }
       LOG(ERROR) << "Could not load fetcher config file.";
     }
   }
-  return fetcher_config;
+  return located_fetcher_config;
 }
 
 std::string GetLegacyConfigFilePath(const CuttlefishConfig& config) {
@@ -137,6 +153,19 @@ Result<void> CreateLegacySymlinks(
     return CF_ERRNO("symlink(\"" << instance.instance_dir() << "\", \""
                                  << legacy_instance_path << "\") failed");
   }
+
+  const auto mac80211_uds_name = "vhost_user_mac80211";
+
+  const auto mac80211_uds_path =
+      instance.PerInstanceInternalUdsPath(mac80211_uds_name);
+  const auto legacy_mac80211_uds_path =
+      instance.PerInstanceInternalPath(mac80211_uds_name);
+
+  if (symlink(mac80211_uds_path.c_str(), legacy_mac80211_uds_path.c_str())) {
+    return CF_ERRNO("symlink(\"" << mac80211_uds_path << "\", \""
+                                 << legacy_mac80211_uds_path << "\") failed");
+  }
+
   return {};
 }
 
@@ -237,9 +266,17 @@ Result<const CuttlefishConfig*> InitFilesystemAndCreateConfig(
                               config.instance_dirs()),
               "Failed to clean prior files");
 
+    auto defaultGroup = "cvdnetwork";
+    const mode_t defaultMode = S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH;
+
     CF_EXPECT(EnsureDirectoryExists(config.root_dir()));
     CF_EXPECT(EnsureDirectoryExists(config.assembly_dir()));
     CF_EXPECT(EnsureDirectoryExists(config.instances_dir()));
+    CF_EXPECT(EnsureDirectoryExists(config.instances_uds_dir(), defaultMode,
+                                    defaultGroup));
+
+    LOG(INFO) << "Path for instance UDS: " << config.instances_uds_dir();
+
     if (log->LinkAtCwd(config.AssemblyPath("assemble_cvd.log"))) {
       LOG(ERROR) << "Unable to persist assemble_cvd log at "
                   << config.AssemblyPath("assemble_cvd.log")
@@ -250,13 +287,19 @@ Result<const CuttlefishConfig*> InitFilesystemAndCreateConfig(
       CF_EXPECT(EnsureDirectoryExists(instance.instance_dir()));
       auto internal_dir = instance.instance_dir() + "/" + kInternalDirName;
       CF_EXPECT(EnsureDirectoryExists(internal_dir));
-      auto grpc_socket_dir = instance.instance_dir() + "/" + kGrpcSocketDirName;
-      CF_EXPECT(EnsureDirectoryExists(grpc_socket_dir));
       auto shared_dir = instance.instance_dir() + "/" + kSharedDirName;
       CF_EXPECT(EnsureDirectoryExists(shared_dir));
       auto recording_dir = instance.instance_dir() + "/recording";
       CF_EXPECT(EnsureDirectoryExists(recording_dir));
       CF_EXPECT(EnsureDirectoryExists(instance.PerInstanceLogPath("")));
+
+      CF_EXPECT(EnsureDirectoryExists(instance.instance_uds_dir(), defaultMode,
+                                      defaultGroup));
+      CF_EXPECT(EnsureDirectoryExists(instance.instance_internal_uds_dir(),
+                                      defaultMode, defaultGroup));
+      CF_EXPECT(EnsureDirectoryExists(instance.PerInstanceGrpcSocketPath(""),
+                                      defaultMode, defaultGroup));
+
       // TODO(schuffelen): Move this code somewhere better
       CF_EXPECT(CreateLegacySymlinks(instance));
     }
@@ -351,9 +394,18 @@ Result<int> AssembleCvdMain(int argc, char** argv) {
   }
   std::vector<std::string> input_files = android::base::Split(input_files_str, "\n");
 
-  FetcherConfig fetcher_config = FindFetcherConfig(input_files);
+  LocatedFetcherConfig located_fetcher_config = FindFetcherConfig(input_files);
+  if (located_fetcher_config.working_dir) {
+    LOG(INFO) << "Changing current working dircetory to '"
+              << *located_fetcher_config.working_dir << "'";
+    CF_EXPECT(chdir((*located_fetcher_config.working_dir).c_str()) == 0,
+              "Unable to change working dir to '"
+                  << *located_fetcher_config.working_dir
+                  << "': " << strerror(errno));
+  }
+
   // set gflags defaults to point to kernel/RD from fetcher config
-  ExtractKernelParamsFromFetcherConfig(fetcher_config);
+  ExtractKernelParamsFromFetcherConfig(located_fetcher_config.fetcher_config);
 
   auto args = ArgsToVec(argc - 1, argv + 1);
 
@@ -404,10 +456,10 @@ Result<int> AssembleCvdMain(int argc, char** argv) {
   auto guest_configs =
       CF_EXPECT(GetGuestConfigAndSetDefaults(), "Failed to parse arguments");
 
-  auto config =
-      CF_EXPECT(InitFilesystemAndCreateConfig(std::move(fetcher_config),
-                                              guest_configs, injector),
-                "Failed to create config");
+  auto config = CF_EXPECT(InitFilesystemAndCreateConfig(
+                              std::move(located_fetcher_config.fetcher_config),
+                              guest_configs, injector),
+                          "Failed to create config");
 
   std::cout << GetConfigFilePath(*config) << "\n";
   std::cout << std::flush;

@@ -15,8 +15,13 @@
  */
 #include "host/libs/config/fastboot/fastboot.h"
 
-#include "host/libs/config/cuttlefish_config.h"
+#include <utility>
+#include <vector>
+
+#include "common/libs/utils/result.h"
+#include "host/commands/kernel_log_monitor/utils.h"
 #include "host/libs/config/command_source.h"
+#include "host/libs/config/cuttlefish_config.h"
 #include "host/libs/config/known_paths.h"
 
 namespace cuttlefish {
@@ -26,10 +31,10 @@ class FastbootProxy : public CommandSource {
  public:
   INJECT(FastbootProxy(const CuttlefishConfig::InstanceSpecific& instance,
                        const FastbootConfig& fastboot_config))
-      : instance_(instance), fastboot_config_(fastboot_config) {}
+      : instance_(instance),
+        fastboot_config_(fastboot_config) {}
 
-  Result<std::vector<Command>> Commands() override {
-    std::vector<Command> commands;
+  Result<std::vector<MonitorCommand>> Commands() override {
     const std::string ethernet_host = instance_.ethernet_ipv6() + "%" +
                                       instance_.ethernet_bridge_name();
 
@@ -40,8 +45,9 @@ class FastbootProxy : public CommandSource {
     tunnel.AddParameter("--client_tcp_host=", ethernet_host);
     tunnel.AddParameter("--client_tcp_port=", "5554");
     tunnel.AddParameter("--label=", "fastboot");
-    commands.emplace_back(std::move(tunnel));
 
+    std::vector<MonitorCommand> commands;
+    commands.emplace_back(std::move(tunnel));
     return commands;
   }
 
@@ -52,8 +58,13 @@ class FastbootProxy : public CommandSource {
   }
 
  private:
-  bool Setup() override { return true; }
-  std::unordered_set<SetupFeature*> Dependencies() const override { return {}; }
+  std::unordered_set<SetupFeature*> Dependencies() const override {
+    return {};
+  }
+
+  bool Setup() override {
+    return true;
+  }
 
   const CuttlefishConfig::InstanceSpecific& instance_;
   const FastbootConfig& fastboot_config_;
@@ -61,7 +72,8 @@ class FastbootProxy : public CommandSource {
 
 }  // namespace
 
-fruit::Component<fruit::Required<const CuttlefishConfig::InstanceSpecific, const FastbootConfig>>
+fruit::Component<fruit::Required<const CuttlefishConfig::InstanceSpecific,
+                                 const FastbootConfig>>
 LaunchFastbootComponent() {
   return fruit::createComponent()
       .addMultibinding<CommandSource, FastbootProxy>()

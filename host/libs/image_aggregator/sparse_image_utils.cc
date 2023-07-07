@@ -42,7 +42,7 @@ bool IsSparseImage(const std::string& image_path) {
 
 bool ConvertToRawImage(const std::string& image_path) {
   if (!IsSparseImage(image_path)) {
-    LOG(INFO) << "Skip non-sparse image " << image_path;
+    LOG(DEBUG) << "Skip non-sparse image " << image_path;
     return false;
   }
 
@@ -61,7 +61,7 @@ bool ConvertToRawImage(const std::string& image_path) {
   }
 
   // Replace the original sparse image with the raw image.
-  Command mv_cmd("/usr/bin/mv");
+  Command mv_cmd("/bin/mv");
   mv_cmd.AddParameter("-f");
   mv_cmd.AddParameter(tmp_raw_image_path);
   mv_cmd.AddParameter(image_path);

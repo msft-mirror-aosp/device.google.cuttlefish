@@ -38,7 +38,7 @@ using grpc::Status;
 
 DEFINE_string(grpc_uds_path, "", "grpc_uds_path");
 
-class EchoServiceServiceImpl final : public EchoService::Service {
+class EchoServiceImpl final : public EchoService::Service {
   Status Echo(ServerContext* context, const EchoRequest* request,
               EchoReply* reply) override {
     reply->set_message(request->message());
@@ -48,7 +48,7 @@ class EchoServiceServiceImpl final : public EchoService::Service {
 
 void RunServer() {
   std::string server_address("unix:" + FLAGS_grpc_uds_path);
-  EchoServiceServiceImpl service;
+  EchoServiceImpl service;
 
   grpc::EnableDefaultHealthCheckService(true);
   grpc::reflection::InitProtoReflectionServerBuilderPlugin();

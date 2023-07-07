@@ -30,7 +30,11 @@ static std::string TestBinDir() { return "/opt/android11"; }
 
 class CvdInstanceGroupUnitTest : public testing::Test {
  protected:
-  CvdInstanceGroupUnitTest() : group_(GroupName(), HomeDir(), TestBinDir()) {}
+  CvdInstanceGroupUnitTest()
+      : group_({.group_name = GroupName(),
+                .home_dir = HomeDir(),
+                .host_artifacts_path = TestBinDir(),
+                .product_out_path = TestBinDir()}) {}
   LocalInstanceGroup& Get() { return group_; }
   LocalInstanceGroup group_;
 };
@@ -39,7 +43,10 @@ class CvdInstanceGroupUnitTest : public testing::Test {
 class CvdInstanceGroupSearchUnitTest : public testing::Test {
  protected:
   CvdInstanceGroupSearchUnitTest()
-      : group_(GroupName(), HomeDir(), TestBinDir()) {
+      : group_({.group_name = GroupName(),
+                .home_dir = HomeDir(),
+                .host_artifacts_path = TestBinDir(),
+                .product_out_path = TestBinDir()}) {
     is_setup_ =
         (Get().AddInstance(1, "tv_instance").ok() &&
          Get().AddInstance(2, "2").ok() && Get().AddInstance(3, "phone").ok() &&
@@ -70,6 +77,21 @@ TEST_F(CvdInstanceGroupUnitTest, AddInstances) {
   ASSERT_TRUE(group.AddInstance(2, "2").ok());
   ASSERT_TRUE(group.AddInstance(3, "phone").ok());
   ASSERT_EQ(group.Instances().size(), 3);
+}
+
+TEST_F(CvdInstanceGroupUnitTest, AddInstancesAndListAll) {
+  auto& group = Get();
+  group.AddInstance(1, "tv_instance");
+  group.AddInstance(2, "2");
+  group.AddInstance(3, "phone");
+  if (group.Instances().size() != 3) {
+    GTEST_SKIP() << "AddInstance failed but is verified in other testing.";
+  }
+
+  auto set_result = group.FindAllInstances();
+
+  ASSERT_TRUE(set_result.ok()) << set_result.error().Trace();
+  ASSERT_EQ(set_result->size(), 3);
 }
 
 TEST_F(CvdInstanceGroupSearchUnitTest, SearchById) {

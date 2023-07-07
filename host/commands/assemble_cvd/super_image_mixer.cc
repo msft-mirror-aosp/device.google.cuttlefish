@@ -69,9 +69,11 @@ std::string TargetFilesZip(const FetcherConfig& fetcher_config,
 
 const std::string kMiscInfoPath = "META/misc_info.txt";
 const std::set<std::string> kDefaultTargetImages = {
-    "IMAGES/boot.img",        "IMAGES/init_boot.img", "IMAGES/odm.img",
-    "IMAGES/odm_dlkm.img",    "IMAGES/recovery.img",  "IMAGES/userdata.img",
-    "IMAGES/vbmeta.img",      "IMAGES/vendor.img",    "IMAGES/vendor_dlkm.img",
+    "IMAGES/boot.img",        "IMAGES/init_boot.img",
+    "IMAGES/odm.img",         "IMAGES/odm_dlkm.img",
+    "IMAGES/recovery.img",    "IMAGES/userdata.img",
+    "IMAGES/vbmeta.img",      "IMAGES/vendor.img",
+    "IMAGES/vendor_dlkm.img", "IMAGES/vbmeta_vendor_dlkm.img",
     "IMAGES/system_dlkm.img",
 };
 const std::set<std::string> kDefaultTargetBuildProp = {
@@ -271,8 +273,8 @@ class SuperImageRebuilderImpl : public SuperImageRebuilder {
   std::unordered_set<SetupFeature*> Dependencies() const override { return {}; }
   Result<void> ResultSetup() override {
     if (SuperImageNeedsRebuilding(fetcher_config_)) {
-      CF_EXPECT(
-          RebuildSuperImage(fetcher_config_, config_, instance_.super_image()));
+      CF_EXPECT(RebuildSuperImage(fetcher_config_, config_,
+                                  instance_.new_super_image()));
     }
     return {};
   }

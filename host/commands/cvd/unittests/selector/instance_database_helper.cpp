@@ -119,7 +119,12 @@ bool CvdInstanceDatabaseTest::AddGroups(
       SetErrorCode(ErrorCode::kFileError, home + " directory is not found.");
       return false;
     }
-    if (!db_.AddInstanceGroup(base_name, home, android_artifacts_path_).ok()) {
+    InstanceDatabase::AddInstanceGroupParam param{
+        .group_name = base_name,
+        .home_dir = home,
+        .host_artifacts_path = android_artifacts_path_,
+        .product_out_path = android_artifacts_path_};
+    if (!db_.AddInstanceGroup(param).ok()) {
       SetErrorCode(ErrorCode::kInstanceDabaseError, "Failed to add group");
       return false;
     }
@@ -128,10 +133,10 @@ bool CvdInstanceDatabaseTest::AddGroups(
 }
 
 bool CvdInstanceDatabaseTest::AddInstances(
-    const ConstRef<LocalInstanceGroup> group,
+    const std::string& group_name,
     const std::vector<InstanceInfo>& instances_info) {
   for (const auto& [id, per_instance_name] : instances_info) {
-    if (!db_.AddInstance(group, id, per_instance_name).ok()) {
+    if (!db_.AddInstance(group_name, id, per_instance_name).ok()) {
       SetErrorCode(ErrorCode::kInstanceDabaseError,
                    "Failed to add instance " + per_instance_name);
       return false;

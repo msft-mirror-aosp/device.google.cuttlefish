@@ -51,6 +51,11 @@ constexpr char kWifiConnectedMessage[] =
     "VIRTUAL_DEVICE_NETWORK_WIFI_CONNECTED";
 constexpr char kEthernetConnectedMessage[] =
     "VIRTUAL_DEVICE_NETWORK_ETHERNET_CONNECTED";
+// TODO(b/131864854): Replace this with a string less likely to change
+constexpr char kAdbdStartedMessage[] =
+    "init: starting service 'adbd'...";
+constexpr char kFastbootdStartedMessage[] =
+    "init: starting service 'fastbootd'...";
 constexpr char kScreenChangedMessage[] = "VIRTUAL_DEVICE_SCREEN_CHANGED";
 constexpr char kDisplayPowerModeChangedMessage[] =
     "VIRTUAL_DEVICE_DISPLAY_POWER_MODE_CHANGED";
@@ -97,6 +102,9 @@ class CuttlefishConfig {
   std::string assembly_dir() const;
   std::string AssemblyPath(const std::string&) const;
 
+  std::string instances_uds_dir() const;
+  std::string InstancesUdsPath(const std::string&) const;
+
   std::string vm_manager() const;
   void set_vm_manager(const std::string& name);
 
@@ -115,6 +123,12 @@ class CuttlefishConfig {
 
   void set_gem5_debug_flags(const std::string& gem5_debug_flags);
   std::string gem5_debug_flags() const;
+
+  void set_enable_host_uwb(bool enable_host_uwb);
+  bool enable_host_uwb() const;
+
+  void set_enable_host_uwb_connector(bool enable_host_uwb);
+  bool enable_host_uwb_connector() const;
 
   void set_enable_host_bluetooth(bool enable_host_bluetooth);
   bool enable_host_bluetooth() const;
@@ -182,6 +196,9 @@ class CuttlefishConfig {
   void set_host_tools_version(const std::map<std::string, uint32_t>&);
   std::map<std::string, uint32_t> host_tools_version() const;
 
+  void set_virtio_mac80211_hwsim(bool virtio_mac80211_hwsim);
+  bool virtio_mac80211_hwsim() const;
+
   void set_vhost_user_mac80211_hwsim(const std::string& path);
   std::string vhost_user_mac80211_hwsim() const;
 
@@ -196,6 +213,9 @@ class CuttlefishConfig {
 
   void set_wmediumd_config(const std::string& path);
   std::string wmediumd_config() const;
+
+  void set_pica_uci_port(int pica_uci_port);
+  int pica_uci_port() const;
 
   void set_rootcanal_args(const std::string& rootcanal_args);
   std::vector<std::string> rootcanal_args() const;
@@ -266,8 +286,6 @@ class CuttlefishConfig {
     // Port number to connect to the touch server on the host. (Only
     // operational if QEMU is the vmm.)
     int touch_server_port() const;
-    // Port number to connect to the vehicle HAL server on the host
-    int vehicle_hal_server_port() const;
     // Port number to connect to the audiocontrol server on the guest
     int audiocontrol_server_port() const;
     // Port number to connect to the adb server on the host
@@ -287,8 +305,11 @@ class CuttlefishConfig {
     std::string fixed_location_file_path() const;
     std::string mobile_bridge_name() const;
     std::string mobile_tap_name() const;
+    std::string mobile_mac() const;
     std::string wifi_bridge_name() const;
     std::string wifi_tap_name() const;
+    std::string wifi_mac() const;
+    bool use_bridged_wifi_tap() const;
     std::string ethernet_tap_name() const;
     std::string ethernet_bridge_name() const;
     std::string ethernet_mac() const;
@@ -302,14 +323,24 @@ class CuttlefishConfig {
 
     // Returns the path to a file with the given name in the instance
     // directory..
-    std::string PerInstancePath(const char* file_name) const;
-    std::string PerInstanceInternalPath(const char* file_name) const;
+    std::string PerInstancePath(const std::string& file_name) const;
+    std::string PerInstanceInternalPath(const std::string& file_name) const;
     std::string PerInstanceLogPath(const std::string& file_name) const;
-    std::string PerInstanceGrpcSocketPath(const std::string& socket_name) const;
 
     std::string instance_dir() const;
 
     std::string instance_internal_dir() const;
+
+    // Return the Unix domain socket path with given name. Because the
+    // length limitation of Unix domain socket name, it needs to be in
+    // the another directory than normal Instance path.
+    std::string PerInstanceUdsPath(const std::string& file_name) const;
+    std::string PerInstanceInternalUdsPath(const std::string& file_name) const;
+    std::string PerInstanceGrpcSocketPath(const std::string& socket_name) const;
+
+    std::string instance_uds_dir() const;
+
+    std::string instance_internal_uds_dir() const;
 
     std::string touch_socket_path(int screen_idx) const;
     std::string keyboard_socket_path() const;
@@ -394,6 +425,9 @@ class CuttlefishConfig {
     // Whether this instance should start a rootcanal instance
     bool start_rootcanal() const;
 
+    // Whether this instance should start a pica instance
+    bool start_pica() const;
+
     // Whether this instance should start a netsim instance
     bool start_netsim() const;
 
@@ -467,12 +501,12 @@ class CuttlefishConfig {
     bool pause_in_bootloader() const;
     bool run_as_daemon() const;
     bool enable_audio() const;
-    bool enable_vehicle_hal_grpc_server() const;
     bool enable_gnss_grpc_proxy() const;
     bool enable_bootanimation() const;
     bool record_screen() const;
     std::string gem5_debug_file() const;
     bool protected_vm() const;
+    bool mte() const;
     std::string boot_slot() const;
 
     // Kernel and bootloader logging
@@ -503,11 +537,14 @@ class CuttlefishConfig {
     int modem_simulator_sim_type() const;
 
     std::string gpu_mode() const;
+    std::string gpu_angle_feature_overrides_enabled() const;
+    std::string gpu_angle_feature_overrides_disabled() const;
     std::string gpu_capture_binary() const;
-    bool restart_subprocesses() const;
-    std::string hwcomposer() const;
     bool enable_gpu_udmabuf() const;
-    bool enable_gpu_angle() const;
+
+    std::string hwcomposer() const;
+
+    bool restart_subprocesses() const;
 
     // android artifacts
     std::string boot_image() const;
@@ -571,7 +608,6 @@ class CuttlefishConfig {
     void set_keyboard_server_port(int config_server_port);
     void set_gatekeeper_vsock_port(int gatekeeper_vsock_port);
     void set_keymaster_vsock_port(int keymaster_vsock_port);
-    void set_vehicle_hal_server_port(int vehicle_server_port);
     void set_audiocontrol_server_port(int audiocontrol_server_port);
     void set_adb_host_port(int adb_host_port);
     void set_modem_simulator_host_id(int modem_simulator_id);
@@ -580,8 +616,11 @@ class CuttlefishConfig {
     void set_camera_server_port(int camera_server_port);
     void set_mobile_bridge_name(const std::string& mobile_bridge_name);
     void set_mobile_tap_name(const std::string& mobile_tap_name);
+    void set_mobile_mac(const std::string& mac);
     void set_wifi_bridge_name(const std::string& wifi_bridge_name);
     void set_wifi_tap_name(const std::string& wifi_tap_name);
+    void set_wifi_mac(const std::string& mac);
+    void set_use_bridged_wifi_tap(bool use_bridged_wifi_tap);
     void set_ethernet_tap_name(const std::string& ethernet_tap_name);
     void set_ethernet_bridge_name(const std::string& set_ethernet_bridge_name);
     void set_ethernet_mac(const std::string& mac);
@@ -598,6 +637,7 @@ class CuttlefishConfig {
     void set_start_webrtc_sig_server_proxy(bool start);
     void set_start_wmediumd(bool start);
     void set_start_rootcanal(bool start);
+    void set_start_pica(bool start);
     void set_start_netsim(bool start);
     void set_ap_boot_flow(InstanceSpecific::APBootFlow flow);
     // Wifi MAC address inside the guest
@@ -629,12 +669,12 @@ class CuttlefishConfig {
     void set_pause_in_bootloader(bool pause_in_bootloader);
     void set_run_as_daemon(bool run_as_daemon);
     void set_enable_audio(bool enable);
-    void set_enable_vehicle_hal_grpc_server(bool enable_vhal_server);
     void set_enable_gnss_grpc_proxy(const bool enable_gnss_grpc_proxy);
     void set_enable_bootanimation(const bool enable_bootanimation);
     void set_record_screen(bool record_screen);
     void set_gem5_debug_file(const std::string& gem5_debug_file);
     void set_protected_vm(bool protected_vm);
+    void set_mte(bool mte);
     void set_boot_slot(const std::string& boot_slot);
     void set_grpc_socket_path(const std::string& sockets);
 
@@ -667,11 +707,14 @@ class CuttlefishConfig {
     void set_modem_simulator_sim_type(int sim_type);
 
     void set_gpu_mode(const std::string& name);
+    void set_gpu_angle_feature_overrides_enabled(const std::string& overrides);
+    void set_gpu_angle_feature_overrides_disabled(const std::string& overrides);
     void set_gpu_capture_binary(const std::string&);
-    void set_restart_subprocesses(bool restart_subprocesses);
-    void set_hwcomposer(const std::string&);
     void set_enable_gpu_udmabuf(const bool enable_gpu_udmabuf);
-    void set_enable_gpu_angle(const bool enable_gpu_angle);
+
+    void set_hwcomposer(const std::string&);
+
+    void set_restart_subprocesses(bool restart_subprocesses);
 
     // system image files
     void set_boot_image(const std::string& boot_image);
@@ -763,7 +806,8 @@ bool HostSupportsQemuCli();
 // GPU modes
 extern const char* const kGpuModeAuto;
 extern const char* const kGpuModeDrmVirgl;
-extern const char* const kGpuModeGfxStream;
+extern const char* const kGpuModeGfxstream;
+extern const char* const kGpuModeGfxstreamGuestAngle;
 extern const char* const kGpuModeGuestSwiftshader;
 extern const char* const kGpuModeNone;
 

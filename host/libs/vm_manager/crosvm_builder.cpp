@@ -22,6 +22,7 @@
 #include "common/libs/utils/network.h"
 #include "common/libs/utils/subprocess.h"
 #include "host/libs/config/cuttlefish_config.h"
+#include "host/libs/config/known_paths.h"
 
 namespace cuttlefish {
 
@@ -29,9 +30,9 @@ CrosvmBuilder::CrosvmBuilder() : command_("crosvm") {}
 
 void CrosvmBuilder::ApplyProcessRestarter(const std::string& crosvm_binary,
                                           int exit_code) {
-  constexpr auto process_restarter = "process_restarter";
-  command_.SetExecutableAndName(HostBinaryPath(process_restarter));
-  command_.AddParameter(exit_code);
+  command_.SetExecutableAndName(ProcessRestarterBinary());
+  command_.AddParameter("-when_exited_with_code=", exit_code);
+  command_.AddParameter("--");
   command_.AddParameter(crosvm_binary);
   // Flag allows exit codes other than 0 or 1, must be before command argument
   command_.AddParameter("--extended-status");

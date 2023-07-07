@@ -215,6 +215,8 @@ class ServerLoopImpl : public ServerLoop,
         instance_.PerInstanceInternalPath("gatekeeper_fifo_vm.out"),
         instance_.PerInstanceInternalPath("bt_fifo_vm.in"),
         instance_.PerInstanceInternalPath("bt_fifo_vm.out"),
+        instance_.PerInstanceInternalPath("uwb_fifo_vm.in"),
+        instance_.PerInstanceInternalPath("uwb_fifo_vm.out"),
         instance_.PerInstanceInternalPath("gnsshvc_fifo_vm.in"),
         instance_.PerInstanceInternalPath("gnsshvc_fifo_vm.out"),
         instance_.PerInstanceInternalPath("locationhvc_fifo_vm.in"),
@@ -229,6 +231,9 @@ class ServerLoopImpl : public ServerLoop,
 
   bool PowerwashFiles() {
     DeleteFifos();
+
+    // TODO(b/269669405): Figure out why this file is not being deleted
+    unlink(instance_.PerInstanceInternalUdsPath("crosvm_control.sock").c_str());
 
     // TODO(schuffelen): Clean up duplication with assemble_cvd
     unlink(instance_.PerInstancePath("NVChip").c_str());
