@@ -155,7 +155,7 @@ PRODUCT_PACKAGES += \
     vsoc_input_service \
     metrics_helper \
 
-$(call soong_config_append,cvd,launch_configs,cvd_config_auto.json cvd_config_auto_md.json cvd_config_foldable.json cvd_config_go.json cvd_config_phone.json cvd_config_slim.json cvd_config_tablet.json cvd_config_tv.json cvd_config_wear.json)
+$(call soong_config_append,cvd,launch_configs,cvd_config_auto.json cvd_config_auto_portrait.json cvd_config_auto_md.json cvd_config_foldable.json cvd_config_go.json cvd_config_phone.json cvd_config_slim.json cvd_config_tablet.json cvd_config_tv.json cvd_config_wear.json)
 $(call soong_config_append,cvd,grub_config,grub.cfg)
 
 #
@@ -418,8 +418,9 @@ PRODUCT_PACKAGES += \
 # Drm HAL
 #
 PRODUCT_PACKAGES += \
-    android.hardware.drm@latest-service.clearkey \
-    android.hardware.drm@latest-service.widevine
+    android.hardware.drm@latest-service.clearkey
+
+-include vendor/widevine/libwvdrmengine/apex/device/device.mk
 
 #
 # Confirmation UI HAL

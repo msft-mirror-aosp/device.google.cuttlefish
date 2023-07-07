@@ -48,7 +48,7 @@ namespace {
 std::string GetControlSocketPath(
     const CuttlefishConfig::InstanceSpecific& instance,
     const std::string& socket_name) {
-  return instance.PerInstanceInternalPath(socket_name.c_str());
+  return instance.PerInstanceInternalUdsPath(socket_name.c_str());
 }
 
 }  // namespace
@@ -158,6 +158,8 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
   if (!instance.smt()) {
     crosvm_cmd.Cmd().AddParameter("--no-smt");
   }
+
+  crosvm_cmd.Cmd().AddParameter("--core-scheduling=false");
 
   if (instance.vhost_net()) {
     crosvm_cmd.Cmd().AddParameter("--vhost-net");
