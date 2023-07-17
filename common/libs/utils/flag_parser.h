@@ -84,12 +84,14 @@ class Flag {
   /* Set the callback for matches. The callback be invoked multiple times. */
   Flag& Setter(std::function<bool(const FlagMatch&)>) &;
   Flag Setter(std::function<bool(const FlagMatch&)>) &&;
+  Flag& Setter(std::function<Result<void>(const FlagMatch&)>) &;
+  Flag Setter(std::function<Result<void>(const FlagMatch&)>) &&;
 
   /* Examines a list of arguments, removing any matches from the list and
    * invoking the `Setter` for every match. Returns `false` if the callback ever
    * returns `false`. Non-matches are left in place. */
-  bool Parse(std::vector<std::string>& flags) const;
-  bool Parse(std::vector<std::string>&& flags) const;
+  Result<void> Parse(std::vector<std::string>& flags) const;
+  Result<void> Parse(std::vector<std::string>&& flags) const;
 
   /* Write gflags `--helpxml` style output for a string-type flag. */
   bool WriteGflagsCompatXml(std::ostream&) const;
@@ -98,7 +100,6 @@ class Flag {
   /* Reports whether `Process` wants to consume zero, one, or two arguments. */
   enum class FlagProcessResult {
     /* Error in handling a flag, exit flag handling with an error result. */
-    kFlagError,
     kFlagSkip,                  /* Flag skipped; consume no arguments. */
     kFlagConsumed,              /* Flag processed; consume one argument. */
     kFlagConsumedWithFollowing, /* Flag processed; consume 2 arguments. */
@@ -110,8 +111,9 @@ class Flag {
   Flag UnvalidatedAlias(const FlagAlias& alias) &&;
 
   /* Attempt to match a single argument. */
-  FlagProcessResult Process(const std::string& argument,
-                            const std::optional<std::string>& next_arg) const;
+  Result<FlagProcessResult> Process(
+      const std::string& argument,
+      const std::optional<std::string>& next_arg) const;
 
   bool HasAlias(const FlagAlias&) const;
 
@@ -122,24 +124,24 @@ class Flag {
   std::vector<FlagAlias> aliases_;
   std::optional<std::string> help_;
   std::optional<std::function<std::string()>> getter_;
-  std::optional<std::function<bool(const FlagMatch&)>> setter_;
+  std::optional<std::function<Result<void>(const FlagMatch&)>> setter_;
 };
 
 std::ostream& operator<<(std::ostream&, const Flag&);
 
 std::vector<std::string> ArgsToVec(int argc, char** argv);
 
-std::string BoolToString(bool val);
-
 Result<bool> ParseBool(const std::string& value, const std::string& name);
 
 /* Handles a list of flags. Flags are matched in the order given in case two
  * flags match the same argument. Matched flags are removed, leaving only
  * unmatched arguments. */
-bool ParseFlags(const std::vector<Flag>& flags, std::vector<std::string>& args,
-                const bool recognize_end_of_option_mark = false);
-bool ParseFlags(const std::vector<Flag>& flags, std::vector<std::string>&&,
-                const bool recognize_end_of_option_mark = false);
+Result<void> ParseFlags(const std::vector<Flag>& flags,
+                        std::vector<std::string>& args,
+                        const bool recognize_end_of_option_mark = false);
+Result<void> ParseFlags(const std::vector<Flag>& flags,
+                        std::vector<std::string>&&,
+                        const bool recognize_end_of_option_mark = false);
 
 bool WriteGflagsCompatXml(const std::vector<Flag>&, std::ostream&);
 

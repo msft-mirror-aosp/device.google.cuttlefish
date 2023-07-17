@@ -102,7 +102,7 @@ trap workdir_remove EXIT
 cat >"${workdir}"/grub.cfg <<EOF
 set timeout=0
 menuentry "Linux" {
-  linux /vmlinuz ${grub_cmdline} root=${grub_rootfs} init=/bin/sh
+  linux /vmlinuz ${grub_cmdline} root=${grub_rootfs}
   initrd /initrd.img
 }
 EOF
@@ -130,26 +130,41 @@ umount /media
 EOF
 chmod a+x "${workdir}"/install.sh
 
+cat >"${workdir}"/installer.service <<EOF
+[Unit]
+Description=Installer script starter
+After=getty.target
+Conflicts=serial-getty@ttyAMA0.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/bash
+StandardInput=tty-force
+StandardOutput=inherit
+StandardError=inherit
+
+[Install]
+WantedBy=graphical.target
+EOF
+
 # Back up the GPT so we can restore it when installing
 /sbin/sgdisk --backup="${workdir}"/gpt.img "${input}" >/dev/null
 
-loopfile="$(/sbin/losetup -f)"
-sudo losetup -P "${loopfile}" "${input}"
-loopdev_remove() {
-  sudo losetup -d "${loopfile}"
-  workdir_remove
-}
-trap loopdev_remove EXIT
+efi_partition_num=1
+efi_partition_start=$(partx -g -o START -s -n ${efi_partition_num} "${input}" | xargs)
+efi_partition_end=$(partx -g -o END -s -n ${efi_partition_num} "${input}" | xargs)
+efi_partition_offset=$((${efi_partition_start} * 512))
+efi_partition_num_sectors=$((${efi_partition_end} - ${efi_partition_start} + 1))
 
 # Back up the ESP so we can restore it when installing
 touch "${workdir}"/esp.img
-sudo dd if="${loopfile}p1" of="${workdir}"/esp.img status=none >/dev/null
+dd if="${input}" of="${workdir}"/esp.img bs=512 skip=${efi_partition_start} count=${efi_partition_num_sectors} status=none >/dev/null
 
 # Determine the architecture of the disk from the portable GRUB image path
-sudo mount "${loopfile}p1" "${mount}"
+sudo mount -o loop,offset=${efi_partition_offset} "${input}" "${mount}"
 unmount() {
   sudo umount "${mount}"
-  loopdev_remove
 }
 trap unmount EXIT
 grub_blob=$(cd "${mount}" && echo EFI/Boot/*)
@@ -168,11 +183,15 @@ case "${grub_blob}" in
     ;;
 esac
 sudo umount "${mount}"
-trap loopdev_remove EXIT
+
+root_partition_num=2
+root_partition_start=$(partx -g -o START -s -n ${root_partition_num} "${input}" | xargs)
+root_partition_end=$(partx -g -o END -s -n ${root_partition_num} "${input}" | xargs)
+root_partition_offset=$((${root_partition_start} * 512))
 
 # Mount original rootfs and remove previous patching, then tar
-rootfs_uuid=$(sudo blkid -s UUID -o value "${loopfile}p2")
-sudo mount "${loopfile}p2" "${mount}"
+rootfs_uuid=$(/sbin/blkid --probe -s UUID -o value -O ${root_partition_offset} "${input}")
+sudo mount -o loop,offset=${root_partition_offset} "${input}" "${mount}"
 trap unmount EXIT
 sudo rm -f "${mount}"/root/esp.img "${mount}"/root/gpt.img
 sudo rm -f "${mount}"/root/rootfs.tar.lz4
@@ -199,6 +218,8 @@ sudo cp "${workdir}"/rootfs.tar.lz4 "${workdir}"/install.sh "${mount}"/root
 echo -n "${rootfs_uuid}" | sudo tee "${mount}"/root/rootfs_uuid >/dev/null
 sudo cp "${workdir}"/eltorito.img "${mount}"/boot/grub
 sudo cp "${workdir}"/grub.cfg "${mount}"/boot/grub/${grub_arch}/grub.cfg
+sudo cp "${workdir}"/installer.service "${mount}"/usr/lib/systemd/system/installer.service
+sudo ln -f -r -s "${mount}"/usr/lib/systemd/system/installer.service "${mount}"/usr/lib/systemd/system/getty.target.wants/installer.service
 sudo chown root:root \
   "${mount}"/root/esp.img "${mount}"/root/gpt.img \
   "${mount}"/boot/grub/eltorito.img \
