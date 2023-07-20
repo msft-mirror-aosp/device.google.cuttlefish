@@ -137,12 +137,18 @@ int main(int argc, char** argv) {
                                    cuttlefish::SharedFD::Dup(touch_fd));
     close(touch_fd);
   }
-  inputs_builder.WithRotary(cuttlefish::SharedFD::Dup(FLAGS_rotary_fd));
-  close(FLAGS_rotary_fd);
-  inputs_builder.WithKeyboard(cuttlefish::SharedFD::Dup(FLAGS_keyboard_fd));
-  close(FLAGS_keyboard_fd);
-  inputs_builder.WithSwitches(cuttlefish::SharedFD::Dup(FLAGS_switches_fd));
-  close(FLAGS_switches_fd);
+  if (FLAGS_rotary_fd >= 0) {
+    inputs_builder.WithRotary(cuttlefish::SharedFD::Dup(FLAGS_rotary_fd));
+    close(FLAGS_rotary_fd);
+  }
+  if (FLAGS_keyboard_fd >= 0) {
+    inputs_builder.WithKeyboard(cuttlefish::SharedFD::Dup(FLAGS_keyboard_fd));
+    close(FLAGS_keyboard_fd);
+  }
+  if (FLAGS_switches_fd >= 0) {
+    inputs_builder.WithSwitches(cuttlefish::SharedFD::Dup(FLAGS_switches_fd));
+    close(FLAGS_switches_fd);
+  }
 
   auto input_connector = std::move(inputs_builder).Build();
 
@@ -182,7 +188,8 @@ int main(int argc, char** argv) {
   streamer_config.client_files_port = client_server->port();
   streamer_config.tcp_port_range = instance.webrtc_tcp_port_range();
   streamer_config.udp_port_range = instance.webrtc_udp_port_range();
-  streamer_config.openwrt_device_id = cvd_config->instance_names()[0];
+  streamer_config.openwrt_device_id =
+      cvd_config->Instances()[0].webrtc_device_id();
   streamer_config.openwrt_addr = OpenwrtArgsFromConfig(
       cvd_config->Instances()[0])[kOpewnrtWanIpAddressName];
   streamer_config.operator_server.addr = cvd_config->sig_server_address();

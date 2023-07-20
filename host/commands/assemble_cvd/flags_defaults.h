@@ -54,7 +54,7 @@
 #define CF_DEFAULTS_VERBOSITY "INFO"
 #define CF_DEFAULTS_RUN_FILE_DISCOVERY true
 #define CF_DEFAULTS_MEMORY_MB CF_DEFAULTS_DYNAMIC_INT
-#define CF_DEFAULTS_SHARE_SCHED_CORE true
+#define CF_DEFAULTS_SHARE_SCHED_CORE false
 #define CF_DEFAULTS_TRACK_HOST_TOOLS_CRC false
 // TODO: defined twice, please remove redundant definitions
 #define CF_DEFAULTS_USE_OVERLAY true
@@ -87,7 +87,7 @@
 #define CF_DEFAULTS_USE_RANDOM_SERIAL false
 #define CF_DEFAULTS_SERIAL_NUMBER \
   cuttlefish::ForCurrentInstance("CUTTLEFISHCVD")
-#define CF_DEFAULTS_SECURE_HALS "keymint,gatekeeper"
+#define CF_DEFAULTS_SECURE_HALS "keymint,gatekeeper,oemlock"
 #define CF_DEFAULTS_PROTECTED_VM false
 #define CF_DEFAULTS_MTE false
 
@@ -161,10 +161,8 @@
 #define CF_DEFAULTS_ENABLE_PICA_INSTANCE_NUM 0
 
 // Bluetooth default parameters
-#define CF_DEFAULTS_BLUETOOTH_CONTROLLER_PROPERTIES_FILE \
-  "etc/rootcanal/data/controller_properties.json"
 #define CF_DEFAULTS_ENABLE_HOST_BLUETOOTH true
-#define CF_DEFAULTS_ENABLE_ROOTCANAL_INSTANCE_NUM 0
+#define CF_DEFAULTS_ROOTCANAL_INSTANCE_NUM 0
 #define CF_DEFAULTS_ROOTCANAL_ARGS CF_DEFAULTS_DYNAMIC_STRING
 
 // Modem Simulator default parameters

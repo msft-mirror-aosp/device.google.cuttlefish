@@ -15,7 +15,14 @@
  */
 #include "host/commands/cvd/parser/cf_configs_common.h"
 
+#include <functional>
+#include <map>
+#include <string>
+#include <vector>
+
 #include <android-base/logging.h>
+#include <json/json.h>
+
 namespace cuttlefish {
 
 /**
@@ -24,8 +31,10 @@ namespace cuttlefish {
 Result<void> ValidateTypo(const Json::Value& root,
                           const std::map<std::string, Json::ValueType>& map) {
   for (const std::string& flag : root.getMemberNames()) {
-    CF_EXPECT(map.count(flag) != 0 , "Invalid flag name (typo) , Param --> " << flag<< " not recognized");
-    CF_EXPECT(root[flag].isConvertibleTo(map.at(flag)), "Invalid flag typ"<< flag);
+    CF_EXPECT(map.count(flag) != 0,
+              "Invalid input flag name:- " << flag << " not recognized");
+    CF_EXPECT(root[flag].isConvertibleTo(map.at(flag)),
+              "Invalid flag type" << flag);
   }
   return {};
 }
@@ -197,6 +206,23 @@ void InitBoolConfigSubGroup(Json::Value& instances, const std::string& group,
         (!instances[i][group].isMember(subgroup)) ||
         (!instances[i][group][subgroup].isMember(json_flag))) {
       instances[i][group][subgroup][json_flag] = default_value;
+    }
+  }
+}
+
+void InitNullConfig(Json::Value& value, const std::string& json_flag) {
+  if (!value.isMember(json_flag)) {
+    value[json_flag] = Json::Value::nullSingleton();
+  }
+}
+
+void InitNullGroupConfig(Json::Value& instances, const std::string& group,
+                         const std::string& json_flag) {
+  int size = instances.size();
+  for (int i = 0; i < size; i++) {
+    if (!instances[i].isMember(group) ||
+        (!instances[i][group].isMember(json_flag))) {
+      instances[i][group][json_flag] = Json::Value::nullSingleton();
     }
   }
 }

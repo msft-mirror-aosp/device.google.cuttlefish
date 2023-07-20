@@ -109,6 +109,7 @@ cvd_host_tools = [
     "process_restarter",
     "restart_cvd",
     "root-canal",
+    "snapshot_util_cvd",
     "run_cvd",
     "secure_env",
     "sefcontext_compile",
@@ -135,10 +136,6 @@ cvd_openwrt_images = [
     "openwrt_rootfs_x86_64",
     "openwrt_kernel_aarch64",
     "openwrt_rootfs_aarch64",
-]
-
-cvd_bluetooth_config_files = [
-    "controller_properties.json",
 ]
 
 cvd_host_tests = [
@@ -327,7 +324,6 @@ cvd_host_package_customization {
                 cvd_host_acloud_data +
                 cvd_host_bootloader +
                 cvd_host_swiftshader_files +
-                cvd_bluetooth_config_files +
                 cvd_openwrt_images +
                 cvd_host_netsim_gui_assets,
         },
