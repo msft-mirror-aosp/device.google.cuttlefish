@@ -17,20 +17,6 @@ package {
     default_applicable_licenses: ["Android-Apache-2.0"],
 }
 
-cc_library_host_static {
-    name: "libcvd_acloud",
-    srcs: [
-        "converter.cpp",
-        "config.cpp",
-    ],
-    static_libs: [
-        "libcuttlefish_launch_cvd_proto",
-        "libcvd_selector",
-        "libprotobuf-cpp-full",
-    ],
-    defaults: ["cvd_lib_defaults"],
-}
-
 prebuilt_etc_host {
     name: "default.config_host",
     src: "data/default.config",
