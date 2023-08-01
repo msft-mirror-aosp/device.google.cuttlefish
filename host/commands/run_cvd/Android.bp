@@ -24,6 +24,7 @@ cc_binary {
         "launch/bluetooth_connector.cpp",
         "launch/uwb_connector.cpp",
         "launch/console_forwarder.cpp",
+        "launch/control_env_proxy_server.cpp",
         "launch/gnss_grpc_proxy.cpp",
         "launch/kernel_log_monitor.cpp",
         "launch/logcat_receiver.cpp",
@@ -40,10 +41,9 @@ cc_binary {
         "launch/netsim_server.cpp",
         "main.cc",
         "reporting.cpp",
-        "process_monitor.cc",
-        "process_monitor_channel.cc",
         "server_loop.cpp",
         "server_loop_impl.cpp",
+        "server_loop_impl_record.cpp",
         "server_loop_impl_snapshot.cpp",
         "validate.cpp",
     ],
@@ -60,12 +60,14 @@ cc_binary {
         "libprotobuf-cpp-full",
     ],
     static_libs: [
+        "libbuildversion",
         "libcuttlefish_command_util",
         "libcuttlefish_host_config",
         "libcuttlefish_host_config_adb",
         "libcuttlefish_host_config_fastboot",
         "libcuttlefish_metrics",
         "libcuttlefish_msg_queue",
+        "libcuttlefish_process_monitor",
         "libcuttlefish_run_cvd_proto",
         "libcuttlefish_utils",
         "libcuttlefish_vm_manager",
@@ -75,6 +77,7 @@ cc_binary {
         "console_forwarder",
         "kernel_log_monitor",
         "logcat_receiver",
+        "secure_env",
     ],
     target: {
         darwin: {
@@ -98,4 +101,5 @@ cc_binary {
         "cuttlefish_libicuuc",
         "cvd_cc_defaults",
     ],
+    use_version_lib: true,
 }

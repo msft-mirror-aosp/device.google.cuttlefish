@@ -423,8 +423,7 @@ DEFINE_vec(crosvm_use_rng, "true",
 DEFINE_vec(use_pmem, "true",
            "Make this flag false to disable pmem with crosvm");
 
-DEFINE_bool(enable_wifi, true,
-            "Enables the guest WIFI. Disable this only for Minidroid.");
+DEFINE_bool(enable_wifi, true, "Enables the guest WIFI. Mainly for Minidroid");
 
 DEFINE_vec(device_external_network, CF_DEFAULTS_DEVICE_EXTERNAL_NETWORK,
            "The mechanism to connect to the public internet.");
@@ -1106,6 +1105,10 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
   tmp_config_obj.set_rootcanal_link_ble_port(7600 + rootcanal_instance_num);
   LOG(DEBUG) << "rootcanal_instance_num: " << rootcanal_instance_num;
   LOG(DEBUG) << "launch rootcanal: " << (FLAGS_rootcanal_instance_num <= 0);
+
+  int netsim_instance_num = *instance_nums.begin() - 1;
+  tmp_config_obj.set_netsim_instance_num(netsim_instance_num);
+  LOG(DEBUG) << "netsim_instance_num: " << netsim_instance_num;
 
   // crosvm should create fifos for UWB
   auto pica_instance_num = *instance_nums.begin() - 1;

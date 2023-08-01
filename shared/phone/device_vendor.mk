@@ -17,8 +17,6 @@
 PRODUCT_MANIFEST_FILES += device/google/cuttlefish/shared/config/product_manifest.xml
 SYSTEM_EXT_MANIFEST_FILES += device/google/cuttlefish/shared/config/system_ext_manifest.xml
 
-PRODUCT_MAX_PAGE_SIZE_SUPPORTED := 65536
-
 $(call inherit-product, $(SRC_TARGET_DIR)/product/handheld_vendor.mk)
 
 ifneq ($(LOCAL_PREFER_VENDOR_APEX),true)
@@ -43,7 +41,8 @@ $(call inherit-product, device/google/cuttlefish/shared/sensors/device_vendor.mk
 $(call inherit-product, device/google/cuttlefish/shared/virgl/device_vendor.mk)
 $(call inherit-product, device/google/cuttlefish/shared/device.mk)
 
-PRODUCT_EXTRA_VNDK_VERSIONS := 29 30 31
+# Support mixing CF system onto previous versions of vendor
+PRODUCT_EXTRA_VNDK_VERSIONS := 30 31 32 33
 
 TARGET_PRODUCT_PROP := $(LOCAL_PATH)/product.prop
 
