@@ -143,6 +143,10 @@ class DeviceControlApp {
   #deviceCount = 0;
   #micActive = false;
   #adbConnected = false;
+  #motion = {
+    orientation: [0, 0, 0],
+    time: window.performance.now(),
+  };
 
   constructor(deviceConnection, parentController) {
     this.#deviceConnection = deviceConnection;
@@ -211,6 +215,9 @@ class DeviceControlApp {
         'device-details-button', 'device-details-modal',
         'device-details-close');
     createModalButton(
+        'rotation-modal-button', 'rotation-modal',
+        'rotation-modal-close');
+    createModalButton(
         'bluetooth-modal-button', 'bluetooth-prompt', 'bluetooth-prompt-close');
     createModalButton(
         'bluetooth-prompt-wizard', 'bluetooth-wizard', 'bluetooth-wizard-close',
@@ -243,7 +250,7 @@ class DeviceControlApp {
     createModalButton(
         'location-set-cancel', 'location-prompt-modal', 'location-set-modal-close',
         'location-set-modal');
-
+    positionModal('rotation-modal-button', 'rotation-modal');
     positionModal('device-details-button', 'bluetooth-modal');
     positionModal('device-details-button', 'bluetooth-prompt');
     positionModal('device-details-button', 'bluetooth-wizard');
@@ -272,6 +279,20 @@ class DeviceControlApp {
 
     createButtonListener('location-set-confirm', null, this.#deviceConnection,
       evt => this.#onSendLocation(this.#deviceConnection, evt));
+
+    createButtonListener('left-position-button', null, this.#deviceConnection,
+      () => this.#setOrientation(-90));
+
+    createButtonListener('upright-position-button', null, this.#deviceConnection,
+      () => this.#setOrientation(0));
+
+    createButtonListener('right-position-button', null, this.#deviceConnection,
+      () => this.#setOrientation(90));
+
+    createButtonListener('upside-position-button', null, this.#deviceConnection,
+      () => this.#setOrientation(-180));
+
+    createSliderListener('rotation-slider', () => this.#onMotionChanged());
 
     if (this.#deviceConnection.description.custom_control_panel_buttons.length >
         0) {
@@ -421,6 +442,68 @@ class DeviceControlApp {
     let location_msg = longitude + "," +latitude + "," + altitude;
     deviceConnection.sendLocationMessage(location_msg);
   }
+
+  // Inject sensors' events on each change.
+  #onMotionChanged() {
+    const acc_val = document.getElementById('accelerometer-value');
+    const mgn_val  = document.getElementById('magnetometer-value');
+    const gyro_val = document.getElementById('gyroscope-value');
+    let values = document.getElementsByClassName('rotation-slider-value');
+    let current_time = window.performance.now();
+    let xyz = [];
+    for (var i = 0; i < values.length; i++) {
+      xyz[i] = values[i].innerHTML;
+    }
+
+    // Calculate sensor values.
+    let acc_xyz = calculateAcceleration(xyz);
+    let mgn_xyz = calculateMagnetometer(xyz);
+    let time_dif = (current_time - this.#motion.time) * 1e-3;
+    let gyro_xyz = calculateGyroscope(this.#motion.orientation, xyz, time_dif);
+    this.#motion.time = current_time;
+    this.#motion.orientation = xyz;
+    // Inject sensors with new values.
+    adbShell(`/vendor/bin/cuttlefish_sensor_injection motion ${acc_xyz[0]} ${acc_xyz[1]} ${acc_xyz[2]} ${mgn_xyz[0]} ${mgn_xyz[1]} ${mgn_xyz[2]} ${gyro_xyz[0]} ${gyro_xyz[1]} ${gyro_xyz[2]}`);
+
+    // Display new sensor values after injection.
+    acc_val.textContent = `${acc_xyz[0]} ${acc_xyz[1]} ${acc_xyz[2]}`;
+    mgn_val.textContent = `${mgn_xyz[0]} ${mgn_xyz[1]} ${mgn_xyz[2]}`;
+    gyro_val.textContent = `${gyro_xyz[0]} ${gyro_xyz[1]} ${gyro_xyz[2]}`;
+  }
+
+  // Gradually rotate to a fixed orientation.
+  #setOrientation(z) {
+    const sliders = document.getElementsByClassName('rotation-slider-range');
+    const values = document.getElementsByClassName('rotation-slider-value');
+    if (sliders.length != values.length && sliders.length != 3) {
+      return;
+    }
+    // Set XY axes to 0 (upright position).
+    sliders[0].value = '0';
+    values[0].textContent = '0';
+    sliders[1].value = '0';
+    values[1].textContent = '0';
+
+    // Gradually transition z axis to target angle.
+    let current_z = parseFloat(sliders[2].value);
+    const step = ((z > current_z) ? 0.5 : -0.5);
+    let move = setInterval(() => {
+      if (Math.abs(z - current_z) >= 0.5) {
+        current_z += step;
+      }
+      else {
+        current_z = z;
+      }
+      sliders[2].value = current_z;
+      values[2].textContent = `${current_z}`;
+      this.#onMotionChanged();
+      if (current_z == z) {
+        this.#onMotionChanged();
+        clearInterval(move);
+      }
+    }, 5);
+  }
+
   #onImportLocationsFile(deviceConnection, evt) {
 
     function onLoad_send_kml_data(xml) {

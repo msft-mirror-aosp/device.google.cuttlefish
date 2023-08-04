@@ -96,7 +96,6 @@ PRODUCT_VENDOR_PROPERTIES += \
     wifi.direct.interface=p2p-dev-wlan0 \
     persist.sys.zram_enabled=1 \
     ro.hardware.keystore_desede=true \
-    ro.rebootescrow.device=/dev/block/pmem0 \
     ro.incremental.enable=1 \
     debug.c2.use_dmabufheaps=1
 
@@ -140,7 +139,6 @@ PRODUCT_VENDOR_PROPERTIES += ro.crypto.metadata_init_delete_all_keys.enabled=tru
 #
 PRODUCT_PACKAGES += \
     CuttlefishService \
-    cuttlefish_sensor_injection \
     socket_vsock_proxy \
     tombstone_transmit \
     tombstone_producer \
@@ -191,27 +189,11 @@ DEVICE_MANIFEST_FILE += $(LOCAL_DEVICE_FCM_MANIFEST_FILE)
 # General files
 #
 
-
-ifneq ($(LOCAL_SENSOR_FILE_OVERRIDES),true)
-ifneq ($(LOCAL_PREFER_VENDOR_APEX),true)
-    PRODUCT_COPY_FILES += \
-        frameworks/native/data/etc/android.hardware.sensor.ambient_temperature.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.sensor.ambient_temperature.xml \
-        frameworks/native/data/etc/android.hardware.sensor.barometer.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.sensor.barometer.xml \
-        frameworks/native/data/etc/android.hardware.sensor.gyroscope.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.sensor.gyroscope.xml \
-        frameworks/native/data/etc/android.hardware.sensor.hinge_angle.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.sensor.hinge_angle.xml \
-        frameworks/native/data/etc/android.hardware.sensor.light.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.sensor.light.xml \
-        frameworks/native/data/etc/android.hardware.sensor.proximity.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.sensor.proximity.xml \
-        frameworks/native/data/etc/android.hardware.sensor.relative_humidity.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.sensor.relative_humidity.xml
-endif
-endif
-
 ifneq ($(LOCAL_PREFER_VENDOR_APEX),true)
 PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/permissions/cuttlefish_excluded_hardware.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/cuttlefish_excluded_hardware.xml \
     frameworks/native/data/etc/android.hardware.audio.low_latency.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.audio.low_latency.xml \
     frameworks/native/data/etc/android.hardware.ethernet.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.ethernet.xml \
-    frameworks/native/data/etc/android.hardware.location.gps.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.location.gps.xml \
-    frameworks/native/data/etc/android.hardware.reboot_escrow.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.reboot_escrow.xml \
     frameworks/native/data/etc/android.hardware.usb.accessory.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.usb.accessory.xml \
     frameworks/native/data/etc/android.hardware.usb.host.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.usb.host.xml \
     frameworks/native/data/etc/android.hardware.wifi.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.wifi.xml \
@@ -225,6 +207,7 @@ PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/config/init.vendor.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/init.cutf_cvm.rc \
     device/google/cuttlefish/shared/config/init.product.rc:$(TARGET_COPY_OUT_PRODUCT)/etc/init/init.rc \
     device/google/cuttlefish/shared/config/ueventd.rc:$(TARGET_COPY_OUT_VENDOR)/etc/ueventd.rc \
+    device/google/cuttlefish/shared/config/seriallogging.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/seriallogging.rc \
     device/google/cuttlefish/shared/config/media_codecs.xml:$(TARGET_COPY_OUT_VENDOR)/etc/media_codecs.xml \
     device/google/cuttlefish/shared/config/media_codecs_google_video.xml:$(TARGET_COPY_OUT_VENDOR)/etc/media_codecs_google_video.xml \
     device/google/cuttlefish/shared/config/media_codecs_performance.xml:$(TARGET_COPY_OUT_VENDOR)/etc/media_codecs_performance.xml \
@@ -271,13 +254,6 @@ PRODUCT_PACKAGES += \
 #
 PRODUCT_PACKAGES += \
     android.hardware.weaver-service.example
-
-
-#
-# Authsecret HAL
-#
-PRODUCT_PACKAGES += \
-    android.hardware.authsecret@1.0-service
 
 #
 # Authsecret AIDL HAL
@@ -395,14 +371,6 @@ PRODUCT_PACKAGES += \
 PRODUCT_VENDOR_PROPERTIES += ro.oem_unlock_supported=1
 endif
 
-#
-# GPS
-#
-LOCAL_GNSS_PRODUCT_PACKAGE ?= \
-    android.hardware.gnss-service.example
-
-PRODUCT_PACKAGES += $(LOCAL_GNSS_PRODUCT_PACKAGE)
-
 # Health
 ifeq ($(LOCAL_HEALTH_PRODUCT_PACKAGE),)
     LOCAL_HEALTH_PRODUCT_PACKAGE := \
@@ -424,23 +392,10 @@ PRODUCT_PACKAGES += \
     android.hardware.net.nlinterceptor-service.default
 
 #
-# Sensors
-#
-ifeq ($(LOCAL_SENSOR_PRODUCT_PACKAGE),)
-ifeq ($(LOCAL_PREFER_VENDOR_APEX),true)
-       LOCAL_SENSOR_PRODUCT_PACKAGE := com.android.hardware.sensors
-else
-       LOCAL_SENSOR_PRODUCT_PACKAGE := android.hardware.sensors-service.example
-endif
-endif
-PRODUCT_PACKAGES += \
-    $(LOCAL_SENSOR_PRODUCT_PACKAGE)
-
-#
 # Lights
 #
 PRODUCT_PACKAGES += \
-    android.hardware.lights-service.example \
+    android.hardware.lights-service.cuttlefish \
 
 #
 # KeyMint HAL
@@ -500,21 +455,11 @@ PRODUCT_PACKAGES += \
     android.hardware.vibrator-service.example
 endif
 
-PRODUCT_PACKAGES += \
-    android.hardware.secure_element-service.example
-
-PRODUCT_COPY_FILES += \
-    frameworks/native/data/etc/android.hardware.se.omapi.ese.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.se.omapi.ese.xml
-
 # BootControl HAL
 PRODUCT_PACKAGES += \
     android.hardware.boot-service.default \
     android.hardware.boot-service.default_recovery
 
-
-# RebootEscrow HAL
-PRODUCT_PACKAGES += \
-    android.hardware.rebootescrow-service.default
 
 # Memtrack HAL
 PRODUCT_PACKAGES += \
@@ -641,6 +586,9 @@ PRODUCT_PACKAGES += \
 PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/config/pci.ids:$(TARGET_COPY_OUT_VENDOR)/pci.ids
 
-# Thread Network AIDL HAL
+# Thread Network AIDL HAL and simulation CLI
 PRODUCT_PACKAGES += \
-    android.hardware.threadnetwork-service.sim
+    android.hardware.threadnetwork-service.sim \
+    ot-cli-ftd
+PRODUCT_COPY_FILES += \
+    frameworks/native/data/etc/android.hardware.threadnetwork.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.threadnetwork.xml

@@ -442,6 +442,12 @@ bool BuildVbmetaImage(const std::string& image_path,
   return true;
 }
 
+std::vector<std::string> Dedup(std::vector<std::string>&& vec) {
+  std::sort(vec.begin(), vec.end());
+  vec.erase(unique(vec.begin(), vec.end()), vec.end());
+  return vec;
+}
+
 bool SplitRamdiskModules(const std::string& ramdisk_path,
                          const std::string& ramdisk_stage_dir,
                          const std::string& vendor_dlkm_build_dir,
@@ -461,7 +467,7 @@ bool SplitRamdiskModules(const std::string& ramdisk_path,
   }
   LOG(INFO) << "modules.load location " << module_load_file;
   const auto module_list =
-      android::base::Tokenize(ReadFile(module_load_file), "\n");
+      Dedup(android::base::Tokenize(ReadFile(module_load_file), "\n"));
   const auto module_base_dir = cpp_dirname(module_load_file);
   const auto deps = LoadModuleDeps(module_base_dir + "/modules.dep");
   const auto ramdisk_modules =
@@ -477,6 +483,9 @@ bool SplitRamdiskModules(const std::string& ramdisk_path,
 
     const auto module_location =
         fmt::format("{}/{}", module_base_dir, module_path);
+    if (!FileExists(module_location)) {
+      continue;
+    }
     if (IsKernelModuleSigned(module_location)) {
       const auto system_dlkm_module_location =
           fmt::format("{}/{}", system_modules_dir, module_path);
@@ -503,6 +512,17 @@ bool SplitRamdiskModules(const std::string& ramdisk_path,
   LOG(INFO) << "There are " << ramdisk_modules.size() << " ramdisk modules, "
             << vendor_dlkm_modules.size() << " vendor_dlkm modules, "
             << system_dlkm_modules.size() << " system_dlkm modules.";
+
+  // transfer blocklist in whole to the vendor dlkm partition. It currently
+  // only contains one module that is loaded during second stage init.
+  // We can split the blocklist at a later date IF it contains modules in
+  // different partitions.
+  const auto initramfs_blocklist_path = module_base_dir + "/modules.blocklist";
+  if (FileExists(initramfs_blocklist_path)) {
+    const auto vendor_dlkm_blocklist_path =
+        fmt::format("{}/{}", vendor_modules_dir, "modules.blocklist");
+    RenameFile(initramfs_blocklist_path, vendor_dlkm_blocklist_path);
+  }
 
   // Write updated modules.dep and modules.load files
   CHECK(WriteDepsToFile(FilterDependencies(deps, ramdisk_modules),

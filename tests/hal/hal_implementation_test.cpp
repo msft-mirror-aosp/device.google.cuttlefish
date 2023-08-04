@@ -46,6 +46,7 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.frameworks.cameraservice.device@2.1",
     "android.frameworks.displayservice@1.0", // deprecated, see b/141930622
     "android.frameworks.schedulerservice@1.0", // deprecated, see b/37226359
+    "android.frameworks.sensorservice@1.0", // deprecated, see b/205764765
     "android.frameworks.vr.composer@1.0",
     "android.frameworks.vr.composer@2.0",
     "android.frameworks.stats@1.0",  // converted to AIDL, see b/177667419
@@ -58,6 +59,7 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hardware.audio.effect@4.0",
     "android.hardware.audio.effect@5.0",
     "android.hardware.audio.effect@6.0",
+    "android.hardware.authsecret@1.0", // converted to AIDL, see b/182976659
     "android.hardware.automotive.audiocontrol@1.0",
     "android.hardware.automotive.audiocontrol@2.0",
     "android.hardware.automotive.evs@1.1",
