@@ -406,7 +406,7 @@ PRODUCT_PACKAGES += \
 # KeyMint HAL
 #
 ifeq ($(LOCAL_KEYMINT_PRODUCT_PACKAGE),)
-    LOCAL_KEYMINT_PRODUCT_PACKAGE := android.hardware.security.keymint-service.rust
+    LOCAL_KEYMINT_PRODUCT_PACKAGE := com.google.cf.keymint.rust
 endif
 
 PRODUCT_PACKAGES += \
@@ -596,4 +596,4 @@ PRODUCT_PACKAGES += \
     android.hardware.threadnetwork-service.sim \
     ot-cli-ftd
 PRODUCT_COPY_FILES += \
-    frameworks/native/data/etc/android.hardware.threadnetwork.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.threadnetwork.xml
+    frameworks/native/data/etc/android.hardware.thread_network.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.thread_network.xml
