@@ -291,8 +291,8 @@ PRODUCT_PACKAGES += android.hardware.bluetooth.audio@2.0-impl
 LOCAL_AUDIO_PRODUCT_PACKAGE ?= \
     audio.primary.cutf \
     audio.r_submix.default \
-    android.hardware.audio@6.0-impl:32 \
-    android.hardware.audio.effect@6.0-impl:32 \
+    android.hardware.audio@6.0-impl \
+    android.hardware.audio.effect@6.0-impl \
     android.hardware.audio@2.0-service \
 
 LOCAL_AUDIO_PRODUCT_COPY_FILES ?= \
