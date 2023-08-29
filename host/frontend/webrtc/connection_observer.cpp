@@ -202,12 +202,9 @@ class ConnectionObserverImpl : public webrtc_streaming::ConnectionObserver {
 
   void OnSensorsChannelOpen(std::function<bool(const uint8_t *, size_t)>
                                 sensors_message_sender) override {
-    sensors_subscription_id = sensors_handler_->Subscribe(sensors_message_sender);
+    sensors_handler_->InitializeHandler(sensors_message_sender);
     LOG(VERBOSE) << "Sensors channel open";
-  }
-
-  void OnSensorsChannelClosed() override {
-    sensors_handler_->UnSubscribe(sensors_subscription_id);
+    sensors_handler_->SendInitialState();
   }
 
   void OnSensorsMessage(const uint8_t *msg, size_t size) override {
@@ -308,7 +305,6 @@ class ConnectionObserverImpl : public webrtc_streaming::ConnectionObserver {
   std::weak_ptr<DisplayHandler> weak_display_handler_;
   CameraController *camera_controller_;
   std::shared_ptr<webrtc_streaming::SensorsHandler> sensors_handler_;
-  int sensors_subscription_id = -1;
 };
 
 CfConnectionObserverFactory::CfConnectionObserverFactory(

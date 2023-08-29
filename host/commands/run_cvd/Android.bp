@@ -60,7 +60,6 @@ cc_binary {
         "libfruit",
         "libjsoncpp",
         "libprotobuf-cpp-full",
-        "libsparse",
     ],
     static_libs: [
         "libbuildversion",
