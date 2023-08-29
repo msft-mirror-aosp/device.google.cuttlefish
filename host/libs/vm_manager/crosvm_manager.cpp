@@ -145,23 +145,35 @@ std::vector<Command> CrosvmManager::StartCommands(
 
   auto gpu_capture_enabled = !config.gpu_capture_binary().empty();
   auto gpu_mode = config.gpu_mode();
-  auto udmabuf_string = config.enable_gpu_udmabuf() ? "true" : "false";
-  auto angle_string = config.enable_gpu_angle() ? ",angle=true" : "";
-  crosvm_cmd.Cmd().AddParameter("--gpu");
+
+  const std::string gpu_gles_string = config.enable_gpu_angle()
+      ? ",gles=false"
+      : ",gles=true";
+
+  const std::string gpu_pci_bar_size = ",pci-bar-size=268435456";
+
+  const std::string gpu_udmabuf_string =
+      config.enable_gpu_udmabuf() ? ",udmabuf=true" : "";
+
+  const std::string gpu_common_string = gpu_udmabuf_string + gpu_pci_bar_size;
+  const std::string gpu_common_3d_string =
+      gpu_common_string + ",egl=true,surfaceless=true,glx=false" + gpu_gles_string;
+
   if (gpu_mode == kGpuModeGuestSwiftshader) {
-    crosvm_cmd.Cmd().AddParameter("2D,udmabuf=", udmabuf_string);
+    crosvm_cmd.Cmd().AddParameter("--gpu=backend=2D", gpu_common_string);
   } else if (gpu_mode == kGpuModeDrmVirgl || gpu_mode == kGpuModeGfxStream) {
     crosvm_cmd.Cmd().AddParameter(
-        gpu_mode == kGpuModeGfxStream ? "gfxstream," : "",
-        "egl=true,surfaceless=true,glx=false,gles=true,udmabuf=", udmabuf_string,
-        angle_string);
+        gpu_mode == kGpuModeGfxStream
+        ? "--gpu=context-types=gfxstream-gles:gfxstream-vulkan:gfxstream-composer"
+        : "--gpu=backend=virglrenderer,context-types=virgl2",
+        gpu_common_3d_string);
   }
 
   for (const auto& display_config : config.display_configs()) {
-    crosvm_cmd.Cmd().AddParameter("--gpu-display");
-    crosvm_cmd.Cmd().AddParameter(
-        "width=", display_config.width, ",",
-        "height=", display_config.height);
+    const auto display_w = std::to_string(display_config.width);
+    const auto display_h = std::to_string(display_config.height);
+    const auto display_params = "mode=windowed[" + display_w + "," + display_h + "]";
+    crosvm_cmd.Cmd().AddParameter("--gpu-display=", display_params);
   }
 
   crosvm_cmd.Cmd().AddParameter("--wayland-sock");
