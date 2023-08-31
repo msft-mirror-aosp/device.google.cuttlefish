@@ -68,6 +68,7 @@ std::vector<std::string> CrosvmManager::ConfigureGraphics(
         "androidboot.cpuvulkan.version=" + std::to_string(VK_API_VERSION_1_2),
         "androidboot.hardware.gralloc=minigbm",
         "androidboot.hardware.hwcomposer="+ config.hwcomposer(),
+        "androidboot.hardware.hwcomposer.display_finder_mode=drm",
         "androidboot.hardware.egl=angle",
         "androidboot.hardware.vulkan=pastel",
         "androidboot.opengles.version=196609"};  // OpenGL ES 3.1
