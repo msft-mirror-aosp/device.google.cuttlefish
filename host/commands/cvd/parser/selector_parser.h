@@ -16,35 +16,16 @@
 
 #pragma once
 
-#include <iostream>
-#include <optional>
 #include <string>
 #include <vector>
 
-#include <android-base/logging.h>
+#include <json/json.h>
 
 #include "common/libs/utils/result.h"
 
 namespace cuttlefish {
 
-enum class SnapshotCmd : int {
-  kUnknown = 0,
-  kSuspend = 1,
-  kResume = 2,
-  kSnapshotTake = 3,
-};
+Result<std::vector<std::string>> ParseSelectorConfigs(Json::Value& root);
 
-std::ostream& operator<<(std::ostream& out, const SnapshotCmd& cmd);
+};  // namespace cuttlefish
 
-struct Parsed {
-  SnapshotCmd cmd;
-  std::vector<int> instance_nums;
-  int wait_for_launcher;
-  std::string snapshot_path;
-  bool cleanup_snapshot_path;
-  std::optional<android::base::LogSeverity> verbosity_level;
-};
-Result<Parsed> Parse(int argc, char** argv);
-Result<Parsed> Parse(std::vector<std::string>& args);
-
-}  // namespace cuttlefish
