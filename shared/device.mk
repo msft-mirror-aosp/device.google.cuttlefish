@@ -222,7 +222,6 @@ PRODUCT_COPY_FILES += \
 
 endif
 PRODUCT_COPY_FILES += \
-    frameworks/native/data/etc/android.hardware.consumerir.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.consumerir.xml \
     device/google/cuttlefish/shared/config/init.vendor.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/init.cutf_cvm.rc \
     device/google/cuttlefish/shared/config/init.product.rc:$(TARGET_COPY_OUT_PRODUCT)/etc/init/init.rc \
     device/google/cuttlefish/shared/config/ueventd.rc:$(TARGET_COPY_OUT_VENDOR)/etc/ueventd.rc \
@@ -273,12 +272,6 @@ PRODUCT_PACKAGES += \
 PRODUCT_PACKAGES += \
     android.hardware.weaver-service.example
 
-#
-# IR aidl HAL
-#
-PRODUCT_PACKAGES += \
-	android.hardware.ir-service.example \
-	consumerir.default
 
 #
 # Authsecret HAL
@@ -342,12 +335,6 @@ endif
 PRODUCT_PACKAGES += $(LOCAL_AUDIO_PRODUCT_PACKAGE)
 PRODUCT_COPY_FILES += $(LOCAL_AUDIO_PRODUCT_COPY_FILES)
 DEVICE_PACKAGE_OVERLAYS += $(LOCAL_AUDIO_DEVICE_PACKAGE_OVERLAYS)
-
-#
-# BiometricsFace HAL (AIDL)
-#
-PRODUCT_PACKAGES += \
-    com.android.hardware.biometrics.face
 
 #
 # BiometricsFingerprint HAL (AIDL)
@@ -428,10 +415,6 @@ PRODUCT_PACKAGES += $(LOCAL_HEALTH_PRODUCT_PACKAGE)
 # Health Storage
 PRODUCT_PACKAGES += \
     android.hardware.health.storage-service.cuttlefish
-
-# Identity Credential
-PRODUCT_PACKAGES += \
-    android.hardware.identity-service.remote
 
 PRODUCT_PACKAGES += \
     android.hardware.input.processor-service.example
@@ -657,3 +640,7 @@ PRODUCT_PACKAGES += \
 
 PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/config/pci.ids:$(TARGET_COPY_OUT_VENDOR)/pci.ids
+
+# Thread Network AIDL HAL
+PRODUCT_PACKAGES += \
+    android.hardware.threadnetwork-service.sim
