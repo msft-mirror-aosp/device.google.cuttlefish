@@ -22,6 +22,7 @@ cc_binary_host {
     srcs: [
         "main.cc",
         "parse.cc",
+        "snapshot_taker.cc",
     ],
     shared_libs: [
         "libbase",
@@ -36,5 +37,5 @@ cc_binary_host {
         "libgflags",
 	"libprotobuf-cpp-full",
     ],
-    defaults: ["cuttlefish_host", "cuttlefish_libicuuc"],
+    defaults: ["cuttlefish_host"],
 }

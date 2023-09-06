@@ -65,6 +65,7 @@ static constexpr auto kInputChannelLabel = "input-channel";
 static constexpr auto kAdbChannelLabel = "adb-channel";
 static constexpr auto kBluetoothChannelLabel = "bluetooth-channel";
 static constexpr auto kCameraDataChannelLabel = "camera-data-channel";
+static constexpr auto kSensorsDataChannelLabel = "sensors-channel";
 static constexpr auto kLocationDataChannelLabel = "location-channel";
 static constexpr auto kKmlLocationsDataChannelLabel = "kml-locations-channel";
 static constexpr auto kGpxLocationsDataChannelLabel = "gpx-locations-channel";
@@ -286,6 +287,22 @@ class CameraChannelHandler : public DataChannelHandler {
   std::vector<char> receive_buffer_;
 };
 
+// TODO(b/297361564)
+class SensorsChannelHandler : public DataChannelHandler {
+ public:
+  void OnFirstMessage() override { observer()->OnSensorsChannelOpen(GetBinarySender()); }
+  void OnMessageInner(const webrtc::DataBuffer &msg) override {
+    if (!first_msg_received_) {
+      first_msg_received_ = true;
+      return;
+    }
+    observer()->OnSensorsMessage(msg.data.cdata(), msg.size());
+  }
+
+ private:
+  bool first_msg_received_ = false;
+};
+
 class LocationChannelHandler : public DataChannelHandler {
  public:
   void OnMessageInner(const webrtc::DataBuffer &msg) override {
@@ -422,6 +439,9 @@ void DataChannelHandlers::OnDataChannelOpen(
         channel, observer_));
   } else if (label == kGpxLocationsDataChannelLabel) {
     gpx_location_.reset(new DataChannelHandlerImpl<GpxLocationChannelHandler>(
+        channel, observer_));
+  } else if (label == kSensorsDataChannelLabel) {
+    sensors_.reset(new DataChannelHandlerImpl<SensorsChannelHandler>(
         channel, observer_));
   } else {
     unknown_channels_.emplace_back(

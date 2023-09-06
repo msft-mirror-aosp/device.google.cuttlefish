@@ -33,6 +33,12 @@
 #include <string>
 #include <vector>
 
+#ifdef AIDL_USE_UNFROZEN
+constexpr bool kAidlUseUnfrozen = true;
+#else
+constexpr bool kAidlUseUnfrozen = false;
+#endif
+
 using namespace android;
 
 // clang-format off
@@ -59,6 +65,7 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hardware.audio.effect@4.0",
     "android.hardware.audio.effect@5.0",
     "android.hardware.audio.effect@6.0",
+    "android.hardware.authsecret@1.0", // converted to AIDL, see b/182976659
     "android.hardware.automotive.audiocontrol@1.0",
     "android.hardware.automotive.audiocontrol@2.0",
     "android.hardware.automotive.evs@1.1",
@@ -453,6 +460,7 @@ static std::vector<VersionedAidlPackage> allAidlManifestInterfaces() {
 }
 
 TEST(Hal, AllHidlInterfacesAreInAosp) {
+  if (!kAidlUseUnfrozen) GTEST_SKIP() << "Not valid in 'next' configuration";
   for (const FQName& name : allHidlManifestInterfaces()) {
     EXPECT_TRUE(isAospHidlInterface(name))
         << "This device should only have AOSP interfaces, not: "
@@ -461,6 +469,7 @@ TEST(Hal, AllHidlInterfacesAreInAosp) {
 }
 
 TEST(Hal, HidlInterfacesImplemented) {
+  if (!kAidlUseUnfrozen) GTEST_SKIP() << "Not valid in 'next' configuration";
   // instances -> major version -> minor versions
   std::map<std::string, std::map<size_t, std::set<size_t>>> unimplemented;
 
@@ -516,6 +525,7 @@ TEST(Hal, HidlInterfacesImplemented) {
 }
 
 TEST(Hal, AllAidlInterfacesAreInAosp) {
+  if (!kAidlUseUnfrozen) GTEST_SKIP() << "Not valid in 'next' configuration";
   for (const auto& package : allAidlManifestInterfaces()) {
     EXPECT_TRUE(isAospAidlInterface(package.name))
         << "This device should only have AOSP interfaces, not: "
@@ -529,6 +539,7 @@ struct AidlPackageCheck {
 };
 
 TEST(Hal, AidlInterfacesImplemented) {
+  if (!kAidlUseUnfrozen) GTEST_SKIP() << "Not valid in 'next' configuration";
   std::vector<VersionedAidlPackage> manifest = allAidlManifestInterfaces();
   std::vector<VersionedAidlPackage> thoughtMissing = kKnownMissingAidl;
 

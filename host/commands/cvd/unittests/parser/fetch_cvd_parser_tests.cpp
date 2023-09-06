@@ -17,7 +17,9 @@
 #include "host/commands/cvd/parser/fetch_cvd_parser.h"
 
 #include <string>
+#include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include <json/json.h>
 
@@ -25,6 +27,10 @@
 #include "common/libs/utils/result_matchers.h"
 #include "host/commands/cvd/parser/cf_flags_validator.h"
 #include "host/commands/cvd/unittests/parser/test_common.h"
+
+using ::testing::Contains;
+using ::testing::Eq;
+using ::testing::Not;
 
 namespace cuttlefish {
 namespace {
@@ -36,9 +42,11 @@ Json::Value GetTestJson(const char* raw_json) {
   return json_config;
 }
 
-Result<FetchCvdConfig> FetchCvdParserTestHelper(Json::Value& root) {
+Result<std::vector<std::string>> FetchCvdParserTestHelper(
+    Json::Value& root, const std::string& target_directory,
+    const std::vector<std::string>& target_subdirectories) {
   CF_EXPECT(ValidateCfConfigs(root), "Loaded Json validation failed");
-  return ParseFetchCvdConfigs(root);
+  return ParseFetchCvdConfigs(root, target_directory, target_subdirectories);
 }
 
 }  // namespace
@@ -55,21 +63,85 @@ TEST(FetchCvdParserTests, SingleFetch) {
         "cpus" : 4
       },
       "disk" : {
-        "default_build" : "git_master/cf_x86_64_phone-userdebug",
-        "download_img_zip" : true
+        "default_build" : "@ab/git_master/cf_x86_64_phone-userdebug",
+        "download_img_zip" : true,
+        "otatools" : "@ab/git_master/cf_x86_64_phone-userdebug",
+        "host_package" : "@ab/git_master/cf_x86_64_phone-userdebug"
+      },
+      "boot" : {
+        "build" : "@ab/git_master/cf_x86_64_phone-userdebug",
+        "kernel" : {
+          "build" : "@ab/git_master/cf_x86_64_phone-userdebug"
+        },
+        "bootloader" : {
+          "build" : "@ab/git_master/cf_x86_64_phone-userdebug"
+        }
       }
     }
   ],
-  "wait_retry_period" : 20,
-  "keep_downloaded_archives" : false
+  "fetch":{
+    "wait_retry_period" : 20,
+    "keep_downloaded_archives" : false
+  }
 }
   )"""";
   Json::Value json_config = GetTestJson(raw_json);
 
-  auto result_config = FetchCvdParserTestHelper(json_config);
+  auto result_flags = FetchCvdParserTestHelper(json_config, "/target", {"0"});
+  ASSERT_THAT(result_flags, IsOk())
+      << "Parsing config failed:  " << result_flags.error().Trace();
 
-  EXPECT_THAT(result_config, IsOk())
-      << "Parsing config failed:  " << result_config.error().Trace();
+  const auto flags = result_flags.value();
+  EXPECT_THAT(flags, Contains("--wait_retry_period=20"));
+  EXPECT_THAT(flags, Contains("--keep_downloaded_archives=false"));
+  EXPECT_THAT(flags, Contains("--target_directory=/target"));
+  EXPECT_THAT(flags, Contains("--target_subdirectory=0"));
+  EXPECT_THAT(flags,
+              Contains("--default_build=git_master/cf_x86_64_phone-userdebug"));
+  EXPECT_THAT(flags, Contains("--download_img_zip=true"));
+  EXPECT_THAT(
+      flags, Contains("--otatools_build=git_master/cf_x86_64_phone-userdebug"));
+  EXPECT_THAT(
+      flags,
+      Contains("--host_package_build=git_master/cf_x86_64_phone-userdebug"));
+  EXPECT_THAT(flags,
+              Contains("--boot_build=git_master/cf_x86_64_phone-userdebug"));
+  EXPECT_THAT(flags,
+              Contains("--kernel_build=git_master/cf_x86_64_phone-userdebug"));
+  EXPECT_THAT(
+      flags,
+      Contains("--bootloader_build=git_master/cf_x86_64_phone-userdebug"));
+}
+
+TEST(FetchCvdParserTests, SingleFetchNoPrefix) {
+  const char* raw_json = R""""(
+{
+  "instances" : [
+    {
+      "@import" : "phone",
+      "disk" : {
+        "default_build" : "git_master/cf_x86_64_phone-userdebug",
+        "otatools" : "git_master/cf_x86_64_phone-userdebug",
+        "host_package" : "git_master/cf_x86_64_phone-userdebug"
+      },
+      "boot" : {
+        "build" : "git_master/cf_x86_64_phone-userdebug",
+        "kernel" : {
+          "build" : "git_master/cf_x86_64_phone-userdebug"
+        },
+        "bootloader" : {
+          "build" : "git_master/cf_x86_64_phone-userdebug"
+        }
+      }
+    }
+  ]
+}
+  )"""";
+  Json::Value json_config = GetTestJson(raw_json);
+
+  auto result_flags = FetchCvdParserTestHelper(json_config, "/target", {"0"});
+  ASSERT_THAT(result_flags, IsOk())
+      << "Parsing config failed:  " << result_flags.error().Trace();
 }
 
 TEST(FetchCvdParserTests, MultiFetch) {
@@ -84,8 +156,19 @@ TEST(FetchCvdParserTests, MultiFetch) {
         "cpus" : 4
       },
       "disk" : {
-        "default_build" : "git_master/cf_x86_64_phone-userdebug",
-        "download_img_zip" : true
+        "default_build" : "@ab/git_master/cf_x86_64_phone-userdebug",
+        "download_img_zip" : true,
+        "otatools" : "@ab/git_master/cf_x86_64_phone-userdebug",
+        "host_package" : "@ab/git_master/cf_x86_64_phone-userdebug"
+      },
+      "boot" : {
+        "build" : "@ab/git_master/cf_x86_64_phone-userdebug",
+        "kernel" : {
+          "build" : "@ab/git_master/cf_x86_64_phone-userdebug"
+        },
+        "bootloader" : {
+          "build" : "@ab/git_master/cf_x86_64_phone-userdebug"
+        }
       }
     },
     {
@@ -96,21 +179,47 @@ TEST(FetchCvdParserTests, MultiFetch) {
         "cpus" : 4
       },
       "disk" : {
-        "default_build" : "git_master/cf_gwear_x86-userdebug",
+        "default_build" : "@ab/git_master/cf_gwear_x86-userdebug",
         "download_img_zip" : true
       }
     }
   ],
-  "wait_retry_period" : 20,
-  "keep_downloaded_archives" : false
+  "fetch":{
+    "wait_retry_period" : 20,
+    "keep_downloaded_archives" : false
+  }
 }
   )"""";
   Json::Value json_config = GetTestJson(raw_json);
 
-  auto result_config = FetchCvdParserTestHelper(json_config);
+  auto result_flags =
+      FetchCvdParserTestHelper(json_config, "/target", {"0", "1"});
+  ASSERT_THAT(result_flags, IsOk())
+      << "Parsing config failed:  " << result_flags.error().Trace();
 
-  EXPECT_THAT(result_config, IsOk())
-      << "Parsing config failed:  " << result_config.error().Trace();
+  const auto flags = result_flags.value();
+  EXPECT_THAT(flags, Contains("--wait_retry_period=20"));
+  EXPECT_THAT(flags, Contains("--keep_downloaded_archives=false"));
+  EXPECT_THAT(flags, Contains("--target_directory=/target"));
+  EXPECT_THAT(flags, Contains("--target_subdirectory=0,1"));
+  EXPECT_THAT(
+      flags,
+      Contains("--default_build=git_master/"
+               "cf_x86_64_phone-userdebug,git_master/cf_gwear_x86-userdebug"));
+  EXPECT_THAT(flags, Contains("--download_img_zip=true,true"));
+  EXPECT_THAT(
+      flags,
+      Contains("--otatools_build=git_master/cf_x86_64_phone-userdebug,"));
+  EXPECT_THAT(
+      flags,
+      Contains("--host_package_build=git_master/cf_x86_64_phone-userdebug,"));
+  EXPECT_THAT(flags,
+              Contains("--boot_build=git_master/cf_x86_64_phone-userdebug,"));
+  EXPECT_THAT(flags,
+              Contains("--kernel_build=git_master/cf_x86_64_phone-userdebug,"));
+  EXPECT_THAT(
+      flags,
+      Contains("--bootloader_build=git_master/cf_x86_64_phone-userdebug,"));
 }
 
 }  // namespace cuttlefish

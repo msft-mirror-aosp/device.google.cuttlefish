@@ -17,29 +17,53 @@
 
 #include <android-base/logging.h>
 #include <android-base/result.h>
+#include <sparse/sparse.h>
+
+#include <unistd.h>
 
 #include "blkid.h"
 
 #include "common/libs/fs/shared_buf.h"
+#include "common/libs/fs/shared_fd.h"
 #include "common/libs/utils/files.h"
-#include "common/libs/utils/network.h"
 #include "common/libs/utils/result.h"
 #include "common/libs/utils/subprocess.h"
 #include "host/libs/config/esp.h"
 #include "host/libs/config/mbr.h"
 #include "host/libs/config/openwrt_args.h"
+#include "host/libs/image_aggregator/sparse_image_utils.h"
 #include "host/libs/vm_manager/gem5_manager.h"
 
 namespace cuttlefish {
 
 namespace {
-const std::string kDataPolicyUseExisting = "use_existing";
-const std::string kDataPolicyCreateIfMissing = "create_if_missing";
-const std::string kDataPolicyAlwaysCreate = "always_create";
-const std::string kDataPolicyResizeUpTo= "resize_up_to";
+
+static constexpr std::string_view kDataPolicyUseExisting = "use_existing";
+static constexpr std::string_view kDataPolicyAlwaysCreate = "always_create";
+static constexpr std::string_view kDataPolicyResizeUpTo = "resize_up_to";
 
 const int FSCK_ERROR_CORRECTED = 1;
 const int FSCK_ERROR_CORRECTED_REQUIRES_REBOOT = 2;
+
+size_t SparseImageSize(const char* path) {
+  android::base::unique_fd fd(open(path, O_RDONLY | O_CLOEXEC));
+  if (!fd.ok()) {
+    return 0;
+  }
+  // Android-Sparse
+  if (auto sparse =
+          sparse_file_import(fd.get(), /* verbose */ false, /* crc */ false);
+      sparse) {
+    auto size = sparse_file_len(sparse, false, true);
+    sparse_file_destroy(sparse);
+    return size;
+  }
+  struct stat st {};
+  if (fstat(fd, &st) != 0) {
+    return 0;
+  }
+  return st.st_size;
+}
 
 bool ForceFsckImage(const std::string& data_image,
                     const CuttlefishConfig::InstanceSpecific& instance) {
@@ -142,8 +166,8 @@ bool CreateBlankImage(
     MasterBootRecord mbr = {
         .partitions = {{
             .partition_type = 0xC,
-            .first_lba = (std::uint32_t) offset_size_bytes / SECTOR_SIZE,
-            .num_sectors = (std::uint32_t) image_size_bytes / SECTOR_SIZE,
+            .first_lba = (std::uint32_t)offset_size_bytes / kSectorSize,
+            .num_sectors = (std::uint32_t)image_size_bytes / kSectorSize,
         }},
         .boot_signature = {0x55, 0xAA},
     };
@@ -205,7 +229,12 @@ class InitializeDataImageImpl : public InitializeDataImage {
   }
 
  private:
-  enum class DataImageAction { kNoAction, kCreateImage, kResizeImage };
+  enum class DataImageAction {
+    kNoAction,
+    kCreateImage,
+    kResizeImage,
+    kWipeImage
+  };
 
   Result<DataImageAction> ChooseAction() {
     if (instance_.data_policy() == kDataPolicyAlwaysCreate) {
@@ -221,16 +250,21 @@ class InitializeDataImageImpl : public InitializeDataImage {
       }
       return DataImageAction::kCreateImage;
     }
-    if (instance_.data_policy() == kDataPolicyUseExisting) {
-      return DataImageAction::kNoAction;
-    }
     auto current_fs_type = GetFsType(instance_.data_image());
     if (current_fs_type != instance_.userdata_format()) {
       CF_EXPECT(instance_.data_policy() != kDataPolicyResizeUpTo,
                 "Changing the fs format is incompatible with -data_policy="
                     << kDataPolicyResizeUpTo << " (\"" << current_fs_type
                     << "\" != \"" << instance_.userdata_format() << "\")");
+      if (instance_.data_policy() == kDataPolicyUseExisting) {
+        LOG(INFO) << "Userdata format changed, wiping userdata image "
+                  << instance_.new_data_image();
+        return DataImageAction::kWipeImage;
+      }
       return DataImageAction::kCreateImage;
+    }
+    if (instance_.data_policy() == kDataPolicyUseExisting) {
+      return DataImageAction::kNoAction;
     }
     if (instance_.data_policy() == kDataPolicyResizeUpTo) {
       return DataImageAction::kResizeImage;
@@ -245,11 +279,14 @@ class InitializeDataImageImpl : public InitializeDataImage {
         return {};
       case DataImageAction::kCreateImage: {
         RemoveFile(instance_.new_data_image());
-        CF_EXPECT(instance_.blank_data_image_mb() != 0,
+        auto image_size_mb = instance_.blank_data_image_mb();
+        if (image_size_mb == 0) {
+          image_size_mb = SparseImageSize(instance_.data_image().c_str()) >> 20;
+        }
+        CF_EXPECT(image_size_mb != 0,
                   "Expected `-blank_data_image_mb` to be set for "
-                  "image creation.");
-        CF_EXPECT(CreateBlankImage(instance_.new_data_image(),
-                                   instance_.blank_data_image_mb(),
+                  "image creation if the input image doesn't exist.");
+        CF_EXPECT(CreateBlankImage(instance_.new_data_image(), image_size_mb,
                                    instance_.userdata_format()),
                   "Failed to create a blank image at \""
                       << instance_.new_data_image() << "\" with size "
@@ -269,6 +306,19 @@ class InitializeDataImageImpl : public InitializeDataImage {
                   "Failed to resize \"" << instance_.new_data_image() << "\" to "
                                         << instance_.blank_data_image_mb()
                                         << " MB");
+        return {};
+      }
+      case DataImageAction::kWipeImage: {
+        auto fd = SharedFD::Open(instance_.new_data_image(),
+                                 O_RDWR | O_CREAT | O_CLOEXEC | O_TRUNC, 0644);
+        CF_EXPECTF(fd->IsOpen(), "Failed to open {} for writing",
+                   instance_.new_data_image());
+        auto data_size = SparseImageSize(instance_.data_image().c_str());
+        if (data_size == 0) {
+          data_size = 2 * (1UL << 30);
+        }
+        CF_EXPECT(fd->Truncate(data_size) == 0);
+
         return {};
       }
     }
@@ -346,7 +396,7 @@ class InitializeEspImageImpl : public InitializeEspImage {
     const auto is_not_gem5 = config_.vm_manager() != vm_manager::Gem5Manager::name();
     const auto esp_required_for_boot_flow = EspRequiredForBootFlow();
     if (is_not_gem5 && esp_required_for_boot_flow) {
-      LOG(DEBUG) << "creating esp_image: " << instance_.otheros_esp_image_path();
+      LOG(DEBUG) << "creating esp_image: " << instance_.esp_image_path();
       CF_EXPECT(BuildOSImage());
     }
     return {};
@@ -356,8 +406,10 @@ class InitializeEspImageImpl : public InitializeEspImage {
 
   bool EspRequiredForBootFlow() const {
     const auto flow = instance_.boot_flow();
-    return flow == CuttlefishConfig::InstanceSpecific::BootFlow::Linux ||
-        flow == CuttlefishConfig::InstanceSpecific::BootFlow::Fuchsia;
+    return flow ==
+               CuttlefishConfig::InstanceSpecific::BootFlow::AndroidEfiLoader ||
+           flow == CuttlefishConfig::InstanceSpecific::BootFlow::Linux ||
+           flow == CuttlefishConfig::InstanceSpecific::BootFlow::Fuchsia;
   }
 
   bool EspRequiredForAPBootFlow() const {
@@ -382,8 +434,15 @@ class InitializeEspImageImpl : public InitializeEspImage {
 
   bool BuildOSImage() {
     switch (instance_.boot_flow()) {
+      case CuttlefishConfig::InstanceSpecific::BootFlow::AndroidEfiLoader: {
+        auto android_efi_loader =
+            AndroidEfiLoaderEspBuilder(instance_.esp_image_path());
+        android_efi_loader.EfiLoaderPath(instance_.android_efi_loader())
+            .Architecture(instance_.target_arch());
+        return android_efi_loader.Build();
+      }
       case CuttlefishConfig::InstanceSpecific::BootFlow::Linux: {
-        auto linux = LinuxEspBuilder(instance_.otheros_esp_image_path());
+        auto linux = LinuxEspBuilder(instance_.esp_image_path());
         InitLinuxArgs(linux);
 
         linux.Root("/dev/vda2")
@@ -397,7 +456,7 @@ class InitializeEspImageImpl : public InitializeEspImage {
         return linux.Build();
       }
       case CuttlefishConfig::InstanceSpecific::BootFlow::Fuchsia: {
-        auto fuchsia = FuchsiaEspBuilder(instance_.otheros_esp_image_path());
+        auto fuchsia = FuchsiaEspBuilder(instance_.esp_image_path());
         return fuchsia.Architecture(instance_.target_arch())
                       .Zedboot(instance_.fuchsia_zedboot_path())
                       .MultibootBinary(instance_.fuchsia_multiboot_bin_path())

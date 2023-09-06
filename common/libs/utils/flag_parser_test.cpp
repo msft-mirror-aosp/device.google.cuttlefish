@@ -117,9 +117,9 @@ TEST(FlagParser, RepeatedStringFlag) {
 TEST(FlagParser, RepeatedListFlag) {
   std::vector<std::string> elems;
   auto flag = GflagsCompatFlag("myflag");
-  flag.Setter([&elems](const FlagMatch& match) {
+  flag.Setter([&elems](const FlagMatch& match) -> Result<void> {
     elems.push_back(match.value);
-    return true;
+    return {};
   });
   ASSERT_THAT(flag.Parse({"-myflag=a", "--myflag", "b"}), IsOk());
   ASSERT_EQ(elems, (std::vector<std::string>{"a", "b"}));
@@ -238,7 +238,7 @@ TEST(FlagParser, StringVectorFlag) {
   std::vector<std::string> value;
   auto flag = GflagsCompatFlag("myflag", value);
 
-  ASSERT_THAT(flag.Parse({"--myflag="}), IsError());
+  ASSERT_THAT(flag.Parse({"--myflag="}), IsOk());
   ASSERT_TRUE(value.empty());
 
   ASSERT_THAT(flag.Parse({"--myflag=foo"}), IsOk());
@@ -262,7 +262,7 @@ TEST(FlagParser, BoolVectorFlag) {
   bool default_value = true;
   auto flag = GflagsCompatFlag("myflag", value, default_value);
 
-  ASSERT_THAT(flag.Parse({"--myflag="}), IsError());
+  ASSERT_THAT(flag.Parse({"--myflag="}), IsOk());
   ASSERT_TRUE(value.empty());
 
   ASSERT_THAT(flag.Parse({"--myflag=foo"}), IsError());
@@ -391,9 +391,9 @@ class FlagConsumesArbitraryTest : public ::testing::Test {
     elems_.clear();
     flag_ = Flag()
                 .Alias({FlagAliasMode::kFlagConsumesArbitrary, "--flag"})
-                .Setter([this](const FlagMatch& match) {
+                .Setter([this](const FlagMatch& match) -> Result<void> {
                   elems_.push_back(match.value);
-                  return true;
+                  return {};
                 });
   }
   Flag flag_;

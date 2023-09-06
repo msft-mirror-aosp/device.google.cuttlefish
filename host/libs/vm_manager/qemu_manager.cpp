@@ -25,9 +25,7 @@
 #include <unistd.h>
 
 #include <cstdlib>
-#include <sstream>
 #include <string>
-#include <thread>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -37,15 +35,11 @@
 #include <vulkan/vulkan.h>
 
 #include "common/libs/device_config/device_config.h"
-#include "common/libs/fs/shared_select.h"
-#include "common/libs/utils/contains.h"
 #include "common/libs/utils/files.h"
 #include "common/libs/utils/result.h"
 #include "common/libs/utils/subprocess.h"
-#include "common/libs/utils/users.h"
 #include "host/libs/config/command_source.h"
 #include "host/libs/config/cuttlefish_config.h"
-#include "host/libs/config/known_paths.h"
 
 namespace cuttlefish {
 namespace vm_manager {
@@ -54,11 +48,6 @@ namespace {
 std::string GetMonitorPath(const CuttlefishConfig& config) {
   return config.ForDefaultInstance().PerInstanceInternalUdsPath(
       "qemu_monitor.sock");
-}
-
-void LogAndSetEnv(const char* key, const std::string& value) {
-  setenv(key, value.c_str(), 1);
-  LOG(INFO) << key << "=" << value;
 }
 
 bool Stop() {
@@ -199,7 +188,10 @@ QemuManager::ConfigureGraphics(
 }
 
 Result<std::unordered_map<std::string, std::string>>
-QemuManager::ConfigureBootDevices(int num_disks, bool have_gpu) {
+QemuManager::ConfigureBootDevices(
+    const CuttlefishConfig::InstanceSpecific& instance) {
+  const int num_disks = instance.virtual_disk_paths().size();
+  const int num_gpu = instance.hwcomposer() != kHwComposerNone;
   switch (arch_) {
     case Arch::Arm:
       return {{{"androidboot.boot_devices", "3f000000.pcie"}}};
@@ -215,8 +207,8 @@ QemuManager::ConfigureBootDevices(int num_disks, bool have_gpu) {
     case Arch::X86_64: {
       // QEMU has additional PCI devices for an ISA bridge and PIIX4
       // virtio_gpu precedes the first console or disk
-      return ConfigureMultipleBootDevices("pci0000:00/0000:00:",
-                                          2 + (have_gpu ? 1 : 0), num_disks);
+      return ConfigureMultipleBootDevices("pci0000:00/0000:00:", 2 + num_gpu,
+                                          num_disks);
     }
   }
 }
@@ -585,6 +577,13 @@ Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
   // /dev/hvc11 = keymint (Rust implementation)
   add_hvc(instance.PerInstanceInternalPath("keymint_fifo_vm"));
 
+  // /dev/hvc12 = nfc
+  if (config.enable_host_nfc()) {
+    add_hvc(instance.PerInstanceInternalPath("nfc_fifo_vm"));
+  } else {
+    add_hvc_sink();
+  }
+
   auto disk_num = instance.virtual_disk_paths().size();
 
   for (auto i = 0; i < VmManager::kMaxDisks - disk_num; i++) {
@@ -788,7 +787,7 @@ Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
     qemu_cmd.AddParameter("tcp::", instance.gdb_port());
   }
 
-  LogAndSetEnv("QEMU_AUDIO_DRV", "none");
+  qemu_cmd.AddEnvironmentVariable("QEMU_AUDIO_DRV", "none");
 
   std::vector<MonitorCommand> commands;
   commands.emplace_back(std::move(qemu_cmd), true);

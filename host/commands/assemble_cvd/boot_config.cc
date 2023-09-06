@@ -31,7 +31,7 @@
 #include "common/libs/utils/result.h"
 #include "common/libs/utils/size_utils.h"
 #include "common/libs/utils/subprocess.h"
-#include "host/libs/config/bootconfig_args.h"
+#include "host/commands/assemble_cvd/bootconfig_args.h"
 #include "host/libs/config/cuttlefish_config.h"
 #include "host/libs/config/kernel_args.h"
 #include "host/libs/vm_manager/crosvm_manager.h"
@@ -75,12 +75,15 @@ void WriteAndroidEnvironment(
 
 void WriteEFIEnvironment(
     std::ostream& env, const CuttlefishConfig::InstanceSpecific& instance) {
-  WritePausedEntrypoint(env,
-    "load virtio 0:${devplist} ${loadaddr} efi/boot/bootaa64.efi "
-    "&& bootefi ${loadaddr} ${fdtcontroladdr}; "
-    "load virtio 0:${devplist} ${loadaddr} efi/boot/bootia32.efi && "
-    "bootefi ${loadaddr} ${fdtcontroladdr}", instance
-  );
+  WritePausedEntrypoint(
+      env,
+      "load virtio 0:${devplist} ${loadaddr} efi/boot/bootaa64.efi "
+      "&& bootefi ${loadaddr} ${fdtcontroladdr}; "
+      "load virtio 0:${devplist} ${loadaddr} efi/boot/bootia32.efi && "
+      "bootefi ${loadaddr} ${fdtcontroladdr};"
+      "load virtio 0:${devplist} ${loadaddr} efi/boot/bootriscv64.efi && "
+      "bootefi ${loadaddr} ${fdtcontroladdr}",
+      instance);
 }
 
 size_t WriteEnvironment(const CuttlefishConfig::InstanceSpecific& instance,
@@ -100,6 +103,7 @@ size_t WriteEnvironment(const CuttlefishConfig::InstanceSpecific& instance,
     case CuttlefishConfig::InstanceSpecific::BootFlow::Android:
       WriteAndroidEnvironment(env, instance);
       break;
+    case CuttlefishConfig::InstanceSpecific::BootFlow::AndroidEfiLoader:
     case CuttlefishConfig::InstanceSpecific::BootFlow::Linux:
     case CuttlefishConfig::InstanceSpecific::BootFlow::Fuchsia:
       WriteEFIEnvironment(env, instance);

@@ -17,11 +17,12 @@ package {
     default_applicable_licenses: ["Android-Apache-2.0"],
 }
 
-cc_binary {
+cc_binary_host {
     name: "assemble_cvd",
     srcs: [
         "alloc.cc",
         "assemble_cvd.cc",
+        "bootconfig_args.cpp",
         "boot_config.cc",
         "boot_image_utils.cc",
         "clean.cc",
@@ -103,5 +104,5 @@ cc_binary {
             ],
         },
     },
-    defaults: ["cuttlefish_host", "cuttlefish_libicuuc"],
+    defaults: ["cuttlefish_host"],
 }

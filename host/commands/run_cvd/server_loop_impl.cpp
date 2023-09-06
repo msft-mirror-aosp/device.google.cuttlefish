@@ -65,7 +65,8 @@ ServerLoopImpl::ServerLoopImpl(
     const CuttlefishConfig::InstanceSpecific& instance)
     : config_(config),
       instance_(instance),
-      vm_name_to_control_sock_{InitializeVmToControlSockPath(instance)} {}
+      vm_name_to_control_sock_{InitializeVmToControlSockPath(instance)},
+      device_status_{DeviceStatus::kUnknown} {}
 
 Result<void> ServerLoopImpl::LateInject(fruit::Injector<>& injector) {
   command_sources_ = injector.getMultibindings<CommandSource>();
@@ -87,6 +88,7 @@ Result<void> ServerLoopImpl::Run() {
   ProcessMonitor process_monitor(std::move(process_monitor_properties));
 
   CF_EXPECT(process_monitor.StartAndMonitorProcesses());
+  device_status_ = DeviceStatus::kActive;
 
   while (true) {
     // TODO: use select to handle simultaneous connections.
@@ -104,10 +106,19 @@ Result<void> ServerLoopImpl::Run() {
         HandleActionWithNoData(launcher_action.action, client, process_monitor);
         continue;
       }
-      auto result = HandleExtended(launcher_action, client);
+      auto result = HandleExtended(launcher_action, process_monitor);
+      const auto launcher_action_type_code =
+          static_cast<std::uint32_t>(launcher_action.type);
+      auto response = LauncherResponse::kSuccess;
       if (!result.ok()) {
         LOG(ERROR) << "Failed to handle extended action request.";
         LOG(DEBUG) << result.error().Trace();
+        response = LauncherResponse::kError;
+      }
+      const auto n_written = client->Write(&response, sizeof(response));
+      if (n_written != sizeof(response)) {
+        LOG(ERROR) << "Failed to write response to "
+                   << launcher_action_type_code;
       }
       // extended operations for now are 1 time request-response exchanges.
       // thus, we will close the client FD.
@@ -126,28 +137,36 @@ Result<void> ServerLoopImpl::ResultSetup() {
 }
 
 Result<void> ServerLoopImpl::HandleExtended(
-    const LauncherActionInfo& action_info, const SharedFD& client) {
+    const LauncherActionInfo& action_info, ProcessMonitor& process_monitor) {
   CF_EXPECT(action_info.action == LauncherAction::kExtended);
   switch (action_info.type) {
     case ExtendedActionType::kSuspend: {
       LOG(DEBUG) << "Run_cvd received suspend request.";
-      CF_EXPECT(HandleSuspend(action_info.serialized_data, client));
+      CF_EXPECT(HandleSuspend(action_info.serialized_data, process_monitor));
+      device_status_ = DeviceStatus::kSuspended;
       return {};
     }
     case ExtendedActionType::kResume: {
       LOG(DEBUG) << "Run_cvd received resume request.";
-      CF_EXPECT(HandleResume(action_info.serialized_data, client));
+      CF_EXPECT(HandleResume(action_info.serialized_data, process_monitor));
+      device_status_ = DeviceStatus::kActive;
+      return {};
+    }
+    case ExtendedActionType::kSnapshotTake: {
+      LOG(DEBUG) << "Run_cvd received snapshot request.";
+      CF_EXPECT(device_status_.load() == DeviceStatus::kSuspended,
+                "The device is not suspended, and snapshot cannot be taken");
+      CF_EXPECT(HandleSnapshotTake(action_info.serialized_data));
       return {};
     }
     case ExtendedActionType::kStartScreenRecording: {
       LOG(DEBUG) << "Run_cvd received start screen recording request.";
-      CF_EXPECT(
-          HandleStartScreenRecording(action_info.serialized_data, client));
+      CF_EXPECT(HandleStartScreenRecording(action_info.serialized_data));
       return {};
     }
     case ExtendedActionType::kStopScreenRecording: {
       LOG(DEBUG) << "Run_cvd received stop screen recording request.";
-      CF_EXPECT(HandleStopScreenRecording(action_info.serialized_data, client));
+      CF_EXPECT(HandleStopScreenRecording(action_info.serialized_data));
       return {};
     }
     default:
@@ -261,6 +280,8 @@ void ServerLoopImpl::DeleteFifos() {
       instance_.PerInstanceInternalPath("oemlock_fifo_vm.out"),
       instance_.PerInstanceInternalPath("bt_fifo_vm.in"),
       instance_.PerInstanceInternalPath("bt_fifo_vm.out"),
+      instance_.PerInstanceInternalPath("nfc_fifo_vm.in"),
+      instance_.PerInstanceInternalPath("nfc_fifo_vm.out"),
       instance_.PerInstanceInternalPath("uwb_fifo_vm.in"),
       instance_.PerInstanceInternalPath("uwb_fifo_vm.out"),
       instance_.PerInstanceInternalPath("gnsshvc_fifo_vm.in"),
@@ -354,6 +375,12 @@ void ServerLoopImpl::RestartRunCvd(int notification_fd) {
   execv("/proc/self/exe", argv.get());
   // execve should not return, so something went wrong.
   PLOG(ERROR) << "execv returned: ";
+}
+
+Result<std::string> ServerLoopImpl::VmControlSocket() const {
+  CF_EXPECT_EQ(config_.vm_manager(), "crosvm",
+               "Other VMs but crosvm is not yet supported.");
+  return instance_.PerInstanceInternalUdsPath("crosvm_control.sock");
 }
 
 }  // namespace run_cvd_impl

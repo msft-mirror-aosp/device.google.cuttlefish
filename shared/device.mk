@@ -37,7 +37,6 @@ PRODUCT_VENDOR_PROPERTIES += \
 
 PRODUCT_SOONG_NAMESPACES += device/generic/goldfish # for audio and wifi
 
-PRODUCT_SHIPPING_API_LEVEL := 35
 PRODUCT_USE_DYNAMIC_PARTITIONS := true
 DISABLE_RILD_OEM_HOOK := true
 
@@ -182,7 +181,13 @@ endif
 #
 # Common manifest for all targets
 #
+ifeq ($(RELEASE_AIDL_USE_UNFROZEN),true)
+PRODUCT_SHIPPING_API_LEVEL := 35
 LOCAL_DEVICE_FCM_MANIFEST_FILE ?= device/google/cuttlefish/shared/config/manifest.xml
+else
+PRODUCT_SHIPPING_API_LEVEL := 34
+LOCAL_DEVICE_FCM_MANIFEST_FILE ?= device/google/cuttlefish/shared/config/previous_manifest.xml
+endif
 DEVICE_MANIFEST_FILE += $(LOCAL_DEVICE_FCM_MANIFEST_FILE)
 
 #
@@ -255,18 +260,11 @@ PRODUCT_PACKAGES += \
 PRODUCT_PACKAGES += \
     android.hardware.weaver-service.example
 
-
-#
-# Authsecret HAL
-#
-PRODUCT_PACKAGES += \
-    android.hardware.authsecret@1.0-service
-
 #
 # Authsecret AIDL HAL
 #
 PRODUCT_PACKAGES += \
-    android.hardware.authsecret-service.example
+    com.android.hardware.authsecret
 
 #
 # Audio HAL
@@ -408,7 +406,7 @@ PRODUCT_PACKAGES += \
 # KeyMint HAL
 #
 ifeq ($(LOCAL_KEYMINT_PRODUCT_PACKAGE),)
-    LOCAL_KEYMINT_PRODUCT_PACKAGE := android.hardware.security.keymint-service.rust
+    LOCAL_KEYMINT_PRODUCT_PACKAGE := com.google.cf.keymint.rust
 endif
 
 PRODUCT_PACKAGES += \
@@ -553,11 +551,8 @@ PRODUCT_VENDOR_PROPERTIES += ro.vendor.wifi_impl=virt_wifi
 endif
 
 # UWB HAL
-PRODUCT_PACKAGES += \
-    android.hardware.uwb-service
-PRODUCT_COPY_FILES += \
-    device/google/cuttlefish/guest/hals/uwb/uwb-service.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/uwb-service.rc
-
+PRODUCT_PACKAGES += com.android.hardware.uwb
+PRODUCT_VENDOR_PROPERTIES += ro.vendor.uwb.dev=/dev/hvc9
 
 # Host packages to install
 PRODUCT_HOST_PACKAGES += socket_vsock_proxy
@@ -584,7 +579,7 @@ PRODUCT_PACKAGES += \
 
 # NFC AIDL HAL
 PRODUCT_PACKAGES += \
-    android.hardware.nfc-service.cuttlefish
+    com.google.cf.nfc
 
 # CAS AIDL HAL
 PRODUCT_PACKAGES += \
@@ -593,9 +588,13 @@ PRODUCT_PACKAGES += \
 PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/config/pci.ids:$(TARGET_COPY_OUT_VENDOR)/pci.ids
 
+# New in-development HAL services using unfrozen interfaces. Do not include if
+# RELEASE_AIDL_USE_UNFROZEN is true (in the 'next' release configuration).
+ifeq ($(RELEASE_AIDL_USE_UNFROZEN),true)
 # Thread Network AIDL HAL and simulation CLI
 PRODUCT_PACKAGES += \
-    android.hardware.threadnetwork-service.sim \
+    com.android.hardware.threadnetwork \
     ot-cli-ftd
-PRODUCT_COPY_FILES += \
-    frameworks/native/data/etc/android.hardware.threadnetwork.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.threadnetwork.xml
+endif # RELEASE_AIDL_USE_UNFROZEN
+
+PRODUCT_CHECK_VENDOR_SEAPP_VIOLATIONS := true
