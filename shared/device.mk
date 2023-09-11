@@ -40,6 +40,8 @@ PRODUCT_SOONG_NAMESPACES += device/generic/goldfish # for audio and wifi
 PRODUCT_USE_DYNAMIC_PARTITIONS := true
 DISABLE_RILD_OEM_HOOK := true
 
+PRODUCT_16K_DEVELOPER_OPTION := true
+
 # TODO(b/205788876) remove this condition when openwrt has an image for arm.
 ifndef PRODUCT_ENFORCE_MAC80211_HWSIM
 PRODUCT_ENFORCE_MAC80211_HWSIM := true
@@ -254,6 +256,12 @@ PRODUCT_PACKAGES += \
 
 # Packages for HAL implementations
 
+# TODO(b/218588089) remove this once cuttlefish can drop HIDL.
+# This adds hwservicemanager and the allocator service to the device.
+PRODUCT_PACKAGES += \
+    hwservicemanager \
+    android.hidl.allocator@1.0-service
+
 #
 # Weaver aidl HAL
 #
@@ -368,7 +376,7 @@ PRODUCT_PACKAGES += \
 LOCAL_ENABLE_OEMLOCK ?= true
 ifeq ($(LOCAL_ENABLE_OEMLOCK),true)
 ifeq ($(LOCAL_OEMLOCK_PRODUCT_PACKAGE),)
-    LOCAL_OEMLOCK_PRODUCT_PACKAGE := android.hardware.oemlock-service.remote
+    LOCAL_OEMLOCK_PRODUCT_PACKAGE := com.google.cf.oemlock
 endif
 PRODUCT_PACKAGES += \
     $(LOCAL_OEMLOCK_PRODUCT_PACKAGE)
@@ -379,7 +387,7 @@ endif
 # Health
 ifeq ($(LOCAL_HEALTH_PRODUCT_PACKAGE),)
     LOCAL_HEALTH_PRODUCT_PACKAGE := \
-    android.hardware.health-service.cuttlefish \
+    com.google.cf.health \
     android.hardware.health-service.cuttlefish_recovery \
 
 endif
@@ -387,7 +395,7 @@ PRODUCT_PACKAGES += $(LOCAL_HEALTH_PRODUCT_PACKAGE)
 
 # Health Storage
 PRODUCT_PACKAGES += \
-    android.hardware.health.storage-service.cuttlefish
+    com.google.cf.health.storage
 
 PRODUCT_PACKAGES += \
     android.hardware.input.processor-service.example
@@ -444,9 +452,7 @@ PRODUCT_PACKAGES += $(LOCAL_THERMAL_HAL_PRODUCT_PACKAGE)
 # NeuralNetworks HAL
 #
 PRODUCT_PACKAGES += \
-    android.hardware.neuralnetworks-service-sample-all \
-    android.hardware.neuralnetworks-service-sample-limited \
-    android.hardware.neuralnetworks-shim-service-sample
+    com.android.hardware.neuralnetworks
 
 # USB
 PRODUCT_PACKAGES += \
@@ -576,10 +582,6 @@ PRODUCT_SYSTEM_PROPERTIES += \
 # Vendor Dlkm Locader
 PRODUCT_PACKAGES += \
    dlkm_loader
-
-# NFC AIDL HAL
-PRODUCT_PACKAGES += \
-    com.google.cf.nfc
 
 # CAS AIDL HAL
 PRODUCT_PACKAGES += \
