@@ -408,7 +408,7 @@ PRODUCT_PACKAGES += \
 # Lights
 #
 PRODUCT_PACKAGES += \
-    android.hardware.lights-service.cuttlefish \
+    com.google.cf.light \
 
 #
 # KeyMint HAL
@@ -440,12 +440,12 @@ endif
 # Tetheroffload HAL
 #
 PRODUCT_PACKAGES += \
-    android.hardware.tetheroffload-service.example
+    com.android.hardware.tetheroffload
 
 #
 # Thermal HAL
 #
-LOCAL_THERMAL_HAL_PRODUCT_PACKAGE ?= android.hardware.thermal-service.example
+LOCAL_THERMAL_HAL_PRODUCT_PACKAGE ?= com.android.hardware.thermal
 PRODUCT_PACKAGES += $(LOCAL_THERMAL_HAL_PRODUCT_PACKAGE)
 
 #
@@ -593,10 +593,11 @@ PRODUCT_COPY_FILES += \
 # New in-development HAL services using unfrozen interfaces. Do not include if
 # RELEASE_AIDL_USE_UNFROZEN is true (in the 'next' release configuration).
 ifeq ($(RELEASE_AIDL_USE_UNFROZEN),true)
-# Thread Network AIDL HAL and simulation CLI
+# Thread Network AIDL HAL, simulation CLI and OT daemon controller
 PRODUCT_PACKAGES += \
     com.android.hardware.threadnetwork \
-    ot-cli-ftd
+    ot-cli-ftd \
+    ot-ctl
 endif # RELEASE_AIDL_USE_UNFROZEN
 
 PRODUCT_CHECK_VENDOR_SEAPP_VIOLATIONS := true
