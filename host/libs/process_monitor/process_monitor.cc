@@ -57,8 +57,10 @@ void LogSubprocessExit(const std::string& name, pid_t pid, int wstatus) {
     LOG(INFO) << "Subprocess " << name << " (" << pid
               << ") has exited with exit code " << WEXITSTATUS(wstatus);
   } else if (WIFSIGNALED(wstatus)) {
+    int sig_num = WTERMSIG(wstatus);
     LOG(ERROR) << "Subprocess " << name << " (" << pid
-               << ") was interrupted by a signal: " << WTERMSIG(wstatus);
+               << ") was interrupted by a signal '" << strsignal(sig_num)
+               << "' (" << sig_num << ")";
   } else {
     LOG(INFO) << "subprocess " << name << " (" << pid
               << ") has exited for unknown reasons";
@@ -72,7 +74,8 @@ void LogSubprocessExit(const std::string& name, const siginfo_t& infop) {
               << ") has exited with exit code " << infop.si_status;
   } else if (infop.si_code == CLD_KILLED) {
     LOG(ERROR) << "Subprocess " << name << " (" << infop.si_pid
-               << ") was interrupted by a signal: " << infop.si_status;
+               << ") was interrupted by a signal '"
+               << strsignal(infop.si_status) << "' (" << infop.si_status << ")";
   } else {
     LOG(INFO) << "subprocess " << name << " (" << infop.si_pid
               << ") has exited for unknown reasons (code = " << infop.si_code
@@ -204,11 +207,16 @@ Result<void> ProcessMonitor::SuspendHostProcessesImpl() {
     auto prog_name = android::base::Basename(entry.cmd->Executable());
     auto process_restart_bin =
         android::base::Basename(ProcessRestarterBinary());
+    if (prog_name == "log_tee") {
+      // Don't stop log_tee, we want to continue processing logs while
+      // suspended.
+      continue;
+    }
     if (process_restart_bin == prog_name) {
       CF_EXPECT(entry.proc->SendSignal(SIGTSTP));
-    } else {
-      CF_EXPECT(entry.proc->SendSignalToGroup(SIGTSTP));
+      continue;
     }
+    CF_EXPECT(entry.proc->SendSignalToGroup(SIGTSTP));
   }
   using process_monitor_impl::ChildToParentResponse;
   using process_monitor_impl::ChildToParentResponseType;
@@ -338,9 +346,7 @@ Result<void> ProcessMonitor::StartAndMonitorProcesses() {
     auto monitor_result = MonitorRoutine();
     if (!monitor_result.ok()) {
       LOG(ERROR) << "Monitoring processes failed:\n"
-                 << monitor_result.error().Message();
-      LOG(DEBUG) << "Monitoring processes failed:\n"
-                 << monitor_result.error().Trace();
+                 << monitor_result.error().FormatForEnv();
     }
     std::exit(monitor_result.ok() ? 0 : 1);
   } else {

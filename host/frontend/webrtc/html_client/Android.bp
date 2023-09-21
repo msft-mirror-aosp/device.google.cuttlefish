@@ -39,6 +39,13 @@ prebuilt_usr_share_host {
 }
 
 prebuilt_usr_share_host {
+    name: "webrtc_custom_blank.css",
+    src: "custom.css",
+    filename: "custom.css",
+    sub_dir: "webrtc/assets",
+}
+
+prebuilt_usr_share_host {
     name: "webrtc_adb.js",
     src: "js/adb.js",
     filename: "adb.js",
@@ -77,12 +84,5 @@ prebuilt_usr_share_host {
     name: "webrtc_location.js",
     src: "js/location.js",
     filename: "location.js",
-    sub_dir: "webrtc/assets/js",
-}
-
-prebuilt_usr_share_host {
-    name: "webrtc_sensors.js",
-    src: "js/sensors.js",
-    filename: "sensors.js",
     sub_dir: "webrtc/assets/js",
 }

@@ -42,6 +42,10 @@ fruit::Component<fruit::Required<const CuttlefishConfig,
                                  const CuttlefishConfig::InstanceSpecific>>
 BluetoothConnectorComponent();
 
+fruit::Component<fruit::Required<const CuttlefishConfig,
+                                 const CuttlefishConfig::InstanceSpecific>>
+NfcConnectorComponent();
+
 fruit::Component<fruit::Required<const CuttlefishConfig::InstanceSpecific>,
                  KernelLogPipeProvider>
 KernelLogMonitorComponent();
@@ -66,18 +70,25 @@ GnssGrpcProxyServerComponent();
 fruit::Component<fruit::Required<const CuttlefishConfig>>
 MetricsServiceComponent();
 
-fruit::Component<fruit::Required<const CuttlefishConfig,
-                                 const CuttlefishConfig::InstanceSpecific,
-                                 LogTeeCreator, WmediumdServer>>
+fruit::Component<fruit::Required<
+    const CuttlefishConfig, const CuttlefishConfig::EnvironmentSpecific,
+    const CuttlefishConfig::InstanceSpecific, LogTeeCreator, WmediumdServer>>
 OpenWrtComponent();
 
-fruit::Component<fruit::Required<const CuttlefishConfig, GrpcSocketCreator>>
+fruit::Component<fruit::Required<const CuttlefishConfig,
+                                 const CuttlefishConfig::EnvironmentSpecific,
+                                 GrpcSocketCreator>>
 OpenwrtControlServerComponent();
 
 fruit::Component<
     fruit::Required<const CuttlefishConfig,
                     const CuttlefishConfig::InstanceSpecific, LogTeeCreator>>
 RootCanalComponent();
+
+fruit::Component<
+    fruit::Required<const CuttlefishConfig,
+                    const CuttlefishConfig::InstanceSpecific, LogTeeCreator>>
+CasimirComponent();
 
 fruit::Component<
     fruit::Required<const CuttlefishConfig,
@@ -99,7 +110,7 @@ fruit::Component<fruit::Required<const CuttlefishConfig::InstanceSpecific>>
 TombstoneReceiverComponent();
 
 fruit::Component<fruit::Required<const CuttlefishConfig,
-                                 const CuttlefishConfig::InstanceSpecific,
+                                 const CuttlefishConfig::EnvironmentSpecific,
                                  LogTeeCreator, GrpcSocketCreator>>
 WmediumdServerComponent();
 

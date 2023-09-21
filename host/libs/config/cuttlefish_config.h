@@ -122,6 +122,12 @@ class CuttlefishConfig {
   std::string instances_uds_dir() const;
   std::string InstancesUdsPath(const std::string&) const;
 
+  std::string environments_dir() const;
+  std::string EnvironmentsPath(const std::string&) const;
+
+  std::string environments_uds_dir() const;
+  std::string EnvironmentsUdsPath(const std::string&) const;
+
   std::string vm_manager() const;
   void set_vm_manager(const std::string& name);
 
@@ -154,6 +160,21 @@ class CuttlefishConfig {
   void set_enable_host_bluetooth_connector(bool enable_host_bluetooth);
   bool enable_host_bluetooth_connector() const;
 
+  void set_enable_host_nfc(bool enable_host_nfc);
+  bool enable_host_nfc() const;
+
+  void set_enable_host_nfc_connector(bool enable_host_nfc_connector);
+  bool enable_host_nfc_connector() const;
+
+  void set_casimir_args(const std::string& casimir_args);
+  std::vector<std::string> casimir_args() const;
+  void set_casimir_instance_num(int casimir_instance_num);
+  int casimir_instance_num() const;
+  void set_casimir_nci_port(int port);
+  int casimir_nci_port() const;
+  void set_casimir_rf_port(int port);
+  int casimir_rf_port() const;
+
   void set_enable_wifi(const bool enable_wifi);
   bool enable_wifi() const;
 
@@ -168,6 +189,16 @@ class CuttlefishConfig {
   bool netsim_radio_enabled(NetsimRadio flag) const;
   void set_netsim_instance_num(int netsim_instance_num);
   int netsim_instance_num() const;
+  // Netsim has a built-in connector to forward packets to another daemon based
+  // on instance number.  This is set in the serial launch case when FLAGS
+  // rootcanal_instance_num is specified. The non-netsim case uses
+  // bluetooth_connector and rootcanal_hci_port for the same purpose. Purposely
+  // restricted to legacy bluetooth serial invocation because new cases should
+  // use cvd.
+  int netsim_connector_instance_num() const;
+  void set_netsim_connector_instance_num(int netsim_instance_num);
+  void set_netsim_args(const std::string& netsim_args);
+  std::vector<std::string> netsim_args() const;
 
   enum Answer {
     kUnknown = 0,
@@ -221,20 +252,11 @@ class CuttlefishConfig {
   void set_virtio_mac80211_hwsim(bool virtio_mac80211_hwsim);
   bool virtio_mac80211_hwsim() const;
 
-  void set_vhost_user_mac80211_hwsim(const std::string& path);
-  std::string vhost_user_mac80211_hwsim() const;
-
-  void set_wmediumd_api_server_socket(const std::string& path);
-  std::string wmediumd_api_server_socket() const;
-
   void set_ap_rootfs_image(const std::string& path);
   std::string ap_rootfs_image() const;
 
   void set_ap_kernel_image(const std::string& path);
   std::string ap_kernel_image() const;
-
-  void set_wmediumd_config(const std::string& path);
-  std::string wmediumd_config() const;
 
   void set_pica_uci_port(int pica_uci_port);
   int pica_uci_port() const;
@@ -257,6 +279,12 @@ class CuttlefishConfig {
   // The path of an AP image in composite disk
   std::string ap_image_dev_path() const;
   void set_ap_image_dev_path(const std::string& dev_path);
+
+  // path to the saved snapshot file(s)
+  std::string snapshot_path() const;
+  void set_snapshot_path(const std::string& snapshot_path);
+
+  bool IsCrosvm() const;
 
   class InstanceSpecific;
   class MutableInstanceSpecific;
@@ -330,6 +358,7 @@ class CuttlefishConfig {
     int vsock_guest_cid() const;
     std::string uuid() const;
     std::string instance_name() const;
+    std::string environment_name() const;
     std::vector<std::string> virtual_disk_paths() const;
 
     // Returns the path to a file with the given name in the instance
@@ -338,6 +367,7 @@ class CuttlefishConfig {
     std::string PerInstanceInternalPath(const std::string& file_name) const;
     std::string PerInstanceLogPath(const std::string& file_name) const;
 
+    std::string CrosvmSocketPath() const;
     std::string instance_dir() const;
 
     std::string instance_internal_dir() const;
@@ -403,7 +433,7 @@ class CuttlefishConfig {
 
     std::string ap_esp_image_path() const;
 
-    std::string otheros_esp_image_path() const;
+    std::string esp_image_path() const;
 
     std::string otheros_esp_grub_config() const;
 
@@ -411,11 +441,7 @@ class CuttlefishConfig {
 
     std::string audio_server_path() const;
 
-    enum class BootFlow {
-      Android,
-      Linux,
-      Fuchsia
-    };
+    enum class BootFlow { Android, AndroidEfiLoader, Linux, Fuchsia };
 
     BootFlow boot_flow() const;
 
@@ -437,11 +463,11 @@ class CuttlefishConfig {
     // running in the host
     bool start_webrtc_sig_server_proxy() const;
 
-    // Whether this instance should start the wmediumd process
-    bool start_wmediumd() const;
-
     // Whether this instance should start a rootcanal instance
     bool start_rootcanal() const;
+
+    // Whether this instance should start a casimir instance
+    bool start_casimir() const;
 
     // Whether this instance should start a pica instance
     bool start_pica() const;
@@ -571,6 +597,9 @@ class CuttlefishConfig {
     std::string gpu_angle_feature_overrides_disabled() const;
     std::string gpu_capture_binary() const;
     bool enable_gpu_udmabuf() const;
+    bool enable_gpu_vhost_user() const;
+    bool enable_gpu_external_blob() const;
+    bool enable_gpu_system_blob() const;
 
     std::string hwcomposer() const;
 
@@ -600,6 +629,9 @@ class CuttlefishConfig {
 
     // otheros artifacts
     std::string otheros_esp_image() const;
+
+    // android efi loader flow
+    std::string android_efi_loader() const;
 
     // linux artifacts for otheros flow
     std::string linux_kernel_path() const;
@@ -664,6 +696,7 @@ class CuttlefishConfig {
     void set_use_allocd(bool use_allocd);
     void set_vsock_guest_cid(int vsock_guest_cid);
     void set_uuid(const std::string& uuid);
+    void set_environment_name(const std::string& env_name);
     // modem simulator related
     void set_modem_simulator_ports(const std::string& modem_simulator_ports);
     void set_virtual_disk_paths(const std::vector<std::string>& disk_paths);
@@ -671,8 +704,8 @@ class CuttlefishConfig {
     void set_group_id(const std::string& id);
     void set_start_webrtc_signaling_server(bool start);
     void set_start_webrtc_sig_server_proxy(bool start);
-    void set_start_wmediumd(bool start);
     void set_start_rootcanal(bool start);
+    void set_start_casimir(bool start);
     void set_start_pica(bool start);
     void set_start_netsim(bool start);
     void set_ap_boot_flow(InstanceSpecific::APBootFlow flow);
@@ -751,6 +784,9 @@ class CuttlefishConfig {
     void set_gpu_angle_feature_overrides_disabled(const std::string& overrides);
     void set_gpu_capture_binary(const std::string&);
     void set_enable_gpu_udmabuf(const bool enable_gpu_udmabuf);
+    void set_enable_gpu_vhost_user(const bool enable_gpu_vhost_user);
+    void set_enable_gpu_external_blob(const bool enable_gpu_external_blob);
+    void set_enable_gpu_system_blob(const bool enable_gpu_system_blob);
 
     void set_hwcomposer(const std::string&);
 
@@ -780,6 +816,7 @@ class CuttlefishConfig {
     void set_default_target_zip(const std::string& default_target_zip);
     void set_system_target_zip(const std::string& system_target_zip);
     void set_otheros_esp_image(const std::string& otheros_esp_image);
+    void set_android_efi_loader(const std::string& android_efi_loader);
     void set_linux_kernel_path(const std::string& linux_kernel_path);
     void set_linux_initramfs_path(const std::string& linux_initramfs_path);
     void set_linux_root_image(const std::string& linux_root_image);
@@ -799,6 +836,82 @@ class CuttlefishConfig {
 
    private:
     void SetPath(const std::string& key, const std::string& path);
+  };
+
+  class EnvironmentSpecific;
+  class MutableEnvironmentSpecific;
+
+  MutableEnvironmentSpecific ForEnvironment(const std::string& envName);
+  EnvironmentSpecific ForEnvironment(const std::string& envName) const;
+
+  MutableEnvironmentSpecific ForDefaultEnvironment();
+  EnvironmentSpecific ForDefaultEnvironment() const;
+
+  std::vector<std::string> environment_dirs() const;
+
+  class EnvironmentSpecific {
+    friend EnvironmentSpecific CuttlefishConfig::ForEnvironment(
+        const std::string&) const;
+    friend EnvironmentSpecific CuttlefishConfig::ForDefaultEnvironment() const;
+
+    const CuttlefishConfig* config_;
+    std::string envName_;
+
+    EnvironmentSpecific(const CuttlefishConfig* config,
+                        const std::string& envName)
+        : config_(config), envName_(envName) {}
+
+    Json::Value* Dictionary();
+    const Json::Value* Dictionary() const;
+
+   public:
+    std::string environment_name() const;
+
+    std::string environment_uds_dir() const;
+    std::string PerEnvironmentUdsPath(const std::string& file_name) const;
+
+    std::string environment_dir() const;
+    std::string PerEnvironmentPath(const std::string& file_name) const;
+
+    std::string PerEnvironmentLogPath(const std::string& file_name) const;
+
+    std::string PerEnvironmentGrpcSocketPath(
+        const std::string& file_name) const;
+
+    std::string control_socket_path() const;
+    std::string launcher_log_path() const;
+
+    // wmediumd related configs
+    bool enable_wifi() const;
+    bool start_wmediumd() const;
+    std::string vhost_user_mac80211_hwsim() const;
+    std::string wmediumd_api_server_socket() const;
+    std::string wmediumd_config() const;
+    int wmediumd_mac_prefix() const;
+  };
+
+  class MutableEnvironmentSpecific {
+    friend MutableEnvironmentSpecific CuttlefishConfig::ForEnvironment(
+        const std::string&);
+    friend MutableEnvironmentSpecific CuttlefishConfig::ForDefaultEnvironment();
+
+    CuttlefishConfig* config_;
+    std::string envName_;
+
+    MutableEnvironmentSpecific(CuttlefishConfig* config,
+                               const std::string& envName)
+        : config_(config), envName_(envName) {}
+
+    Json::Value* Dictionary();
+
+   public:
+    // wmediumd related configs
+    void set_enable_wifi(const bool enable_wifi);
+    void set_start_wmediumd(bool start);
+    void set_vhost_user_mac80211_hwsim(const std::string& path);
+    void set_wmediumd_api_server_socket(const std::string& path);
+    void set_wmediumd_config(const std::string& path);
+    void set_wmediumd_mac_prefix(int mac_prefix);
   };
 
  private:

@@ -247,7 +247,7 @@ std::unordered_set<std::string> kBoolFlags = {"guest_enforce_security",
                                               "enable_sandbox",
                                               "restart_subprocesses",
                                               "enable_gpu_udmabuf",
-                                              "enable_gpu_angle",
+                                              "enable_gpu_vhost_user",
                                               "enable_audio",
                                               "start_gnss_proxy",
                                               "enable_bootanimation",
@@ -378,8 +378,7 @@ int main(int argc, char** argv) {
   auto instance_nums =
       cuttlefish::InstanceNumsCalculator().FromGlobalGflags().Calculate();
   if (!instance_nums.ok()) {
-    LOG(ERROR) << instance_nums.error().Message();
-    LOG(DEBUG) << instance_nums.error().Trace();
+    LOG(ERROR) << instance_nums.error().FormatForEnv();
     abort();
   }
 
