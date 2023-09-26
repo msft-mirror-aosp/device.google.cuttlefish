@@ -335,7 +335,7 @@ PRODUCT_PACKAGES += \
 # Contexthub HAL
 #
 LOCAL_CONTEXTHUB_PRODUCT_PACKAGE ?= \
-    android.hardware.contexthub-service.example
+    com.android.hardware.contexthub
 PRODUCT_PACKAGES += $(LOCAL_CONTEXTHUB_PRODUCT_PACKAGE)
 
 #
@@ -349,7 +349,7 @@ PRODUCT_PACKAGES += \
 # Confirmation UI HAL
 #
 ifeq ($(LOCAL_CONFIRMATIONUI_PRODUCT_PACKAGE),)
-    LOCAL_CONFIRMATIONUI_PRODUCT_PACKAGE := android.hardware.confirmationui-service.cuttlefish
+    LOCAL_CONFIRMATIONUI_PRODUCT_PACKAGE := com.google.cf.confirmationui
 endif
 PRODUCT_PACKAGES += $(LOCAL_CONFIRMATIONUI_PRODUCT_PACKAGE)
 
@@ -468,13 +468,13 @@ endif
 
 # BootControl HAL
 PRODUCT_PACKAGES += \
-    android.hardware.boot-service.default \
+    com.android.hardware.boot \
     android.hardware.boot-service.default_recovery
 
 
 # Memtrack HAL
 PRODUCT_PACKAGES += \
-    android.hardware.memtrack-service.example
+    com.android.hardware.memtrack
 
 # Fastboot HAL & fastbootd
 PRODUCT_PACKAGES += \
@@ -585,7 +585,7 @@ PRODUCT_PACKAGES += \
 
 # CAS AIDL HAL
 PRODUCT_PACKAGES += \
-    android.hardware.cas-service.example
+    com.android.hardware.cas
 
 PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/config/pci.ids:$(TARGET_COPY_OUT_VENDOR)/pci.ids
