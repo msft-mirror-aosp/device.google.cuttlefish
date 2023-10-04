@@ -56,13 +56,11 @@
 #include "host/commands/cvd/server_command/generic.h"
 #include "host/commands/cvd/server_command/handler_proxy.h"
 #include "host/commands/cvd/server_command/load_configs.h"
-#include "host/commands/cvd/server_command/operation_to_bins_map.h"
 #include "host/commands/cvd/server_command/power.h"
 #include "host/commands/cvd/server_command/reset.h"
+#include "host/commands/cvd/server_command/snapshot.h"
 #include "host/commands/cvd/server_command/start.h"
 #include "host/commands/cvd/server_command/subcmd.h"
-#include "host/commands/cvd/server_command/suspend_resume.h"
-#include "host/commands/cvd/server_command/vm_control.h"
 #include "host/commands/cvd/server_constants.h"
 #include "host/libs/config/cuttlefish_config.h"
 #include "host/libs/config/inject.h"
@@ -91,12 +89,12 @@ CvdServer::CvdServer(BuildApi& build_api, EpollPool& epoll_pool,
       while (running_) {
         auto result = epoll_pool_.HandleEvent();
         if (!result.ok()) {
-          LOG(ERROR) << "Epoll worker error:\n" << result.error().Message();
-          LOG(DEBUG) << "Epoll worker error:\n" << result.error().Trace();
+          LOG(ERROR) << "Epoll worker error:\n"
+                     << result.error().FormatForEnv();
         }
       }
       auto wakeup = BestEffortWakeup();
-      CHECK(wakeup.ok()) << wakeup.error().Trace();
+      CHECK(wakeup.ok()) << wakeup.error().FormatForEnv();
     });
   }
 }
@@ -104,7 +102,7 @@ CvdServer::CvdServer(BuildApi& build_api, EpollPool& epoll_pool,
 CvdServer::~CvdServer() {
   running_ = false;
   auto wakeup = BestEffortWakeup();
-  CHECK(wakeup.ok()) << wakeup.error().Trace();
+  CHECK(wakeup.ok()) << wakeup.error().FormatForEnv();
   Join();
 }
 
@@ -129,11 +127,10 @@ fruit::Component<> CvdServer::RequestComponent(CvdServer* server) {
       .install(CvdHelpComponent)
       .install(CvdResetComponent)
       .install(CvdRestartComponent)
+      .install(CvdSnapshotComponent)
       .install(cvdShutdownComponent)
       .install(CvdStartCommandComponent)
-      .install(CvdSuspendResumeComponent)
       .install(cvdVersionComponent)
-      .install(CvdVmControlComponent)
       .install(DemoMultiVdComponent)
       .install(LoadConfigsComponent);
 }
@@ -175,7 +172,7 @@ void CvdServer::Stop() {
       request->handler->Interrupt();
     }
     auto wakeup = BestEffortWakeup();
-    CHECK(wakeup.ok()) << wakeup.error().Trace();
+    CHECK(wakeup.ok()) << wakeup.error().FormatForEnv();
     std::scoped_lock lock(threads_mutex_);
     for (auto& thread : threads_) {
       auto current_thread = thread.get_id() == std::this_thread::get_id();
@@ -345,7 +342,8 @@ Result<void> CvdServer::HandleMessage(EpollEvent event) {
   if (!response.ok()) {
     cvd::Response failure_message;
     failure_message.mutable_status()->set_code(cvd::Status::INTERNAL);
-    failure_message.mutable_status()->set_message(response.error().Trace());
+    failure_message.mutable_status()->set_message(
+        response.error().FormatForEnv());
     CF_EXPECT(SendResponse(event.fd, failure_message));
     return {};  // Error already sent to the client, don't repeat on the server
   }
@@ -521,8 +519,7 @@ static fruit::Component<> ServerComponent(ServerLogger* server_logger) {
       .bindInstance(*server_logger)
       .install(BuildApiModule)
       .install(EpollLoopComponent)
-      .install(HostToolTargetManagerComponent)
-      .install(OperationToBinsMapComponent);
+      .install(HostToolTargetManagerComponent);
 }
 
 Result<int> CvdServerMain(ServerMainParam&& param) {

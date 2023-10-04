@@ -32,6 +32,10 @@ std::string ConsoleForwarderBinary() {
   return HostBinaryPath("console_forwarder");
 }
 
+std::string ControlEnvProxyServerBinary() {
+  return HostBinaryPath("control_env_proxy_server");
+}
+
 std::string EchoServerBinary() { return HostBinaryPath("echo_server"); }
 
 std::string GnssGrpcProxyBinary() {
@@ -68,6 +72,7 @@ std::string ProcessRestarterBinary() {
 
 std::string RootCanalBinary() { return HostBinaryPath("root-canal"); }
 
+std::string CasimirBinary() { return HostBinaryPath("casimir"); }
 
 std::string SecureEnvBinary() { return HostBinaryPath("secure_env"); }
 
@@ -104,6 +109,10 @@ std::string WmediumdBinary() { return HostBinaryPath("wmediumd"); }
 
 std::string WmediumdGenConfigBinary() {
   return HostBinaryPath("wmediumd_gen_config");
+}
+
+std::string AutomotiveProxyBinary() {
+  return HostBinaryPath("automotive_vsock_proxy");
 }
 
 } // namespace cuttlefish

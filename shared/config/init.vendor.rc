@@ -9,6 +9,8 @@ on early-init
     start vendor.dlkm_loader
     # specially load zram as it is a "leaf" GKI module
     exec u:r:modprobe:s0 -- /system/bin/modprobe -a -d /system/lib/modules zram.ko
+    # specially load memhealth as it is a "leaf" GKI module
+    exec u:r:modprobe:s0 -- /system/bin/modprobe -a -d /system/lib/modules memhealth.ko
 
 on init
     # ZRAM setup
@@ -105,12 +107,6 @@ service metrics_helper /vendor/bin/metrics_helper
 service socket_vsock_proxy /vendor/bin/socket_vsock_proxy -server_type=vsock -server_vsock_port=6520 -client_type=tcp -client_tcp_host=0.0.0.0 -client_tcp_port=5555
     user root
 
-service seriallogging /system/bin/logcat -b all -v threadtime -f /dev/hvc2 *:V
-    class main
-    user logd
-    group root logd
-    seclabel u:r:logpersist:s0
-
 service bugreport /system/bin/dumpstate -d -p -z
     class main
     user root
@@ -123,7 +119,3 @@ service suspend_blocker /vendor/bin/suspend_blocker
     class early_hal # Start together with system_suspend HAL
     group system
     user root
-
-on boot && property:ro.boot.enable_confirmationui=*
-   enable vendor.confirmationui_default
-   start vendor.confirmationui_default

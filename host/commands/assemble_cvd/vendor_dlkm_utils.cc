@@ -13,31 +13,26 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <android-base/file.h>
-#include <android-base/logging.h>
-#include <android-base/stringprintf.h>
-#include <android-base/strings.h>
-
 #include <fcntl.h>
 
-#include <fcntl.h>
 #include <algorithm>
-#include <iterator>
 #include <map>
-#include <queue>
 #include <set>
 #include <sstream>
 #include <string>
 #include <vector>
 
+#include <android-base/file.h>
+#include <android-base/logging.h>
+#include <android-base/stringprintf.h>
+#include <android-base/strings.h>
 #include <fmt/format.h>
 
+#include "common/libs/utils/contains.h"
 #include "common/libs/utils/files.h"
 #include "common/libs/utils/subprocess.h"
-#include "fmt/core.h"
 #include "host/commands/assemble_cvd/boot_image_utils.h"
 #include "host/commands/assemble_cvd/kernel_module_parser.h"
-#include "host/commands/assemble_cvd/ramdisk_modules.h"
 #include "host/libs/config/cuttlefish_config.h"
 
 namespace cuttlefish {
@@ -108,15 +103,34 @@ bool WriteFsConfig(const char* output_path, const std::string& fs_root,
 
 std::vector<std::string> GetRamdiskModules(
     const std::vector<std::string>& all_modules) {
-  static const auto ramdisk_modules_allow_list =
-      std::set<std::string>(RAMDISK_MODULES.begin(), RAMDISK_MODULES.end());
+  static constexpr auto kRamdiskModules = {
+      "failover.ko",
+      "nd_virtio.ko",
+      "net_failover.ko",
+      "virtio_blk.ko",
+      "virtio_console.ko",
+      "virtio_dma_buf.ko",
+      "virtio-gpu.ko",
+      "virtio_input.ko",
+      "virtio_net.ko",
+      "virtio_pci.ko",
+      "virtio_pci_legacy_dev.ko",
+      "virtio_pci_modern_dev.ko",
+      "virtio-rng.ko",
+      "vmw_vsock_virtio_transport.ko",
+      "vmw_vsock_virtio_transport_common.ko",
+      "vsock.ko",
+      // TODO(b/176860479) once virt_wifi is deprecated fully,
+      // these following modules can be loaded in second stage init
+      "libarc4.ko",
+      "rfkill.ko",
+      "cfg80211.ko",
+      "mac80211.ko",
+      "mac80211_hwsim.ko",
+  };
   std::vector<std::string> ramdisk_modules;
   for (const auto& mod_path : all_modules) {
-    if (mod_path.empty()) {
-      continue;
-    }
-    const auto mod_name = cpp_basename(mod_path);
-    if (ramdisk_modules_allow_list.count(mod_name) != 0) {
+    if (Contains(kRamdiskModules, android::base::Basename(mod_path))) {
       ramdisk_modules.emplace_back(mod_path);
     }
   }
@@ -442,6 +456,12 @@ bool BuildVbmetaImage(const std::string& image_path,
   return true;
 }
 
+std::vector<std::string> Dedup(std::vector<std::string>&& vec) {
+  std::sort(vec.begin(), vec.end());
+  vec.erase(unique(vec.begin(), vec.end()), vec.end());
+  return vec;
+}
+
 bool SplitRamdiskModules(const std::string& ramdisk_path,
                          const std::string& ramdisk_stage_dir,
                          const std::string& vendor_dlkm_build_dir,
@@ -449,7 +469,7 @@ bool SplitRamdiskModules(const std::string& ramdisk_path,
   const auto vendor_modules_dir = vendor_dlkm_build_dir + "/lib/modules";
   const auto system_modules_dir = system_dlkm_build_dir + "/lib/modules";
   auto ret = EnsureDirectoryExists(vendor_modules_dir);
-  CHECK(ret.ok()) << ret.error().Message();
+  CHECK(ret.ok()) << ret.error().FormatForEnv();
   ret = EnsureDirectoryExists(system_modules_dir);
   UnpackRamdisk(ramdisk_path, ramdisk_stage_dir);
   const auto module_load_file =
@@ -461,7 +481,7 @@ bool SplitRamdiskModules(const std::string& ramdisk_path,
   }
   LOG(INFO) << "modules.load location " << module_load_file;
   const auto module_list =
-      android::base::Tokenize(ReadFile(module_load_file), "\n");
+      Dedup(android::base::Tokenize(ReadFile(module_load_file), "\n"));
   const auto module_base_dir = cpp_dirname(module_load_file);
   const auto deps = LoadModuleDeps(module_base_dir + "/modules.dep");
   const auto ramdisk_modules =
@@ -477,6 +497,9 @@ bool SplitRamdiskModules(const std::string& ramdisk_path,
 
     const auto module_location =
         fmt::format("{}/{}", module_base_dir, module_path);
+    if (!FileExists(module_location)) {
+      continue;
+    }
     if (IsKernelModuleSigned(module_location)) {
       const auto system_dlkm_module_location =
           fmt::format("{}/{}", system_modules_dir, module_path);
@@ -503,6 +526,17 @@ bool SplitRamdiskModules(const std::string& ramdisk_path,
   LOG(INFO) << "There are " << ramdisk_modules.size() << " ramdisk modules, "
             << vendor_dlkm_modules.size() << " vendor_dlkm modules, "
             << system_dlkm_modules.size() << " system_dlkm modules.";
+
+  // transfer blocklist in whole to the vendor dlkm partition. It currently
+  // only contains one module that is loaded during second stage init.
+  // We can split the blocklist at a later date IF it contains modules in
+  // different partitions.
+  const auto initramfs_blocklist_path = module_base_dir + "/modules.blocklist";
+  if (FileExists(initramfs_blocklist_path)) {
+    const auto vendor_dlkm_blocklist_path =
+        fmt::format("{}/{}", vendor_modules_dir, "modules.blocklist");
+    RenameFile(initramfs_blocklist_path, vendor_dlkm_blocklist_path);
+  }
 
   // Write updated modules.dep and modules.load files
   CHECK(WriteDepsToFile(FilterDependencies(deps, ramdisk_modules),
@@ -556,7 +590,7 @@ bool MoveIfChanged(const std::string& src, const std::string& dst) {
   }
   const auto ret = RenameFile(src, dst);
   if (!ret.ok()) {
-    LOG(ERROR) << ret.error().Message();
+    LOG(ERROR) << ret.error().FormatForEnv();
     return false;
   }
   return true;

@@ -36,6 +36,7 @@
 #include <sys/uio.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <array>
 #include <cerrno>
 #include <chrono>
@@ -48,13 +49,16 @@
 #include <iosfwd>
 #include <istream>
 #include <memory>
+#include <numeric>
 #include <ostream>
 #include <ratio>
 #include <string>
 #include <vector>
 
+#include <android-base/file.h>
 #include <android-base/logging.h>
 #include <android-base/macros.h>
+#include <android-base/strings.h>
 #include <android-base/unique_fd.h>
 
 #include "common/libs/fs/shared_fd.h"
@@ -105,14 +109,14 @@ bool DirectoryExists(const std::string& path, bool follow_symlinks) {
 Result<void> EnsureDirectoryExists(const std::string& directory_path,
                                    const mode_t mode,
                                    const std::string& group_name) {
-  if (DirectoryExists(directory_path)) {
+  if (DirectoryExists(directory_path, /* follow_symlinks */ true)) {
     return {};
   }
-  const auto parent_dir = cpp_dirname(directory_path);
+  const auto parent_dir = android::base::Dirname(directory_path);
   if (parent_dir.size() > 1) {
     EnsureDirectoryExists(parent_dir, mode, group_name);
   }
-  LOG(DEBUG) << "Setting up " << directory_path;
+  LOG(VERBOSE) << "Setting up " << directory_path;
   if (mkdir(directory_path.c_str(), mode) < 0 && errno != EEXIST) {
     return CF_ERRNO("Failed to create directory: \"" << directory_path << "\""
                                                      << strerror(errno));
@@ -369,14 +373,13 @@ std::string ReadFile(const std::string& file) {
 }
 
 std::string CurrentDirectory() {
-  char* path = getcwd(nullptr, 0);
-  if (path == nullptr) {
+  std::unique_ptr<char, void (*)(void*)> cwd(getcwd(nullptr, 0), &free);
+  std::string process_cwd(cwd.get());
+  if (!cwd) {
     PLOG(ERROR) << "`getcwd(nullptr, 0)` failed";
     return "";
   }
-  std::string ret(path);
-  free(path);
-  return ret;
+  return process_cwd;
 }
 
 FileSizes SparseFileSizes(const std::string& path) {
@@ -434,10 +437,7 @@ std::string cpp_basename(const std::string& str) {
 }
 
 std::string cpp_dirname(const std::string& str) {
-  char* copy = strdup(str.c_str()); // dirname may modify its argument
-  std::string ret(dirname(copy));
-  free(copy);
-  return ret;
+  return android::base::Dirname(str);
 }
 
 bool FileIsSocket(const std::string& path) {
@@ -634,5 +634,83 @@ Result<void> WaitForUnixSocket(const std::string& path, int timeoutSec) {
   return CF_ERR("This shouldn't be executed");
 }
 #endif
+
+namespace {
+
+std::vector<std::string> FoldPath(std::vector<std::string> elements,
+                                  std::string token) {
+  static constexpr std::array kIgnored = {".", "..", ""};
+  if (token == ".." && !elements.empty()) {
+    elements.pop_back();
+  } else if (!Contains(kIgnored, token)) {
+    elements.emplace_back(token);
+  }
+  return elements;
+}
+
+Result<std::vector<std::string>> CalculatePrefix(
+    const InputPathForm& path_info) {
+  const auto& path = path_info.path_to_convert;
+  std::string working_dir;
+  if (path_info.current_working_dir) {
+    working_dir = *path_info.current_working_dir;
+  } else {
+    working_dir = CurrentDirectory();
+  }
+  std::vector<std::string> prefix;
+  if (path == "~" || android::base::StartsWith(path, "~/")) {
+    const auto home_dir =
+        path_info.home_dir.value_or(CF_EXPECT(SystemWideUserHome()));
+    prefix = android::base::Tokenize(home_dir, "/");
+  } else if (!android::base::StartsWith(path, "/")) {
+    prefix = android::base::Tokenize(working_dir, "/");
+  }
+  return prefix;
+}
+
+}  // namespace
+
+Result<std::string> EmulateAbsolutePath(const InputPathForm& path_info) {
+  const auto& path = path_info.path_to_convert;
+  std::string working_dir;
+  if (path_info.current_working_dir) {
+    working_dir = *path_info.current_working_dir;
+  } else {
+    working_dir = CurrentDirectory();
+  }
+  CF_EXPECT(android::base::StartsWith(working_dir, '/'),
+            "Current working directory should be given in an absolute path.");
+
+  if (path.empty()) {
+    LOG(ERROR) << "The requested path to convert an absolute path is empty.";
+    return "";
+  }
+
+  auto prefix = CF_EXPECT(CalculatePrefix(path_info));
+  std::vector<std::string> components;
+  components.insert(components.end(), prefix.begin(), prefix.end());
+  auto tokens = android::base::Tokenize(path, "/");
+  // remove first ~
+  if (!tokens.empty() && tokens.at(0) == "~") {
+    tokens.erase(tokens.begin());
+  }
+  components.insert(components.end(), tokens.begin(), tokens.end());
+
+  std::string combined = android::base::Join(components, "/");
+  CF_EXPECTF(!Contains(components, "~"),
+             "~ is not allowed in the middle of the path: {}", combined);
+
+  auto processed_tokens = std::accumulate(components.begin(), components.end(),
+                                          std::vector<std::string>{}, FoldPath);
+
+  const auto processed_path = "/" + android::base::Join(processed_tokens, "/");
+
+  std::string real_path = processed_path;
+  if (path_info.follow_symlink && FileExists(processed_path)) {
+    CF_EXPECTF(android::base::Realpath(processed_path, &real_path),
+               "Failed to effectively conduct readpath -f {}", processed_path);
+  }
+  return real_path;
+}
 
 }  // namespace cuttlefish

@@ -37,9 +37,10 @@ PRODUCT_VENDOR_PROPERTIES += \
 
 PRODUCT_SOONG_NAMESPACES += device/generic/goldfish # for audio and wifi
 
-PRODUCT_SHIPPING_API_LEVEL := 35
 PRODUCT_USE_DYNAMIC_PARTITIONS := true
 DISABLE_RILD_OEM_HOOK := true
+
+PRODUCT_16K_DEVELOPER_OPTION := true
 
 # TODO(b/205788876) remove this condition when openwrt has an image for arm.
 ifndef PRODUCT_ENFORCE_MAC80211_HWSIM
@@ -96,7 +97,6 @@ PRODUCT_VENDOR_PROPERTIES += \
     wifi.direct.interface=p2p-dev-wlan0 \
     persist.sys.zram_enabled=1 \
     ro.hardware.keystore_desede=true \
-    ro.rebootescrow.device=/dev/block/pmem0 \
     ro.incremental.enable=1 \
     debug.c2.use_dmabufheaps=1
 
@@ -140,7 +140,6 @@ PRODUCT_VENDOR_PROPERTIES += ro.crypto.metadata_init_delete_all_keys.enabled=tru
 #
 PRODUCT_PACKAGES += \
     CuttlefishService \
-    cuttlefish_sensor_injection \
     socket_vsock_proxy \
     tombstone_transmit \
     tombstone_producer \
@@ -184,34 +183,24 @@ endif
 #
 # Common manifest for all targets
 #
+ifeq ($(RELEASE_AIDL_USE_UNFROZEN),true)
+PRODUCT_SHIPPING_API_LEVEL := 35
 LOCAL_DEVICE_FCM_MANIFEST_FILE ?= device/google/cuttlefish/shared/config/manifest.xml
+else
+PRODUCT_SHIPPING_API_LEVEL := 34
+LOCAL_DEVICE_FCM_MANIFEST_FILE ?= device/google/cuttlefish/shared/config/previous_manifest.xml
+endif
 DEVICE_MANIFEST_FILE += $(LOCAL_DEVICE_FCM_MANIFEST_FILE)
 
 #
 # General files
 #
 
-
-ifneq ($(LOCAL_SENSOR_FILE_OVERRIDES),true)
-ifneq ($(LOCAL_PREFER_VENDOR_APEX),true)
-    PRODUCT_COPY_FILES += \
-        frameworks/native/data/etc/android.hardware.sensor.ambient_temperature.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.sensor.ambient_temperature.xml \
-        frameworks/native/data/etc/android.hardware.sensor.barometer.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.sensor.barometer.xml \
-        frameworks/native/data/etc/android.hardware.sensor.gyroscope.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.sensor.gyroscope.xml \
-        frameworks/native/data/etc/android.hardware.sensor.hinge_angle.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.sensor.hinge_angle.xml \
-        frameworks/native/data/etc/android.hardware.sensor.light.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.sensor.light.xml \
-        frameworks/native/data/etc/android.hardware.sensor.proximity.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.sensor.proximity.xml \
-        frameworks/native/data/etc/android.hardware.sensor.relative_humidity.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.sensor.relative_humidity.xml
-endif
-endif
-
 ifneq ($(LOCAL_PREFER_VENDOR_APEX),true)
 PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/permissions/cuttlefish_excluded_hardware.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/cuttlefish_excluded_hardware.xml \
     frameworks/native/data/etc/android.hardware.audio.low_latency.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.audio.low_latency.xml \
     frameworks/native/data/etc/android.hardware.ethernet.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.ethernet.xml \
-    frameworks/native/data/etc/android.hardware.location.gps.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.location.gps.xml \
-    frameworks/native/data/etc/android.hardware.reboot_escrow.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.reboot_escrow.xml \
     frameworks/native/data/etc/android.hardware.usb.accessory.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.usb.accessory.xml \
     frameworks/native/data/etc/android.hardware.usb.host.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.usb.host.xml \
     frameworks/native/data/etc/android.hardware.wifi.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.wifi.xml \
@@ -225,6 +214,7 @@ PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/config/init.vendor.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/init.cutf_cvm.rc \
     device/google/cuttlefish/shared/config/init.product.rc:$(TARGET_COPY_OUT_PRODUCT)/etc/init/init.rc \
     device/google/cuttlefish/shared/config/ueventd.rc:$(TARGET_COPY_OUT_VENDOR)/etc/ueventd.rc \
+    device/google/cuttlefish/shared/config/seriallogging.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/seriallogging.rc \
     device/google/cuttlefish/shared/config/media_codecs.xml:$(TARGET_COPY_OUT_VENDOR)/etc/media_codecs.xml \
     device/google/cuttlefish/shared/config/media_codecs_google_video.xml:$(TARGET_COPY_OUT_VENDOR)/etc/media_codecs_google_video.xml \
     device/google/cuttlefish/shared/config/media_codecs_performance.xml:$(TARGET_COPY_OUT_VENDOR)/etc/media_codecs_performance.xml \
@@ -266,24 +256,23 @@ PRODUCT_PACKAGES += \
 
 # Packages for HAL implementations
 
+# TODO(b/218588089) remove this once cuttlefish can drop HIDL.
+# This adds hwservicemanager and the allocator service to the device.
+PRODUCT_PACKAGES += \
+    hwservicemanager \
+    android.hidl.allocator@1.0-service
+
 #
 # Weaver aidl HAL
 #
 PRODUCT_PACKAGES += \
     android.hardware.weaver-service.example
 
-
-#
-# Authsecret HAL
-#
-PRODUCT_PACKAGES += \
-    android.hardware.authsecret@1.0-service
-
 #
 # Authsecret AIDL HAL
 #
 PRODUCT_PACKAGES += \
-    android.hardware.authsecret-service.example
+    com.android.hardware.authsecret
 
 #
 # Audio HAL
@@ -346,7 +335,7 @@ PRODUCT_PACKAGES += \
 # Contexthub HAL
 #
 LOCAL_CONTEXTHUB_PRODUCT_PACKAGE ?= \
-    android.hardware.contexthub-service.example
+    com.android.hardware.contexthub
 PRODUCT_PACKAGES += $(LOCAL_CONTEXTHUB_PRODUCT_PACKAGE)
 
 #
@@ -360,7 +349,7 @@ PRODUCT_PACKAGES += \
 # Confirmation UI HAL
 #
 ifeq ($(LOCAL_CONFIRMATIONUI_PRODUCT_PACKAGE),)
-    LOCAL_CONFIRMATIONUI_PRODUCT_PACKAGE := android.hardware.confirmationui-service.cuttlefish
+    LOCAL_CONFIRMATIONUI_PRODUCT_PACKAGE := com.google.cf.confirmationui
 endif
 PRODUCT_PACKAGES += $(LOCAL_CONFIRMATIONUI_PRODUCT_PACKAGE)
 
@@ -368,7 +357,7 @@ PRODUCT_PACKAGES += $(LOCAL_CONFIRMATIONUI_PRODUCT_PACKAGE)
 # Dumpstate HAL
 #
 ifeq ($(LOCAL_DUMPSTATE_PRODUCT_PACKAGE),)
-    LOCAL_DUMPSTATE_PRODUCT_PACKAGE += android.hardware.dumpstate-service.example
+    LOCAL_DUMPSTATE_PRODUCT_PACKAGE += com.android.hardware.dumpstate
 endif
 PRODUCT_PACKAGES += $(LOCAL_DUMPSTATE_PRODUCT_PACKAGE)
 
@@ -387,7 +376,7 @@ PRODUCT_PACKAGES += \
 LOCAL_ENABLE_OEMLOCK ?= true
 ifeq ($(LOCAL_ENABLE_OEMLOCK),true)
 ifeq ($(LOCAL_OEMLOCK_PRODUCT_PACKAGE),)
-    LOCAL_OEMLOCK_PRODUCT_PACKAGE := android.hardware.oemlock-service.remote
+    LOCAL_OEMLOCK_PRODUCT_PACKAGE := com.google.cf.oemlock
 endif
 PRODUCT_PACKAGES += \
     $(LOCAL_OEMLOCK_PRODUCT_PACKAGE)
@@ -395,18 +384,10 @@ PRODUCT_PACKAGES += \
 PRODUCT_VENDOR_PROPERTIES += ro.oem_unlock_supported=1
 endif
 
-#
-# GPS
-#
-LOCAL_GNSS_PRODUCT_PACKAGE ?= \
-    android.hardware.gnss-service.example
-
-PRODUCT_PACKAGES += $(LOCAL_GNSS_PRODUCT_PACKAGE)
-
 # Health
 ifeq ($(LOCAL_HEALTH_PRODUCT_PACKAGE),)
     LOCAL_HEALTH_PRODUCT_PACKAGE := \
-    android.hardware.health-service.cuttlefish \
+    com.google.cf.health \
     android.hardware.health-service.cuttlefish_recovery \
 
 endif
@@ -414,7 +395,7 @@ PRODUCT_PACKAGES += $(LOCAL_HEALTH_PRODUCT_PACKAGE)
 
 # Health Storage
 PRODUCT_PACKAGES += \
-    android.hardware.health.storage-service.cuttlefish
+    com.google.cf.health.storage
 
 PRODUCT_PACKAGES += \
     android.hardware.input.processor-service.example
@@ -424,29 +405,16 @@ PRODUCT_PACKAGES += \
     android.hardware.net.nlinterceptor-service.default
 
 #
-# Sensors
-#
-ifeq ($(LOCAL_SENSOR_PRODUCT_PACKAGE),)
-ifeq ($(LOCAL_PREFER_VENDOR_APEX),true)
-       LOCAL_SENSOR_PRODUCT_PACKAGE := com.android.hardware.sensors
-else
-       LOCAL_SENSOR_PRODUCT_PACKAGE := android.hardware.sensors-service.example
-endif
-endif
-PRODUCT_PACKAGES += \
-    $(LOCAL_SENSOR_PRODUCT_PACKAGE)
-
-#
 # Lights
 #
 PRODUCT_PACKAGES += \
-    android.hardware.lights-service.example \
+    com.google.cf.light \
 
 #
 # KeyMint HAL
 #
 ifeq ($(LOCAL_KEYMINT_PRODUCT_PACKAGE),)
-    LOCAL_KEYMINT_PRODUCT_PACKAGE := android.hardware.security.keymint-service.rust
+    LOCAL_KEYMINT_PRODUCT_PACKAGE := com.google.cf.keymint.rust
 endif
 
 PRODUCT_PACKAGES += \
@@ -472,21 +440,19 @@ endif
 # Tetheroffload HAL
 #
 PRODUCT_PACKAGES += \
-    android.hardware.tetheroffload-service.example
+    com.android.hardware.tetheroffload
 
 #
 # Thermal HAL
 #
-LOCAL_THERMAL_HAL_PRODUCT_PACKAGE ?= android.hardware.thermal-service.example
+LOCAL_THERMAL_HAL_PRODUCT_PACKAGE ?= com.android.hardware.thermal
 PRODUCT_PACKAGES += $(LOCAL_THERMAL_HAL_PRODUCT_PACKAGE)
 
 #
 # NeuralNetworks HAL
 #
 PRODUCT_PACKAGES += \
-    android.hardware.neuralnetworks-service-sample-all \
-    android.hardware.neuralnetworks-service-sample-limited \
-    android.hardware.neuralnetworks-shim-service-sample
+    com.android.hardware.neuralnetworks
 
 # USB
 PRODUCT_PACKAGES += \
@@ -500,25 +466,15 @@ PRODUCT_PACKAGES += \
     android.hardware.vibrator-service.example
 endif
 
-PRODUCT_PACKAGES += \
-    android.hardware.secure_element-service.example
-
-PRODUCT_COPY_FILES += \
-    frameworks/native/data/etc/android.hardware.se.omapi.ese.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.se.omapi.ese.xml
-
 # BootControl HAL
 PRODUCT_PACKAGES += \
     android.hardware.boot-service.default \
     android.hardware.boot-service.default_recovery
 
 
-# RebootEscrow HAL
-PRODUCT_PACKAGES += \
-    android.hardware.rebootescrow-service.default
-
 # Memtrack HAL
 PRODUCT_PACKAGES += \
-    android.hardware.memtrack-service.example
+    com.android.hardware.memtrack
 
 # Fastboot HAL & fastbootd
 PRODUCT_PACKAGES += \
@@ -601,11 +557,8 @@ PRODUCT_VENDOR_PROPERTIES += ro.vendor.wifi_impl=virt_wifi
 endif
 
 # UWB HAL
-PRODUCT_PACKAGES += \
-    android.hardware.uwb-service
-PRODUCT_COPY_FILES += \
-    device/google/cuttlefish/guest/hals/uwb/uwb-service.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/uwb-service.rc
-
+PRODUCT_PACKAGES += com.android.hardware.uwb
+PRODUCT_VENDOR_PROPERTIES += ro.vendor.uwb.dev=/dev/hvc9
 
 # Host packages to install
 PRODUCT_HOST_PACKAGES += socket_vsock_proxy
@@ -630,17 +583,21 @@ PRODUCT_SYSTEM_PROPERTIES += \
 PRODUCT_PACKAGES += \
    dlkm_loader
 
-# NFC AIDL HAL
-PRODUCT_PACKAGES += \
-    android.hardware.nfc-service.cuttlefish
-
 # CAS AIDL HAL
 PRODUCT_PACKAGES += \
-    android.hardware.cas-service.example
+    com.android.hardware.cas
 
 PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/config/pci.ids:$(TARGET_COPY_OUT_VENDOR)/pci.ids
 
-# Thread Network AIDL HAL
+# New in-development HAL services using unfrozen interfaces. Do not include if
+# RELEASE_AIDL_USE_UNFROZEN is true (in the 'next' release configuration).
+ifeq ($(RELEASE_AIDL_USE_UNFROZEN),true)
+# Thread Network AIDL HAL, simulation CLI and OT daemon controller
 PRODUCT_PACKAGES += \
-    android.hardware.threadnetwork-service.sim
+    com.android.hardware.threadnetwork \
+    ot-cli-ftd \
+    ot-ctl
+endif # RELEASE_AIDL_USE_UNFROZEN
+
+PRODUCT_CHECK_VENDOR_SEAPP_VIOLATIONS := true

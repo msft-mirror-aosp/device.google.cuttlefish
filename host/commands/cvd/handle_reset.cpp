@@ -58,19 +58,20 @@ static Result<ParsedFlags> ParseResetFlags(cvd_common::Args subcmd_args) {
   bool is_confirmed_by_flag = false;
   std::string verbosity_flag_value;
 
-  Flag y_flag = Flag()
-                    .Alias({FlagAliasMode::kFlagExact, "-y"})
-                    .Alias({FlagAliasMode::kFlagExact, "--yes"})
-                    .Setter([&is_confirmed_by_flag](const FlagMatch&) {
-                      is_confirmed_by_flag = true;
-                      return true;
-                    });
+  Flag y_flag =
+      Flag()
+          .Alias({FlagAliasMode::kFlagExact, "-y"})
+          .Alias({FlagAliasMode::kFlagExact, "--yes"})
+          .Setter([&is_confirmed_by_flag](const FlagMatch&) -> Result<void> {
+            is_confirmed_by_flag = true;
+            return {};
+          });
   Flag help_flag = Flag()
                        .Alias({FlagAliasMode::kFlagExact, "-h"})
                        .Alias({FlagAliasMode::kFlagExact, "--help"})
-                       .Setter([&is_help](const FlagMatch&) {
+                       .Setter([&is_help](const FlagMatch&) -> Result<void> {
                          is_help = true;
-                         return true;
+                         return {};
                        });
   std::vector<Flag> flags{
       GflagsCompatFlag("device-by-cvd-only", device_by_cvd_only),
@@ -130,7 +131,7 @@ static Result<void> TimedKillCvdServer(CvdClient& client, const int timeout) {
     auto stop_server_result = client.StopCvdServer(clear_running_devices_first);
     if (!stop_server_result.ok()) {
       LOG(ERROR) << "cvd kill-server returned error"
-                 << stop_server_result.error().Trace();
+                 << stop_server_result.error().FormatForEnv();
       LOG(ERROR) << "However, cvd reset will continue cleaning up.";
     }
     sem_post(binary_sem);
@@ -193,7 +194,7 @@ Result<void> HandleReset(CvdClient& client,
 
   auto result = TimedKillCvdServer(client, 50);
   if (!result.ok()) {
-    LOG(ERROR) << result.error().Trace();
+    LOG(ERROR) << result.error().FormatForEnv();
     LOG(ERROR) << "Cvd reset continues cleaning up devices.";
   }
   // cvd reset handler placeholder. identical to cvd kill-server for now.

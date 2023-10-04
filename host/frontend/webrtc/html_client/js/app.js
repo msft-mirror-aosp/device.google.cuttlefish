@@ -152,9 +152,14 @@ class DeviceControlApp {
   start() {
     console.debug('Device description: ', this.#deviceConnection.description);
     this.#deviceConnection.onControlMessage(msg => this.#onControlMessage(msg));
+    this.#deviceConnection.onSensorsMessage(msg => this.#onSensorsMessage(msg));
     createToggleControl(
         document.getElementById('camera_off_btn'),
         enabled => this.#onCameraCaptureToggle(enabled));
+    // disable the camera button if we are not using VSOCK camera
+    if (!this.#deviceConnection.description.hardware.camera_passthrough) {
+      document.getElementById('camera_off_btn').style.display = "none";
+    }
     createToggleControl(
         document.getElementById('record_video_btn'),
         enabled => this.#onVideoCaptureToggle(enabled));
@@ -211,6 +216,9 @@ class DeviceControlApp {
         'device-details-button', 'device-details-modal',
         'device-details-close');
     createModalButton(
+        'rotation-modal-button', 'rotation-modal',
+        'rotation-modal-close');
+    createModalButton(
         'bluetooth-modal-button', 'bluetooth-prompt', 'bluetooth-prompt-close');
     createModalButton(
         'bluetooth-prompt-wizard', 'bluetooth-wizard', 'bluetooth-wizard-close',
@@ -243,7 +251,7 @@ class DeviceControlApp {
     createModalButton(
         'location-set-cancel', 'location-prompt-modal', 'location-set-modal-close',
         'location-set-modal');
-
+    positionModal('rotation-modal-button', 'rotation-modal');
     positionModal('device-details-button', 'bluetooth-modal');
     positionModal('device-details-button', 'bluetooth-prompt');
     positionModal('device-details-button', 'bluetooth-wizard');
@@ -272,6 +280,19 @@ class DeviceControlApp {
 
     createButtonListener('location-set-confirm', null, this.#deviceConnection,
       evt => this.#onSendLocation(this.#deviceConnection, evt));
+
+    createButtonListener('left-position-button', null, this.#deviceConnection,
+      () => this.#setOrientation(-90));
+    createButtonListener('upright-position-button', null, this.#deviceConnection,
+      () => this.#setOrientation(0));
+
+    createButtonListener('right-position-button', null, this.#deviceConnection,
+      () => this.#setOrientation(90));
+
+    createButtonListener('upside-position-button', null, this.#deviceConnection,
+      () => this.#setOrientation(-180));
+
+    createSliderListener('rotation-slider', () => this.#onMotionChanged(this.#deviceConnection));
 
     if (this.#deviceConnection.description.custom_control_panel_buttons.length >
         0) {
@@ -421,6 +442,82 @@ class DeviceControlApp {
     let location_msg = longitude + "," +latitude + "," + altitude;
     deviceConnection.sendLocationMessage(location_msg);
   }
+
+  #onSensorsMessage(message) {
+    var decoder = new TextDecoder("utf-8");
+    message = decoder.decode(message.data);
+
+    // Get sensor values from message.
+    var sensor_vals = message.split(" ");
+    sensor_vals = sensor_vals.map((val) => parseFloat(val).toFixed(3));
+
+    const acc_val = document.getElementById('accelerometer-value');
+    const mgn_val = document.getElementById('magnetometer-value');
+    const gyro_val = document.getElementById('gyroscope-value');
+    const xyz_val = document.getElementsByClassName('rotation-slider-value');
+    const xyz_range = document.getElementsByClassName('rotation-slider-range');
+
+    // TODO: move to webrtc backend.
+    // Inject sensors with new values.
+    adbShell(`/vendor/bin/cuttlefish_sensor_injection motion ${sensor_vals[3]} ${sensor_vals[4]} ${sensor_vals[5]} ${sensor_vals[6]} ${sensor_vals[7]} ${sensor_vals[8]} ${sensor_vals[9]} ${sensor_vals[10]} ${sensor_vals[11]}`);
+
+    // Display new sensor values after injection.
+    acc_val.textContent = `${sensor_vals[3]} ${sensor_vals[4]} ${sensor_vals[5]}`;
+    mgn_val.textContent = `${sensor_vals[6]} ${sensor_vals[7]} ${sensor_vals[8]}`;
+    gyro_val.textContent = `${sensor_vals[9]} ${sensor_vals[10]} ${sensor_vals[11]}`;
+
+    // Update xyz sliders with backend values.
+    // This is needed for preserving device's state when display is turned on
+    // and off, and for having the same state for multiple clients.
+    for(let i = 0; i < 3; i++) {
+      xyz_val[i].textContent = sensor_vals[i];
+      xyz_range[i].value = sensor_vals[i];
+    }
+  }
+
+  // Send new rotation angles for sensor values' processing.
+  #onMotionChanged(deviceConnection = this.#deviceConnection) {
+    let values = document.getElementsByClassName('rotation-slider-value');
+    let xyz = [];
+    for (var i = 0; i < values.length; i++) {
+      xyz[i] = values[i].innerHTML;
+    }
+    deviceConnection.sendSensorsMessage(`${xyz[0]} ${xyz[1]} ${xyz[2]}`);
+  }
+
+  // Gradually rotate to a fixed orientation.
+  #setOrientation(z) {
+    const sliders = document.getElementsByClassName('rotation-slider-range');
+    const values = document.getElementsByClassName('rotation-slider-value');
+    if (sliders.length != values.length && sliders.length != 3) {
+      return;
+    }
+    // Set XY axes to 0 (upright position).
+    sliders[0].value = '0';
+    values[0].textContent = '0';
+    sliders[1].value = '0';
+    values[1].textContent = '0';
+
+    // Gradually transition z axis to target angle.
+    let current_z = parseFloat(sliders[2].value);
+    const step = ((z > current_z) ? 0.5 : -0.5);
+    let move = setInterval(() => {
+      if (Math.abs(z - current_z) >= 0.5) {
+        current_z += step;
+      }
+      else {
+        current_z = z;
+      }
+      sliders[2].value = current_z;
+      values[2].textContent = `${current_z}`;
+      this.#onMotionChanged();
+      if (current_z == z) {
+        this.#onMotionChanged();
+        clearInterval(move);
+      }
+    }, 5);
+  }
+
   #onImportLocationsFile(deviceConnection, evt) {
 
     function onLoad_send_kml_data(xml) {
@@ -789,6 +886,8 @@ class DeviceControlApp {
 
     // Start the adb connection if it is not already started.
     this.#initializeAdb();
+    // TODO(b/297361564)
+    this.#onMotionChanged();
   }
 
   #onRotateLeftButton(e) {

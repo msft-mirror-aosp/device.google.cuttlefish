@@ -33,12 +33,12 @@
 #include "common/libs/utils/subprocess.h"
 #include "host/commands/assemble_cvd/boot_config.h"
 #include "host/commands/assemble_cvd/boot_image_utils.h"
+#include "host/commands/assemble_cvd/bootconfig_args.h"
 #include "host/commands/assemble_cvd/disk/disk.h"
 #include "host/commands/assemble_cvd/disk_builder.h"
 #include "host/commands/assemble_cvd/flags_defaults.h"
 #include "host/commands/assemble_cvd/super_image_mixer.h"
 #include "host/commands/assemble_cvd/vendor_dlkm_utils.h"
-#include "host/libs/config/bootconfig_args.h"
 #include "host/libs/config/cuttlefish_config.h"
 #include "host/libs/config/data_image.h"
 #include "host/libs/config/inject.h"
@@ -58,13 +58,7 @@ DEFINE_string(data_image, CF_DEFAULTS_DATA_IMAGE,
               "Location of the data partition image.");
 DEFINE_string(super_image, CF_DEFAULTS_SUPER_IMAGE,
               "Location of the super partition image.");
-DEFINE_string(misc_image, CF_DEFAULTS_MISC_IMAGE,
-              "Location of the misc partition image. If the image does not "
-              "exist, a blank new misc partition image is created.");
 DEFINE_string(misc_info_txt, "", "Location of the misc_info.txt file.");
-DEFINE_string(metadata_image, CF_DEFAULTS_METADATA_IMAGE,
-              "Location of the metadata partition image "
-              "to be generated.");
 DEFINE_string(
     vendor_boot_image, CF_DEFAULTS_VENDOR_BOOT_IMAGE,
     "Location of cuttlefish vendor boot image. If empty it is assumed to "
@@ -95,6 +89,9 @@ DEFINE_string(
 DEFINE_string(
     system_target_zip, CF_DEFAULTS_SYSTEM_TARGET_ZIP,
     "Location of system target zip file.");
+
+DEFINE_string(android_efi_loader, CF_DEFAULTS_ANDROID_EFI_LOADER,
+              "Location of android EFI loader for android efi load flow.");
 
 DEFINE_string(linux_kernel_path, CF_DEFAULTS_LINUX_KERNEL_PATH,
               "Location of linux kernel for cuttlefish otheros flow.");
@@ -159,9 +156,7 @@ Result<void> ResolveInstanceFiles() {
   std::string default_boot_image = "";
   std::string default_init_boot_image = "";
   std::string default_data_image = "";
-  std::string default_metadata_image = "";
   std::string default_super_image = "";
-  std::string default_misc_image = "";
   std::string default_misc_info_txt = "";
   std::string default_vendor_boot_image = "";
   std::string default_vbmeta_image = "";
@@ -191,9 +186,7 @@ Result<void> ResolveInstanceFiles() {
     default_boot_image += comma_str + cur_system_image_dir + "/boot.img";
     default_init_boot_image += comma_str + cur_system_image_dir + "/init_boot.img";
     default_data_image += comma_str + cur_system_image_dir + "/userdata.img";
-    default_metadata_image += comma_str + cur_system_image_dir + "/metadata.img";
     default_super_image += comma_str + cur_system_image_dir + "/super.img";
-    default_misc_image += comma_str + cur_system_image_dir + "/misc.img";
     default_misc_info_txt +=
         comma_str + cur_system_image_dir + "/misc_info.txt";
     default_vendor_boot_image += comma_str + cur_system_image_dir + "/vendor_boot.img";
@@ -232,11 +225,7 @@ Result<void> ResolveInstanceFiles() {
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
   SetCommandLineOptionWithMode("data_image", default_data_image.c_str(),
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
-  SetCommandLineOptionWithMode("metadata_image", default_metadata_image.c_str(),
-                               google::FlagSettingMode::SET_FLAGS_DEFAULT);
   SetCommandLineOptionWithMode("super_image", default_super_image.c_str(),
-                               google::FlagSettingMode::SET_FLAGS_DEFAULT);
-  SetCommandLineOptionWithMode("misc_image", default_misc_image.c_str(),
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
   SetCommandLineOptionWithMode("misc_info_txt", default_misc_info_txt.c_str(),
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
@@ -264,7 +253,7 @@ std::vector<ImagePartition> linux_composite_disk_config(
 
   partitions.push_back(ImagePartition{
       .label = "linux_esp",
-      .image_file_path = AbsolutePath(instance.otheros_esp_image_path()),
+      .image_file_path = AbsolutePath(instance.esp_image_path()),
       .type = kEfiSystemPartition,
       .read_only = FLAGS_use_overlay,
   });
@@ -283,7 +272,7 @@ std::vector<ImagePartition> fuchsia_composite_disk_config(
 
   partitions.push_back(ImagePartition{
       .label = "fuchsia_esp",
-      .image_file_path = AbsolutePath(instance.otheros_esp_image_path()),
+      .image_file_path = AbsolutePath(instance.esp_image_path()),
       .type = kEfiSystemPartition,
       .read_only = FLAGS_use_overlay,
   });
@@ -297,7 +286,7 @@ std::vector<ImagePartition> android_composite_disk_config(
 
   partitions.push_back(ImagePartition{
       .label = "misc",
-      .image_file_path = AbsolutePath(instance.new_misc_image()),
+      .image_file_path = AbsolutePath(instance.misc_image()),
       .read_only = FLAGS_use_overlay,
   });
   partitions.push_back(ImagePartition{
@@ -405,7 +394,7 @@ std::vector<ImagePartition> android_composite_disk_config(
   });
   partitions.push_back(ImagePartition{
       .label = "metadata",
-      .image_file_path = AbsolutePath(instance.new_metadata_image()),
+      .image_file_path = AbsolutePath(instance.metadata_image()),
       .read_only = FLAGS_use_overlay,
   });
   const auto custom_partition_path = instance.custom_partition_path();
@@ -416,6 +405,24 @@ std::vector<ImagePartition> android_composite_disk_config(
         .read_only = FLAGS_use_overlay,
     });
   }
+
+  return partitions;
+}
+
+std::vector<ImagePartition> AndroidEfiLoaderCompositeDiskConfig(
+    const CuttlefishConfig::InstanceSpecific& instance) {
+  std::vector<ImagePartition> partitions =
+      android_composite_disk_config(instance);
+  // Cuttlefish uboot EFI bootflow by default looks at the first partition
+  // for EFI application. Thus we put "android_esp" at the beginning.
+  partitions.insert(
+      partitions.begin(),
+      ImagePartition{
+          .label = "android_esp",
+          .image_file_path = AbsolutePath(instance.esp_image_path()),
+          .type = kEfiSystemPartition,
+          .read_only = FLAGS_use_overlay,
+      });
 
   return partitions;
 }
@@ -447,6 +454,9 @@ std::vector<ImagePartition> GetOsCompositeDiskConfig(
   switch (instance.boot_flow()) {
     case CuttlefishConfig::InstanceSpecific::BootFlow::Android:
       return android_composite_disk_config(instance);
+      break;
+    case CuttlefishConfig::InstanceSpecific::BootFlow::AndroidEfiLoader:
+      return AndroidEfiLoaderCompositeDiskConfig(instance);
       break;
     case CuttlefishConfig::InstanceSpecific::BootFlow::Linux:
       return linux_composite_disk_config(instance);
@@ -508,14 +518,14 @@ class InitializeMetadataImage : public SetupFeature {
  private:
   std::unordered_set<SetupFeature*> Dependencies() const override { return {}; }
   Result<void> ResultSetup() override {
-    if (FileExists(instance_.new_metadata_image()) &&
-        FileSize(instance_.new_metadata_image()) == instance_.blank_metadata_image_mb() << 20) {
+    if (FileExists(instance_.metadata_image()) &&
+        FileSize(instance_.metadata_image()) == instance_.blank_metadata_image_mb() << 20) {
       return {};
     }
 
-    CF_EXPECT(CreateBlankImage(instance_.new_metadata_image(),
+    CF_EXPECT(CreateBlankImage(instance_.metadata_image(),
                                instance_.blank_metadata_image_mb(), "none"),
-              "Failed to create \"" << instance_.new_metadata_image()
+              "Failed to create \"" << instance_.metadata_image()
                                     << "\" with size "
                                     << instance_.blank_metadata_image_mb());
     return {};
@@ -698,6 +708,7 @@ static fruit::Component<> DiskChangesComponent(
       .bindInstance(*fetcher)
       .bindInstance(*config)
       .bindInstance(*instance)
+      .install(CuttlefishKeyAvbComponent)
       .addMultibinding<SetupFeature, InitializeMetadataImage>()
       .install(KernelRamdiskRepackerComponent)
       .addMultibinding<SetupFeature, VbmetaEnforceMinimumSize>()
@@ -737,12 +748,8 @@ Result<void> DiskImageFlagsVectorization(CuttlefishConfig& config, const Fetcher
       android::base::Split(FLAGS_data_image, ",");
   std::vector<std::string> super_image =
       android::base::Split(FLAGS_super_image, ",");
-  std::vector<std::string> misc_image =
-      android::base::Split(FLAGS_misc_image, ",");
   std::vector<std::string> misc_info =
       android::base::Split(FLAGS_misc_info_txt, ",");
-  std::vector<std::string> metadata_image =
-      android::base::Split(FLAGS_metadata_image, ",");
   std::vector<std::string> vendor_boot_image =
       android::base::Split(FLAGS_vendor_boot_image, ",");
   std::vector<std::string> vbmeta_image =
@@ -758,6 +765,9 @@ Result<void> DiskImageFlagsVectorization(CuttlefishConfig& config, const Fetcher
       android::base::Split(FLAGS_default_target_zip, ",");
   std::vector<std::string> system_target_zip_vec =
       android::base::Split(FLAGS_system_target_zip, ",");
+
+  std::vector<std::string> android_efi_loader =
+      android::base::Split(FLAGS_android_efi_loader, ",");
 
   std::vector<std::string> linux_kernel_path =
       android::base::Split(FLAGS_linux_kernel_path, ",");
@@ -793,22 +803,12 @@ Result<void> DiskImageFlagsVectorization(CuttlefishConfig& config, const Fetcher
   std::string cur_boot_image;
   std::string cur_vendor_boot_image;
   std::string cur_super_image;
-  std::string cur_metadata_image;
-  std::string cur_misc_image;
-  int cur_blank_metadata_image_mb{};
   int value{};
   int instance_index = 0;
   auto instance_nums =
       CF_EXPECT(InstanceNumsCalculator().FromGlobalGflags().Calculate());
   for (const auto& num : instance_nums) {
     auto instance = config.ForInstance(num);
-    if (instance_index >= misc_image.size()) {
-      // legacy variable. Vectorize by copy [0] to all instances
-      cur_misc_image = misc_image[0];
-    } else {
-      cur_misc_image = misc_image[instance_index];
-    }
-    instance.set_misc_image(cur_misc_image);
     if (instance_index >= misc_info.size()) {
       instance.set_misc_info_txt(misc_info[0]);
     } else {
@@ -868,12 +868,11 @@ Result<void> DiskImageFlagsVectorization(CuttlefishConfig& config, const Fetcher
     } else {
       instance.set_data_image(data_image[instance_index]);
     }
-    if (instance_index >= metadata_image.size()) {
-      cur_metadata_image = metadata_image[0];
+    if (instance_index >= android_efi_loader.size()) {
+      instance.set_android_efi_loader(android_efi_loader[0]);
     } else {
-      cur_metadata_image = metadata_image[instance_index];
+      instance.set_android_efi_loader(android_efi_loader[instance_index]);
     }
-    instance.set_metadata_image(cur_metadata_image);
     if (instance_index >= linux_kernel_path.size()) {
       instance.set_linux_kernel_path(linux_kernel_path[0]);
     } else {
@@ -927,30 +926,22 @@ Result<void> DiskImageFlagsVectorization(CuttlefishConfig& config, const Fetcher
     }
     instance.set_initramfs_path(cur_initramfs_path);
 
+    using android::base::ParseInt;
     if (instance_index >= blank_metadata_image_mb.size()) {
-      CHECK(android::base::ParseInt(blank_metadata_image_mb[0],
-                                    &value))
-          << "Invalid 'blank_metadata_image_mb' "
-          << blank_metadata_image_mb[0];
+      CF_EXPECTF(ParseInt(blank_metadata_image_mb[0], &value), "'{}'",
+                 blank_metadata_image_mb[0]);
     } else {
-      CHECK(android::base::ParseInt(blank_metadata_image_mb[instance_index],
-                                    &value))
-          << "Invalid 'blank_metadata_image_mb' "
-          << blank_metadata_image_mb[instance_index];
+      CF_EXPECTF(ParseInt(blank_metadata_image_mb[instance_index], &value),
+                 "'{}'", blank_metadata_image_mb[value]);
     }
     instance.set_blank_metadata_image_mb(value);
-    cur_blank_metadata_image_mb = value;
 
     if (instance_index >= blank_sdcard_image_mb.size()) {
-      CHECK(android::base::ParseInt(blank_sdcard_image_mb[0],
-                                    &value))
-          << "Invalid 'blank_sdcard_image_mb' "
-          << blank_sdcard_image_mb[0];
+      CF_EXPECTF(ParseInt(blank_sdcard_image_mb[0], &value), "'{}'",
+                 blank_sdcard_image_mb[0]);
     } else {
-      CHECK(android::base::ParseInt(blank_sdcard_image_mb[instance_index],
-                                    &value))
-          << "Invalid 'blank_sdcard_image_mb' "
-          << blank_sdcard_image_mb[instance_index];
+      CF_EXPECTF(ParseInt(blank_sdcard_image_mb[instance_index], &value),
+                 "'{}'", blank_sdcard_image_mb[instance_index]);
     }
     instance.set_blank_sdcard_image_mb(value);
 
@@ -1004,26 +995,11 @@ Result<void> DiskImageFlagsVectorization(CuttlefishConfig& config, const Fetcher
       instance.set_new_super_image(new_super_image_path);
     }
 
-    if (FileExists(cur_metadata_image) &&
-        FileSize(cur_metadata_image) == cur_blank_metadata_image_mb << 20) {
-      instance.set_new_metadata_image(cur_metadata_image);
-    } else {
-      const std::string new_metadata_image_path =
-          const_instance.PerInstancePath("metadata.img");
-      instance.set_new_metadata_image(new_metadata_image_path);
-    }
     instance.set_new_vbmeta_vendor_dlkm_image(
         const_instance.PerInstancePath("vbmeta_vendor_dlkm_repacked.img"));
     instance.set_new_vbmeta_system_dlkm_image(
         const_instance.PerInstancePath("vbmeta_system_dlkm_repacked.img"));
 
-    if (FileHasContent(cur_misc_image)) {
-      instance.set_new_misc_image(cur_misc_image);
-    } else {
-      const std::string new_misc_image_path =
-          const_instance.PerInstancePath("misc.img");
-      instance.set_new_misc_image(new_misc_image_path);
-    }
     instance_index++;
   }
   return {};

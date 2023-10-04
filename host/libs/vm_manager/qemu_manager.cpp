@@ -25,9 +25,7 @@
 #include <unistd.h>
 
 #include <cstdlib>
-#include <sstream>
 #include <string>
-#include <thread>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -37,15 +35,11 @@
 #include <vulkan/vulkan.h>
 
 #include "common/libs/device_config/device_config.h"
-#include "common/libs/fs/shared_select.h"
-#include "common/libs/utils/contains.h"
 #include "common/libs/utils/files.h"
 #include "common/libs/utils/result.h"
 #include "common/libs/utils/subprocess.h"
-#include "common/libs/utils/users.h"
 #include "host/libs/config/command_source.h"
 #include "host/libs/config/cuttlefish_config.h"
-#include "host/libs/config/known_paths.h"
 
 namespace cuttlefish {
 namespace vm_manager {
@@ -54,11 +48,6 @@ namespace {
 std::string GetMonitorPath(const CuttlefishConfig& config) {
   return config.ForDefaultInstance().PerInstanceInternalUdsPath(
       "qemu_monitor.sock");
-}
-
-void LogAndSetEnv(const char* key, const std::string& value) {
-  setenv(key, value.c_str(), 1);
-  LOG(INFO) << key << "=" << value;
 }
 
 bool Stop() {
@@ -199,20 +188,27 @@ QemuManager::ConfigureGraphics(
 }
 
 Result<std::unordered_map<std::string, std::string>>
-QemuManager::ConfigureBootDevices(int num_disks, bool have_gpu) {
+QemuManager::ConfigureBootDevices(
+    const CuttlefishConfig::InstanceSpecific& instance) {
+  const int num_disks = instance.virtual_disk_paths().size();
+  const int num_gpu = instance.hwcomposer() != kHwComposerNone;
   switch (arch_) {
     case Arch::Arm:
       return {{{"androidboot.boot_devices", "3f000000.pcie"}}};
     case Arch::Arm64:
+#ifdef __APPLE__
+      return {{{"androidboot.boot_devices", "3f000000.pcie"}}};
+#else
       return {{{"androidboot.boot_devices", "4010000000.pcie"}}};
+#endif
     case Arch::RiscV64:
       return {{{"androidboot.boot_devices", "soc/30000000.pci"}}};
     case Arch::X86:
     case Arch::X86_64: {
       // QEMU has additional PCI devices for an ISA bridge and PIIX4
       // virtio_gpu precedes the first console or disk
-      return ConfigureMultipleBootDevices("pci0000:00/0000:00:",
-                                          2 + (have_gpu ? 1 : 0), num_disks);
+      return ConfigureMultipleBootDevices("pci0000:00/0000:00:", 2 + num_gpu,
+                                          num_disks);
     }
   }
 }
@@ -356,7 +352,13 @@ Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
   qemu_cmd.AddParameter("-machine");
   std::string machine = is_x86 ? "pc,nvdimm=on" : "virt";
   if (IsHostCompatible(arch_)) {
+#ifdef __linux__
     machine += ",accel=kvm";
+#elif defined(__APPLE__)
+    machine += ",accel=hvf";
+#else
+#error "Unknown OS"
+#endif
     if (is_arm) {
       machine += ",gic-version=3";
     }
@@ -575,6 +577,18 @@ Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
   // /dev/hvc11 = keymint (Rust implementation)
   add_hvc(instance.PerInstanceInternalPath("keymint_fifo_vm"));
 
+  // /dev/hvc12 = nfc
+  if (config.enable_host_nfc()) {
+    add_hvc(instance.PerInstanceInternalPath("nfc_fifo_vm"));
+  } else {
+    add_hvc_sink();
+  }
+
+  // sensors_fifo_vm.{in/out} are created along with the streamer process,
+  // which is not created w/ QEMU.
+  // /dev/hvc13 = sensors
+  add_hvc_sink();
+
   auto disk_num = instance.virtual_disk_paths().size();
 
   for (auto i = 0; i < VmManager::kMaxDisks - disk_num; i++) {
@@ -599,7 +613,11 @@ Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
                           ",aio=threads", readonly);
     qemu_cmd.AddParameter("-device");
     qemu_cmd.AddParameter(
+#ifdef __APPLE__
+        "virtio-blk-pci-non-transitional,drive=drive-virtio-disk", i,
+#else
         "virtio-blk-pci-non-transitional,scsi=off,drive=drive-virtio-disk", i,
+#endif
         ",id=virtio-disk", i, (i == 0 ? ",bootindex=1" : ""));
     ++i;
   }
@@ -749,9 +767,11 @@ Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
   qemu_cmd.AddParameter("-msg");
   qemu_cmd.AddParameter("timestamp=on");
 
+#ifdef __linux__
   qemu_cmd.AddParameter("-device");
   qemu_cmd.AddParameter("vhost-vsock-pci-non-transitional,guest-cid=",
                         instance.vsock_guest_cid());
+#endif
 
   qemu_cmd.AddParameter("-device");
   qemu_cmd.AddParameter("AC97");
@@ -772,7 +792,7 @@ Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
     qemu_cmd.AddParameter("tcp::", instance.gdb_port());
   }
 
-  LogAndSetEnv("QEMU_AUDIO_DRV", "none");
+  qemu_cmd.AddEnvironmentVariable("QEMU_AUDIO_DRV", "none");
 
   std::vector<MonitorCommand> commands;
   commands.emplace_back(std::move(qemu_cmd), true);

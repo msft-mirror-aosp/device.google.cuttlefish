@@ -17,8 +17,6 @@
 PRODUCT_MANIFEST_FILES += device/google/cuttlefish/shared/config/product_manifest.xml
 SYSTEM_EXT_MANIFEST_FILES += device/google/cuttlefish/shared/config/system_ext_manifest.xml
 
-PRODUCT_MAX_PAGE_SIZE_SUPPORTED := 65536
-
 $(call inherit-product, $(SRC_TARGET_DIR)/product/handheld_vendor.mk)
 
 ifneq ($(LOCAL_PREFER_VENDOR_APEX),true)
@@ -32,14 +30,19 @@ $(call inherit-product, device/google/cuttlefish/shared/biometrics_face/device_v
 $(call inherit-product, device/google/cuttlefish/shared/bluetooth/device_vendor.mk)
 $(call inherit-product, device/google/cuttlefish/shared/camera/device_vendor.mk)
 $(call inherit-product, device/google/cuttlefish/shared/consumerir/device_vendor.mk)
+$(call inherit-product, device/google/cuttlefish/shared/gnss/device_vendor.mk)
 $(call inherit-product, device/google/cuttlefish/shared/graphics/device_vendor.mk)
 $(call inherit-product, device/google/cuttlefish/shared/identity/device_vendor.mk)
+$(call inherit-product, device/google/cuttlefish/shared/reboot_escrow/device_vendor.mk)
+$(call inherit-product, device/google/cuttlefish/shared/secure_element/device_vendor.mk)
 $(call inherit-product, device/google/cuttlefish/shared/swiftshader/device_vendor.mk)
 $(call inherit-product, device/google/cuttlefish/shared/telephony/device_vendor.mk)
+$(call inherit-product, device/google/cuttlefish/shared/sensors/device_vendor.mk)
 $(call inherit-product, device/google/cuttlefish/shared/virgl/device_vendor.mk)
 $(call inherit-product, device/google/cuttlefish/shared/device.mk)
 
-PRODUCT_EXTRA_VNDK_VERSIONS := 29 30 31
+# Support mixing CF system onto previous versions of vendor
+PRODUCT_EXTRA_VNDK_VERSIONS := 30 31 32 33
 
 TARGET_PRODUCT_PROP := $(LOCAL_PATH)/product.prop
 
@@ -50,11 +53,17 @@ PRODUCT_COPY_FILES += \
 
 endif
 
+DEVICE_PACKAGE_OVERLAYS += device/google/cuttlefish/shared/phone/overlay
+
 # Runtime Resource Overlays
 ifeq ($(LOCAL_PREFER_VENDOR_APEX),true)
 PRODUCT_PACKAGES += com.google.aosp_cf_phone.rros
 else
 PRODUCT_PACKAGES += cuttlefish_phone_overlay_frameworks_base_core
 endif
+
+# NFC AIDL HAL
+PRODUCT_PACKAGES += \
+    com.google.cf.nfc
 
 TARGET_BOARD_INFO_FILE ?= device/google/cuttlefish/shared/phone/android-info.txt

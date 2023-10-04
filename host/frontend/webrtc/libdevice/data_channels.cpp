@@ -65,6 +65,7 @@ static constexpr auto kInputChannelLabel = "input-channel";
 static constexpr auto kAdbChannelLabel = "adb-channel";
 static constexpr auto kBluetoothChannelLabel = "bluetooth-channel";
 static constexpr auto kCameraDataChannelLabel = "camera-data-channel";
+static constexpr auto kSensorsDataChannelLabel = "sensors-channel";
 static constexpr auto kLocationDataChannelLabel = "location-channel";
 static constexpr auto kKmlLocationsDataChannelLabel = "kml-locations-channel";
 static constexpr auto kGpxLocationsDataChannelLabel = "gpx-locations-channel";
@@ -108,7 +109,7 @@ class InputChannelHandler : public DataChannelHandler {
                               {"y", Json::ValueType::intValue},
                               {"display_label", Json::ValueType::stringValue}});
       if (!result.ok()) {
-        LOG(ERROR) << result.error().Trace();
+        LOG(ERROR) << result.error().FormatForEnv();
         return;
       }
       auto label = evt["display_label"].asString();
@@ -127,7 +128,7 @@ class InputChannelHandler : public DataChannelHandler {
                               {"slot", Json::ValueType::arrayValue},
                               {"display_label", Json::ValueType::stringValue}});
       if (!result.ok()) {
-        LOG(ERROR) << result.error().Trace();
+        LOG(ERROR) << result.error().FormatForEnv();
         return;
       }
 
@@ -147,7 +148,7 @@ class InputChannelHandler : public DataChannelHandler {
                              {{"event_type", Json::ValueType::stringValue},
                               {"keycode", Json::ValueType::stringValue}});
       if (!result.ok()) {
-        LOG(ERROR) << result.error().Trace();
+        LOG(ERROR) << result.error().FormatForEnv();
         return;
       }
       auto down = evt["event_type"].asString() == std::string("keydown");
@@ -158,8 +159,8 @@ class InputChannelHandler : public DataChannelHandler {
           ValidateJsonObject(evt, "wheel",
                              {{"pixels", Json::ValueType::intValue}});
        if (!result.ok()) {
-         LOG(ERROR) << result.error().Trace();
-         return;
+        LOG(ERROR) << result.error().FormatForEnv();
+        return;
        }
        auto pixels = evt["pixels"].asInt();
        observer()->OnWheelEvent(pixels);
@@ -201,7 +202,7 @@ class ControlChannelHandler : public DataChannelHandler {
             {"hinge_angle_value", Json::ValueType::intValue},
         });
     if (!result.ok()) {
-      LOG(ERROR) << result.error().Trace();
+      LOG(ERROR) << result.error().FormatForEnv();
       return;
     }
     auto command = evt["command"].asString();
@@ -284,6 +285,28 @@ class CameraChannelHandler : public DataChannelHandler {
 
  private:
   std::vector<char> receive_buffer_;
+};
+
+// TODO(b/297361564)
+class SensorsChannelHandler : public DataChannelHandler {
+ public:
+  void OnFirstMessage() override { observer()->OnSensorsChannelOpen(GetBinarySender()); }
+  void OnMessageInner(const webrtc::DataBuffer &msg) override {
+    if (!first_msg_received_) {
+      first_msg_received_ = true;
+      return;
+    }
+    observer()->OnSensorsMessage(msg.data.cdata(), msg.size());
+  }
+
+  void OnStateChangeInner(webrtc::DataChannelInterface::DataState state) override {
+    if (state == webrtc::DataChannelInterface::kClosed) {
+      observer()->OnSensorsChannelClosed();
+    }
+  }
+
+ private:
+  bool first_msg_received_ = false;
 };
 
 class LocationChannelHandler : public DataChannelHandler {
@@ -422,6 +445,9 @@ void DataChannelHandlers::OnDataChannelOpen(
         channel, observer_));
   } else if (label == kGpxLocationsDataChannelLabel) {
     gpx_location_.reset(new DataChannelHandlerImpl<GpxLocationChannelHandler>(
+        channel, observer_));
+  } else if (label == kSensorsDataChannelLabel) {
+    sensors_.reset(new DataChannelHandlerImpl<SensorsChannelHandler>(
         channel, observer_));
   } else {
     unknown_channels_.emplace_back(

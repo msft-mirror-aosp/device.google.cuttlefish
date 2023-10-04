@@ -24,12 +24,14 @@
 #include <iterator>
 #include <memory>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <thread>
 #include <utility>
 #include <vector>
 
 #include <android-base/logging.h>
+#include <android-base/parseint.h>
 #include <android-base/strings.h>
 #include <curl/curl.h>
 #include <gflags/gflags.h>
@@ -50,41 +52,21 @@
 namespace cuttlefish {
 namespace {
 
-const std::string DEFAULT_BUILD_TARGET = "aosp_cf_x86_64_phone-userdebug";
-const std::string HOST_TOOLS = "cvd-host_package.tar.gz";
-const std::string KERNEL = "kernel";
-const std::string OTA_TOOLS = "otatools.zip";
-const std::string OTA_TOOLS_DIR = "/otatools/";
-const std::string DEFAULT_DIR = "/default";
-const std::string SYSTEM_DIR = "/system";
-const int DEFAULT_RETRY_PERIOD = 20;
-const std::string USAGE_MESSAGE =
-    "<flags>\n"
-    "\n"
-    "\"*_build\" flags accept values in the following format:\n"
-    "\"branch/build_target\" - latest build of \"branch\" for "
-    "\"build_target\"\n"
-    "\"build_id/build_target\" - build \"build_id\" for \"build_target\"\n"
-    "\"branch\" - latest build of \"branch\" for "
-    "\"aosp_cf_x86_phone-userdebug\"\n"
-    "\"build_id\" - build \"build_id\" for \"aosp_cf_x86_phone-userdebug\"\n";
-const mode_t RWX_ALL_MODE = S_IRWXU | S_IRWXG | S_IRWXO;
-const bool OVERRIDE_ENTRIES = true;
-const bool DOWNLOAD_IMG_ZIP_DEFAULT = true;
-const bool DOWNLOAD_TARGET_FILES_ZIP_DEFAULT = false;
-const std::string LOG_FILENAME = "fetch.log";
+constexpr char kDefaultBuildTarget[] =
+    "aosp_cf_x86_64_phone-trunk_staging-userdebug";
+constexpr char kUsageMessage[] =
+    "*_build flags accept values in the following format:\n"
+    "{<branch> | <build_id>}[/<build_target>]\n"
+    "<branch> fetches artifacts from the latest build of the argument\n"
+    "if <build_target> is not specified then the default build target is: ";
+constexpr mode_t kRwxAllMode = S_IRWXU | S_IRWXG | S_IRWXO;
+constexpr bool kOverrideEntries = true;
 
 struct BuildApiFlags {
-  std::string api_key = "";
-  std::string credential_source = "";
-  std::chrono::seconds wait_retry_period =
-      std::chrono::seconds(DEFAULT_RETRY_PERIOD);
-  bool external_dns_resolver =
-#ifdef __BIONIC__
-      true;
-#else
-      false;
-#endif
+  std::string api_key = kDefaultApiKey;
+  std::string credential_source = kDefaultCredentialSource;
+  std::chrono::seconds wait_retry_period = kDefaultWaitRetryPeriod;
+  bool external_dns_resolver = kDefaultExternalDnsResolver;
 };
 
 struct VectorFlags {
@@ -117,9 +99,9 @@ struct DownloadFlags {
 };
 
 struct FetchFlags {
-  std::string target_directory = "";
+  std::string target_directory = kDefaultTargetDirectory;
   std::vector<std::string> target_subdirectory;
-  bool keep_downloaded_archives = false;
+  bool keep_downloaded_archives = kDefaultKeepDownloadedArchives;
   android::base::LogSeverity verbosity = android::base::INFO;
   bool helpxml = false;
   BuildApiFlags build_api_flags;
@@ -144,9 +126,22 @@ struct TargetDirectories {
   std::string system_target_files;
 };
 
+Flag GflagsCompatFlagSeconds(const std::string& name,
+                             std::chrono::seconds& value) {
+  return GflagsCompatFlag(name)
+      .Getter([&value]() { return std::to_string(value.count()); })
+      .Setter([&value](const FlagMatch& match) -> Result<void> {
+        int parsed_int;
+        CF_EXPECTF(android::base::ParseInt(match.value, &parsed_int),
+                   "Failed to parse \"{}\" as an integer", match.value);
+        value = std::chrono::seconds(parsed_int);
+        return {};
+      });
+}
+
 std::vector<Flag> GetFlagsVector(FetchFlags& fetch_flags,
                                  BuildApiFlags& build_api_flags,
-                                 VectorFlags& vector_flags, int& retry_period,
+                                 VectorFlags& vector_flags,
                                  std::string& directory) {
   std::vector<Flag> flags;
   flags.emplace_back(
@@ -172,7 +167,8 @@ std::vector<Flag> GetFlagsVector(FetchFlags& fetch_flags,
   flags.emplace_back(
       GflagsCompatFlag("credential_source", build_api_flags.credential_source)
           .Help("Build API credential source"));
-  flags.emplace_back(GflagsCompatFlag("wait_retry_period", retry_period)
+  flags.emplace_back(GflagsCompatFlagSeconds("wait_retry_period",
+                                             build_api_flags.wait_retry_period)
                          .Help("Retry period for pending builds given in "
                                "seconds. Set to 0 to not wait."));
   flags.emplace_back(
@@ -204,17 +200,19 @@ std::vector<Flag> GetFlagsVector(FetchFlags& fetch_flags,
           .Help("name of the boot image in boot_build"));
   flags.emplace_back(GflagsCompatFlag("download_img_zip",
                                       vector_flags.download_img_zip,
-                                      DOWNLOAD_IMG_ZIP_DEFAULT)
+                                      kDefaultDownloadImgZip)
                          .Help("Whether to fetch the -img-*.zip file."));
   flags.emplace_back(
       GflagsCompatFlag("download_target_files_zip",
                        vector_flags.download_target_files_zip,
-                       DOWNLOAD_TARGET_FILES_ZIP_DEFAULT)
+                       kDefaultDownloadTargetFilesZip)
           .Help("Whether to fetch the -target_files-*.zip file."));
 
-  flags.emplace_back(HelpFlag(flags, USAGE_MESSAGE));
+  std::stringstream help_message;
+  help_message << kUsageMessage << kDefaultBuildTarget;
+  flags.emplace_back(HelpFlag(flags, help_message.str()));
   flags.emplace_back(
-      HelpXmlFlag(flags, std::cout, fetch_flags.helpxml, USAGE_MESSAGE));
+      HelpXmlFlag(flags, std::cout, fetch_flags.helpxml, help_message.str()));
 
   flags.emplace_back(UnexpectedArgumentGuard());
   return flags;
@@ -264,26 +262,28 @@ MapToBuildTargetFlags(const VectorFlags& flags, const int num_builds) {
       num_builds);
   for (int i = 0; i < result.size(); ++i) {
     auto build_source = BuildSourceFlags{
-        .default_build =
-            AccessOrDefault<std::string>(flags.default_build, i, ""),
-        .system_build = AccessOrDefault<std::string>(flags.system_build, i, ""),
-        .kernel_build = AccessOrDefault<std::string>(flags.kernel_build, i, ""),
-        .boot_build = AccessOrDefault<std::string>(flags.boot_build, i, ""),
-        .bootloader_build =
-            AccessOrDefault<std::string>(flags.bootloader_build, i, ""),
-        .otatools_build =
-            AccessOrDefault<std::string>(flags.otatools_build, i, ""),
-        .host_package_build =
-            AccessOrDefault<std::string>(flags.host_package_build, i, ""),
+        .default_build = AccessOrDefault<std::string>(flags.default_build, i,
+                                                      kDefaultBuildString),
+        .system_build = AccessOrDefault<std::string>(flags.system_build, i,
+                                                     kDefaultBuildString),
+        .kernel_build = AccessOrDefault<std::string>(flags.kernel_build, i,
+                                                     kDefaultBuildString),
+        .boot_build = AccessOrDefault<std::string>(flags.boot_build, i,
+                                                   kDefaultBuildString),
+        .bootloader_build = AccessOrDefault<std::string>(
+            flags.bootloader_build, i, kDefaultBuildString),
+        .otatools_build = AccessOrDefault<std::string>(flags.otatools_build, i,
+                                                       kDefaultBuildString),
+        .host_package_build = AccessOrDefault<std::string>(
+            flags.host_package_build, i, kDefaultBuildString),
     };
     auto download = DownloadFlags{
         .boot_artifact =
             AccessOrDefault<std::string>(flags.boot_artifact, i, ""),
         .download_img_zip = AccessOrDefault<bool>(flags.download_img_zip, i,
-                                                  DOWNLOAD_IMG_ZIP_DEFAULT),
-        .download_target_files_zip =
-            AccessOrDefault<bool>(flags.download_target_files_zip, i,
-                                  DOWNLOAD_TARGET_FILES_ZIP_DEFAULT),
+                                                  kDefaultDownloadImgZip),
+        .download_target_files_zip = AccessOrDefault<bool>(
+            flags.download_target_files_zip, i, kDefaultDownloadTargetFilesZip),
     };
     result[i] = {build_source, download, i};
   }
@@ -294,22 +294,20 @@ Result<FetchFlags> GetFlagValues(int argc, char** argv) {
   FetchFlags fetch_flags;
   BuildApiFlags build_api_flags;
   VectorFlags vector_flags;
-  int retry_period = DEFAULT_RETRY_PERIOD;
-  std::string directory = "";
+  std::string directory;
 
-  std::vector<Flag> flags = GetFlagsVector(
-      fetch_flags, build_api_flags, vector_flags, retry_period, directory);
+  std::vector<Flag> flags =
+      GetFlagsVector(fetch_flags, build_api_flags, vector_flags, directory);
   std::vector<std::string> args = ArgsToVec(argc - 1, argv + 1);
   CF_EXPECT(ParseFlags(flags, args), "Could not process command line flags.");
 
-  build_api_flags.wait_retry_period = std::chrono::seconds(retry_period);
-  if (directory != "") {
+  if (!directory.empty()) {
     LOG(ERROR) << "Please use --target_directory instead of --directory";
-    if (fetch_flags.target_directory == "") {
+    if (fetch_flags.target_directory.empty()) {
       fetch_flags.target_directory = directory;
     }
   } else {
-    if (fetch_flags.target_directory == "") {
+    if (fetch_flags.target_directory.empty()) {
       fetch_flags.target_directory = CurrentDirectory();
     }
   }
@@ -338,7 +336,7 @@ std::unique_ptr<CredentialSource> TryParseServiceAccount(
       http_client, content, BUILD_SCOPE);
   if (!result.ok()) {
     LOG(DEBUG) << "Failed to load service account json file: \n"
-               << result.error().Trace();
+               << result.error().FormatForEnv();
     return {};
   }
   return std::unique_ptr<CredentialSource>(
@@ -348,8 +346,8 @@ std::unique_ptr<CredentialSource> TryParseServiceAccount(
 Result<std::vector<std::string>> ProcessHostPackage(
     BuildApi& build_api, const Build& build, const std::string& target_dir,
     const bool keep_archives) {
-  std::string host_tools_filepath =
-      CF_EXPECT(build_api.DownloadFile(build, target_dir, HOST_TOOLS));
+  std::string host_tools_filepath = CF_EXPECT(
+      build_api.DownloadFile(build, target_dir, "cvd-host_package.tar.gz"));
   return ExtractArchiveContents(host_tools_filepath, target_dir, keep_archives);
 }
 
@@ -378,7 +376,7 @@ Result<BuildApi> GetBuildApi(const BuildApiFlags& flags) {
             new RefreshCredentialSource(std::move(*attempt_load)));
       } else {
         LOG(DEBUG) << "Failed to load acloud credentials: "
-                   << attempt_load.error().Trace();
+                   << attempt_load.error().FormatForEnv();
       }
     } else {
       LOG(INFO) << "\"" << file << "\" missing, running without credentials";
@@ -425,9 +423,9 @@ Result<std::optional<Build>> GetBuildHelper(BuildApi& build_api,
 Result<Builds> GetBuildsFromSources(BuildApi& build_api,
                                     const BuildSourceFlags& build_sources) {
   auto default_build = CF_EXPECT(GetBuildHelper(
-      build_api, build_sources.default_build, DEFAULT_BUILD_TARGET));
+      build_api, build_sources.default_build, kDefaultBuildTarget));
   auto host_package_build = CF_EXPECT(GetBuildHelper(
-      build_api, build_sources.host_package_build, DEFAULT_BUILD_TARGET));
+      build_api, build_sources.host_package_build, kDefaultBuildTarget));
   CF_EXPECT(host_package_build.has_value() || default_build.has_value(),
             "Either the host_package_build or default_build requires a value. "
             "(previous default_build default was "
@@ -436,15 +434,15 @@ Result<Builds> GetBuildsFromSources(BuildApi& build_api,
   Builds result = Builds{
       .default_build = default_build,
       .system = CF_EXPECT(GetBuildHelper(build_api, build_sources.system_build,
-                                         DEFAULT_BUILD_TARGET)),
+                                         kDefaultBuildTarget)),
       .kernel = CF_EXPECT(
-          GetBuildHelper(build_api, build_sources.kernel_build, KERNEL)),
+          GetBuildHelper(build_api, build_sources.kernel_build, "kernel")),
       .boot = CF_EXPECT(GetBuildHelper(build_api, build_sources.boot_build,
                                        "gki_x86_64-user")),
       .bootloader = CF_EXPECT(GetBuildHelper(
           build_api, build_sources.bootloader_build, "u-boot_crosvm_x86_64")),
       .otatools = CF_EXPECT(GetBuildHelper(
-          build_api, build_sources.otatools_build, DEFAULT_BUILD_TARGET)),
+          build_api, build_sources.otatools_build, kDefaultBuildTarget)),
       .host_package = host_package_build.value_or(*default_build),
   };
   if (!result.otatools) {
@@ -461,14 +459,14 @@ Result<TargetDirectories> CreateDirectories(
     const std::string& target_directory) {
   TargetDirectories targets =
       TargetDirectories{.root = target_directory,
-                        .otatools = target_directory + OTA_TOOLS_DIR,
-                        .default_target_files = target_directory + DEFAULT_DIR,
-                        .system_target_files = target_directory + SYSTEM_DIR};
+                        .otatools = target_directory + "/otatools/",
+                        .default_target_files = target_directory + "/default",
+                        .system_target_files = target_directory + "/system"};
 
   for (const auto& dir_path :
        {targets.root, targets.otatools, targets.default_target_files,
         targets.system_target_files}) {
-    CF_EXPECT(EnsureDirectoryExists(dir_path, RWX_ALL_MODE));
+    CF_EXPECT(EnsureDirectoryExists(dir_path, kRwxAllMode));
   }
   return {targets};
 }
@@ -512,7 +510,7 @@ Result<void> Fetch(BuildApi& build_api, const Builds& builds,
       CF_EXPECT(config.AddFilesToConfig(
           FileSource::DEFAULT_BUILD, default_build_id, default_build_target,
           {misc_info_result.value()}, target_directories.root,
-          OVERRIDE_ENTRIES));
+          kOverrideEntries));
     }
 
     if (flags.download_img_zip) {
@@ -568,7 +566,7 @@ Result<void> Fetch(BuildApi& build_api, const Builds& builds,
           CF_EXPECT(config.AddFilesToConfig(
               FileSource::SYSTEM_BUILD, system_id, system_target,
               extract_result.value(), target_directories.root,
-              OVERRIDE_ENTRIES));
+              kOverrideEntries));
         }
       }
       if (!system_img_zip_result.ok() || !extract_result.ok()) {
@@ -596,6 +594,12 @@ Result<void> Fetch(BuildApi& build_api, const Builds& builds,
         if (extracted_vbmeta_system.ok()) {
           CF_EXPECT(RenameFile(extracted_vbmeta_system.value(),
                                target_directories.root + "/vbmeta_system.img"));
+        }
+        Result<std::string> extracted_init_boot = ExtractImage(
+            target_files, target_directories.root, "IMAGES/init_boot.img");
+        if (extracted_init_boot.ok()) {
+          CF_EXPECT(RenameFile(extracted_init_boot.value(),
+                               target_directories.root + "/init_boot.img"));
         }
       }
     }
@@ -661,7 +665,7 @@ Result<void> Fetch(BuildApi& build_api, const Builds& builds,
     const auto [boot_id, boot_target] = GetBuildIdAndTarget(*builds.boot);
     CF_EXPECT(config.AddFilesToConfig(
         FileSource::BOOT_BUILD, boot_id, boot_target, boot_files,
-        target_directories.root, OVERRIDE_ENTRIES));
+        target_directories.root, kOverrideEntries));
   }
 
   if (builds.bootloader) {
@@ -677,12 +681,12 @@ Result<void> Fetch(BuildApi& build_api, const Builds& builds,
         GetBuildIdAndTarget(*builds.bootloader);
     CF_EXPECT(config.AddFilesToConfig(
         FileSource::BOOTLOADER_BUILD, bootloader_id, bootloader_target,
-        {bootloader_filepath}, target_directories.root, OVERRIDE_ENTRIES));
+        {bootloader_filepath}, target_directories.root, kOverrideEntries));
   }
 
   if (builds.otatools) {
     std::string otatools_filepath = CF_EXPECT(build_api.DownloadFile(
-        *builds.otatools, target_directories.root, OTA_TOOLS));
+        *builds.otatools, target_directories.root, "ota_tools.zip"));
     std::vector<std::string> ota_tools_files = CF_EXPECT(
         ExtractArchiveContents(otatools_filepath, target_directories.otatools,
                                keep_downloaded_archives));
@@ -707,17 +711,8 @@ Result<void> Fetch(BuildApi& build_api, const Builds& builds,
   return {};
 }
 
-}  // namespace
-
-Result<void> FetchCvdMain(int argc, char** argv) {
-  android::base::InitLogging(argv, android::base::StderrLogger);
-  const FetchFlags flags = CF_EXPECT(GetFlagValues(argc, argv));
-  const std::string fetch_root_directory = AbsolutePath(flags.target_directory);
-  CF_EXPECT(EnsureDirectoryExists(fetch_root_directory, RWX_ALL_MODE));
-  android::base::SetLogger(
-      LogToStderrAndFiles({fetch_root_directory + "/" + LOG_FILENAME}));
-  android::base::SetMinimumLogSeverity(flags.verbosity);
-
+Result<void> InnerMain(const FetchFlags& flags,
+                       const std::string& fetch_root_directory) {
 #ifdef __BIONIC__
   // TODO(schuffelen): Find a better way to deal with tzdata
   setenv("ANDROID_TZDATA_ROOT", "/", /* overwrite */ 0);
@@ -755,6 +750,24 @@ Result<void> FetchCvdMain(int argc, char** argv) {
   }
   curl_global_cleanup();
   return {};
+}
+
+}  // namespace
+
+Result<void> FetchCvdMain(int argc, char** argv) {
+  android::base::InitLogging(argv, android::base::StderrLogger);
+  const FetchFlags flags = CF_EXPECT(GetFlagValues(argc, argv));
+  const std::string fetch_root_directory = AbsolutePath(flags.target_directory);
+  CF_EXPECT(EnsureDirectoryExists(fetch_root_directory, kRwxAllMode));
+  android::base::SetLogger(
+      LogToStderrAndFiles({fetch_root_directory + "/fetch.log"}));
+  android::base::SetMinimumLogSeverity(flags.verbosity);
+
+  auto result = InnerMain(flags, fetch_root_directory);
+  if (!result.ok()) {
+    LOG(ERROR) << result.error().FormatForEnv();
+  }
+  return result;
 }
 
 }  // namespace cuttlefish

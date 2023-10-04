@@ -22,7 +22,6 @@
 
 #include "common/libs/fs/shared_buf.h"
 #include "common/libs/utils/files.h"
-#include "common/libs/utils/network.h"
 #include "common/libs/utils/result.h"
 #include "common/libs/utils/subprocess.h"
 #include "host/libs/config/esp.h"
@@ -33,10 +32,10 @@
 namespace cuttlefish {
 
 namespace {
-const std::string kDataPolicyUseExisting = "use_existing";
-const std::string kDataPolicyCreateIfMissing = "create_if_missing";
-const std::string kDataPolicyAlwaysCreate = "always_create";
-const std::string kDataPolicyResizeUpTo= "resize_up_to";
+
+static constexpr std::string_view kDataPolicyUseExisting = "use_existing";
+static constexpr std::string_view kDataPolicyAlwaysCreate = "always_create";
+static constexpr std::string_view kDataPolicyResizeUpTo = "resize_up_to";
 
 const int FSCK_ERROR_CORRECTED = 1;
 const int FSCK_ERROR_CORRECTED_REQUIRES_REBOOT = 2;
@@ -142,8 +141,8 @@ bool CreateBlankImage(
     MasterBootRecord mbr = {
         .partitions = {{
             .partition_type = 0xC,
-            .first_lba = (std::uint32_t) offset_size_bytes / SECTOR_SIZE,
-            .num_sectors = (std::uint32_t) image_size_bytes / SECTOR_SIZE,
+            .first_lba = (std::uint32_t)offset_size_bytes / kSectorSize,
+            .num_sectors = (std::uint32_t)image_size_bytes / kSectorSize,
         }},
         .boot_signature = {0x55, 0xAA},
     };
@@ -298,14 +297,14 @@ class InitializeMiscImageImpl : public InitializeMiscImage {
  private:
   std::unordered_set<SetupFeature*> Dependencies() const override { return {}; }
   Result<void> ResultSetup() override {
-    if (FileHasContent(instance_.new_misc_image())) {
+    if (FileHasContent(instance_.misc_image())) {
       LOG(DEBUG) << "misc partition image already exists";
       return {};
     }
 
     LOG(DEBUG) << "misc partition image: creating empty at \""
-               << instance_.new_misc_image() << "\"";
-    CF_EXPECT(CreateBlankImage(instance_.new_misc_image(), 1 /* mb */, "none"),
+               << instance_.misc_image() << "\"";
+    CF_EXPECT(CreateBlankImage(instance_.misc_image(), 1 /* mb */, "none"),
               "Failed to create misc image");
     return {};
   }
@@ -346,7 +345,7 @@ class InitializeEspImageImpl : public InitializeEspImage {
     const auto is_not_gem5 = config_.vm_manager() != vm_manager::Gem5Manager::name();
     const auto esp_required_for_boot_flow = EspRequiredForBootFlow();
     if (is_not_gem5 && esp_required_for_boot_flow) {
-      LOG(DEBUG) << "creating esp_image: " << instance_.otheros_esp_image_path();
+      LOG(DEBUG) << "creating esp_image: " << instance_.esp_image_path();
       CF_EXPECT(BuildOSImage());
     }
     return {};
@@ -356,8 +355,10 @@ class InitializeEspImageImpl : public InitializeEspImage {
 
   bool EspRequiredForBootFlow() const {
     const auto flow = instance_.boot_flow();
-    return flow == CuttlefishConfig::InstanceSpecific::BootFlow::Linux ||
-        flow == CuttlefishConfig::InstanceSpecific::BootFlow::Fuchsia;
+    return flow ==
+               CuttlefishConfig::InstanceSpecific::BootFlow::AndroidEfiLoader ||
+           flow == CuttlefishConfig::InstanceSpecific::BootFlow::Linux ||
+           flow == CuttlefishConfig::InstanceSpecific::BootFlow::Fuchsia;
   }
 
   bool EspRequiredForAPBootFlow() const {
@@ -382,8 +383,15 @@ class InitializeEspImageImpl : public InitializeEspImage {
 
   bool BuildOSImage() {
     switch (instance_.boot_flow()) {
+      case CuttlefishConfig::InstanceSpecific::BootFlow::AndroidEfiLoader: {
+        auto android_efi_loader =
+            AndroidEfiLoaderEspBuilder(instance_.esp_image_path());
+        android_efi_loader.EfiLoaderPath(instance_.android_efi_loader())
+            .Architecture(instance_.target_arch());
+        return android_efi_loader.Build();
+      }
       case CuttlefishConfig::InstanceSpecific::BootFlow::Linux: {
-        auto linux = LinuxEspBuilder(instance_.otheros_esp_image_path());
+        auto linux = LinuxEspBuilder(instance_.esp_image_path());
         InitLinuxArgs(linux);
 
         linux.Root("/dev/vda2")
@@ -397,7 +405,7 @@ class InitializeEspImageImpl : public InitializeEspImage {
         return linux.Build();
       }
       case CuttlefishConfig::InstanceSpecific::BootFlow::Fuchsia: {
-        auto fuchsia = FuchsiaEspBuilder(instance_.otheros_esp_image_path());
+        auto fuchsia = FuchsiaEspBuilder(instance_.esp_image_path());
         return fuchsia.Architecture(instance_.target_arch())
                       .Zedboot(instance_.fuchsia_zedboot_path())
                       .MultibootBinary(instance_.fuchsia_multiboot_bin_path())

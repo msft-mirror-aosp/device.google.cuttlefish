@@ -17,7 +17,7 @@ package {
     default_applicable_licenses: ["Android-Apache-2.0"],
 }
 
-cc_library_static {
+cc_library {
     name: "libcuttlefish_vm_manager",
     srcs: [
         "crosvm_builder.cpp",
@@ -32,6 +32,7 @@ cc_library_static {
     ],
     shared_libs: [
         "libbase",
+	"libcuttlefish_command_util",
         "libcuttlefish_device_config",
         "libcuttlefish_device_config_proto",
         "libcuttlefish_fs",
@@ -42,10 +43,7 @@ cc_library_static {
     static_libs: [
         "libcuttlefish_host_config",
     ],
-    defaults: [
-        "cuttlefish_host",
-        "cuttlefish_libicuuc"
-    ],
+    defaults: ["cuttlefish_host"],
     target: {
         darwin: {
             enabled: true,

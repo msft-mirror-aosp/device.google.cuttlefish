@@ -24,6 +24,7 @@
 #include "common/libs/utils/subprocess.h"
 #include "host/commands/run_cvd/launch/grpc_socket_creator.h"
 #include "host/commands/run_cvd/launch/log_tee_creator.h"
+#include "host/commands/run_cvd/launch/secure_env_files.h"
 #include "host/commands/run_cvd/launch/wmediumd_server.h"
 #include "host/libs/config/command_source.h"
 #include "host/libs/config/custom_actions.h"
@@ -38,9 +39,16 @@ fruit::Component<fruit::Required<const CuttlefishConfig,
                                  const CuttlefishConfig::InstanceSpecific>>
 UwbConnectorComponent();
 
+fruit::Component<fruit::Required<const CuttlefishConfig>>
+AutomotiveProxyComponent();
+
 fruit::Component<fruit::Required<const CuttlefishConfig,
                                  const CuttlefishConfig::InstanceSpecific>>
 BluetoothConnectorComponent();
+
+fruit::Component<fruit::Required<const CuttlefishConfig,
+                                 const CuttlefishConfig::InstanceSpecific>>
+NfcConnectorComponent();
 
 fruit::Component<fruit::Required<const CuttlefishConfig::InstanceSpecific>,
                  KernelLogPipeProvider>
@@ -57,23 +65,34 @@ ConsoleForwarderComponent();
 
 fruit::Component<fruit::Required<const CuttlefishConfig::InstanceSpecific,
                                  GrpcSocketCreator>>
+ControlEnvProxyServerComponent();
+
+fruit::Component<fruit::Required<const CuttlefishConfig::InstanceSpecific,
+                                 GrpcSocketCreator>>
 GnssGrpcProxyServerComponent();
 
 fruit::Component<fruit::Required<const CuttlefishConfig>>
 MetricsServiceComponent();
 
-fruit::Component<fruit::Required<const CuttlefishConfig,
-                                 const CuttlefishConfig::InstanceSpecific,
-                                 LogTeeCreator, WmediumdServer>>
+fruit::Component<fruit::Required<
+    const CuttlefishConfig, const CuttlefishConfig::EnvironmentSpecific,
+    const CuttlefishConfig::InstanceSpecific, LogTeeCreator, WmediumdServer>>
 OpenWrtComponent();
 
-fruit::Component<fruit::Required<const CuttlefishConfig, GrpcSocketCreator>>
+fruit::Component<fruit::Required<const CuttlefishConfig,
+                                 const CuttlefishConfig::EnvironmentSpecific,
+                                 GrpcSocketCreator>>
 OpenwrtControlServerComponent();
 
 fruit::Component<
     fruit::Required<const CuttlefishConfig,
                     const CuttlefishConfig::InstanceSpecific, LogTeeCreator>>
 RootCanalComponent();
+
+fruit::Component<
+    fruit::Required<const CuttlefishConfig,
+                    const CuttlefishConfig::InstanceSpecific, LogTeeCreator>>
+CasimirComponent();
 
 fruit::Component<
     fruit::Required<const CuttlefishConfig,
@@ -88,7 +107,7 @@ NetsimServerComponent();
 
 fruit::Component<fruit::Required<const CuttlefishConfig,
                                  const CuttlefishConfig::InstanceSpecific,
-                                 KernelLogPipeProvider>>
+                                 SecureEnvFiles, KernelLogPipeProvider>>
 SecureEnvComponent();
 
 fruit::Component<fruit::Required<const CuttlefishConfig::InstanceSpecific>>
@@ -98,7 +117,7 @@ fruit::Component<fruit::Required<const CuttlefishConfig::InstanceSpecific>>
 VehicleHalServerComponent();
 
 fruit::Component<fruit::Required<const CuttlefishConfig,
-                                 const CuttlefishConfig::InstanceSpecific,
+                                 const CuttlefishConfig::EnvironmentSpecific,
                                  LogTeeCreator, GrpcSocketCreator>>
 WmediumdServerComponent();
 

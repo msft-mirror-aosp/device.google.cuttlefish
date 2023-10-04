@@ -99,6 +99,11 @@ PRODUCT_PACKAGES += \
 # Additional packages
 PRODUCT_PACKAGES += \
     com.android.runtime \
+    libc.bootstrap \
+    libdl.bootstrap \
+    libdl_android.bootstrap \
+    libm.bootstrap \
+    selinux_policy \
     com.android.adbd \
     mdnsd \
 
@@ -113,6 +118,7 @@ PRODUCT_PACKAGES += \
 PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/minidroid/init.rc:system/etc/init/hw/init.minidroid.rc \
     packages/modules/Virtualization/microdroid/ueventd.rc:vendor/etc/ueventd.rc \
+    device/google/cuttlefish/shared/config/seriallogging.rc:vendor/etc/init/seriallogging.rc \
 
 DEVICE_MANIFEST_FILE := \
     device/google/cuttlefish/shared/minidroid/minidroid_vendor_manifest.xml

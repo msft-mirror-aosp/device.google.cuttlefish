@@ -30,9 +30,9 @@
 #include "host/frontend/webrtc/libdevice/audio_sink.h"
 #include "host/frontend/webrtc/libdevice/camera_controller.h"
 #include "host/frontend/webrtc/libdevice/connection_observer.h"
-#include "host/frontend/webrtc/libdevice/local_recorder.h"
-#include "host/frontend/webrtc/libdevice/video_sink.h"
+#include "host/frontend/webrtc/libdevice/recording_manager.h"
 #include "host/frontend/webrtc/libdevice/server_connection.h"
+#include "host/frontend/webrtc/libdevice/video_sink.h"
 
 namespace cuttlefish {
 namespace webrtc_streaming {
@@ -42,6 +42,10 @@ class ClientHandler;
 struct StreamerConfig {
   // The id with which to register with the operator server.
   std::string device_id;
+
+  // The group id with which to register with the operator server.
+  std::string group_id;
+
   // The port on which the client files are being served
   int client_files_port;
   ServerConfig operator_server;
@@ -53,6 +57,8 @@ struct StreamerConfig {
   std::string openwrt_device_id;
   // Openwrt IP address for accessing Luci interface.
   std::string openwrt_addr;
+  // Path of ControlEnvProxyServer for serving Rest API in WebUI.
+  std::string control_env_proxy_server_path;
 };
 
 class OperatorObserver {
@@ -72,7 +78,7 @@ class Streamer {
   // client connection. Unregister() needs to be called to stop accepting
   // connections.
   static std::unique_ptr<Streamer> Create(
-      const StreamerConfig& cfg, LocalRecorder* recorder,
+      const StreamerConfig& cfg, RecordingManager& recording_manager,
       std::shared_ptr<ConnectionObserverFactory> factory);
   ~Streamer() = default;
 

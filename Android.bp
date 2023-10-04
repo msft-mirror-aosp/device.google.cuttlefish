@@ -68,6 +68,9 @@ cc_defaults {
         host: {
             cflags: ["-DCUTTLEFISH_HOST"],
             compile_multilib: "64",
+            strip: {
+                keep_symbols_and_debug_frame: true,
+            },
         },
         linux: {
             host_ldlibs: ["-lrt"],
@@ -141,42 +144,6 @@ cc_defaults {
     defaults: ["cuttlefish_base"],
 }
 
-cc_defaults {
-  name: "cuttlefish_recovery_available",
-  recovery_available : true
-}
-
-cc_defaults {
-  name: "enabled_on_p_and_later",
-  enabled: true
-}
-
-cc_defaults {
-  name: "enabled_on_q_and_later",
-  enabled: true
-}
-
-cc_defaults {
-  name: "enabled_on_q_internal_and_later",
-  enabled: true
-}
-
-cc_defaults {
-    name: "cuttlefish_libicuuc",
-    target: {
-        host: {
-            shared_libs: [
-                "libicuuc",
-            ],
-        },
-    },
-}
-
-cc_defaults {
-    name: "cuttlefish_health_storage",
-    defaults: ["enabled_on_q_and_later"],
-}
-
 java_test_host {
     name: "tombstone_transmit_tests",
 
@@ -189,7 +156,10 @@ java_test_host {
     test_suites: ["general-tests"],
 }
 
-filegroup {
-    name: "cf_dtb",
-    srcs: ["dtb.img"],
+sh_binary_host {
+    name: "launch_cvd_arm64_server.sh",
+    src: "tools/launch_cvd_arm64_server.sh",
+    dist: {
+        targets: ["cvd-host_package"],
+    },
 }
