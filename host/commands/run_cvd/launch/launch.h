@@ -15,6 +15,7 @@
 
 #pragma once
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -22,8 +23,11 @@
 
 #include "common/libs/fs/shared_fd.h"
 #include "common/libs/utils/subprocess.h"
+#include "host/commands/run_cvd/launch/auto_cmd.h"
 #include "host/commands/run_cvd/launch/grpc_socket_creator.h"
 #include "host/commands/run_cvd/launch/log_tee_creator.h"
+#include "host/commands/run_cvd/launch/secure_env_files.h"
+#include "host/commands/run_cvd/launch/webrtc_recorder.h"
 #include "host/commands/run_cvd/launch/wmediumd_server.h"
 #include "host/libs/config/command_source.h"
 #include "host/libs/config/custom_actions.h"
@@ -34,13 +38,17 @@
 
 namespace cuttlefish {
 
-fruit::Component<fruit::Required<const CuttlefishConfig,
-                                 const CuttlefishConfig::InstanceSpecific>>
-UwbConnectorComponent();
+Result<std::optional<MonitorCommand>> UwbConnector(const CuttlefishConfig&,
+                                    const CuttlefishConfig::InstanceSpecific&);
+
+std::optional<MonitorCommand> AutomotiveProxyService(const CuttlefishConfig&);
+
+Result<MonitorCommand> BluetoothConnector(
+    const CuttlefishConfig&, const CuttlefishConfig::InstanceSpecific&);
 
 fruit::Component<fruit::Required<const CuttlefishConfig,
                                  const CuttlefishConfig::InstanceSpecific>>
-BluetoothConnectorComponent();
+NfcConnectorComponent();
 
 fruit::Component<fruit::Required<const CuttlefishConfig::InstanceSpecific>,
                  KernelLogPipeProvider>
@@ -49,8 +57,7 @@ KernelLogMonitorComponent();
 fruit::Component<fruit::Required<const CuttlefishConfig::InstanceSpecific>>
 LogcatReceiverComponent();
 
-fruit::Component<fruit::Required<const CuttlefishConfig::InstanceSpecific>>
-ConfigServerComponent();
+Result<MonitorCommand> ConfigServer(const CuttlefishConfig::InstanceSpecific&);
 
 fruit::Component<fruit::Required<const CuttlefishConfig::InstanceSpecific>>
 ConsoleForwarderComponent();
@@ -59,19 +66,19 @@ fruit::Component<fruit::Required<const CuttlefishConfig::InstanceSpecific,
                                  GrpcSocketCreator>>
 ControlEnvProxyServerComponent();
 
-fruit::Component<fruit::Required<const CuttlefishConfig::InstanceSpecific,
-                                 GrpcSocketCreator>>
-GnssGrpcProxyServerComponent();
+Result<std::optional<MonitorCommand>> GnssGrpcProxyServer(
+    const CuttlefishConfig::InstanceSpecific&, GrpcSocketCreator&);
 
-fruit::Component<fruit::Required<const CuttlefishConfig>>
-MetricsServiceComponent();
+std::optional<MonitorCommand> MetricsService(const CuttlefishConfig&);
 
-fruit::Component<fruit::Required<const CuttlefishConfig,
-                                 const CuttlefishConfig::InstanceSpecific,
-                                 LogTeeCreator, WmediumdServer>>
+fruit::Component<fruit::Required<
+    const CuttlefishConfig, const CuttlefishConfig::EnvironmentSpecific,
+    const CuttlefishConfig::InstanceSpecific, LogTeeCreator, WmediumdServer>>
 OpenWrtComponent();
 
-fruit::Component<fruit::Required<const CuttlefishConfig, GrpcSocketCreator>>
+fruit::Component<fruit::Required<const CuttlefishConfig,
+                                 const CuttlefishConfig::EnvironmentSpecific,
+                                 GrpcSocketCreator>>
 OpenwrtControlServerComponent();
 
 fruit::Component<
@@ -79,40 +86,41 @@ fruit::Component<
                     const CuttlefishConfig::InstanceSpecific, LogTeeCreator>>
 RootCanalComponent();
 
-fruit::Component<
-    fruit::Required<const CuttlefishConfig,
-                    const CuttlefishConfig::InstanceSpecific, LogTeeCreator>>
-PicaComponent();
+std::vector<MonitorCommand> Casimir(const CuttlefishConfig&,
+                                    const CuttlefishConfig::InstanceSpecific&,
+                                    LogTeeCreator&);
 
-fruit::Component<fruit::Required<GrpcSocketCreator>> EchoServerComponent();
+Result<std::vector<MonitorCommand>> Pica(
+    const CuttlefishConfig&, const CuttlefishConfig::InstanceSpecific&,
+    LogTeeCreator&);
+
+MonitorCommand EchoServer(GrpcSocketCreator& grpc_socket);
 
 fruit::Component<fruit::Required<const CuttlefishConfig,
                                  const CuttlefishConfig::InstanceSpecific>>
 NetsimServerComponent();
 
-fruit::Component<fruit::Required<const CuttlefishConfig,
-                                 const CuttlefishConfig::InstanceSpecific,
-                                 KernelLogPipeProvider>>
-SecureEnvComponent();
+Result<MonitorCommand> SecureEnv(const CuttlefishConfig&,
+                                 const CuttlefishConfig::InstanceSpecific&,
+                                 AutoSecureEnvFiles::Type&,
+                                 KernelLogPipeProvider&);
 
-fruit::Component<fruit::Required<const CuttlefishConfig::InstanceSpecific>>
-TombstoneReceiverComponent();
-
-fruit::Component<fruit::Required<const CuttlefishConfig::InstanceSpecific>>
-VehicleHalServerComponent();
+Result<MonitorCommand> TombstoneReceiver(
+    const CuttlefishConfig::InstanceSpecific&);
 
 fruit::Component<fruit::Required<const CuttlefishConfig,
-                                 const CuttlefishConfig::InstanceSpecific,
+                                 const CuttlefishConfig::EnvironmentSpecific,
                                  LogTeeCreator, GrpcSocketCreator>>
 WmediumdServerComponent();
 
-fruit::Component<fruit::Required<const CuttlefishConfig,
-                                 const CuttlefishConfig::InstanceSpecific>>
-launchModemComponent();
+Result<std::optional<MonitorCommand>> ModemSimulator(
+    const CuttlefishConfig::InstanceSpecific&);
 
-fruit::Component<fruit::Required<const CuttlefishConfig, KernelLogPipeProvider,
-                                 const CuttlefishConfig::InstanceSpecific,
-                                 const CustomActionConfigProvider>>
+fruit::Component<
+    fruit::Required<const CuttlefishConfig, KernelLogPipeProvider,
+                    const CuttlefishConfig::InstanceSpecific,
+                    const CustomActionConfigProvider, WebRtcRecorder>>
 launchStreamerComponent();
 
+fruit::Component<WebRtcRecorder> WebRtcRecorderComponent();
 }  // namespace cuttlefish

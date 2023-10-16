@@ -26,6 +26,8 @@ KERNEL_MODULES_PATH ?= \
     kernel/prebuilts/common-modules/virtual-device/$(TARGET_KERNEL_USE)/$(subst _,-,$(TARGET_KERNEL_ARCH))
 PRODUCT_COPY_FILES += $(TARGET_KERNEL_PATH):kernel
 
+BOARD_KERNEL_VERSION := $(word 1,$(subst vermagic=,,$(shell egrep -h -ao -m 1 'vermagic=.*' $(KERNEL_MODULES_PATH)/nd_virtio.ko)))
+
 # The list of modules strictly/only required either to reach second stage
 # init, OR for recovery. Do not use this list to workaround second stage
 # issues.
@@ -56,7 +58,24 @@ BOARD_VENDOR_RAMDISK_KERNEL_MODULES := \
 BOARD_VENDOR_RAMDISK_KERNEL_MODULES += $(wildcard $(KERNEL_MODULES_PATH)/virtio_pci_legacy_dev.ko)
 # GKI >5.10 will have and require virtio_pci_modern_dev.ko
 BOARD_VENDOR_RAMDISK_KERNEL_MODULES += $(wildcard $(KERNEL_MODULES_PATH)/virtio_pci_modern_dev.ko)
+# GKI >6.4 will have an required vmw_vsock_virtio_transport_common.ko and vsock.ko
+BOARD_VENDOR_RAMDISK_KERNEL_MODULES += \
+	$(wildcard $(KERNEL_MODULES_PATH)/vmw_vsock_virtio_transport_common.ko) \
+	$(wildcard $(KERNEL_MODULES_PATH)/vsock.ko)
 
+
+# TODO(b/176860479) once virt_wifi is deprecated we can stop loading mac80211 in
+# first stage init. To minimize scope of modules options to first stage init,
+# mac80211_hwsim.radios=0 has to be specified in the modules options file (which we
+# only read in first stage) and mac80211_hwsim has to be loaded in first stage consequently..
+ifneq ($(TARGET_KERNEL_ARCH),riscv64)
+BOARD_VENDOR_RAMDISK_KERNEL_MODULES += $(wildcard $(SYSTEM_DLKM_SRC)/libarc4.ko)
+BOARD_VENDOR_RAMDISK_KERNEL_MODULES += $(wildcard $(SYSTEM_DLKM_SRC)/rfkill.ko)
+BOARD_VENDOR_RAMDISK_KERNEL_MODULES += $(wildcard $(KERNEL_MODULES_PATH)/cfg80211.ko)
+BOARD_VENDOR_RAMDISK_KERNEL_MODULES += $(wildcard $(KERNEL_MODULES_PATH)/mac80211.ko)
+BOARD_VENDOR_RAMDISK_KERNEL_MODULES += $(wildcard $(KERNEL_MODULES_PATH)/mac80211_hwsim.ko)
+BOARD_DO_NOT_STRIP_VENDOR_RAMDISK_MODULES := true
+endif
 ALL_KERNEL_MODULES := $(wildcard $(KERNEL_MODULES_PATH)/*.ko)
 BOARD_VENDOR_KERNEL_MODULES := \
     $(filter-out $(BOARD_VENDOR_RAMDISK_KERNEL_MODULES),\
@@ -67,8 +86,14 @@ __TARGET_NO_BOOTLOADER := $(TARGET_NO_BOOTLOADER)
 include build/make/target/board/BoardConfigMainlineCommon.mk
 TARGET_NO_BOOTLOADER := $(__TARGET_NO_BOOTLOADER)
 
+# For now modules are only blocked in second stage init.
+# If a module ever needs to blocked in first stage init - add a new blocklist to
+# BOARD_VENDOR_RAMDISK_KERNEL_MODULES_BLOCKLIST_FILE
 BOARD_VENDOR_KERNEL_MODULES_BLOCKLIST_FILE := \
     device/google/cuttlefish/shared/modules.blocklist
+
+BOARD_VENDOR_RAMDISK_KERNEL_MODULES_OPTIONS_FILE := \
+    device/google/cuttlefish/shared/config/first_stage_modules.options
 
 ifndef TARGET_BOOTLOADER_BOARD_NAME
 TARGET_BOOTLOADER_BOARD_NAME := cutf
@@ -206,7 +231,12 @@ TARGET_USERIMAGES_SPARSE_F2FS_DISABLED ?= false
 # enough space for other cases (such as remount, etc)
 BOARD_USERDATAIMAGE_PARTITION_SIZE := $(TARGET_USERDATAIMAGE_PARTITION_SIZE)
 BOARD_USERDATAIMAGE_FILE_SYSTEM_TYPE := $(TARGET_USERDATAIMAGE_FILE_SYSTEM_TYPE)
+ifeq ($(TARGET_USERDATAIMAGE_FILE_SYSTEM_TYPE),f2fs)
 TARGET_USERIMAGES_USE_F2FS := true
+endif
+ifeq ($(TARGET_USERDATAIMAGE_FILE_SYSTEM_TYPE),ext4)
+TARGET_USERIMAGES_USE_EXT4 := true
+endif
 
 # Enable goldfish's encoder.
 # TODO(b/113617962) Remove this if we decide to use
@@ -279,7 +309,7 @@ BOARD_SUPER_IMAGE_IN_UPDATE_PACKAGE := true
 TARGET_RELEASETOOLS_EXTENSIONS := device/google/cuttlefish/shared
 
 # Generate a partial ota update package for partitions in vbmeta_system
-BOARD_PARTIAL_OTA_UPDATE_PARTITIONS_LIST := product system system_ext vbmeta_system
+BOARD_PARTIAL_OTA_UPDATE_PARTITIONS_LIST := $(BOARD_AVB_VBMETA_SYSTEM) vbmeta_system init_boot
 
 BOARD_BOOTLOADER_IN_UPDATE_PACKAGE := true
 BOARD_RAMDISK_USE_LZ4 := true
@@ -315,9 +345,9 @@ endif
 
 BOARD_BOOTCONFIG += androidboot.hardware=cutf_cvm
 
-# TODO(b/182417593): Move all of these module options to modules.options
-# TODO(b/176860479): Remove once goldfish and cuttlefish share a wifi implementation
-BOARD_BOOTCONFIG += kernel.mac80211_hwsim.radios=0
+# TODO(b/182417593): vsock transport is a module on some kernels and builtin
+# on others. To maintain the buffer size setting across these two configs,
+# the setting will remain in the bootconfig AND also the modules.options file.
 # Reduce slab size usage from virtio vsock to reduce slab fragmentation
 BOARD_BOOTCONFIG += \
     kernel.vmw_vsock_virtio_transport_common.virtio_transport_max_vsock_pkt_buf_size=16384

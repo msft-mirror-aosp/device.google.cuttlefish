@@ -34,6 +34,7 @@ $(call inherit-product, device/google/cuttlefish/shared/gnss/device_vendor.mk)
 $(call inherit-product, device/google/cuttlefish/shared/graphics/device_vendor.mk)
 $(call inherit-product, device/google/cuttlefish/shared/identity/device_vendor.mk)
 $(call inherit-product, device/google/cuttlefish/shared/reboot_escrow/device_vendor.mk)
+$(call inherit-product, device/google/cuttlefish/shared/vibrator/device_vendor.mk)
 $(call inherit-product, device/google/cuttlefish/shared/secure_element/device_vendor.mk)
 $(call inherit-product, device/google/cuttlefish/shared/swiftshader/device_vendor.mk)
 $(call inherit-product, device/google/cuttlefish/shared/telephony/device_vendor.mk)
@@ -51,7 +52,14 @@ PRODUCT_COPY_FILES += \
     frameworks/native/data/etc/android.hardware.faketouch.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.faketouch.xml \
     frameworks/native/data/etc/android.hardware.fingerprint.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.fingerprint.xml \
 
+    ifneq ($(TARGET_DISABLE_BIOMETRICS_FACE),true)
+        PRODUCT_COPY_FILES += \
+        frameworks/native/data/etc/android.hardware.biometrics.face.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.biometrics.face.xml \
+
+    endif
 endif
+
+DEVICE_PACKAGE_OVERLAYS += device/google/cuttlefish/shared/phone/overlay
 
 # Runtime Resource Overlays
 ifeq ($(LOCAL_PREFER_VENDOR_APEX),true)
@@ -60,4 +68,12 @@ else
 PRODUCT_PACKAGES += cuttlefish_phone_overlay_frameworks_base_core
 endif
 
+# NFC AIDL HAL
+PRODUCT_PACKAGES += \
+    com.google.cf.nfc
+
 TARGET_BOARD_INFO_FILE ?= device/google/cuttlefish/shared/phone/android-info.txt
+
+# Storage: for factory reset protection feature
+PRODUCT_VENDOR_PROPERTIES += \
+    ro.frp.pst=/dev/block/by-name/frp

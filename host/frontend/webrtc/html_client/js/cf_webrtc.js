@@ -92,7 +92,9 @@ class DeviceConnection {
   #inputChannel;
   #adbChannel;
   #bluetoothChannel;
+  #lightsChannel;
   #locationChannel;
+  #sensorsChannel;
   #kmlLocationsChannel;
   #gpxLocationsChannel;
 
@@ -107,9 +109,11 @@ class DeviceConnection {
   #onAdbMessage;
   #onControlMessage;
   #onBluetoothMessage;
+  #onSensorsMessage
   #onLocationMessage;
   #onKmlLocationsMessage;
   #onGpxLocationsMessage;
+  #onLightsMessage;
 
   #micRequested = false;
   #cameraRequested = false;
@@ -127,6 +131,13 @@ class DeviceConnection {
       }
     };
     this.#inputChannel = createDataChannel(pc, 'input-channel');
+    this.#sensorsChannel = createDataChannel(pc, 'sensors-channel', (msg) => {
+      if (!this.#onSensorsMessage) {
+        console.error('Received unexpected Sensors message');
+        return;
+      }
+      this.#onSensorsMessage(msg);
+    });
     this.#adbChannel = createDataChannel(pc, 'adb-channel', (msg) => {
       if (!this.#onAdbMessage) {
         console.error('Received unexpected ADB message');
@@ -175,6 +186,14 @@ class DeviceConnection {
           }
           this.#onGpxLocationsMessage(msg.data);
         });
+    this.#lightsChannel = createDataChannel(pc, 'lights-channel', (msg) => {
+      if (!this.#onLightsMessage) {
+        console.error('Received unexpected Lights message');
+        return;
+      }
+      this.#onLightsMessage(msg);
+    });
+
     this.#streams = {};
     this.#streamPromiseResolvers = {};
 
@@ -425,6 +444,14 @@ class DeviceConnection {
     this.#locationChannel.send(msg);
   }
 
+  sendSensorsMessage(msg) {
+    this.#sensorsChannel.send(msg);
+  }
+
+  onSensorsMessage(cb) {
+    this.#onSensorsMessage = cb;
+  }
+
   onLocationMessage(cb) {
     this.#onLocationMessage = cb;
   }
@@ -449,6 +476,10 @@ class DeviceConnection {
   onConnectionStateChange(cb) {
     this.#pc.addEventListener(
         'connectionstatechange', evt => cb(this.#pc.connectionState));
+  }
+
+  onLightsMessage(cb) {
+    this.#onLightsMessage = cb;
   }
 }
 

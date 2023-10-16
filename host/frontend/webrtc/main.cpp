@@ -28,9 +28,9 @@
 #include "host/frontend/webrtc/client_server.h"
 #include "host/frontend/webrtc/connection_observer.h"
 #include "host/frontend/webrtc/display_handler.h"
-#include "host/libs/input_connector/socket_input_connector.h"
 #include "host/frontend/webrtc/kernel_log_events_handler.h"
 #include "host/frontend/webrtc/libdevice/camera_controller.h"
+#include "host/frontend/webrtc/libdevice/lights_observer.h"
 #include "host/frontend/webrtc/libdevice/local_recorder.h"
 #include "host/frontend/webrtc/libdevice/streamer.h"
 #include "host/frontend/webrtc/libdevice/video_sink.h"
@@ -40,6 +40,7 @@
 #include "host/libs/config/openwrt_args.h"
 #include "host/libs/confui/host_mode_ctrl.h"
 #include "host/libs/confui/host_server.h"
+#include "host/libs/input_connector/socket_input_connector.h"
 #include "host/libs/screen_connector/screen_connector.h"
 
 DEFINE_string(touch_fds, "",
@@ -55,6 +56,8 @@ DEFINE_int32(confui_in_fd, -1,
              "Confirmation UI virtio-console from host to guest");
 DEFINE_int32(confui_out_fd, -1,
              "Confirmation UI virtio-console from guest to host");
+DEFINE_int32(sensors_in_fd, -1, "Sensors virtio-console from host to guest");
+DEFINE_int32(sensors_out_fd, -1, "Sensors virtio-console from guest to host");
 DEFINE_string(action_servers, "",
               "A comma-separated list of server_name:fd pairs, "
               "where each entry corresponds to one custom action server.");
@@ -69,11 +72,11 @@ using cuttlefish::AudioHandler;
 using cuttlefish::CfConnectionObserverFactory;
 using cuttlefish::DisplayHandler;
 using cuttlefish::KernelLogEventsHandler;
-using cuttlefish::webrtc_streaming::LocalRecorder;
+using cuttlefish::webrtc_streaming::RecordingManager;
+using cuttlefish::webrtc_streaming::ServerConfig;
 using cuttlefish::webrtc_streaming::Streamer;
 using cuttlefish::webrtc_streaming::StreamerConfig;
 using cuttlefish::webrtc_streaming::VideoSink;
-using cuttlefish::webrtc_streaming::ServerConfig;
 
 constexpr auto kOpewnrtWanIpAddressName = "wan_ipaddr";
 
@@ -210,27 +213,22 @@ int main(int argc, char** argv) {
   }
 
   KernelLogEventsHandler kernel_logs_event_handler(kernel_log_events_client);
-  auto observer_factory = std::make_shared<CfConnectionObserverFactory>(
-      confui_virtual_input, &kernel_logs_event_handler);
 
-  // The recorder is created first, so displays added in callbacks to the
-  // Streamer can also be added to the LocalRecorder.
-  std::unique_ptr<cuttlefish::webrtc_streaming::LocalRecorder> local_recorder;
-  if (instance.record_screen()) {
-    int recording_num = 0;
-    std::string recording_path;
-    do {
-      recording_path = instance.PerInstancePath("recording/recording_");
-      recording_path += std::to_string(recording_num);
-      recording_path += ".webm";
-      recording_num++;
-    } while (cuttlefish::FileExists(recording_path));
-    local_recorder = LocalRecorder::Create(recording_path);
-    CHECK(local_recorder) << "Could not create local recorder";
+  std::shared_ptr<cuttlefish::webrtc_streaming::LightsObserver> lights_observer;
+  if (instance.lights_server_port()) {
+    lights_observer =
+        std::make_shared<cuttlefish::webrtc_streaming::LightsObserver>(
+            instance.lights_server_port(), instance.vsock_guest_cid());
+    lights_observer->Start();
   }
 
+  auto observer_factory = std::make_shared<CfConnectionObserverFactory>(
+      confui_virtual_input, &kernel_logs_event_handler, lights_observer);
+
+  RecordingManager recording_manager;
+
   auto streamer =
-      Streamer::Create(streamer_config, local_recorder.get(), observer_factory);
+      Streamer::Create(streamer_config, recording_manager, observer_factory);
   CHECK(streamer) << "Could not create streamer";
 
   auto display_handler =
@@ -240,6 +238,7 @@ int main(int argc, char** argv) {
     auto camera_controller = streamer->AddCamera(instance.camera_server_port(),
                                                  instance.vsock_guest_cid());
     observer_factory->SetCameraHandler(camera_controller);
+    streamer->SetHardwareSpec("camera_passthrough", true);
   }
 
   observer_factory->SetDisplayHandler(display_handler);
@@ -349,21 +348,21 @@ int main(int argc, char** argv) {
       new CfOperatorObserver());
   streamer->Register(operator_observer);
 
-  std::thread control_thread([control_socket, &local_recorder]() {
-    if (!local_recorder) {
-      return;
-    }
+  std::thread control_thread([control_socket, &recording_manager]() {
     std::string message = "_";
     int read_ret;
     while ((read_ret = cuttlefish::ReadExact(control_socket, &message)) > 0) {
       LOG(VERBOSE) << "received control message: " << message;
-      if (message[0] == 'C') {
-        LOG(DEBUG) << "Finalizing screen recording...";
-        local_recorder->Stop();
-        LOG(INFO) << "Finalized screen recording.";
-        message = "Y";
-        cuttlefish::WriteAll(control_socket, message);
+      if (message[0] == 'T') {
+        LOG(INFO) << "Received command to start recording in main.cpp.";
+        recording_manager.Start();
+      } else if (message[0] == 'C') {
+        LOG(INFO) << "Received command to stop recording in main.cpp.";
+        recording_manager.Stop();
       }
+      // Send feedback an indication of command received.
+      CHECK(cuttlefish::WriteAll(control_socket, "Y") == 1) << "Failed to send response: "
+                                                            << control_socket->StrError();
     }
     LOG(DEBUG) << "control socket closed";
   });
@@ -372,6 +371,13 @@ int main(int argc, char** argv) {
     audio_handler->Start();
   }
   host_confui_server.Start();
+
+  if (instance.record_screen()) {
+    LOG(VERBOSE) << "Waiting for recording manager initializing.";
+    recording_manager.WaitForSources(instance.display_configs().size());
+    recording_manager.Start();
+  }
+
   display_handler->Loop();
 
   return 0;

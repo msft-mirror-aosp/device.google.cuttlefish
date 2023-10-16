@@ -25,9 +25,7 @@
 #include <unistd.h>
 
 #include <cstdlib>
-#include <sstream>
 #include <string>
-#include <thread>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -37,15 +35,11 @@
 #include <vulkan/vulkan.h>
 
 #include "common/libs/device_config/device_config.h"
-#include "common/libs/fs/shared_select.h"
-#include "common/libs/utils/contains.h"
 #include "common/libs/utils/files.h"
 #include "common/libs/utils/result.h"
 #include "common/libs/utils/subprocess.h"
-#include "common/libs/utils/users.h"
 #include "host/libs/config/command_source.h"
 #include "host/libs/config/cuttlefish_config.h"
-#include "host/libs/config/known_paths.h"
 
 namespace cuttlefish {
 namespace vm_manager {
@@ -54,11 +48,6 @@ namespace {
 std::string GetMonitorPath(const CuttlefishConfig& config) {
   return config.ForDefaultInstance().PerInstanceInternalUdsPath(
       "qemu_monitor.sock");
-}
-
-void LogAndSetEnv(const char* key, const std::string& value) {
-  setenv(key, value.c_str(), 1);
-  LOG(INFO) << key << "=" << value;
 }
 
 bool Stop() {
@@ -577,7 +566,7 @@ Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
 
   // /dev/hvc9 = uwb
   if (config.enable_host_uwb()) {
-    add_hvc("uwb_fifo_vm");
+    add_hvc(instance.PerInstanceInternalPath("uwb_fifo_vm"));
   } else {
     add_hvc_sink();
   }
@@ -587,6 +576,18 @@ Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
 
   // /dev/hvc11 = keymint (Rust implementation)
   add_hvc(instance.PerInstanceInternalPath("keymint_fifo_vm"));
+
+  // /dev/hvc12 = nfc
+  if (config.enable_host_nfc()) {
+    add_hvc(instance.PerInstanceInternalPath("nfc_fifo_vm"));
+  } else {
+    add_hvc_sink();
+  }
+
+  // sensors_fifo_vm.{in/out} are created along with the streamer process,
+  // which is not created w/ QEMU.
+  // /dev/hvc13 = sensors
+  add_hvc_sink();
 
   auto disk_num = instance.virtual_disk_paths().size();
 
@@ -791,7 +792,7 @@ Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
     qemu_cmd.AddParameter("tcp::", instance.gdb_port());
   }
 
-  LogAndSetEnv("QEMU_AUDIO_DRV", "none");
+  qemu_cmd.AddEnvironmentVariable("QEMU_AUDIO_DRV", "none");
 
   std::vector<MonitorCommand> commands;
   commands.emplace_back(std::move(qemu_cmd), true);

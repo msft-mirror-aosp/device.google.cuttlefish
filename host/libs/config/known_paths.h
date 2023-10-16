@@ -34,16 +34,17 @@ std::string OpenwrtControlServerBinary();
 std::string PicaBinary();
 std::string ProcessRestarterBinary();
 std::string RootCanalBinary();
+std::string CasimirBinary();
 std::string SecureEnvBinary();
 std::string SocketVsockProxyBinary();
 std::string StopCvdBinary();
 std::string TcpConnectorBinary();
 std::string TombstoneReceiverBinary();
-std::string VehicleHalGrpcServerBinary();
 std::string WebRtcBinary();
 std::string WebRtcSigServerBinary();
 std::string WebRtcSigServerProxyBinary();
 std::string WmediumdBinary();
 std::string WmediumdGenConfigBinary();
+std::string AutomotiveProxyBinary();
 
 } // namespace cuttlefish

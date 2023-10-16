@@ -22,7 +22,7 @@
 
 #include "common/libs/fs/shared_fd.h"
 #include "common/libs/utils/result.h"
-#include "host/commands/run_cvd/runner_defs.h"
+#include "host/libs/command_util/runner/defs.h"
 #include "host/libs/command_util/util.h"
 #include "host/libs/config/cuttlefish_config.h"
 #include "run_cvd.pb.h"
@@ -105,8 +105,7 @@ int main(int argc, char* argv[]) {
 
   cuttlefish::Result<void> result = cuttlefish::RecordCvdMain(argc, argv);
   if (!result.ok()) {
-    LOG(ERROR) << result.error().Message();
-    LOG(DEBUG) << result.error().Trace();
+    LOG(DEBUG) << result.error().FormatForEnv();
     return EXIT_FAILURE;
   }
   return EXIT_SUCCESS;

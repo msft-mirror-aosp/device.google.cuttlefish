@@ -23,7 +23,7 @@
 #include "common/libs/fs/shared_fd.h"
 #include "common/libs/utils/contains.h"
 #include "common/libs/utils/result.h"
-#include "host/commands/run_cvd/runner_defs.h"
+#include "host/libs/command_util/runner/defs.h"
 
 namespace cuttlefish {
 namespace run_cvd_msg_impl {
@@ -53,7 +53,6 @@ class LauncherActionMessage {
                         std::string serialized_data);
   // returns true if the action does not need extended field
   static bool IsShortAction(const LauncherAction action);
-  static bool IsSupportedType(const ExtendedActionType type);
 
   const LauncherAction action_;
   const ExtendedActionType type_;

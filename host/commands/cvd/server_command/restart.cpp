@@ -27,6 +27,7 @@
 #include "common/libs/fs/shared_buf.h"
 #include "common/libs/fs/shared_fd.h"
 #include "common/libs/utils/contains.h"
+#include "common/libs/utils/files.h"
 #include "common/libs/utils/result.h"
 #include "cvd_server.pb.h"
 #include "host/commands/cvd/common_utils.h"
@@ -60,7 +61,9 @@ Result<SharedFD> LatestCvdAsFd(BuildApi& build_api) {
   static constexpr char kBuild[] = "aosp-master";
   static constexpr char kTarget[] = "aosp_cf_x86_64_phone-userdebug";
   auto latest = CF_EXPECT(build_api.LatestBuildId(kBuild, kTarget));
-  DeviceBuild build{latest, kTarget};
+  CF_EXPECT(latest.has_value(),
+            "Unable to retrieve the build id for the latest cvd");
+  DeviceBuild build{*latest, kTarget};
 
   auto fd = SharedFD::MemfdCreate("cvd");
   CF_EXPECT(fd->IsOpen(), "MemfdCreate failed: " << fd->StrError());
@@ -170,8 +173,8 @@ class CvdRestartHandler : public CvdServerHandler {
 
     CF_EXPECT(server_.Exec({.new_exe = new_exe,
                             .carryover_client_fd = request.Client(),
-                            .client_stderr_fd = request.Err(),
                             .in_memory_data_fd = mem_fd,
+                            .client_stderr_fd = request.Err(),
                             .verbose = parsed.verbose}));
     return CF_ERR("Should be unreachable");
   }

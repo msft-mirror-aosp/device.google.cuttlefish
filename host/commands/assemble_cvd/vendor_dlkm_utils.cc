@@ -104,10 +104,29 @@ bool WriteFsConfig(const char* output_path, const std::string& fs_root,
 std::vector<std::string> GetRamdiskModules(
     const std::vector<std::string>& all_modules) {
   static constexpr auto kRamdiskModules = {
-      "failover.ko",   "nd_virtio.ko",      "net_failover.ko",
-      "virtio_blk.ko", "virtio_console.ko", "virtio_dma_buf.ko",
-      "virtio-gpu.ko", "virtio_input.ko",   "virtio_net.ko",
-      "virtio_pci.ko", "virtio-rng.ko",     "vmw_vsock_virtio_transport.ko",
+      "failover.ko",
+      "nd_virtio.ko",
+      "net_failover.ko",
+      "virtio_blk.ko",
+      "virtio_console.ko",
+      "virtio_dma_buf.ko",
+      "virtio-gpu.ko",
+      "virtio_input.ko",
+      "virtio_net.ko",
+      "virtio_pci.ko",
+      "virtio_pci_legacy_dev.ko",
+      "virtio_pci_modern_dev.ko",
+      "virtio-rng.ko",
+      "vmw_vsock_virtio_transport.ko",
+      "vmw_vsock_virtio_transport_common.ko",
+      "vsock.ko",
+      // TODO(b/176860479) once virt_wifi is deprecated fully,
+      // these following modules can be loaded in second stage init
+      "libarc4.ko",
+      "rfkill.ko",
+      "cfg80211.ko",
+      "mac80211.ko",
+      "mac80211_hwsim.ko",
   };
   std::vector<std::string> ramdisk_modules;
   for (const auto& mod_path : all_modules) {
@@ -450,7 +469,7 @@ bool SplitRamdiskModules(const std::string& ramdisk_path,
   const auto vendor_modules_dir = vendor_dlkm_build_dir + "/lib/modules";
   const auto system_modules_dir = system_dlkm_build_dir + "/lib/modules";
   auto ret = EnsureDirectoryExists(vendor_modules_dir);
-  CHECK(ret.ok()) << ret.error().Message();
+  CHECK(ret.ok()) << ret.error().FormatForEnv();
   ret = EnsureDirectoryExists(system_modules_dir);
   UnpackRamdisk(ramdisk_path, ramdisk_stage_dir);
   const auto module_load_file =
@@ -571,7 +590,7 @@ bool MoveIfChanged(const std::string& src, const std::string& dst) {
   }
   const auto ret = RenameFile(src, dst);
   if (!ret.ok()) {
-    LOG(ERROR) << ret.error().Message();
+    LOG(ERROR) << ret.error().FormatForEnv();
     return false;
   }
   return true;

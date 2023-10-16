@@ -37,9 +37,9 @@
 #include "host/commands/run_cvd/boot_state_machine.h"
 #include "host/commands/run_cvd/launch/launch.h"
 #include "host/commands/run_cvd/reporting.h"
-#include "host/commands/run_cvd/runner_defs.h"
 #include "host/commands/run_cvd/server_loop.h"
 #include "host/commands/run_cvd/validate.h"
+#include "host/libs/command_util/runner/defs.h"
 #include "host/libs/config/adb/adb.h"
 #include "host/libs/config/config_flag.h"
 #include "host/libs/config/config_fragment.h"
@@ -116,6 +116,7 @@ class InstanceLifecycle : public LateInjected {
 
 fruit::Component<> runCvdComponent(
     const CuttlefishConfig* config,
+    const CuttlefishConfig::EnvironmentSpecific* environment,
     const CuttlefishConfig::InstanceSpecific* instance) {
   return fruit::createComponent()
       .addMultibinding<DiagnosticInformation, CuttlefishEnvironment>()
@@ -123,12 +124,14 @@ fruit::Component<> runCvdComponent(
       .addMultibinding<LateInjected, InstanceLifecycle>()
       .bindInstance(*config)
       .bindInstance(*instance)
+      .bindInstance(*environment)
 #ifdef __linux__
-      .install(ConfigServerComponent)
-      .install(launchModemComponent)
+      .install(AutoCmd<AutomotiveProxyService>::Component)
+      .install(AutoCmd<ConfigServer>::Component)
+      .install(AutoCmd<ModemSimulator>::Component)
       .install(launchStreamerComponent)
       .install(OpenWrtComponent)
-      .install(TombstoneReceiverComponent)
+      .install(AutoCmd<TombstoneReceiver>::Component)
       .install(WmediumdServerComponent)
 #endif
       .install(AdbConfigComponent)
@@ -140,22 +143,25 @@ fruit::Component<> runCvdComponent(
       .install(CustomActionsComponent)
       .install(LaunchAdbComponent)
       .install(LaunchFastbootComponent)
-      .install(BluetoothConnectorComponent)
-      .install(UwbConnectorComponent)
+      .install(AutoCmd<BluetoothConnector>::Component)
+      .install(NfcConnectorComponent)
+      .install(AutoCmd<UwbConnector>::Component)
       .install(ConsoleForwarderComponent)
       .install(ControlEnvProxyServerComponent)
-      .install(EchoServerComponent)
-      .install(GnssGrpcProxyServerComponent)
+      .install(AutoCmd<EchoServer>::Component)
+      .install(AutoCmd<GnssGrpcProxyServer>::Component)
       .install(LogcatReceiverComponent)
       .install(KernelLogMonitorComponent)
-      .install(MetricsServiceComponent)
+      .install(AutoCmd<MetricsService>::Component)
       .install(OpenwrtControlServerComponent)
-      .install(PicaComponent)
+      .install(AutoCmd<Pica>::Component)
       .install(RootCanalComponent)
+      .install(AutoCmd<Casimir>::Component)
       .install(NetsimServerComponent)
-      .install(SecureEnvComponent)
-      .install(VehicleHalServerComponent)
+      .install(AutoSecureEnvFiles::Component)
+      .install(AutoCmd<SecureEnv>::Component)
       .install(serverLoopComponent)
+      .install(WebRtcRecorderComponent)
       .install(validationComponent)
       .install(vm_manager::VmManagerComponent);
 }
@@ -229,12 +235,12 @@ Result<void> RunCvdMain(int argc, char** argv) {
 
   CF_EXPECT(StdinValid(), "Invalid stdin");
   auto config = CF_EXPECT(FindConfigFromStdin());
+  auto environment = config->ForDefaultEnvironment();
   auto instance = config->ForDefaultInstance();
-
   ConfigureLogs(*config, instance);
   CF_EXPECT(ChdirIntoRuntimeDir(instance));
 
-  fruit::Injector<> injector(runCvdComponent, config, &instance);
+  fruit::Injector<> injector(runCvdComponent, config, &environment, &instance);
 
   for (auto& late_injected : injector.getMultibindings<LateInjected>()) {
     CF_EXPECT(late_injected->LateInject(injector));
@@ -256,7 +262,6 @@ int main(int argc, char** argv) {
   if (result.ok()) {
     return 0;
   }
-  LOG(ERROR) << result.error().Message();
-  LOG(DEBUG) << result.error().Trace();
+  LOG(ERROR) << result.error().FormatForEnv();
   abort();
 }

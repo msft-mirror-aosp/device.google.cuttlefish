@@ -33,11 +33,12 @@
 #include "common/libs/utils/files.h"
 #include "common/libs/utils/flag_parser.h"
 #include "common/libs/utils/result.h"
-#include "host/commands/run_cvd/runner_defs.h"
 #include "host/libs/allocd/request.h"
 #include "host/libs/allocd/utils.h"
+#include "host/libs/command_util/runner/defs.h"
 #include "host/libs/command_util/util.h"
 #include "host/libs/config/cuttlefish_config.h"
+#include "host/libs/metrics/metrics_receiver.h"
 
 namespace cuttlefish {
 namespace {
@@ -140,10 +141,10 @@ int StopInstance(const CuttlefishConfig& config,
                  const std::int32_t wait_for_launcher) {
   auto result = CleanStopInstance(instance, wait_for_launcher);
   if (!result.ok()) {
-    LOG(ERROR) << "Clean stop failed: " << result.error().Message();
-    LOG(DEBUG) << "Clean stop failed: " << result.error().Trace();
+    LOG(ERROR) << "Clean stop failed: " << result.error().FormatForEnv();
     return FallBackStop(DirsForInstance(config, instance));
   }
+
   return 0;
 }
 
@@ -268,5 +269,6 @@ int main(int argc, char** argv) {
      */
     return 134;
   }
+  cuttlefish::MetricsReceiver::LogMetricsVMStop();
   return cuttlefish::StopCvdMain(wait_for_launcher, clear_instance_dirs);
 }
