@@ -390,13 +390,12 @@ Result<void> TestGceDriverMain(int argc, char** argv) {
 
   GceApi gce(*curl, gce_creds, cloud_project);
 
-  static constexpr char BUILD_SCOPE[] =
-      "https://www.googleapis.com/auth/androidbuild.internal";
   auto build_creds = std::make_unique<ServiceAccountOauthCredentialSource>(
       CF_EXPECT(ServiceAccountOauthCredentialSource::FromJson(
-          *curl, service_json, BUILD_SCOPE)));
+          *curl, service_json, kBuildScope)));
 
-  BuildApi build(std::move(curl), std::move(build_creds));
+  BuildApi build(std::move(curl), std::move(build_creds),
+                 kAndroidBuildServiceUrl);
 
   ReadEvalPrintLoop executor(gce, build, STDIN_FILENO, STDOUT_FILENO,
                              internal_addresses);
