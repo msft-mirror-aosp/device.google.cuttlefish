@@ -14,15 +14,18 @@
  * limitations under the License.
  */
 
-#include <string>
-#include <vector>
-
-#include "common/libs/utils/result.h"
-
+#pragma once
 namespace cuttlefish {
 
-Result<std::string> HandleCmds(const std::string& grpc_socket_path,
-                               const std::string& cmd,
-                               const std::vector<std::string>& args);
+// TODO(moelsherif) :review this value once we have a better idea of the size of
+// the messages
+const uint32_t MAX_MSG_SIZE = 200;
+
+typedef struct msg_buffer {
+  long mesg_type;
+  char mesg_text[MAX_MSG_SIZE];
+} msg_buffer;
+
+constexpr char kMetricsQueueName[] = "metrics_msg_queue";
 
 }  // namespace cuttlefish

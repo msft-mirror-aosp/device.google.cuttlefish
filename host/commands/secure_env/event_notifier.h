@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2021 The Android Open Source Project
+// Copyright (C) 2023 The Android Open Source Project
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,11 +13,30 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package {
-    default_applicable_licenses: ["Android-Apache-2.0"],
-}
+#pragma once
 
-runtime_resource_overlay {
-    name: "cuttlefish_wear_overlay_frameworks_base_core",
-    product_specific: true,
-}
+#include <condition_variable>
+#include <mutex>
+
+namespace cuttlefish {
+
+/* only for secure_env, will be replaced with a better implementation
+ * This is used for 1-to-1 communication only.
+ *
+ */
+class EventNotifier {
+ public:
+  EventNotifier() = default;
+  /*
+   * Always sleep if a thread calls this. Wakes up on notification.
+   */
+  void WaitAndReset();
+  void Notify();
+
+ private:
+  std::mutex m_;
+  std::condition_variable cv_;
+  bool flag_ = false;
+};
+
+}  // namespace cuttlefish
