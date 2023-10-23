@@ -1,3 +1,4 @@
+//
 // Copyright (C) 2023 The Android Open Source Project
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,32 +13,22 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package {
-    default_applicable_licenses: ["Android-Apache-2.0"],
+#include "host/commands/secure_env/event_notifier.h"
+
+namespace cuttlefish {
+
+void EventNotifier::WaitAndReset() {
+  std::unique_lock lock(m_);
+  while (!flag_) {
+    cv_.wait(lock);
+  }
+  flag_ = false;
 }
 
-java_test_host {
-    name: "FastbootRebootTest",
-    srcs: [
-        "src/com/android/cuttlefish/tests/FastbootRebootTest.java",
-    ],
-    test_suites: [
-        "device-tests",
-    ],
-    libs: [
-        "tradefed",
-    ],
+void EventNotifier::Notify() {
+  std::lock_guard lock(m_);
+  flag_ = true;
+  cv_.notify_all();
 }
 
-java_test_host {
-    name: "FastbootFlashingTest",
-    srcs: [
-        "src/com/android/cuttlefish/tests/FastbootFlashingTest.java",
-    ],
-    test_suites: [
-        "device-tests",
-    ],
-    libs: [
-        "tradefed",
-    ],
-}
+}  // namespace cuttlefish

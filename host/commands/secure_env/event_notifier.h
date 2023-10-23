@@ -1,3 +1,4 @@
+//
 // Copyright (C) 2023 The Android Open Source Project
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,32 +13,30 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package {
-    default_applicable_licenses: ["Android-Apache-2.0"],
-}
+#pragma once
 
-java_test_host {
-    name: "FastbootRebootTest",
-    srcs: [
-        "src/com/android/cuttlefish/tests/FastbootRebootTest.java",
-    ],
-    test_suites: [
-        "device-tests",
-    ],
-    libs: [
-        "tradefed",
-    ],
-}
+#include <condition_variable>
+#include <mutex>
 
-java_test_host {
-    name: "FastbootFlashingTest",
-    srcs: [
-        "src/com/android/cuttlefish/tests/FastbootFlashingTest.java",
-    ],
-    test_suites: [
-        "device-tests",
-    ],
-    libs: [
-        "tradefed",
-    ],
-}
+namespace cuttlefish {
+
+/* only for secure_env, will be replaced with a better implementation
+ * This is used for 1-to-1 communication only.
+ *
+ */
+class EventNotifier {
+ public:
+  EventNotifier() = default;
+  /*
+   * Always sleep if a thread calls this. Wakes up on notification.
+   */
+  void WaitAndReset();
+  void Notify();
+
+ private:
+  std::mutex m_;
+  std::condition_variable cv_;
+  bool flag_ = false;
+};
+
+}  // namespace cuttlefish
