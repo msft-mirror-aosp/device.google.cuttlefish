@@ -384,7 +384,7 @@ PRODUCT_PACKAGES += $(LOCAL_DUMPSTATE_PRODUCT_PACKAGE)
 # Gatekeeper
 #
 ifeq ($(LOCAL_GATEKEEPER_PRODUCT_PACKAGE),)
-    LOCAL_GATEKEEPER_PRODUCT_PACKAGE := android.hardware.gatekeeper-service.remote
+    LOCAL_GATEKEEPER_PRODUCT_PACKAGE := com.google.cf.gatekeeper
 endif
 PRODUCT_PACKAGES += \
     $(LOCAL_GATEKEEPER_PRODUCT_PACKAGE)
@@ -417,7 +417,7 @@ PRODUCT_PACKAGES += \
     com.google.cf.health.storage
 
 PRODUCT_PACKAGES += \
-    android.hardware.input.processor-service.example
+    com.android.hardware.input.processor
 
 # Netlink Interceptor HAL
 PRODUCT_PACKAGES += \

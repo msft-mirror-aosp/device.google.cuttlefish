@@ -13,6 +13,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <memory>
+#include <optional>
 #include <thread>
 
 #include <android-base/logging.h>
@@ -41,10 +43,12 @@
 #include "host/commands/secure_env/oemlock/oemlock_responder.h"
 #include "host/commands/secure_env/proxy_keymaster_context.h"
 #include "host/commands/secure_env/rust/kmr_ta.h"
+#include "host/commands/secure_env/snapshot_running_flag.h"
 #include "host/commands/secure_env/soft_gatekeeper.h"
 #include "host/commands/secure_env/storage/insecure_json_storage.h"
 #include "host/commands/secure_env/storage/storage.h"
 #include "host/commands/secure_env/storage/tpm_storage.h"
+#include "host/commands/secure_env/suspend_resume_handler.h"
 #include "host/commands/secure_env/tpm_gatekeeper.h"
 #include "host/commands/secure_env/tpm_keymaster_context.h"
 #include "host/commands/secure_env/tpm_keymaster_enforcement.h"
@@ -53,7 +57,9 @@
 #include "host/libs/config/logging.h"
 
 DEFINE_int32(confui_server_fd, -1, "A named socket to serve confirmation UI");
-DEFINE_int32(snapshot_control_fd, -1, "A named socket for snapshot operations");
+DEFINE_int32(snapshot_control_fd, -1,
+             "A socket connected to run_cvd for snapshot operations and"
+             "responses");
 DEFINE_int32(keymaster_fd_in, -1, "A pipe for keymaster communication");
 DEFINE_int32(keymaster_fd_out, -1, "A pipe for keymaster communication");
 DEFINE_int32(keymint_fd_in, -1, "A pipe for keymint communication");
@@ -251,6 +257,11 @@ Result<void> SecureEnvMain(int argc, char** argv) {
     return CF_ERR("Unknown Keymint Implementation: " + FLAGS_keymint_impl);
   }
 
+  // go/cf-secure-env-snapshot
+  SnapshotRunningFlag running;  // initialized as true
+  SharedFD channel_to_run_cvd = DupFdFlag(FLAGS_snapshot_control_fd);
+  SnapshotCommandHandler suspend_resume_handler(channel_to_run_cvd, running);
+
   // The guest image may have either the C++ implementation of
   // KeyMint/Keymaster, xor the Rust implementation of KeyMint.  Those different
   // implementations each need to have a matching TA implementation in
@@ -344,7 +355,6 @@ Result<void> SecureEnvMain(int argc, char** argv) {
   for (auto& t : threads) {
     t.join();
   }
-
   return {};
 }
 
