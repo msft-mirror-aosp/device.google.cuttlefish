@@ -37,12 +37,14 @@ int main(int argc, char** argv) {
         cuttlefish::LogToStderrAndFiles(
             {metrics_log_path, instance.launcher_log_path()}));
   }
-  if (config->enable_metrics() != cuttlefish::CuttlefishConfig::kYes) {
+  if (config->enable_metrics() != cuttlefish::CuttlefishConfig::Answer::kYes) {
     LOG(ERROR) << "metrics not enabled, but metrics were launched.";
     return MetricsExitCodes::kInvalidHostConfiguration;
   }
 
-  cuttlefish::MetricsHostReceiver host_receiver(*config);
+  bool is_metrics_enabled =
+      cuttlefish::CuttlefishConfig::Answer::kYes == config->enable_metrics();
+  cuttlefish::MetricsHostReceiver host_receiver(is_metrics_enabled);
   if (!host_receiver.Initialize(cuttlefish::kCfMetricsQueueName)) {
     LOG(ERROR) << "metrics host_receiver failed to init";
     return MetricsExitCodes::kMetricsError;
