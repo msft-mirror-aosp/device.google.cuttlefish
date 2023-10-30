@@ -145,6 +145,14 @@ void CuttlefishConfig::set_vm_manager(const std::string& name) {
   (*dictionary_)[kVmManager] = name;
 }
 
+static constexpr char kApVmManager[] = "ap_vm_manager";
+std::string CuttlefishConfig::ap_vm_manager() const {
+  return (*dictionary_)[kApVmManager].asString();
+}
+void CuttlefishConfig::set_ap_vm_manager(const std::string& name) {
+  (*dictionary_)[kApVmManager] = name;
+}
+
 static SecureHal StringToSecureHal(std::string mode) {
   std::transform(mode.begin(), mode.end(), mode.begin(), ::tolower);
   if (mode == "keymint") {
@@ -421,22 +429,39 @@ std::vector<std::string> CuttlefishConfig::netsim_args() const {
 
 static constexpr char kEnableMetrics[] = "enable_metrics";
 void CuttlefishConfig::set_enable_metrics(std::string enable_metrics) {
-  (*dictionary_)[kEnableMetrics] = kUnknown;
+  (*dictionary_)[kEnableMetrics] =
+      static_cast<int>(cuttlefish::CuttlefishConfig::Answer::kUnknown);
   if (!enable_metrics.empty()) {
     switch (enable_metrics.at(0)) {
       case 'y':
       case 'Y':
-        (*dictionary_)[kEnableMetrics] = kYes;
+        (*dictionary_)[kEnableMetrics] =
+            static_cast<int>(cuttlefish::CuttlefishConfig::Answer::kYes);
         break;
       case 'n':
       case 'N':
-        (*dictionary_)[kEnableMetrics] = kNo;
+        (*dictionary_)[kEnableMetrics] =
+            static_cast<int>(cuttlefish::CuttlefishConfig::Answer::kNo);
         break;
     }
   }
 }
+
+// validate the casting and conversion from json configs to
+// CuttlefishConfig::Answer class
+bool IsValidMetricsConfigs(int value) {
+  return value == static_cast<int>(CuttlefishConfig::Answer::kUnknown) ||
+         value == static_cast<int>(CuttlefishConfig::Answer::kNo) ||
+         value == static_cast<int>(CuttlefishConfig::Answer::kYes);
+}
+
 CuttlefishConfig::Answer CuttlefishConfig::enable_metrics() const {
-  return (CuttlefishConfig::Answer)(*dictionary_)[kEnableMetrics].asInt();
+  int value = (*dictionary_)[kEnableMetrics].asInt();
+  if (!IsValidMetricsConfigs(value)) {
+    LOG(ERROR) << "Invalid integer value for Answer enum";
+    return static_cast<Answer>(CuttlefishConfig::Answer::kUnknown);
+  }
+  return static_cast<Answer>(value);
 }
 
 static constexpr char kMetricsBinary[] = "metrics_binary";

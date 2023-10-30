@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2023 The Android Open Source Project
+ * Copyright (C) 2022 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,16 +13,15 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#pragma once
 
-// pragma is used here to disable the warnings emitted from the protobuf
-// headers. By adding #pragma before including cf_log.pb.h, it suppresses
-// protobuf warnings, but allows the rest of the files to continue using
-// the current flags.
-// This file should be included instead of directly including cf_log.pb.h
+namespace cuttlefish {
 
-#pragma GCC system_header
+class CvdMetrics {
+ public:
+  CvdMetrics() = default;
+  ~CvdMetrics() = default;
+  static int SendLaunchCommand(const std::string& command_line);
+};
 
-#include <common.pb.h>
-#include <external_user_log.pb.h>
-#include <google/protobuf/duration.pb.h>
-#include <internal_user_log.pb.h>
+}  // namespace cuttlefish
