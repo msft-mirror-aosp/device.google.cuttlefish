@@ -19,6 +19,8 @@
 
 #include "common/libs/fs/shared_fd.h"
 #include "common/libs/utils/result.h"
+#include "host/commands/secure_env/event_fds_manager.h"
+#include "host/commands/secure_env/event_notifier.h"
 #include "host/commands/secure_env/snapshot_running_flag.h"
 #include "host/libs/command_util/runner/defs.h"
 
@@ -28,6 +30,8 @@ class SnapshotCommandHandler {
  public:
   ~SnapshotCommandHandler();
   SnapshotCommandHandler(SharedFD channel_to_run_cvd,
+                         EventFdsManager& event_fds,
+                         EventNotifiers& suspended_notifiers,
                          SnapshotRunningFlag& running);
 
  private:
@@ -36,6 +40,8 @@ class SnapshotCommandHandler {
   void Join();
 
   SharedFD channel_to_run_cvd_;
+  EventFdsManager& event_fds_manager_;
+  EventNotifiers& suspended_notifiers_;
   SnapshotRunningFlag& shared_running_;  // shared by other components outside
   std::thread handler_thread_;
 };

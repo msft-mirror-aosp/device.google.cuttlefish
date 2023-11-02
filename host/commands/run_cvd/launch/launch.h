@@ -38,12 +38,12 @@
 
 namespace cuttlefish {
 
-Result<std::optional<MonitorCommand>> UwbConnector(const CuttlefishConfig&,
-                                    const CuttlefishConfig::InstanceSpecific&);
+Result<std::optional<MonitorCommand>> UwbConnector(
+    const CuttlefishConfig&, const CuttlefishConfig::InstanceSpecific&);
 
 std::optional<MonitorCommand> AutomotiveProxyService(const CuttlefishConfig&);
 
-Result<MonitorCommand> BluetoothConnector(
+Result<std::optional<MonitorCommand>> BluetoothConnector(
     const CuttlefishConfig&, const CuttlefishConfig::InstanceSpecific&);
 
 Result<MonitorCommand> NfcConnector(const CuttlefishConfig&,
@@ -53,13 +53,19 @@ fruit::Component<fruit::Required<const CuttlefishConfig::InstanceSpecific>,
                  KernelLogPipeProvider>
 KernelLogMonitorComponent();
 
-fruit::Component<fruit::Required<const CuttlefishConfig::InstanceSpecific>>
-LogcatReceiverComponent();
+Result<MonitorCommand> LogcatReceiver(
+    const CuttlefishConfig::InstanceSpecific&);
+std::string LogcatInfo(const CuttlefishConfig::InstanceSpecific&);
+
+Result<std::optional<MonitorCommand>> CasimirControlServer(
+    const CuttlefishConfig&, const CuttlefishConfig::InstanceSpecific&,
+    GrpcSocketCreator&);
 
 Result<MonitorCommand> ConfigServer(const CuttlefishConfig::InstanceSpecific&);
 
-fruit::Component<fruit::Required<const CuttlefishConfig::InstanceSpecific>>
-ConsoleForwarderComponent();
+Result<std::optional<MonitorCommand>> ConsoleForwarder(
+    const CuttlefishConfig::InstanceSpecific&);
+std::string ConsoleInfo(const CuttlefishConfig::InstanceSpecific&);
 
 fruit::Component<fruit::Required<const CuttlefishConfig::InstanceSpecific,
                                  GrpcSocketCreator>>
