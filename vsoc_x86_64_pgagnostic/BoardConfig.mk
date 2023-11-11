@@ -15,44 +15,33 @@
 #
 
 #
-# arm64 (64-bit only) page size agnostic target for Cuttlefish
+# x86_64 (64-bit only) page size agnostic target for Cuttlefish
 #
 
-TARGET_BOARD_PLATFORM := vsoc_arm64
-TARGET_ARCH := arm64
-TARGET_ARCH_VARIANT := armv8-a
-TARGET_CPU_ABI := arm64-v8a
-TARGET_CPU_VARIANT := cortex-a53
+TARGET_BOARD_PLATFORM := vsoc_x86_64
+TARGET_ARCH := x86_64
+TARGET_ARCH_VARIANT := silvermont
+TARGET_CPU_ABI := x86_64
 
-# Use 16K page size kernel
-TARGET_KERNEL_USE ?= 6.1
-TARGET_KERNEL_ARCH ?= arm64
-SYSTEM_DLKM_SRC ?= kernel/prebuilts/$(TARGET_KERNEL_USE)/$(TARGET_KERNEL_ARCH)/16k
-TARGET_KERNEL_PATH ?= $(SYSTEM_DLKM_SRC)/kernel-$(TARGET_KERNEL_USE)
-KERNEL_MODULES_PATH ?= \
-    kernel/prebuilts/common-modules/virtual-device/$(TARGET_KERNEL_USE)/$(subst _,-,$(TARGET_KERNEL_ARCH))/16k
-
-TARGET_USERDATAIMAGE_FILE_SYSTEM_TYPE := ext4
-TARGET_RO_FILE_SYSTEM_TYPE := ext4
-
-BOARD_VENDORIMAGE_FILE_SYSTEM_TYPE := ext4
+TARGET_NATIVE_BRIDGE_ARCH := arm64
+TARGET_NATIVE_BRIDGE_ARCH_VARIANT := armv8-a
+TARGET_NATIVE_BRIDGE_CPU_VARIANT := generic
+TARGET_NATIVE_BRIDGE_ABI := arm64-v8a
 
 AUDIOSERVER_MULTILIB := first
 
-HOST_CROSS_OS := linux_musl
-HOST_CROSS_ARCH := arm64
-HOST_CROSS_2ND_ARCH :=
-
 -include device/google/cuttlefish/shared/BoardConfig.mk
+-include device/google/cuttlefish/shared/bluetooth/BoardConfig.mk
 -include device/google/cuttlefish/shared/camera/BoardConfig.mk
+-include device/google/cuttlefish/shared/gnss/BoardConfig.mk
 -include device/google/cuttlefish/shared/graphics/BoardConfig.mk
 -include device/google/cuttlefish/shared/identity/BoardConfig.mk
+-include device/google/cuttlefish/shared/reboot_escrow/BoardConfig.mk
 -include device/google/cuttlefish/shared/sensors/BoardConfig.mk
 -include device/google/cuttlefish/shared/swiftshader/BoardConfig.mk
 -include device/google/cuttlefish/shared/telephony/BoardConfig.mk
--include device/google/cuttlefish/shared/virgl/BoardConfig.mk
+-include device/google/cuttlefish/shared/vibrator/BoardConfig.mk
 
-BOARD_SYSTEMIMAGE_FILE_SYSTEM_TYPE := erofs
-BOARD_SYSTEMIMAGE_EROFS_BLOCKSIZE := 16384
-BOARD_PRODUCTIMAGE_FILE_SYSTEM_TYPE := erofs
-BOARD_PRODUCTIMAGE_EROFS_COMPRESSOR := none
+ifneq ($(BOARD_IS_AUTOMOTIVE), true)
+-include device/google/cuttlefish/shared/virgl/BoardConfig.mk
+endif

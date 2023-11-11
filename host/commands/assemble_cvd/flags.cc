@@ -207,6 +207,9 @@ DEFINE_vec(
     "cannot be created. Otherwise, sandbox is enabled on the supported "
     "architecture when no option is given.");
 
+DEFINE_vec(enable_virtiofs, fmt::format("{}", CF_DEFAULTS_ENABLE_VIRTIOFS),
+           "Enable shared folder using virtiofs");
+
 DEFINE_string(
     seccomp_policy_dir, CF_DEFAULTS_SECCOMP_POLICY_DIR,
     "With sandbox'ed crosvm, overrieds the security comp policy directory");
@@ -811,6 +814,16 @@ Result<std::string> SelectGpuMode(
   }
 
   if (gpu_mode_arg == kGpuModeAuto) {
+    // TODO (280826461) Android T Cuttlefish is currently not compatible
+    // with accelerated graphics.
+    if (guest_config.android_version_number == "13.0.0" ||
+        guest_config.android_version_number == "13") {
+      LOG(INFO) << "GPU auto mode: detected guest of version T"
+                << ". Accelerated rendering support is not compatible, "
+                   "enabling --gpu_mode=guest_swiftshader.";
+      return kGpuModeGuestSwiftshader;
+    }
+
     if (vm_manager == QemuManager::name() &&
         !IsHostCompatible(guest_config.target_arch)) {
       LOG(INFO) << "Enabling --gpu_mode=drm_virgl.";
@@ -900,28 +913,20 @@ Result<std::string> InitializeGpuMode(
 }
 
 Result<void> CheckSnapshotCompatible(
-    const bool must_be_compatible, const bool enable_wifi,
-    const std::vector<bool>& enable_sandbox_vec,
+    const bool must_be_compatible,
     const std::map<int, std::string>& calculated_gpu_mode) {
   if (!must_be_compatible) {
     return {};
   }
 
   /*
-   * TODO(kwstephenkim@): delete this block once openwrt snapshot is supported
-   */
-  CF_EXPECTF(!enable_wifi,
-             "--enable_wifi should be disabled for snapshot, consider \"{}\"",
-             "--enable_wifi=false");
-
-  /*
    * TODO(kwstephenkim@): delete this block once virtio-fs is supported
    */
-  for (const auto& enable_sandbox : enable_sandbox_vec) {
-    CF_EXPECTF(!enable_sandbox,
-               "--enable_sandbox should be false for snapshot, consider \"{}\"",
-               "--enable_sandbox=false");
-  }
+  CF_EXPECTF(
+      gflags::GetCommandLineFlagInfoOrDie("enable_virtiofs").current_value ==
+          "false",
+      "--enable_virtiofs should be false for snapshot, consider \"{}\"",
+      "--enable_virtiofs=false");
 
   /*
    * TODO(kwstephenkim@): delete this block once 3D gpu mode snapshots are
@@ -1122,6 +1127,8 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
   // At this time, FLAGS_enable_sandbox comes from SetDefaultFlagsForCrosvm
   std::vector<bool> enable_sandbox_vec = CF_EXPECT(GET_FLAG_BOOL_VALUE(
       enable_sandbox));
+  std::vector<bool> enable_virtiofs_vec =
+      CF_EXPECT(GET_FLAG_BOOL_VALUE(enable_virtiofs));
 
   std::vector<std::string> gpu_mode_vec =
       CF_EXPECT(GET_FLAG_STR_VALUE(gpu_mode));
@@ -1171,6 +1178,7 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
       CF_EXPECT(GET_FLAG_STR_VALUE(device_external_network));
 
   std::string default_enable_sandbox = "";
+  std::string default_enable_virtiofs = "";
   std::string comma_str = "";
 
   CHECK(FLAGS_use_overlay || instance_nums.size() == 1)
@@ -1495,12 +1503,16 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     // 3. Sepolicy rules need to be updated to support gpu mode. Temporarily disable
     // auto-enabling sandbox when gpu is enabled (b/152323505).
     default_enable_sandbox += comma_str;
-    if ((gpu_mode != kGpuModeGuestSwiftshader) || console_vec[instance_index]) {
+    default_enable_virtiofs += comma_str;
+    if (gpu_mode != kGpuModeGuestSwiftshader) {
       // original code, just moved to each instance setting block
       default_enable_sandbox += "false";
+      default_enable_virtiofs += "false";
     } else {
       default_enable_sandbox +=
           fmt::format("{}", enable_sandbox_vec[instance_index]);
+      default_enable_virtiofs +=
+          fmt::format("{}", enable_virtiofs_vec[instance_index]);
     }
     comma_str = ",";
 
@@ -1664,17 +1676,25 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
   SetCommandLineOptionWithMode("enable_sandbox", default_enable_sandbox.c_str(),
                                google::FlagSettingMode::SET_FLAGS_DEFAULT);
 
+  // Set virtiofs to match enable_sandbox as it did before adding
+  // enable_virtiofs flag.
+  SetCommandLineOptionWithMode("enable_virtiofs",
+                               default_enable_sandbox.c_str(),
+                               google::FlagSettingMode::SET_FLAGS_DEFAULT);
+
   // After SetCommandLineOptionWithMode,
   // default flag values changed, need recalculate name_to_default_value
   name_to_default_value = CurrentFlagsToDefaultValue();
   // After last SetCommandLineOptionWithMode, we could set these special flags
   enable_sandbox_vec = CF_EXPECT(GET_FLAG_BOOL_VALUE(
       enable_sandbox));
+  enable_virtiofs_vec = CF_EXPECT(GET_FLAG_BOOL_VALUE(enable_virtiofs));
 
   instance_index = 0;
   for (const auto& num : instance_nums) {
     auto instance = tmp_config_obj.ForInstance(num);
     instance.set_enable_sandbox(enable_sandbox_vec[instance_index]);
+    instance.set_enable_virtiofs(enable_virtiofs_vec[instance_index]);
     instance_index++;
   }
 
@@ -1684,7 +1704,6 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
   CF_EXPECT(CheckSnapshotCompatible(
                 FLAGS_snapshot_compatible &&
                     (tmp_config_obj.vm_manager() == CrosvmManager::name()),
-                environment_specific.enable_wifi(), enable_sandbox_vec,
                 calculated_gpu_mode_vec),
             "The set of flags is incompatible with snapshot");
 
@@ -1805,6 +1824,8 @@ Result<void> SetDefaultFlagsForCrosvm(
   // This is the 1st place to set "enable_sandbox" flag value
   SetCommandLineOptionWithMode("enable_sandbox",
                                default_enable_sandbox_str.c_str(), SET_FLAGS_DEFAULT);
+  SetCommandLineOptionWithMode(
+      "enable_virtiofs", default_enable_sandbox_str.c_str(), SET_FLAGS_DEFAULT);
   return {};
 }
 
