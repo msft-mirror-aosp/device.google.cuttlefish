@@ -47,6 +47,8 @@
 namespace cuttlefish {
 namespace vm_manager {
 
+constexpr auto kTouchpadDefaultPrefix = "Crosvm_Virtio_Multitouch_Touchpad_";
+
 bool CrosvmManager::IsSupported() {
 #ifdef __ANDROID__
   return true;
@@ -204,11 +206,7 @@ Result<VhostUserDeviceCommands> BuildVhostUserGpu(
 
   auto gpu_device_logs_path =
       instance.PerInstanceInternalPath("crosvm_vhost_user_gpu.fifo");
-  auto gpu_device_logs = SharedFD::Fifo(gpu_device_logs_path, 0666);
-  CF_EXPECT(
-      gpu_device_logs->IsOpen(),
-      "Failed to create log fifo for crosvm vhost user gpu's stdout/stderr: "
-          << gpu_device_logs->StrError());
+  auto gpu_device_logs = CF_EXPECT(SharedFD::Fifo(gpu_device_logs_path, 0666));
 
   Command gpu_device_logs_cmd(HostBinaryPath("log_tee"));
   gpu_device_logs_cmd.AddParameter("--process_name=crosvm_gpu");
@@ -501,18 +499,24 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
   }
 
   if (instance.enable_webrtc()) {
-    auto touch_type_parameter =
-        instance.enable_webrtc() ? "--multi-touch=" : "--single-touch=";
+    auto touch_type_parameter = "--multi-touch=";
 
     auto display_configs = instance.display_configs();
     CF_EXPECT(display_configs.size() >= 1);
 
-    for (int i = 0; i < display_configs.size(); ++i) {
-      auto display_config = display_configs[i];
+    int touch_idx = 0;
+    for (auto& display_config : display_configs) {
       crosvm_cmd.Cmd().AddParameter(
-          touch_type_parameter, instance.touch_socket_path(i), ":",
+          touch_type_parameter, instance.touch_socket_path(touch_idx++), ":",
           display_config.width, ":", display_config.height);
-
+    }
+    auto touchpad_configs = instance.touchpad_configs();
+    for (int i = 0; i < touchpad_configs.size(); ++i) {
+      auto touchpad_config = touchpad_configs[i];
+      crosvm_cmd.Cmd().AddParameter(
+          touch_type_parameter, instance.touch_socket_path(touch_idx++), ":",
+          touchpad_config.width, ":", touchpad_config.height, ":",
+          kTouchpadDefaultPrefix, i);
     }
     crosvm_cmd.Cmd().AddParameter("--rotary=",
                                   instance.rotary_socket_path());
@@ -617,10 +621,7 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
   }
 
   auto crosvm_logs_path = instance.PerInstanceInternalPath("crosvm.fifo");
-  auto crosvm_logs = SharedFD::Fifo(crosvm_logs_path, 0666);
-  CF_EXPECT(crosvm_logs->IsOpen(),
-            "Failed to create log fifo for crosvm's stdout/stderr: "
-                << crosvm_logs->StrError());
+  auto crosvm_logs = CF_EXPECT(SharedFD::Fifo(crosvm_logs_path, 0666));
 
   Command crosvm_log_tee_cmd(HostBinaryPath("log_tee"));
   crosvm_log_tee_cmd.AddParameter("--process_name=crosvm");
@@ -751,10 +752,8 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
 
     auto gpu_capture_logs_path =
         instance.PerInstanceInternalPath("gpu_capture.fifo");
-    auto gpu_capture_logs = SharedFD::Fifo(gpu_capture_logs_path, 0666);
-    CF_EXPECT(gpu_capture_logs->IsOpen(),
-              "Failed to create log fifo for gpu capture's stdout/stderr: "
-                  << gpu_capture_logs->StrError());
+    auto gpu_capture_logs =
+        CF_EXPECT(SharedFD::Fifo(gpu_capture_logs_path, 0666));
 
     Command gpu_capture_log_tee_cmd(HostBinaryPath("log_tee"));
     gpu_capture_log_tee_cmd.AddParameter("--process_name=",
