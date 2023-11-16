@@ -20,8 +20,6 @@
 
 #include <map>
 
-#include <fruit/fruit.h>
-
 #include "common/libs/utils/contains.h"
 #include "common/libs/utils/files.h"
 #include "common/libs/utils/result.h"
@@ -78,11 +76,13 @@ Result<HostToolTarget> HostToolTarget::Create(
     command.AddEnvironmentVariable(kAndroidSoongHostOut, artifacts_path);
 
     std::string xml_str;
+    std::string err_out;
     RunWithManagedStdio(std::move(command), nullptr, std::addressof(xml_str),
-                        nullptr);
+                        std::addressof(err_out));
     auto flags_opt = CollectFlagsFromHelpxml(xml_str);
     if (!flags_opt) {
       LOG(ERROR) << bin_path << " --helpxml failed.";
+      LOG(ERROR) << err_out;
       continue;
     }
     auto flags = std::move(*flags_opt);
