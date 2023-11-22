@@ -118,7 +118,6 @@ Result<VersionCommandReport> HandleVersionCommand(
   if (subcmd == "version") {
     auto version_msg = CF_EXPECT(client.HandleVersion());
     std::cout << version_msg;
-    CvdMetrics::SendCvdMetrics(cvd_args);
     return VersionCommandReport::kVersion;
   }
   return VersionCommandReport::kNonVersion;
@@ -159,8 +158,6 @@ Result<ClientCommandCheckResult> HandleClientCommands(
     output.new_all_args = cvd_common::Args{"cvd", "help"};
     return output;
   }
-  // handle the exception for kill-server and reset
-  CvdMetrics::SendCvdMetrics(output.new_all_args);
 
   // Special case for `cvd kill-server`, handled by directly
   // stopping the cvd_server.
