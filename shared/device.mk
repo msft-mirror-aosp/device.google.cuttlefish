@@ -254,6 +254,7 @@ ifeq ($(LOCAL_PREFER_VENDOR_APEX),true)
 PRODUCT_PACKAGES += com.google.cf.input.config
 else
 PRODUCT_COPY_FILES += \
+    device/google/cuttlefish/shared/config/input/Crosvm_Virtio_Multitouch_Touchpad_0.idc:$(TARGET_COPY_OUT_VENDOR)/usr/idc/Crosvm_Virtio_Multitouch_Touchpad_0.idc \
     device/google/cuttlefish/shared/config/input/Crosvm_Virtio_Multitouch_Touchscreen_0.idc:$(TARGET_COPY_OUT_VENDOR)/usr/idc/Crosvm_Virtio_Multitouch_Touchscreen_0.idc \
     device/google/cuttlefish/shared/config/input/Crosvm_Virtio_Multitouch_Touchscreen_1.idc:$(TARGET_COPY_OUT_VENDOR)/usr/idc/Crosvm_Virtio_Multitouch_Touchscreen_1.idc \
     device/google/cuttlefish/shared/config/input/Crosvm_Virtio_Multitouch_Touchscreen_2.idc:$(TARGET_COPY_OUT_VENDOR)/usr/idc/Crosvm_Virtio_Multitouch_Touchscreen_2.idc \
@@ -421,13 +422,17 @@ PRODUCT_PACKAGES += \
 
 # Netlink Interceptor HAL
 PRODUCT_PACKAGES += \
-    android.hardware.net.nlinterceptor-service.default
+    com.android.hardware.net.nlinterceptor
 
 #
 # Lights
 #
+LOCAL_ENABLE_LIGHT ?= true
+ifeq ($(LOCAL_ENABLE_LIGHT),true)
 PRODUCT_PACKAGES += \
     com.google.cf.light \
+
+endif
 
 #
 # KeyMint HAL
@@ -442,6 +447,22 @@ PRODUCT_PACKAGES += \
 # Indicate that KeyMint includes support for the ATTEST_KEY key purpose.
 PRODUCT_COPY_FILES += \
     frameworks/native/data/etc/android.hardware.keystore.app_attest_key.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.keystore.app_attest_key.xml
+
+#
+# Non-secure implementation of AuthGraph HAL for compliance.
+#
+ifeq ($(RELEASE_AIDL_USE_UNFROZEN),true)
+PRODUCT_PACKAGES += \
+    android.hardware.security.authgraph-service.nonsecure
+endif
+
+#
+# Non-secure implementation of Secretkeeper HAL for compliance.
+#
+ifeq ($(RELEASE_AIDL_USE_UNFROZEN),true)
+PRODUCT_PACKAGES += \
+    android.hardware.security.secretkeeper-service.nonsecure
+endif
 
 #
 # Power and PowerStats HALs
@@ -610,8 +631,11 @@ ifeq ($(RELEASE_AIDL_USE_UNFROZEN),true)
 # Thread Network AIDL HAL, simulation CLI and OT daemon controller
 PRODUCT_PACKAGES += \
     com.android.hardware.threadnetwork \
-    ot-cli-ftd \
     ot-ctl
 endif # RELEASE_AIDL_USE_UNFROZEN
 
 PRODUCT_CHECK_VENDOR_SEAPP_VIOLATIONS := true
+
+ifeq ($(RELEASE_DEPRECATE_VNDK),true)
+KEEP_VNDK ?= false
+endif

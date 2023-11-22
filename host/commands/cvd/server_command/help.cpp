@@ -14,15 +14,15 @@
  * limitations under the License.
  */
 
-#include "host/commands/cvd/server.h"
+#include "host/commands/cvd/server_command/help.h"
 
 #include <mutex>
 
 #include "common/libs/fs/shared_buf.h"
 #include "host/commands/cvd/command_sequence.h"
+#include "host/commands/cvd/server.h"
 #include "host/commands/cvd/server_command/utils.h"
 #include "host/commands/cvd/types.h"
-#include "host/libs/config/inject.h"
 
 namespace cuttlefish {
 
@@ -42,10 +42,6 @@ Driver Options:
   -help                  Print this message
   -verbosity=<LEVEL>     Adjust Cvd verbosity level. LEVEL is Android log
                          severity. (Required: cvd >= v1.3)
-  -disable_default_group If the flag is true, the group's runtime files are
-                         not populated under the user's HOME. Instead the
-                         files are created under an automatically-generated
-                         directory. (default: false)
   -acquire_file_lock     If the flag is given, the cvd server attempts to
                          acquire the instance lock file lock. (default: true)
 
@@ -63,6 +59,8 @@ Commands:
   restart                Restart the device without reinitializing the disks
   restart-server         Restart the cvd_server background process.
   status                 Check and print the state of a running instance.
+  env                    Control the environment of running instances like wifi
+                         or geolocation.
   host_bugreport         Capture a host bugreport, including configs, logs, and
                          tombstones.
 
@@ -79,8 +77,7 @@ Experimental:
 
 class CvdHelpHandler : public CvdServerHandler {
  public:
-  INJECT(CvdHelpHandler(CommandSequenceExecutor& executor))
-      : executor_(executor) {}
+  CvdHelpHandler(CommandSequenceExecutor& executor) : executor_(executor) {}
 
   Result<bool> CanHandle(const RequestWithStdio& request) const override {
     auto invocation = ParseInvocation(request.Message());
@@ -163,9 +160,9 @@ cvd::Request CvdHelpHandler::HelpSubcommandToFlag(
   return modified_proto;
 }
 
-fruit::Component<fruit::Required<CommandSequenceExecutor>> CvdHelpComponent() {
-  return fruit::createComponent()
-      .addMultibinding<CvdServerHandler, CvdHelpHandler>();
+std::unique_ptr<CvdServerHandler> NewCvdHelpHandler(
+    CommandSequenceExecutor& executor) {
+  return std::unique_ptr<CvdServerHandler>(new CvdHelpHandler(executor));
 }
 
 }  // namespace cuttlefish
