@@ -44,6 +44,8 @@ class SoftOemLock : public OemLock {
     is_allowed_by_device_ = allowed;
   }
 
+  ~SoftOemLock() = default;
+
  private:
   bool is_allowed_by_carrier_;
   bool is_allowed_by_device_;

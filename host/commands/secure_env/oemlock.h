@@ -32,6 +32,8 @@ class OemLock {
   virtual bool IsOemUnlockAllowedByDevice() const = 0;
   virtual void SetOemUnlockAllowedByCarrier(bool allowed) = 0;
   virtual void SetOemUnlockAllowedByDevice(bool allowed) = 0;
+  virtual ~OemLock() = default;
+
 };
 
 } // namespace oemlock
