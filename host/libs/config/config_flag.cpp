@@ -16,6 +16,7 @@
 
 #include "host/libs/config/config_flag.h"
 
+#include <android-base/file.h>
 #include <android-base/logging.h>
 #include <android-base/strings.h>
 #include <gflags/gflags.h>
