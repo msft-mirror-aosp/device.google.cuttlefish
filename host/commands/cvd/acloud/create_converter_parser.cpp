@@ -154,15 +154,11 @@ Result<Tokens> ParseForCvdCreate(cvd_common::Args& arguments) {
   return result;
 }
 
-Result<Tokens> ParseForCvdrCreate(cvd_common::Args& arguments) {
+Result<Tokens> ParseForCvdRemoteCreate(cvd_common::Args& arguments) {
   std::vector<StringParser> string_parsers = {
       StringParser(kFlagBranch),
       StringParser(kFlagBuildId, "build-id"),
       StringParser(kFlagBuildTarget, "build-target"),
-      StringParser(kFlagBootloaderBuildId, "bootloader-build-id"),
-      StringParser(kFlagBootloaderBuildTarget, "bootloader-build-target"),
-      StringParser(kFlagBootloaderBranch, "bootloader-branch"),
-      StringParser(kFlagLocalImage, true),
   };
 
   std::vector<Flag> parsers;
@@ -222,7 +218,7 @@ Result<ConverterParsed> ParseAcloudCreateFlags(cvd_common::Args& arguments) {
       .bootloader =
           {
               .build_id = tokens.StringVal(kFlagBootloaderBuildId),
-              .build_target = tokens.StringVal(kFlagBuildTarget),
+              .build_target = tokens.StringVal(kFlagBootloaderBuildTarget),
               .branch = tokens.StringVal(kFlagBootloaderBranch),
           },
   };
@@ -233,7 +229,7 @@ Result<cvd_common::Args> CompileFromAcloudToCvdr(cvd_common::Args& arguments) {
   CF_EXPECT(arguments[0] == kAcloudCmdCreate);
   std::string main_cmd = arguments[0];
   arguments.erase(arguments.begin());
-  auto tokens = CF_EXPECT(ParseForCvdrCreate(arguments));
+  auto tokens = CF_EXPECT(ParseForCvdRemoteCreate(arguments));
   CF_EXPECTF(arguments.empty(), "Unrecognized arguments: '{}'",
              fmt::join(arguments, "', '"));
   std::vector<std::string> result{"create"};

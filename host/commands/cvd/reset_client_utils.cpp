@@ -30,13 +30,14 @@
 #include <android-base/parseint.h>
 
 #include "common/libs/utils/contains.h"
+#include "common/libs/utils/environment.h"
 #include "common/libs/utils/files.h"
 #include "common/libs/utils/proc_file_utils.h"
 #include "common/libs/utils/subprocess.h"
 #include "host/commands/cvd/common_utils.h"
 #include "host/commands/cvd/reset_client_utils.h"
 #include "host/commands/cvd/run_server.h"
-#include "host/libs/config/cuttlefish_config.h"
+#include "host/libs/config/config_constants.h"
 
 namespace cuttlefish {
 
@@ -125,6 +126,7 @@ static Command CreateStopCvdCommand(const std::string& stopper_path,
     command.AddParameter(arg);
   }
   for (const auto& [key, value] : envs) {
+    command.UnsetFromEnvironment(key);
     command.AddEnvironmentVariable(key, value);
   }
   return command;
@@ -264,7 +266,7 @@ static bool IsStillRunCvd(const pid_t pid) {
   if (!FileExists(pid_dir)) {
     return false;
   }
-  auto owner_result = OwnerUid(pid_dir);
+  auto owner_result = OwnerUid(pid);
   if (!owner_result.ok() || (getuid() != *owner_result)) {
     return false;
   }

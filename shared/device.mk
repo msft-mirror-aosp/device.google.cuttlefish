@@ -453,7 +453,15 @@ PRODUCT_COPY_FILES += \
 #
 ifeq ($(RELEASE_AIDL_USE_UNFROZEN),true)
 PRODUCT_PACKAGES += \
-    android.hardware.security.authgraph-service.nonsecure
+    com.android.hardware.security.authgraph
+endif
+
+#
+# Non-secure implementation of Secretkeeper HAL for compliance.
+#
+ifeq ($(RELEASE_AIDL_USE_UNFROZEN),true)
+PRODUCT_PACKAGES += \
+    android.hardware.security.secretkeeper-service.nonsecure
 endif
 
 #
@@ -627,6 +635,8 @@ PRODUCT_PACKAGES += \
 endif # RELEASE_AIDL_USE_UNFROZEN
 
 PRODUCT_CHECK_VENDOR_SEAPP_VIOLATIONS := true
+
+PRODUCT_CHECK_DEV_TYPE_VIOLATIONS := true
 
 ifeq ($(RELEASE_DEPRECATE_VNDK),true)
 KEEP_VNDK ?= false
