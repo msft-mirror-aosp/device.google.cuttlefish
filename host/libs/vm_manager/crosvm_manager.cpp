@@ -65,7 +65,7 @@ std::vector<std::string> CrosvmManager::ConfigureGraphics(
   // HALs.
   if (config.gpu_mode() == kGpuModeGuestSwiftshader) {
     return {
-        "androidboot.cpuvulkan.version=" + std::to_string(VK_API_VERSION_1_2),
+        "androidboot.cpuvulkan.version=" + std::to_string(VK_API_VERSION_1_3),
         "androidboot.hardware.gralloc=minigbm",
         "androidboot.hardware.hwcomposer="+ config.hwcomposer(),
         "androidboot.hardware.hwcomposer.display_finder_mode=drm",
