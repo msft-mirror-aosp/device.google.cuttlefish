@@ -304,13 +304,6 @@ PRODUCT_PACKAGES += \
 	android.hardware.ir-service.example \
 	consumerir.default
 
-
-#
-# OemLock aidl HAL
-#
-PRODUCT_PACKAGES += \
-    android.hardware.oemlock-service.example
-
 #
 # Authsecret AIDL HAL
 #
@@ -442,10 +435,21 @@ PRODUCT_PACKAGES += $(LOCAL_DUMPSTATE_PRODUCT_PACKAGE)
 # Gatekeeper
 #
 ifeq ($(LOCAL_GATEKEEPER_PRODUCT_PACKAGE),)
-       LOCAL_GATEKEEPER_PRODUCT_PACKAGE := android.hardware.gatekeeper-service.remote
+    LOCAL_GATEKEEPER_PRODUCT_PACKAGE := android.hardware.gatekeeper-service.remote
 endif
 PRODUCT_PACKAGES += \
     $(LOCAL_GATEKEEPER_PRODUCT_PACKAGE)
+
+#
+# Oemlock
+#
+ifeq ($(LOCAL_OEMLOCK_PRODUCT_PACKAGE),)
+    LOCAL_OEMLOCK_PRODUCT_PACKAGE := android.hardware.oemlock-service.remote
+endif
+PRODUCT_PACKAGES += \
+    $(LOCAL_OEMLOCK_PRODUCT_PACKAGE)
+
+PRODUCT_VENDOR_PROPERTIES += ro.oem_unlock_supported=1
 
 #
 # GPS
@@ -503,12 +507,6 @@ PRODUCT_PACKAGES += \
 #
 ifeq ($(LOCAL_KEYMINT_PRODUCT_PACKAGE),)
     LOCAL_KEYMINT_PRODUCT_PACKAGE := android.hardware.security.keymint-service.rust
-endif
-
-ifeq ($(LOCAL_KEYMINT_PRODUCT_PACKAGE),android.hardware.security.keymint-service.rust)
-    # KeyMint HAL has been overridden to force use of the Rust reference implementation.
-    # Set the build config for secure_env to match.
-    $(call soong_config_set,secure_env,keymint_impl,rust)
 endif
 
 PRODUCT_PACKAGES += \
