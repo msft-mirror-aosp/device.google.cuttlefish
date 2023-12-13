@@ -22,19 +22,17 @@
 #include <atomic>
 #include <cstdint>
 #include <cstdlib>
-#include <fstream>
 #include <iostream>
-#include <map>
 #include <mutex>
 #include <optional>
 #include <regex>
 #include <sstream>
 #include <string>
-#include <thread>
 
 #include <android-base/parseint.h>
 #include <android-base/strings.h>
 
+#include "common/libs/fs/shared_buf.h"
 #include "common/libs/fs/shared_fd.h"
 #include "common/libs/utils/contains.h"
 #include "common/libs/utils/files.h"
@@ -43,6 +41,7 @@
 #include "cvd_server.pb.h"
 #include "host/commands/cvd/command_sequence.h"
 #include "host/commands/cvd/common_utils.h"
+#include "host/commands/cvd/reset_client_utils.h"
 #include "host/commands/cvd/server_command/server_handler.h"
 #include "host/commands/cvd/server_command/subprocess_waiter.h"
 #include "host/commands/cvd/server_command/utils.h"
@@ -105,7 +104,6 @@ class CvdStartCommandHandler : public CvdServerHandler {
   Result<void> UpdateInstanceDatabase(
       const uid_t uid, const selector::GroupCreationInfo& group_creation_info);
   Result<void> FireCommand(Command&& command, const bool wait);
-  bool HasHelpOpts(const cvd_common::Args& args) const;
 
   Result<Command> ConstructCvdNonHelpCommand(
       const std::string& bin_file,
@@ -148,8 +146,8 @@ class CvdStartCommandHandler : public CvdServerHandler {
    * response.
    */
   Result<cvd::Response> PostStartExecutionActions(
-      std::optional<selector::GroupCreationInfo>& group_creation_info,
-      const uid_t uid, const bool is_daemonized);
+      selector::GroupCreationInfo& group_creation_info, const uid_t uid,
+      const bool is_daemonized);
   Result<void> AcloudCompatActions(
       const selector::GroupCreationInfo& group_creation_info,
       const RequestWithStdio& request);
@@ -323,7 +321,7 @@ CvdStartCommandHandler::UpdateInstanceArgsAndEnvs(
       GflagsCompatFlag("num_instances", old_num_instances),
       GflagsCompatFlag("base_instance_num", old_base_instance_num)};
   // discard old ones
-  ParseFlags(instance_id_flags, new_args);
+  CF_EXPECT(ParseFlags(instance_id_flags, new_args));
 
   auto check_flag = [artifacts_path, start_bin,
                      this](const std::string& flag_name) -> Result<void> {
@@ -656,7 +654,7 @@ Result<cvd::Response> CvdStartCommandHandler::Handle(
   // collect group creation infos
   CF_EXPECT(Contains(supported_commands_, subcmd),
             "subcmd should be start but is " << subcmd);
-  const bool is_help = HasHelpOpts(subcmd_args);
+  const bool is_help = CF_EXPECT(IsHelpSubcmd(subcmd_args));
   const bool is_daemon = CF_EXPECT(IsDaemonModeFlag(subcmd_args));
 
   std::optional<selector::GroupCreationInfo> group_creation_info;
@@ -688,7 +686,7 @@ Result<cvd::Response> CvdStartCommandHandler::Handle(
               cvd::WAIT_BEHAVIOR_START);
   }
 
-  FireCommand(std::move(command), /*should_wait*/ true);
+  CF_EXPECT(FireCommand(std::move(command), /*should_wait*/ true));
   interrupt_lock.unlock();
 
   if (is_help) {
@@ -699,7 +697,7 @@ Result<cvd::Response> CvdStartCommandHandler::Handle(
   // For backward compatibility, we add extra symlink in system wide home
   // when HOME is NOT overridden and selector flags are NOT given.
   if (group_creation_info->is_default_group) {
-    CreateSymlinks(*group_creation_info);
+    CF_EXPECT(CreateSymlinks(*group_creation_info));
   }
 
   // make acquire interrupt_lock inside.
@@ -711,16 +709,58 @@ Result<cvd::Response> CvdStartCommandHandler::Handle(
     LOG(ERROR) << "AcloudCompatActions() failed"
                << " but continue as they are minor errors.";
   }
-  return PostStartExecutionActions(group_creation_info, uid, is_daemon);
+  return PostStartExecutionActions(*group_creation_info, uid, is_daemon);
+}
+
+static constexpr char kCollectorFailure[] = R"(
+  Consider running:
+     cvd reset -y
+
+  cvd start failed. While we should collect run_cvd processes to manually
+  clean them up, collecting run_cvd failed.
+)";
+static constexpr char kStopFailure[] = R"(
+  Consider running:
+     cvd reset -y
+
+  cvd start failed, and stopping run_cvd processes failed.
+)";
+static Result<cvd::Response> CvdResetGroup(
+    const selector::GroupCreationInfo& group_creation_info) {
+  auto run_cvd_process_manager = RunCvdProcessManager::Get();
+  if (!run_cvd_process_manager.ok()) {
+    return CommandResponse(cvd::Status::INTERNAL, kCollectorFailure);
+  }
+  // We can't run stop_cvd here. It may hang forever, and doesn't make sense
+  // to interrupt it.
+  const auto& instances = group_creation_info.instances;
+  CF_EXPECT(!instances.empty());
+  const auto& first_instance = instances.front();
+  auto stop_result = run_cvd_process_manager->ForcefullyStopGroup(
+      /* cvd_server_children_only */ true, first_instance.instance_id_);
+  if (!stop_result.ok()) {
+    return CommandResponse(cvd::Status::INTERNAL, kStopFailure);
+  }
+  return CommandResponse(cvd::Status::OK, "");
 }
 
 Result<cvd::Response> CvdStartCommandHandler::PostStartExecutionActions(
-    std::optional<selector::GroupCreationInfo>& group_creation_info,
-    const uid_t uid, const bool is_daemonized) {
+    selector::GroupCreationInfo& group_creation_info, const uid_t uid,
+    const bool is_daemonized) {
   auto infop = CF_EXPECT(subprocess_waiter_.Wait());
   if (infop.si_code != CLD_EXITED || infop.si_status != EXIT_SUCCESS) {
-    // perhaps failed in launch
-    instance_manager_.RemoveInstanceGroup(uid, group_creation_info->home);
+    if (is_daemonized) {
+      // run_cvd processes may be still running in background
+      // the order of the following operations should be kept
+      auto reset_response = CF_EXPECT(CvdResetGroup(group_creation_info));
+      instance_manager_.RemoveInstanceGroup(uid, group_creation_info.home);
+      if (reset_response.status().code() != cvd::Status::OK) {
+        return reset_response;
+      }
+    } else {
+      // run_cvd processes are not running
+      instance_manager_.RemoveInstanceGroup(uid, group_creation_info.home);
+    }
   }
   auto final_response = ResponseFromSiginfo(infop);
   if (!final_response.has_status() ||
@@ -733,11 +773,10 @@ Result<cvd::Response> CvdStartCommandHandler::PostStartExecutionActions(
     // If daemonized, reaching here means the group started successfully
     // As the destructor will release the file lock, the instance lock
     // files must be marked as used
-    MarkLockfilesInUse(*group_creation_info);
+    MarkLockfilesInUse(group_creation_info);
   }
   // group_creation_info is nullopt only if is_help is false
-  return FillOutNewInstanceInfo(std::move(final_response),
-                                *group_creation_info);
+  return FillOutNewInstanceInfo(std::move(final_response), group_creation_info);
 }
 
 Result<void> CvdStartCommandHandler::Interrupt() {
@@ -787,11 +826,6 @@ Result<void> CvdStartCommandHandler::FireCommand(Command&& command,
   }
   CF_EXPECT(subprocess_waiter_.Setup(command.Start(options)));
   return {};
-}
-
-bool CvdStartCommandHandler::HasHelpOpts(
-    const std::vector<std::string>& args) const {
-  return IsHelpSubcmd(args);
 }
 
 std::vector<std::string> CvdStartCommandHandler::CmdList() const {
