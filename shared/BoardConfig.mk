@@ -360,9 +360,6 @@ PRODUCT_COPY_FILES += \
     device/google/cuttlefish/dtb.img:dtb.img \
     device/google/cuttlefish/required_images:required_images \
 
-# Cuttlefish doesn't support ramdump feature yet, exclude the ramdump debug tool.
-EXCLUDE_BUILD_RAMDUMP_UPLOADER_DEBUG_TOOL := true
-
 # GKI-related variables.
 BOARD_USES_GENERIC_KERNEL_IMAGE := true
 ifdef TARGET_DEDICATED_RECOVERY
@@ -426,8 +423,4 @@ endif
 
 ifneq ($(PRODUCT_BUILD_VBMETA_IMAGE), false)
 AB_OTA_PARTITIONS += vbmeta
-endif
-
-ifeq ($(TARGET_ARCH),arm64)
-$(call soong_config_append,cvdhost,vhost_user_vsock_by_default,true)
 endif

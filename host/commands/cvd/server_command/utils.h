@@ -75,6 +75,23 @@ Result<Command> ConstructCvdGenericNonHelpCommand(
     const ConstructNonHelpForm& request_form, const RequestWithStdio& request);
 
 // e.g. cvd start --help, cvd stop --help
-bool IsHelpSubcmd(const std::vector<std::string>& args);
+Result<bool> IsHelpSubcmd(const std::vector<std::string>& args);
+
+// Call this when there is no instance group is running
+// The function does not verify that.
+Result<cvd::Response> NoGroupResponse(const RequestWithStdio& request);
+
+// Call this when there is more than one group, which the selector flags are
+// not sufficients to choose one from. The function does not verify that.
+Result<cvd::Response> NoTTYResponse(const RequestWithStdio& request);
+
+enum class TerminalColors : int {
+  kReset = 0,
+  kBoldRed = 1,
+  kCyan = 2,
+  kRed = 3,
+};
+
+std::string TerminalColor(const bool is_tty, TerminalColors color);
 
 }  // namespace cuttlefish

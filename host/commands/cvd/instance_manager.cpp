@@ -36,6 +36,7 @@
 #include "common/libs/utils/subprocess.h"
 #include "cvd_server.pb.h"
 #include "host/commands/cvd/common_utils.h"
+#include "host/commands/cvd/selector/instance_database_types.h"
 #include "host/commands/cvd/selector/instance_database_utils.h"
 #include "host/commands/cvd/selector/selector_constants.h"
 #include "host/commands/cvd/server_constants.h"
@@ -155,12 +156,12 @@ Result<void> InstanceManager::SetInstanceGroup(
   const auto host_artifacts_path = group_info.host_artifacts_path;
   const auto product_out_path = group_info.product_out_path;
   const auto& per_instance_info = group_info.instances;
-
-  auto new_group = CF_EXPECT(
-      instance_db.AddInstanceGroup({.group_name = group_name,
-                                    .home_dir = home_dir,
-                                    .host_artifacts_path = host_artifacts_path,
-                                    .product_out_path = product_out_path}));
+  auto new_group = CF_EXPECT(instance_db.AddInstanceGroup(
+      {.group_name = group_name,
+       .home_dir = home_dir,
+       .host_artifacts_path = host_artifacts_path,
+       .product_out_path = product_out_path,
+       .start_time = selector::CvdServerClock::now()}));
 
   using InstanceInfo = selector::InstanceDatabase::InstanceInfo;
   std::vector<InstanceInfo> instances_info;
@@ -349,7 +350,7 @@ Result<InstanceManager::LocalInstanceGroup> InstanceManager::FindGroup(
   return *(output.begin());
 }
 
-std::vector<std::string> InstanceManager::AllGroupNames(const uid_t uid) const {
+std::vector<std::string> InstanceManager::AllGroupNames(uid_t uid) const {
   std::lock_guard lock(instance_db_mutex_);
   if (!Contains(instance_dbs_, uid)) {
     return {};
@@ -362,6 +363,36 @@ std::vector<std::string> InstanceManager::AllGroupNames(const uid_t uid) const {
     group_names.push_back(group->GroupName());
   }
   return group_names;
+}
+
+Result<InstanceManager::UserGroupSelectionSummary>
+InstanceManager::GroupSummaryMenu(uid_t uid) const {
+  std::lock_guard lock(instance_db_mutex_);
+  CF_EXPECT(Contains(instance_dbs_, uid));
+  const auto& db = instance_dbs_.at(uid);
+
+  UserGroupSelectionSummary summary;
+
+  // List of Cuttlefish Instance Groups:
+  //   [i] : group_name (created: TIME)
+  //      <a> instance0.device_name() (id: instance_id)
+  //      <b> instance1.device_name() (id: instance_id)
+  std::stringstream ss;
+  ss << "List of Cuttlefish Instance Groups:" << std::endl;
+  int group_idx = 0;
+  for (const auto& group : db.InstanceGroups()) {
+    fmt::print(ss, "  [{}] : {} (created: {})\n", group_idx, group->GroupName(),
+               selector::Format(group->StartTime()));
+    summary.idx_to_group_name[group_idx] = group->GroupName();
+    char instance_idx = 'a';
+    for (const auto& instance : CF_EXPECT(group->FindAllInstances())) {
+      fmt::print(ss, "    <{}> {} (id : {})\n", instance_idx++,
+                 instance.Get().DeviceName(), instance.Get().InstanceId());
+    }
+    group_idx++;
+  }
+  summary.menu = ss.str();
+  return summary;
 }
 
 }  // namespace cuttlefish
