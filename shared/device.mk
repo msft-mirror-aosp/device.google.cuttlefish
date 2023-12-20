@@ -180,13 +180,7 @@ PRODUCT_PACKAGES += \
     hidl_lazy_cb_test_server
 
 # Runtime Resource Overlays
-ifneq ($(LOCAL_PREFER_VENDOR_APEX),true)
-PRODUCT_PACKAGES += \
-    cuttlefish_overlay_connectivity \
-    cuttlefish_overlay_frameworks_base_core \
-    cuttlefish_overlay_settings_provider
-
-endif
+PRODUCT_PACKAGES += com.google.aosp_cf.rros
 
 #
 # Satellite vendor service for CF
@@ -310,6 +304,7 @@ LOCAL_AUDIO_PRODUCT_PACKAGE := \
     libpreprocessingaidl \
     libpresetreverbsw \
     libreverbaidl \
+    libspatializersw \
     libtinyxml2 \
     libvirtualizersw \
     libvisualizeraidl \
@@ -623,3 +618,5 @@ PRODUCT_CHECK_DEV_TYPE_VIOLATIONS := true
 ifeq ($(RELEASE_DEPRECATE_VNDK),true)
 KEEP_VNDK ?= false
 endif
+
+TARGET_BOARD_FASTBOOT_INFO_FILE = device/google/cuttlefish/shared/fastboot-info.txt
