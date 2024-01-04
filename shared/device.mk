@@ -176,8 +176,6 @@ PRODUCT_PACKAGES += \
 PRODUCT_PACKAGES += \
     aidl_lazy_test_server \
     aidl_lazy_cb_test_server \
-    hidl_lazy_test_server \
-    hidl_lazy_cb_test_server
 
 # Runtime Resource Overlays
 PRODUCT_PACKAGES += com.google.aosp_cf.rros
@@ -227,7 +225,6 @@ PRODUCT_COPY_FILES += \
     frameworks/av/services/audiopolicy/config/r_submix_audio_policy_configuration.xml:$(TARGET_COPY_OUT_VENDOR)/etc/r_submix_audio_policy_configuration.xml \
     frameworks/av/services/audiopolicy/config/surround_sound_configuration_5_0.xml:$(TARGET_COPY_OUT_VENDOR)/etc/surround_sound_configuration_5_0.xml \
     frameworks/av/services/audiopolicy/config/usb_audio_policy_configuration.xml:$(TARGET_COPY_OUT_VENDOR)/etc/usb_audio_policy_configuration.xml \
-    frameworks/native/data/etc/android.hardware.audio.low_latency.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.audio.low_latency.xml \
     frameworks/native/data/etc/android.hardware.ethernet.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.ethernet.xml \
     frameworks/native/data/etc/android.hardware.usb.accessory.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.usb.accessory.xml \
     frameworks/native/data/etc/android.hardware.usb.host.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.usb.host.xml \
@@ -276,18 +273,8 @@ PRODUCT_PACKAGES += \
 PRODUCT_PACKAGES += \
     com.android.hardware.authsecret
 
-#
-# Audio HAL
-# Note: aidl services are loaded, however they are not fully functional yet,
-#       and are not used by the framework, only by VTS tests.
-#
 ifndef LOCAL_AUDIO_PRODUCT_PACKAGE
 LOCAL_AUDIO_PRODUCT_PACKAGE := \
-    android.hardware.audio.service \
-    android.hardware.audio@7.1-impl.ranchu \
-    android.hardware.audio.effect@7.0-impl \
-    android.hardware.audio.service-aidl.example \
-    android.hardware.audio.effect.service-aidl.example \
     libaecsw \
     libagc1sw \
     libagc2sw \
@@ -309,8 +296,21 @@ LOCAL_AUDIO_PRODUCT_PACKAGE := \
     libvirtualizersw \
     libvisualizeraidl \
     libvolumesw
+#
+# Still use HIDL Audio HAL on 'next'
+#
+ifeq ($(RELEASE_AIDL_USE_UNFROZEN),true)
+LOCAL_AUDIO_PRODUCT_PACKAGE += \
+    android.hardware.audio.service-aidl.example \
+    android.hardware.audio.effect.service-aidl.example
+else
+LOCAL_AUDIO_PRODUCT_PACKAGE += \
+    android.hardware.audio.service \
+    android.hardware.audio@7.1-impl.ranchu \
+    android.hardware.audio.effect@7.0-impl
 DEVICE_MANIFEST_FILE += \
     device/google/cuttlefish/guest/hals/audio/effects/manifest.xml
+endif
 endif
 
 ifndef LOCAL_AUDIO_PRODUCT_COPY_FILES
