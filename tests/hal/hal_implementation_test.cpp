@@ -57,10 +57,12 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hardware.audio@4.0",
     "android.hardware.audio@5.0",
     "android.hardware.audio@6.0",
+    "android.hardware.audio@7.1", // converted to AIDL, see b/264712385
     "android.hardware.audio.effect@2.0",
     "android.hardware.audio.effect@4.0",
     "android.hardware.audio.effect@5.0",
     "android.hardware.audio.effect@6.0",
+    "android.hardware.audio.effect@7.0", // converted to AIDL, see b/264712385
     "android.hardware.authsecret@1.0", // converted to AIDL, see b/182976659
     "android.hardware.automotive.audiocontrol@1.0",
     "android.hardware.automotive.audiocontrol@2.0",
@@ -140,6 +142,7 @@ static const std::set<std::string> kKnownMissingHidl = {
     "android.hidl.base@1.0",
     "android.hidl.memory.token@1.0",
     "android.hidl.memory@1.0", // Deprecated (see b/205764958)
+    "android.hidl.token@1.0", // deprecated (see b/218588089)
     "android.system.net.netd@1.1", // Converted to AIDL (see b/205764585)
     "android.system.suspend@1.0", // Converted to AIDL (see b/170260236)
     "android.system.wifi.keystore@1.0", // Converted to AIDL (see b/205764502)
