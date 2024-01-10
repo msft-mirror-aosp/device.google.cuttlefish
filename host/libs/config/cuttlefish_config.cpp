@@ -458,23 +458,6 @@ std::vector<std::string> CuttlefishConfig::extra_kernel_cmdline() const {
   return cmdline;
 }
 
-static constexpr char kExtraBootconfigArgs[] = "extra_bootconfig_args";
-void CuttlefishConfig::set_extra_bootconfig_args(
-    const std::string& extra_bootconfig_args) {
-  Json::Value args_json_obj(Json::arrayValue);
-  for (const auto& arg : android::base::Split(extra_bootconfig_args, " ")) {
-    args_json_obj.append(arg);
-  }
-  (*dictionary_)[kExtraBootconfigArgs] = args_json_obj;
-}
-std::vector<std::string> CuttlefishConfig::extra_bootconfig_args() const {
-  std::vector<std::string> bootconfig;
-  for (const Json::Value& arg : (*dictionary_)[kExtraBootconfigArgs]) {
-    bootconfig.push_back(arg.asString());
-  }
-  return bootconfig;
-}
-
 static constexpr char kVirtioMac80211Hwsim[] = "virtio_mac80211_hwsim";
 void CuttlefishConfig::set_virtio_mac80211_hwsim(bool virtio_mac80211_hwsim) {
   (*dictionary_)[kVirtioMac80211Hwsim] = virtio_mac80211_hwsim;
@@ -554,6 +537,23 @@ std::string CuttlefishConfig::snapshot_path() const {
 }
 void CuttlefishConfig::set_snapshot_path(const std::string& snapshot_path) {
   (*dictionary_)[kSnapshotPath] = snapshot_path;
+}
+
+static constexpr char kStracedExecutables[] = "straced_host_executables";
+void CuttlefishConfig::set_straced_host_executables(
+    const std::set<std::string>& straced_host_executables) {
+  Json::Value args_json_obj(Json::arrayValue);
+  for (const auto& arg : straced_host_executables) {
+    args_json_obj.append(arg);
+  }
+  (*dictionary_)[kStracedExecutables] = args_json_obj;
+}
+std::set<std::string> CuttlefishConfig::straced_host_executables() const {
+  std::set<std::string> straced_host_executables;
+  for (const Json::Value& arg : (*dictionary_)[kStracedExecutables]) {
+    straced_host_executables.insert(arg.asString());
+  }
+  return straced_host_executables;
 }
 
 /*static*/ CuttlefishConfig* CuttlefishConfig::BuildConfigImpl(
