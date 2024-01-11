@@ -629,6 +629,11 @@ Result<std::vector<GuestConfig>> ReadGuestConfig() {
     auto res = GetAndroidInfoConfig(instance_android_info_txt, "gfxstream");
     guest_config.gfxstream_supported =
         res.ok() && res.value() == "supported";
+
+    auto res_vhost_user_vsock =
+        GetAndroidInfoConfig(instance_android_info_txt, "vhost_user_vsock");
+    guest_config.vhost_user_vsock = res_vhost_user_vsock.value_or("") == "true";
+
     guest_configs.push_back(guest_config);
   }
   return guest_configs;
@@ -1297,9 +1302,12 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
 
     if (vhost_user_vsock_vec[instance_index] == kVhostUserVsockModeAuto) {
       std::set<Arch> default_on_arch = {Arch::Arm64};
-      if (tmp_config_obj.vm_manager() == CrosvmManager::name() &&
-          default_on_arch.find(guest_configs[instance_index].target_arch) !=
-              default_on_arch.end()) {
+      if (guest_configs[instance_index].vhost_user_vsock) {
+        instance.set_vhost_user_vsock(true);
+      } else if (tmp_config_obj.vm_manager() == CrosvmManager::name() &&
+                 default_on_arch.find(
+                     guest_configs[instance_index].target_arch) !=
+                     default_on_arch.end()) {
         instance.set_vhost_user_vsock(true);
       } else {
         instance.set_vhost_user_vsock(false);
@@ -1628,6 +1636,9 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     instance.set_start_casimir(is_first_instance && FLAGS_casimir_instance_num <= 0);
 
     instance.set_start_pica(is_first_instance && FLAGS_pica_instance_num <= 0);
+
+    // TODO(b/288987294) Remove this when separating environment is done
+    instance.set_start_wmediumd_instance(is_first_instance && start_wmediumd);
 
     if (!FLAGS_ap_rootfs_image.empty() && !FLAGS_ap_kernel_image.empty() && start_wmediumd) {
       // TODO(264537774): Ubuntu grub modules / grub monoliths cannot be used to boot
