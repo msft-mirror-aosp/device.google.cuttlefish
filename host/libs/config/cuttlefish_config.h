@@ -129,6 +129,9 @@ class CuttlefishConfig {
   void set_enable_host_uwb(bool enable_host_uwb);
   bool enable_host_uwb() const;
 
+  void set_enable_host_uwb_connector(bool enable_host_uwb);
+  bool enable_host_uwb_connector() const;
+
   void set_enable_host_bluetooth(bool enable_host_bluetooth);
   bool enable_host_bluetooth() const;
 
@@ -973,5 +976,7 @@ extern const char* const kHwComposerRanchu;
 extern const char* const kHwComposerNone;
 }  // namespace cuttlefish
 
+#if FMT_VERSION >= 90000
 template <>
 struct fmt::formatter<cuttlefish::ExternalNetworkMode> : ostream_formatter {};
+#endif
