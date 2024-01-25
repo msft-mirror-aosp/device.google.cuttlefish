@@ -84,6 +84,9 @@ PRODUCT_PRODUCT_PROPERTIES += \
     ro.debuggable=1
 endif
 
+# Use AIDL for media.c2 HAL
+PRODUCT_VENDOR_PROPERTIES += media.c2.hal.selection=aidl
+
 # Explanation of specific properties:
 #   ro.hardware.keystore_desede=true needed for CtsKeystoreTestCases
 PRODUCT_VENDOR_PROPERTIES += \
@@ -235,7 +238,6 @@ PRODUCT_COPY_FILES += \
     frameworks/native/data/etc/android.software.credentials.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.credentials.xml \
     frameworks/native/data/etc/android.software.ipsec_tunnels.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.ipsec_tunnels.xml \
     frameworks/native/data/etc/android.software.verified_boot.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.verified_boot.xml \
-    hardware/interfaces/audio/aidl/default/audio_effects_config.xml:$(TARGET_COPY_OUT_VENDOR)/etc/audio_effects_config.xml \
 
 #
 # Device input config
@@ -274,35 +276,12 @@ PRODUCT_PACKAGES += \
     com.android.hardware.authsecret
 
 ifndef LOCAL_AUDIO_PRODUCT_PACKAGE
-LOCAL_AUDIO_PRODUCT_PACKAGE := \
-    libaecsw \
-    libagc1sw \
-    libagc2sw \
-    libbassboostsw \
-    libbundleaidl \
-    libdownmixaidl \
-    libdynamicsprocessingaidl \
-    libenvreverbsw \
-    libequalizersw \
-    libextensioneffect \
-    libhapticgeneratoraidl \
-    libloudnessenhanceraidl \
-    libnssw \
-    libpreprocessingaidl \
-    libpresetreverbsw \
-    libreverbaidl \
-    libspatializersw \
-    libtinyxml2 \
-    libvirtualizersw \
-    libvisualizeraidl \
-    libvolumesw
 #
 # Still use HIDL Audio HAL on 'next'
 #
 ifeq ($(RELEASE_AIDL_USE_UNFROZEN),true)
 LOCAL_AUDIO_PRODUCT_PACKAGE += \
-    android.hardware.audio.service-aidl.example \
-    android.hardware.audio.effect.service-aidl.example
+    com.android.hardware.audio
 else
 LOCAL_AUDIO_PRODUCT_PACKAGE += \
     android.hardware.audio.service \
@@ -320,8 +299,7 @@ LOCAL_AUDIO_PRODUCT_COPY_FILES := \
     frameworks/av/services/audiopolicy/config/r_submix_audio_policy_configuration.xml:$(TARGET_COPY_OUT_VENDOR)/etc/r_submix_audio_policy_configuration.xml \
     frameworks/av/services/audiopolicy/config/audio_policy_volumes.xml:$(TARGET_COPY_OUT_VENDOR)/etc/audio_policy_volumes.xml \
     frameworks/av/services/audiopolicy/config/default_volume_tables.xml:$(TARGET_COPY_OUT_VENDOR)/etc/default_volume_tables.xml \
-    frameworks/av/media/libeffects/data/audio_effects.xml:$(TARGET_COPY_OUT_VENDOR)/etc/audio_effects.xml \
-    hardware/interfaces/audio/aidl/default/audio_effects_config.xml:$(TARGET_COPY_OUT_VENDOR)/etc/audio_effects_config.xml
+    frameworks/av/media/libeffects/data/audio_effects.xml:$(TARGET_COPY_OUT_VENDOR)/etc/audio_effects.xml
 endif
 
 PRODUCT_PACKAGES += $(LOCAL_AUDIO_PRODUCT_PACKAGE)
@@ -344,8 +322,13 @@ PRODUCT_PACKAGES += $(LOCAL_CONTEXTHUB_PRODUCT_PACKAGE)
 #
 # Drm HAL
 #
+ifeq ($(TARGET_USE_LAZY_CLEARKEY),true)
+PRODUCT_PACKAGES += \
+    android.hardware.drm-service-lazy.clearkey
+else
 PRODUCT_PACKAGES += \
     android.hardware.drm@latest-service.clearkey
+endif
 
 -include vendor/widevine/libwvdrmengine/apex/device/device.mk
 
@@ -614,9 +597,5 @@ endif # RELEASE_AIDL_USE_UNFROZEN
 PRODUCT_CHECK_VENDOR_SEAPP_VIOLATIONS := true
 
 PRODUCT_CHECK_DEV_TYPE_VIOLATIONS := true
-
-ifeq ($(RELEASE_DEPRECATE_VNDK),true)
-KEEP_VNDK ?= false
-endif
 
 TARGET_BOARD_FASTBOOT_INFO_FILE = device/google/cuttlefish/shared/fastboot-info.txt

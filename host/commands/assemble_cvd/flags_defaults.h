@@ -157,6 +157,7 @@
 // Default network handler
 #define CF_DEFAULTS_NETSIM false
 #define CF_DEFAULTS_NETSIM_BT true
+#define CF_DEFAULTS_NETSIM_UWB false
 
 // Netsim default parameters
 #define CF_DEFAULTS_NETSIM_ARGS ""
@@ -226,3 +227,9 @@
 
 // MCU emulator default configuration path
 #define CF_DEFAULTS_MCU_CONFIG_PATH CF_DEFAULTS_DYNAMIC_STRING
+
+// Which executables to run under strace by default
+#define CF_DEFAULTS_STRACED_HOST_EXECUTABLES ""
+
+// Whether to use sandbox2 to lock down host processes where policies exist
+#define CF_DEFAULTS_HOST_SANDBOX false

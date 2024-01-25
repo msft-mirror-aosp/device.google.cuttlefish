@@ -14,7 +14,20 @@
  * limitations under the License.
  */
 
-#pragma GCC system_header
+#pragma once
 
-#include <google/protobuf/duration.pb.h>
-#include <internal_user_log.pb.h>
+#include <string>
+
+namespace cuttlefish {
+
+/**
+ * Allows for the serialization of
+ * aidl::android::hardware::radio::network::CellularIdentifierDisclosure objects
+ * into an AT command that can be processed by the cuttlefish RIL to trigger
+ * unsolicited calls to
+ * aidl::android::hardware::radio::network::IRadioNetworkIndication::cellularIdentifierDisclosed.
+ */
+std::string GetATCommand(const std::string &plmn, int32_t identifierType,
+                         int32_t protocolMessage, bool isEmergency);
+
+}  // namespace cuttlefish
