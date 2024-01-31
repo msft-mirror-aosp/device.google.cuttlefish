@@ -58,7 +58,8 @@ TARGET_VULKAN_SUPPORT ?= true
 
 # Enable Virtual A/B
 $(call inherit-product, $(SRC_TARGET_DIR)/product/virtual_ab_ota/android_t_baseline.mk)
-PRODUCT_VIRTUAL_AB_COMPRESSION_METHOD := gz
+PRODUCT_VIRTUAL_AB_COMPRESSION_METHOD := lz4
+PRODUCT_VIRTUAL_AB_COW_VERSION := 3
 
 PRODUCT_VENDOR_PROPERTIES += ro.virtual_ab.compression.threads=true
 PRODUCT_VENDOR_PROPERTIES += ro.virtual_ab.batch_writes=true
@@ -322,8 +323,13 @@ PRODUCT_PACKAGES += $(LOCAL_CONTEXTHUB_PRODUCT_PACKAGE)
 #
 # Drm HAL
 #
+ifeq ($(TARGET_USE_LAZY_CLEARKEY),true)
+PRODUCT_PACKAGES += \
+    android.hardware.drm-service-lazy.clearkey
+else
 PRODUCT_PACKAGES += \
     android.hardware.drm@latest-service.clearkey
+endif
 
 -include vendor/widevine/libwvdrmengine/apex/device/device.mk
 
@@ -585,8 +591,7 @@ PRODUCT_COPY_FILES += \
 ifeq ($(RELEASE_AIDL_USE_UNFROZEN),true)
 # Thread Network AIDL HAL, simulation CLI and OT daemon controller
 PRODUCT_PACKAGES += \
-    com.android.hardware.threadnetwork \
-    ot-ctl
+    com.android.hardware.threadnetwork
 endif # RELEASE_AIDL_USE_UNFROZEN
 
 PRODUCT_CHECK_VENDOR_SEAPP_VIOLATIONS := true
