@@ -17,6 +17,7 @@
 function createDataChannel(pc, label, onMessage) {
   console.debug('creating data channel: ' + label);
   let dataChannel = pc.createDataChannel(label);
+  dataChannel.binaryType = "arraybuffer";
   // Return an object with a send function like that of the dataChannel, but
   // that only actually sends over the data channel once it has connected.
   return {
@@ -287,16 +288,16 @@ class DeviceConnection {
 
   // TODO (b/124121375): This should probably be an array of pointer events and
   // have different properties.
-  sendMultiTouch({idArr, xArr, yArr, down, slotArr, device_label}) {
-    this.#sendJsonInput({
-      type: 'multi-touch',
-      id: idArr,
-      x: xArr,
-      y: yArr,
-      down: down ? 1 : 0,
-      slot: slotArr,
-      device_label: device_label,
-    });
+  sendMultiTouch({idArr, xArr, yArr, down, device_label}) {
+    let events = {
+            type: 'multi-touch',
+            id: idArr,
+            x: xArr,
+            y: yArr,
+            down: down ? 1 : 0,
+            device_label: device_label,
+          };
+    this.#sendJsonInput(events);
   }
 
   sendKeyEvent(code, type) {
@@ -618,7 +619,12 @@ class Controller {
     // connection, while #onOffer may be called more than once due to
     // renegotiations.
     this.#pc.addEventListener('icecandidate', evt => {
-      if (evt.candidate) this.#sendIceCandidate(evt.candidate);
+      // The last candidate is null, which indicates the end of ICE gathering.
+      // Firefox's second to last candidate has the candidate property set to
+      // empty, skip that one.
+      if (evt.candidate && evt.candidate.candidate) {
+        this.#sendIceCandidate(evt.candidate);
+      }
     });
     return this.#onReadyToNegotiate(_ => {
       this.#serverConnector.sendToDevice(

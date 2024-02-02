@@ -87,6 +87,8 @@ class Streamer {
                                         bool touch_enabled);
   bool RemoveDisplay(const std::string& label);
 
+  bool AddTouchpad(const std::string& label, int width, int height);
+
   void SetHardwareSpec(std::string key, std::string value);
 
   template <typename V>
@@ -101,7 +103,8 @@ class Streamer {
   // stream here.
   std::shared_ptr<AudioSource> GetAudioSource();
 
-  CameraController* AddCamera(unsigned int port, unsigned int cid);
+  CameraController* AddCamera(unsigned int port, unsigned int cid,
+                              bool vhost_user);
 
   // Add a custom button to the control panel.
   void AddCustomControlPanelButton(const std::string& command,

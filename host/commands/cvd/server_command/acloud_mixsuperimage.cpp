@@ -242,17 +242,16 @@ class AcloudMixSuperImageCommand : public CvdServerHandler {
 
     TemporaryFile new_misc_info;
     std::string new_misc_info_path = new_misc_info.path;
-    _RewriteMiscInfo(new_misc_info_path, misc_info_path, lpmake_binary,
-                     get_image);
+    CF_EXPECT(_RewriteMiscInfo(new_misc_info_path, misc_info_path,
+                               lpmake_binary, get_image));
 
     Command command(build_super_image_binary);
     command.AddParameter(new_misc_info_path);
     command.AddParameter(output_path);
-    SubprocessOptions options;
-    auto subprocess = command.Start(options);
+    auto subprocess = command.Start();
     CF_EXPECT(subprocess.Started());
     CF_EXPECT(waiter_.Setup(std::move(subprocess)));
-    callback_unlock();
+    CF_EXPECT(callback_unlock());
     CF_EXPECT(waiter_.Wait());
     return {};
   }

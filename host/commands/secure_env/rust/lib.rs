@@ -20,7 +20,7 @@ extern crate alloc;
 use kmr_common::crypto;
 use kmr_crypto_boring::{
     aes::BoringAes, aes_cmac::BoringAesCmac, des::BoringDes, ec::BoringEc, eq::BoringEq,
-    hmac::BoringHmac, rng::BoringRng, rsa::BoringRsa,
+    hmac::BoringHmac, rng::BoringRng, rsa::BoringRsa, sha256::BoringSha256,
 };
 use kmr_ta::device::{
     BootloaderDone, CsrSigningAlgorithm, Implementation, TrustedPresenceUnsupported,
@@ -115,6 +115,7 @@ pub unsafe fn ta_main(
         ec: Box::new(ec),
         ckdf: Box::new(BoringAesCmac),
         hkdf,
+        sha256: Box::new(BoringSha256),
     };
 
     let sign_info = attest::CertSignInfo::new();
@@ -154,8 +155,8 @@ pub unsafe fn ta_main(
         // processing only `infile` until it is empty so that there is no pending state when we
         // suspend the loop.
         let mut fd_set = nix::sys::select::FdSet::new();
-        fd_set.insert(infile.as_raw_fd());
-        fd_set.insert(snapshot_socket.as_raw_fd());
+        fd_set.insert(&infile);
+        fd_set.insert(&snapshot_socket);
         if let Err(e) = nix::sys::select::select(
             None,
             /*readfds=*/ Some(&mut fd_set),
@@ -167,7 +168,7 @@ pub unsafe fn ta_main(
             return;
         }
 
-        if fd_set.contains(infile.as_raw_fd()) {
+        if fd_set.contains(&infile) {
             // Read a request message from the pipe, as a 4-byte BE length followed by the message.
             let mut req_len_data = [0u8; 4];
             if let Err(e) = infile.read_exact(&mut req_len_data) {
@@ -218,7 +219,7 @@ pub unsafe fn ta_main(
             continue;
         }
 
-        if fd_set.contains(snapshot_socket.as_raw_fd()) {
+        if fd_set.contains(&snapshot_socket) {
             // Read suspend request.
             let mut suspend_request = 0u8;
             if let Err(e) = snapshot_socket.read_exact(std::slice::from_mut(&mut suspend_request)) {

@@ -140,6 +140,7 @@ fruit::Component<> runCvdComponent(
       .install(FastbootConfigFragmentComponent)
       .install(bootStateMachineComponent)
       .install(AutoCmd<CasimirControlServer>::Component)
+      .install(AutoCmd<ScreenRecordingServer>::Component)
       .install(ConfigFlagPlaceholder)
       .install(CustomActionsComponent)
       .install(LaunchAdbComponent)
@@ -149,6 +150,7 @@ fruit::Component<> runCvdComponent(
       .install(AutoCmd<UwbConnector>::Component)
       .install(AutoCmd<ConsoleForwarder>::Component)
       .install(AutoDiagnostic<ConsoleInfo>::Component)
+      .install(VhostDeviceVsockComponent)
       .install(ControlEnvProxyServerComponent)
       .install(AutoCmd<EchoServer>::Component)
       .install(AutoCmd<GnssGrpcProxyServer>::Component)
@@ -158,6 +160,7 @@ fruit::Component<> runCvdComponent(
       .install(AutoCmd<MetricsService>::Component)
       .install(OpenwrtControlServerComponent)
       .install(AutoCmd<Pica>::Component)
+      .install(McuComponent)
       .install(RootCanalComponent)
       .install(AutoCmd<Casimir>::Component)
       .install(NetsimServerComponent)
@@ -251,7 +254,9 @@ Result<void> RunCvdMain(int argc, char** argv) {
     CF_EXPECT(late_injected->LateInject(injector));
   }
 
-  MetricsReceiver::LogMetricsVMStart();
+  if (config->enable_metrics() == cuttlefish::CuttlefishConfig::Answer::kYes) {
+    MetricsReceiver::LogMetricsVMStart();
+  }
 
   auto instance_bindings = injector.getMultibindings<InstanceLifecycle>();
   CF_EXPECT(instance_bindings.size() == 1);

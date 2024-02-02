@@ -39,6 +39,8 @@ class InstanceDatabase {
   using ConstInstanceHandler = ConstHandler<LocalInstance>;
 
  public:
+  static constexpr const char kJsonGroups[] = "Groups";
+
   InstanceDatabase();
   bool IsEmpty() const;
 
@@ -47,6 +49,7 @@ class InstanceDatabase {
     std::string home_dir;
     std::string host_artifacts_path;
     std::string product_out_path;
+    TimeStamp start_time;
   };
   /** Adds instance group.
    *
@@ -105,22 +108,51 @@ class InstanceDatabase {
   template <typename T>
   Result<Set<ConstRef<T>>> Find(
       const Query& query,
-      const Map<FieldName, ConstHandler<T>>& handler_map) const;
+      const Map<FieldName, ConstHandler<T>>& handler_map) const {
+  static_assert(std::is_same<T, LocalInstance>::value ||
+                std::is_same<T, LocalInstanceGroup>::value);
+  const auto& [key, value] = query;
+  auto itr = handler_map.find(key);
+  if (itr == handler_map.end()) {
+    return CF_ERR("Handler does not exist for query " << key);
+  }
+  return (itr->second)(value);
+}
 
   template <typename T>
   Result<Set<ConstRef<T>>> Find(
       const Queries& queries,
-      const Map<FieldName, ConstHandler<T>>& handler_map) const;
+      const Map<FieldName, ConstHandler<T>>& handler_map) const {
+  static_assert(std::is_same<T, LocalInstance>::value ||
+                std::is_same<T, LocalInstanceGroup>::value);
+  if (queries.empty()) {
+    return CF_ERR("Queries must not be empty");
+  }
+  auto first_set = CF_EXPECT(Find<T>(queries[0], handler_map));
+  for (int i = 1; i < queries.size(); i++) {
+    auto subset = CF_EXPECT(Find<T>(queries[i], handler_map));
+    first_set = Intersection(first_set, subset);
+  }
+  return {first_set};
+}
 
   template <typename T>
   Result<ConstRef<T>> FindOne(
       const Query& query,
-      const Map<FieldName, ConstHandler<T>>& handler_map) const;
+      const Map<FieldName, ConstHandler<T>>& handler_map) const {
+  auto set = CF_EXPECT(Find<T>(query, handler_map));
+  CF_EXPECT_EQ(set.size(), 1, "Only one Instance (Group) is allowed.");
+  return {*set.cbegin()};
+}
 
   template <typename T>
   Result<ConstRef<T>> FindOne(
       const Queries& queries,
-      const Map<FieldName, ConstHandler<T>>& handler_map) const;
+      const Map<FieldName, ConstHandler<T>>& handler_map) const {
+  auto set = CF_EXPECT(Find<T>(queries, handler_map));
+  CF_EXPECT_EQ(set.size(), 1, "Only one Instance (Group) is allowed.");
+  return {*set.cbegin()};
+}
 
   std::vector<std::unique_ptr<LocalInstanceGroup>>::iterator FindIterator(
       const LocalInstanceGroup& group);
@@ -149,8 +181,6 @@ class InstanceDatabase {
   std::vector<std::unique_ptr<LocalInstanceGroup>> local_instance_groups_;
   Map<FieldName, ConstGroupHandler> group_handlers_;
   Map<FieldName, ConstInstanceHandler> instance_handlers_;
-
-  static constexpr const char kJsonGroups[] = "Groups";
 };
 
 }  // namespace selector

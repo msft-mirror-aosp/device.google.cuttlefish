@@ -129,6 +129,9 @@ class CuttlefishConfig {
   void set_enable_host_uwb(bool enable_host_uwb);
   bool enable_host_uwb() const;
 
+  void set_enable_host_uwb_connector(bool enable_host_uwb);
+  bool enable_host_uwb_connector() const;
+
   void set_enable_host_bluetooth(bool enable_host_bluetooth);
   bool enable_host_bluetooth() const;
 
@@ -193,9 +196,6 @@ class CuttlefishConfig {
 
   void set_extra_kernel_cmdline(const std::string& extra_cmdline);
   std::vector<std::string> extra_kernel_cmdline() const;
-
-  void set_extra_bootconfig_args(const std::string& extra_bootconfig_args);
-  std::vector<std::string> extra_bootconfig_args() const;
 
   // A directory containing the SSL certificates for the signaling server
   void set_webrtc_certs_dir(const std::string& certs_dir);
@@ -262,6 +262,12 @@ class CuttlefishConfig {
   // path to the saved snapshot file(s)
   std::string snapshot_path() const;
   void set_snapshot_path(const std::string& snapshot_path);
+
+  std::set<std::string> straced_host_executables() const;
+  void set_straced_host_executables(const std::set<std::string>& executables);
+
+  bool host_sandbox() const;
+  void set_host_sandbox(bool host_sandbox);
 
   bool IsCrosvm() const;
 
@@ -390,6 +396,7 @@ class CuttlefishConfig {
     std::string gnss_out_pipe_name() const;
 
     std::string logcat_pipe_name() const;
+    std::string restore_pipe_name() const;
 
     std::string launcher_log_path() const;
 
@@ -415,13 +422,22 @@ class CuttlefishConfig {
 
     std::string esp_image_path() const;
 
+    std::string chromeos_state_image() const;
+
     std::string otheros_esp_grub_config() const;
 
     std::string ap_esp_grub_config() const;
 
     std::string audio_server_path() const;
 
-    enum class BootFlow { Android, AndroidEfiLoader, Linux, Fuchsia };
+    enum class BootFlow {
+      Android,
+      AndroidEfiLoader,
+      ChromeOs,
+      ChromeOsDisk,
+      Linux,
+      Fuchsia
+    };
 
     BootFlow boot_flow() const;
 
@@ -454,6 +470,12 @@ class CuttlefishConfig {
 
     // Whether this instance should start a netsim instance
     bool start_netsim() const;
+
+    // TODO(b/288987294) Remove this when separating environment is done
+    // Whether this instance should start a wmediumd instance
+    bool start_wmediumd_instance() const;
+
+    const Json::Value& mcu() const;
 
     enum class APBootFlow {
       // Not starting AP at all (for example not the 1st instance)
@@ -541,6 +563,7 @@ class CuttlefishConfig {
     bool enable_audio() const;
     bool enable_gnss_grpc_proxy() const;
     bool enable_bootanimation() const;
+    std::vector<std::string> extra_bootconfig_args() const;
     bool record_screen() const;
     std::string gem5_debug_file() const;
     bool protected_vm() const;
@@ -550,6 +573,7 @@ class CuttlefishConfig {
     // Kernel and bootloader logging
     bool enable_kernel_log() const;
     bool vhost_net() const;
+    bool vhost_user_vsock() const;
 
     // The dns address of mobile network (RIL)
     std::string ril_dns() const;
@@ -578,6 +602,7 @@ class CuttlefishConfig {
     std::string gpu_angle_feature_overrides_enabled() const;
     std::string gpu_angle_feature_overrides_disabled() const;
     std::string gpu_capture_binary() const;
+    std::string gpu_gfxstream_transport() const;
 
     std::string gpu_vhost_user_mode() const;
 
@@ -617,6 +642,11 @@ class CuttlefishConfig {
 
     // android efi loader flow
     std::string android_efi_loader() const;
+
+    // chromeos artifacts for otheros flow
+    std::string chromeos_disk() const;
+    std::string chromeos_kernel_path() const;
+    std::string chromeos_root_image() const;
 
     // linux artifacts for otheros flow
     std::string linux_kernel_path() const;
@@ -693,6 +723,9 @@ class CuttlefishConfig {
     void set_start_casimir(bool start);
     void set_start_pica(bool start);
     void set_start_netsim(bool start);
+    // TODO(b/288987294) Remove this when separating environment is done
+    void set_start_wmediumd_instance(bool start);
+    void set_mcu(const Json::Value &v);
     void set_ap_boot_flow(InstanceSpecific::APBootFlow flow);
     void set_crosvm_use_balloon(const bool use_balloon);
     void set_crosvm_use_rng(const bool use_rng);
@@ -732,6 +765,7 @@ class CuttlefishConfig {
     void set_enable_audio(bool enable);
     void set_enable_gnss_grpc_proxy(const bool enable_gnss_grpc_proxy);
     void set_enable_bootanimation(const bool enable_bootanimation);
+    void set_extra_bootconfig_args(const std::string& extra_bootconfig_args);
     void set_record_screen(bool record_screen);
     void set_gem5_debug_file(const std::string& gem5_debug_file);
     void set_protected_vm(bool protected_vm);
@@ -757,6 +791,7 @@ class CuttlefishConfig {
     void set_qemu_binary_dir(const std::string& qemu_binary_dir);
 
     void set_vhost_net(bool vhost_net);
+    void set_vhost_user_vsock(bool vhost_user_vsock);
 
     // The dns address of mobile network (RIL)
     void set_ril_dns(const std::string& ril_dns);
@@ -771,6 +806,7 @@ class CuttlefishConfig {
     void set_gpu_angle_feature_overrides_enabled(const std::string& overrides);
     void set_gpu_angle_feature_overrides_disabled(const std::string& overrides);
     void set_gpu_capture_binary(const std::string&);
+    void set_gpu_gfxstream_transport(const std::string& transport);
     void set_enable_gpu_udmabuf(const bool enable_gpu_udmabuf);
     void set_enable_gpu_vhost_user(const bool enable_gpu_vhost_user);
     void set_enable_gpu_external_blob(const bool enable_gpu_external_blob);
@@ -805,6 +841,9 @@ class CuttlefishConfig {
     void set_system_target_zip(const std::string& system_target_zip);
     void set_otheros_esp_image(const std::string& otheros_esp_image);
     void set_android_efi_loader(const std::string& android_efi_loader);
+    void set_chromeos_disk(const std::string& chromeos_disk);
+    void set_chromeos_kernel_path(const std::string& linux_kernel_path);
+    void set_chromeos_root_image(const std::string& linux_root_image);
     void set_linux_kernel_path(const std::string& linux_kernel_path);
     void set_linux_initramfs_path(const std::string& linux_initramfs_path);
     void set_linux_root_image(const std::string& linux_root_image);
@@ -911,6 +950,11 @@ class CuttlefishConfig {
   CuttlefishConfig& operator=(const CuttlefishConfig&) = delete;
 };
 
+// Vhost-user-vsock modes
+extern const char* const kVhostUserVsockModeAuto;
+extern const char* const kVhostUserVsockModeTrue;
+extern const char* const kVhostUserVsockModeFalse;
+
 // GPU modes
 extern const char* const kGpuModeAuto;
 extern const char* const kGpuModeDrmVirgl;
@@ -931,3 +975,8 @@ extern const char* const kHwComposerDrm;
 extern const char* const kHwComposerRanchu;
 extern const char* const kHwComposerNone;
 }  // namespace cuttlefish
+
+#if FMT_VERSION >= 90000
+template <>
+struct fmt::formatter<cuttlefish::ExternalNetworkMode> : ostream_formatter {};
+#endif

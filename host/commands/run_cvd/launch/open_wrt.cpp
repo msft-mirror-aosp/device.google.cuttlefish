@@ -62,6 +62,10 @@ class OpenWrt : public CommandSource {
       return wmediumd_server_.WaitForAvailability();
     });
 
+    /* TODO(b/305102099): Due to hostapd issue of OpenWRT 22.03.X versions,
+     * OpenWRT instance should be rebooted.
+     */
+    LOG(DEBUG) << "Restart OpenWRT due to hostapd issue";
     ap_cmd.ApplyProcessRestarter(instance_.crosvm_binary(),
                                  /*first_time_argument=*/"",
                                  kOpenwrtVmResetExitCode);
@@ -74,7 +78,7 @@ class OpenWrt : public CommandSource {
     ap_cmd.Cmd().AddParameter("--core-scheduling=false");
 
     if (!environment_.vhost_user_mac80211_hwsim().empty()) {
-      ap_cmd.Cmd().AddParameter("--vhost-user-mac80211-hwsim=",
+      ap_cmd.Cmd().AddParameter("--vhost-user=mac80211-hwsim,socket=",
                                 environment_.vhost_user_mac80211_hwsim());
     }
     SharedFD wifi_tap;

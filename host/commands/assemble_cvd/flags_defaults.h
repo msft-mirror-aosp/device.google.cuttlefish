@@ -39,9 +39,10 @@
 #define CF_DEFAULTS_DISPLAYS_TEXTPROTO ""
 #define CF_DEFAULTS_CPUS 2
 #define CF_DEFAULTS_RESUME true
-#define CF_DEFAULTS_DAEMON true
+#define CF_DEFAULTS_DAEMON false
 #define CF_DEFAULTS_VM_MANAGER CF_DEFAULTS_DYNAMIC_STRING
 #define CF_DEFAULTS_VSOCK_GUEST_CID cuttlefish::GetDefaultVsockCid()
+#define CF_DEFAULTS_VHOST_USER_VSOCK cuttlefish::kVhostUserVsockModeAuto
 #define CF_DEFAULTS_ENABLE_MINIMAL_MODE false
 #define CF_DEFAULTS_RESTART_SUBPROCESSES false
 #define CF_DEFAULTS_SETUPWIZARD_MODE "DISABLED"
@@ -67,7 +68,7 @@
 #define CF_DEFAULTS_ENABLE_VIRTIOFS false
 
 // Qemu default parameters
-#define CF_DEFAULTS_QEMU_BINARY_DIR "/usr/bin"
+#define CF_DEFAULTS_QEMU_BINARY_DIR cuttlefish::DefaultQemuBinaryDir()
 
 // Gem5 default parameters
 #define CF_DEFAULTS_GEM5_BINARY_DIR HostBinaryPath("gem5")
@@ -108,6 +109,9 @@
 #define CF_DEFAULTS_DATA_IMAGE CF_DEFAULTS_DYNAMIC_STRING
 #define CF_DEFAULTS_INIT_BOOT_IMAGE CF_DEFAULTS_DYNAMIC_STRING
 #define CF_DEFAULTS_ANDROID_EFI_LOADER CF_DEFAULTS_DYNAMIC_STRING
+#define CF_DEFAULTS_CHROMEOS_DISK ""
+#define CF_DEFAULTS_CHROMEOS_KERNEL_PATH ""
+#define CF_DEFAULTS_CHROMEOS_ROOT_IMAGE ""
 #define CF_DEFAULTS_LINUX_INITRAMFS_PATH CF_DEFAULTS_DYNAMIC_STRING
 #define CF_DEFAULTS_LINUX_KERNEL_PATH CF_DEFAULTS_DYNAMIC_STRING
 #define CF_DEFAULTS_LINUX_ROOT_IMAGE CF_DEFAULTS_DYNAMIC_STRING
@@ -126,7 +130,7 @@
 
 // Policy default parameters
 #define CF_DEFAULTS_DATA_POLICY "use_existing"
-#define CF_DEFAULTS_USERDATA_FORMAT "f2fs"
+#define CF_DEFAULTS_USERDATA_FORMAT USERDATA_FILE_SYSTEM_TYPE
 #define CF_DEFAULTS_BLANK_DATA_IMAGE_MB CF_DEFAULTS_DYNAMIC_INT
 
 // Graphics default parameters
@@ -153,6 +157,7 @@
 // Default network handler
 #define CF_DEFAULTS_NETSIM false
 #define CF_DEFAULTS_NETSIM_BT true
+#define CF_DEFAULTS_NETSIM_UWB false
 
 // Netsim default parameters
 #define CF_DEFAULTS_NETSIM_ARGS ""
@@ -219,3 +224,12 @@
 // Metrics default parameters
 // TODO: Defined twice , please remove redundant definitions
 #define CF_DEFAULTS_REPORT_ANONYMOUS_USAGE_STATS CF_DEFAULTS_DYNAMIC_STRING
+
+// MCU emulator default configuration path
+#define CF_DEFAULTS_MCU_CONFIG_PATH CF_DEFAULTS_DYNAMIC_STRING
+
+// Which executables to run under strace by default
+#define CF_DEFAULTS_STRACED_HOST_EXECUTABLES ""
+
+// Whether to use sandbox2 to lock down host processes where policies exist
+#define CF_DEFAULTS_HOST_SANDBOX false

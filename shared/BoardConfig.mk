@@ -225,6 +225,7 @@ TARGET_USERIMAGES_SPARSE_F2FS_DISABLED ?= false
 # enough space for other cases (such as remount, etc)
 BOARD_USERDATAIMAGE_PARTITION_SIZE := $(TARGET_USERDATAIMAGE_PARTITION_SIZE)
 BOARD_USERDATAIMAGE_FILE_SYSTEM_TYPE := $(TARGET_USERDATAIMAGE_FILE_SYSTEM_TYPE)
+$(call soong_config_append,cvdhost,default_userdata_fs_type,$(TARGET_USERDATAIMAGE_FILE_SYSTEM_TYPE))
 ifeq ($(TARGET_USERDATAIMAGE_FILE_SYSTEM_TYPE),f2fs)
 TARGET_USERIMAGES_USE_F2FS := true
 endif
@@ -359,9 +360,6 @@ BOARD_MKBOOTIMG_INIT_ARGS += --header_version $(BOARD_INIT_BOOT_HEADER_VERSION)
 PRODUCT_COPY_FILES += \
     device/google/cuttlefish/dtb.img:dtb.img \
     device/google/cuttlefish/required_images:required_images \
-
-# Cuttlefish doesn't support ramdump feature yet, exclude the ramdump debug tool.
-EXCLUDE_BUILD_RAMDUMP_UPLOADER_DEBUG_TOOL := true
 
 # GKI-related variables.
 BOARD_USES_GENERIC_KERNEL_IMAGE := true

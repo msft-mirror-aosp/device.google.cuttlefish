@@ -54,8 +54,8 @@ Result<SharedFD> TcpServer::Start() {
     last_error = server->GetErrno();
 
     LOG(INFO) << "Failed to start TCP server on port: " << port_
-              << " after " << i + 1 << "th attempt (going to have "
-              << retries_count_ << " total attempts" << "). Error: " << last_error;
+              << " after attempt #" << i + 1 << " (going to have "
+              << retries_count_ << " total attempts). Error: " << last_error;
 
     std::this_thread::sleep_for(retries_delay_);
   }
@@ -68,14 +68,13 @@ std::string TcpServer::Describe() const {
   return fmt::format("tcp: {}", port_);
 }
 
-VsockServer::VsockServer(int port) : port_(port) {}
+VsockServer::VsockServer(int port, std::optional<int> vhost_user_vsock_cid)
+    : port_(port), vhost_user_vsock_cid_(vhost_user_vsock_cid) {}
 
-// Intended to run in the guest
 Result<SharedFD> VsockServer::Start() {
   SharedFD server;
-
   do {
-    server = SharedFD::VsockServer(port_, SOCK_STREAM);
+    server = SharedFD::VsockServer(port_, SOCK_STREAM, vhost_user_vsock_cid_);
     if (!server->IsOpen() && !socketErrorIsRecoverable(server->GetErrno())) {
       LOG(ERROR) << "Could not open vsock socket: " << server->StrError();
       // socket_vsock_proxy will now wait forever in the guest on encountering an
@@ -106,4 +105,4 @@ std::string DupServer::Describe() const {
 }
 
 }
-}
+}  // namespace cuttlefish

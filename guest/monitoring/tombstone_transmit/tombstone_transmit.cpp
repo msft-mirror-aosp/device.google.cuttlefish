@@ -23,6 +23,7 @@
 #include <sys/inotify.h>
 #include <unistd.h>
 #include <fstream>
+#include <regex>
 
 #include <cutils/properties.h>
 #include <gflags/gflags.h>
@@ -44,7 +45,7 @@ static int new_tombstone_creation_complete_notifier(void) {
   }
 
   int watch_descriptor = inotify_add_watch(file_close_notification_handle,
-                                           TOMBSTONE_DIR, IN_CLOSE_WRITE);
+                                           TOMBSTONE_DIR, IN_CREATE);
   if (watch_descriptor == -1) {
     ALOGE("%s: Could not add watch for '%s', error: '%s' (%d)", __FUNCTION__,
       TOMBSTONE_DIR, strerror(errno), errno);
@@ -65,8 +66,8 @@ DEFINE_bool(remove_tombstones_after_transmitting, false,
 #define TOMBSTONE_BUFFER_SIZE (1024)
 
 static void tombstone_send_to_host(const std::string& ts_path) {
-  auto log_fd =
-      cuttlefish::SharedFD::VsockClient(FLAGS_cid, FLAGS_port, SOCK_STREAM);
+  auto log_fd = cuttlefish::SharedFD::VsockClient(
+      FLAGS_cid, FLAGS_port, SOCK_STREAM, false /* it's guest */);
   std::ifstream ifs(ts_path);
   char buffer[TOMBSTONE_BUFFER_SIZE];
   size_t num_transfers = 0;
@@ -115,11 +116,14 @@ int main(int argc, char** argv) {
   property_set("tombstone_transmit.init_done", "true");
 #endif
 
+  std::regex re(R"(tombstone_\d+(\.pb)?)");
   while (true) {
     std::vector<std::string> ts_names = cuttlefish::GetFileListFromInotifyFd(
-        tombstone_create_notification_handle, IN_CLOSE_WRITE);
+        tombstone_create_notification_handle, IN_CREATE);
     for (auto& ts_name : ts_names) {
-      tombstone_send_to_host(std::string(TOMBSTONE_DIR) + ts_name);
+      if (regex_match(ts_name, re)) {
+        tombstone_send_to_host(std::string(TOMBSTONE_DIR) + ts_name);
+      }
     }
   }
 

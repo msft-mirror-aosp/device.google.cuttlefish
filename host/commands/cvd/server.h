@@ -31,12 +31,13 @@
 #include "common/libs/utils/unix_sockets.h"
 #include "host/commands/cvd/command_sequence.h"
 #include "host/commands/cvd/epoll_loop.h"
+#include "host/commands/cvd/instance_lock.h"
 #include "host/commands/cvd/instance_manager.h"
 #include "host/commands/cvd/logger.h"
 // including "server_command/subcmd.h" causes cyclic dependency
 #include "host/commands/cvd/server_command/host_tool_target_manager.h"
 #include "host/commands/cvd/server_command/server_handler.h"
-#include "host/libs/web/build_api.h"
+#include "host/libs/web/android_build_api.h"
 
 namespace cuttlefish {
 
@@ -64,8 +65,8 @@ class CvdServer {
   friend Result<int> CvdServerMain(ServerMainParam&& fds);
 
  public:
-  CvdServer(BuildApi&, EpollPool&, InstanceManager&, HostToolTargetManager&,
-            ServerLogger&);
+  CvdServer(BuildApi&, EpollPool&, InstanceLockFileManager&, InstanceManager&,
+            HostToolTargetManager&, ServerLogger&);
   ~CvdServer();
 
   Result<void> StartServer(SharedFD server);
@@ -76,7 +77,7 @@ class CvdServer {
         in_memory_data_fd;  // fd to carry over in-memory data
     bool verbose;
   };
-  Result<void> Exec(const ExecParam&);
+  Result<void> Exec(ExecParam&&);
   Result<void> AcceptCarryoverClient(SharedFD client);
   void Stop();
   void Join();
@@ -97,6 +98,7 @@ class CvdServer {
   SharedFD server_fd_;
   BuildApi& build_api_;
   EpollPool& epoll_pool_;
+  InstanceLockFileManager& instance_lockfile_manager_;
   InstanceManager& instance_manager_;
   HostToolTargetManager& host_tool_target_manager_;
   ServerLogger& server_logger_;

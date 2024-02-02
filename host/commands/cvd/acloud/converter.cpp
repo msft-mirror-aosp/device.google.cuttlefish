@@ -89,7 +89,8 @@ static Result<BranchBuildTargetInfo> GetDefaultBranchBuildTarget(
     .stdin_ = nullptr,
     .callback_ = callback_unlock
   };
-  RunOutput output_repo = CF_EXPECT(waiter.RunWithManagedStdioInterruptable(param_repo));
+  RunOutput output_repo =
+      CF_EXPECT(waiter.RunWithManagedStdioInterruptable(std::move(param_repo)));
 
   Command git_cmd("git");
   git_cmd.AddParameter("remote");
@@ -103,8 +104,9 @@ static Result<BranchBuildTargetInfo> GetDefaultBranchBuildTarget(
     .stdin_ = nullptr,
     .callback_ = callback_unlock
   };
-  callback_lock();
-  RunOutput output_git = CF_EXPECT(waiter.RunWithManagedStdioInterruptable(param_git));
+  CF_EXPECT(callback_lock());
+  RunOutput output_git =
+      CF_EXPECT(waiter.RunWithManagedStdioInterruptable(std::move(param_git)));
 
   output_git.stdout_.erase(std::remove(
       output_git.stdout_.begin(), output_git.stdout_.end(), '\n'), output_git.stdout_.cend());
@@ -150,7 +152,8 @@ Result<std::vector<std::string>> BashTokenize(
     .stdin_ = nullptr,
     .callback_ = callback_unlock
   };
-  RunOutput output_bash = CF_EXPECT(waiter.RunWithManagedStdioInterruptable(param_bash));
+  RunOutput output_bash =
+      CF_EXPECT(waiter.RunWithManagedStdioInterruptable(std::move(param_bash)));
   return android::base::Split(output_bash.stdout_, "\n");
 }
 
@@ -628,14 +631,14 @@ Result<ConvertedAcloudCreateCommand> ConvertAcloudCreate(
   }
 
   if (launch_args) {
-    callback_lock();
+    CF_EXPECT(callback_lock());
     for (const auto& arg : CF_EXPECT(BashTokenize(
              *launch_args, waiter, callback_unlock))) {
       start_command.add_args(arg);
     }
   }
   if (acloud_config.launch_args != "") {
-    callback_lock();
+    CF_EXPECT(callback_lock());
     for (const auto& arg : CF_EXPECT(BashTokenize(
              acloud_config.launch_args, waiter, callback_unlock))) {
       start_command.add_args(arg);

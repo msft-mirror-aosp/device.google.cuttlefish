@@ -97,9 +97,12 @@ CrosvmManager::ConfigureGraphics(
         instance.gpu_mode() == kGpuModeGfxstreamGuestAngleHostSwiftShader;
 
     const std::string gles_impl = uses_angle ? "angle" : "emulation";
-    const std::string gltransport =
-        (instance.guest_android_version() == "11.0.0") ? "virtio-gpu-pipe"
-                                                       : "virtio-gpu-asg";
+
+    const std::string gfxstream_transport = instance.gpu_gfxstream_transport();
+    CF_EXPECT(gfxstream_transport == "virtio-gpu-asg" ||
+                  gfxstream_transport == "virtio-gpu-pipe",
+              "Invalid Gfxstream transport option: \"" << gfxstream_transport
+                                                       << "\"");
 
     bootconfig_args = {
         {"androidboot.cpuvulkan.version", "0"},
@@ -108,7 +111,7 @@ CrosvmManager::ConfigureGraphics(
         {"androidboot.hardware.hwcomposer.display_finder_mode", "drm"},
         {"androidboot.hardware.egl", gles_impl},
         {"androidboot.hardware.vulkan", "ranchu"},
-        {"androidboot.hardware.gltransport", gltransport},
+        {"androidboot.hardware.gltransport", gfxstream_transport},
         {"androidboot.opengles.version", "196609"},  // OpenGL ES 3.1
     };
   } else if (instance.gpu_mode() == kGpuModeNone) {
@@ -236,8 +239,12 @@ Result<VhostUserDeviceCommands> BuildVhostUserGpu(
           gpu_mode == kGpuModeGfxstreamGuestAngleHostSwiftShader,
       "GPU mode " << gpu_mode << " not yet supported with vhost user gpu.");
 
+  const std::string gpu_pci_address =
+      fmt::format("00:{:0>2x}.0", VmManager::kGpuPciSlotNum);
+
   // Why does this need JSON instead of just following the normal flags style...
   Json::Value gpu_params_json;
+  gpu_params_json["pci-address"] = gpu_pci_address;
   if (gpu_mode == kGpuModeGfxstream) {
     gpu_params_json["context-types"] = "gfxstream-gles:gfxstream-vulkan";
     gpu_params_json["egl"] = true;
@@ -297,7 +304,9 @@ Result<VhostUserDeviceCommands> BuildVhostUserGpu(
 
   // Connect device to main crosvm:
   gpu_device_cmd.AddParameter("--socket=", gpu_device_socket_path);
-  main_crosvm_cmd->AddParameter("--vhost-user-gpu=", gpu_device_socket_path);
+  main_crosvm_cmd->AddParameter(
+      "--vhost-user=gpu,pci-address=", gpu_pci_address,
+      ",socket=", gpu_device_socket_path);
 
   gpu_device_cmd.AddParameter("--params");
   gpu_device_cmd.AddParameter(ToSingleLineString(gpu_params_json));
@@ -334,7 +343,9 @@ Result<void> ConfigureGpu(const CuttlefishConfig& config, Command* crosvm_cmd) {
   const std::string gpu_udmabuf_string =
       instance.enable_gpu_udmabuf() ? ",udmabuf=true" : "";
 
-  const std::string gpu_common_string = gpu_udmabuf_string + gpu_pci_bar_size;
+  const std::string gpu_common_string =
+      fmt::format(",pci-address=00:{:0>2x}.0", VmManager::kGpuPciSlotNum) +
+      gpu_udmabuf_string + gpu_pci_bar_size;
   const std::string gpu_common_3d_string =
       gpu_common_string + ",egl=true,surfaceless=true,glx=false" + gles_string;
 
@@ -440,7 +451,7 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
 
   if (config.virtio_mac80211_hwsim() &&
       !environment.vhost_user_mac80211_hwsim().empty()) {
-    crosvm_cmd.Cmd().AddParameter("--vhost-user-mac80211-hwsim=",
+    crosvm_cmd.Cmd().AddParameter("--vhost-user=mac80211-hwsim,socket=",
                                   environment.vhost_user_mac80211_hwsim());
   }
 
@@ -499,7 +510,13 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
   }
 
   if (instance.enable_webrtc()) {
-    auto touch_type_parameter = "--multi-touch=";
+    bool is_chromeos =
+        instance.boot_flow() ==
+            CuttlefishConfig::InstanceSpecific::BootFlow::ChromeOs ||
+        instance.boot_flow() ==
+            CuttlefishConfig::InstanceSpecific::BootFlow::ChromeOsDisk;
+    auto touch_type_parameter =
+        is_chromeos ? "--single-touch=" : "--multi-touch=";
 
     auto display_configs = instance.display_configs();
     CF_EXPECT(display_configs.size() >= 1);
@@ -507,16 +524,20 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
     int touch_idx = 0;
     for (auto& display_config : display_configs) {
       crosvm_cmd.Cmd().AddParameter(
-          touch_type_parameter, instance.touch_socket_path(touch_idx++), ":",
-          display_config.width, ":", display_config.height);
+          touch_type_parameter,
+          "path=", instance.touch_socket_path(touch_idx++),
+          ",width=", display_config.width,
+          ",height=", display_config.height);
     }
     auto touchpad_configs = instance.touchpad_configs();
     for (int i = 0; i < touchpad_configs.size(); ++i) {
       auto touchpad_config = touchpad_configs[i];
       crosvm_cmd.Cmd().AddParameter(
-          touch_type_parameter, instance.touch_socket_path(touch_idx++), ":",
-          touchpad_config.width, ":", touchpad_config.height, ":",
-          kTouchpadDefaultPrefix, i);
+          touch_type_parameter,
+          "path=", instance.touch_socket_path(touch_idx++),
+          ",width=", touchpad_config.width,
+          ",height=", touchpad_config.height,
+          ",name=", kTouchpadDefaultPrefix, i);
     }
     crosvm_cmd.Cmd().AddParameter("--rotary=",
                                   instance.rotary_socket_path());
@@ -569,7 +590,14 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
   }
 
   if (instance.vsock_guest_cid() >= 2) {
-    crosvm_cmd.Cmd().AddParameter("--cid=", instance.vsock_guest_cid());
+    if (instance.vhost_user_vsock()) {
+      auto param =
+          fmt::format("/tmp/vsock_{}_{}/vhost.socket,max-queue-size=256",
+                      instance.vsock_guest_cid(), std::to_string(getuid()));
+      crosvm_cmd.Cmd().AddParameter("--vhost-user=vsock,socket=", param);
+    } else {
+      crosvm_cmd.Cmd().AddParameter("--cid=", instance.vsock_guest_cid());
+    }
   }
 
   // /dev/hvc0 = kernel console
@@ -708,10 +736,29 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
     crosvm_cmd.AddHvcSink();
   }
 
+
   // /dev/hvc13 = sensors
   crosvm_cmd.AddHvcReadWrite(
       instance.PerInstanceInternalPath("sensors_fifo_vm.out"),
       instance.PerInstanceInternalPath("sensors_fifo_vm.in"));
+
+  // /dev/hvc14 = MCU CONTROL
+  if (instance.mcu()["control"]["type"].asString() == "serial") {
+    auto path = instance.PerInstanceInternalPath("mcu");
+    path += "/" + instance.mcu()["control"]["path"].asString();
+    crosvm_cmd.AddHvcReadWrite(path, path);
+  } else {
+    crosvm_cmd.AddHvcSink();
+  }
+
+  // /dev/hvc15 = MCU UART
+  if (instance.mcu()["uart0"]["type"].asString() == "serial") {
+    auto path = instance.PerInstanceInternalPath("mcu");
+    path += "/" + instance.mcu()["uart0"]["path"].asString();
+    crosvm_cmd.AddHvcReadWrite(path, path);
+  } else {
+    crosvm_cmd.AddHvcSink();
+  }
 
   for (auto i = 0; i < VmManager::kMaxDisks - disk_num; i++) {
     crosvm_cmd.AddHvcSink();

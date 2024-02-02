@@ -88,11 +88,9 @@ Result<std::pair<int, int>> GetQemuVersion(const std::string& qemu_binary) {
   std::string qemu_version_input, qemu_version_output, qemu_version_error;
   cuttlefish::SubprocessOptions options;
   options.Verbose(false);
-  int qemu_version_ret =
-      cuttlefish::RunWithManagedStdio(std::move(qemu_version_cmd),
-                                      &qemu_version_input,
-                                      &qemu_version_output,
-                                      &qemu_version_error, options);
+  int qemu_version_ret = cuttlefish::RunWithManagedStdio(
+      std::move(qemu_version_cmd), &qemu_version_input, &qemu_version_output,
+      &qemu_version_error, std::move(options));
   CF_EXPECT(qemu_version_ret == 0,
             qemu_binary << " -version returned unexpected response "
                         << qemu_version_output << ". Stderr was "
@@ -315,6 +313,18 @@ Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
                           ".0,chardev=hvc", hvc_num);
     hvc_num++;
   };
+  auto add_hvc_serial = [&qemu_cmd, &hvc_num](const std::string& prefix) {
+    qemu_cmd.AddParameter("-chardev");
+    qemu_cmd.AddParameter("serial,id=hvc", hvc_num, ",path=", prefix);
+    qemu_cmd.AddParameter("-device");
+    qemu_cmd.AddParameter(
+        "virtio-serial-pci-non-transitional,max_ports=1,id=virtio-serial",
+        hvc_num, ",bus=hvc-bridge,addr=", fmt::format("{:0>2x}", hvc_num + 1));
+    qemu_cmd.AddParameter("-device");
+    qemu_cmd.AddParameter("virtconsole,bus=virtio-serial", hvc_num,
+                          ".0,chardev=hvc", hvc_num);
+    hvc_num++;
+  };
 
   bool is_arm = arch_ == Arch::Arm || arch_ == Arch::Arm64;
   bool is_x86 = arch_ == Arch::X86 || arch_ == Arch::X86_64;
@@ -477,9 +487,10 @@ Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
       }
     }
 
-    qemu_cmd.AddParameter(gpu_device, ",id=gpu0",
-                          ",xres=", display_config.width,
-                          ",yres=", display_config.height);
+    qemu_cmd.AddParameter(
+        gpu_device, ",id=gpu0",
+        fmt::format(",addr={:0>2x}.0", VmManager::kGpuPciSlotNum),
+        ",xres=", display_config.width, ",yres=", display_config.height);
   }
 
   if (!instance.console()) {
@@ -597,6 +608,24 @@ Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
   // which is not created w/ QEMU.
   // /dev/hvc13 = sensors
   add_hvc_sink();
+
+  // /dev/hvc14 = MCU CONTROL
+  if (instance.mcu()["control"]["type"].asString() == "serial") {
+    auto path = instance.PerInstanceInternalPath("mcu");
+    path += "/" + instance.mcu()["control"]["path"].asString();
+    add_hvc_serial(path);
+  } else {
+    add_hvc_sink();
+  }
+
+  // /dev/hvc15 = MCU UART
+  if (instance.mcu()["uart0"]["type"].asString() == "serial") {
+    auto path = instance.PerInstanceInternalPath("mcu");
+    path += "/" + instance.mcu()["uart0"]["path"].asString();
+    add_hvc_serial(path);
+  } else {
+    add_hvc_sink();
+  }
 
   auto disk_num = instance.virtual_disk_paths().size();
 

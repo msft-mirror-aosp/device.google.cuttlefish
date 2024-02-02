@@ -220,6 +220,9 @@ class DeviceControlApp {
         'rotation-modal-button', 'rotation-modal',
         'rotation-modal-close');
     createModalButton(
+      'touchpad-modal-button', 'touchpad-modal',
+      'touchpad-modal-close');
+    createModalButton(
         'bluetooth-modal-button', 'bluetooth-prompt', 'bluetooth-prompt-close');
     createModalButton(
         'bluetooth-prompt-wizard', 'bluetooth-wizard', 'bluetooth-wizard-close',
@@ -444,7 +447,7 @@ class DeviceControlApp {
     deviceConnection.sendLocationMessage(location_msg);
   }
 
-  #onSensorsMessage(message) {
+  async #onSensorsMessage(message) {
     var decoder = new TextDecoder("utf-8");
     message = decoder.decode(message.data);
 
@@ -623,26 +626,14 @@ class DeviceControlApp {
     }
 
     document.querySelectorAll('.device-display-video').forEach((v, i) => {
-      const stream = v.srcObject;
-      if (stream == null) {
-        console.error('Missing corresponding device display video stream', l);
+      const width = v.videoWidth;
+      const height = v.videoHeight;
+      if (!width  || !height) {
+        console.error('Stream dimensions not yet available?', v);
         return;
       }
 
-      const streamVideoTracks = stream.getVideoTracks();
-      if (streamVideoTracks == null || streamVideoTracks.length == 0) {
-        return;
-      }
-
-      const streamSettings = stream.getVideoTracks()[0].getSettings();
-      const streamWidth = streamSettings.width;
-      const streamHeight = streamSettings.height;
-      if (streamWidth == 0 || streamHeight == 0) {
-        console.error('Stream dimensions not yet available?', stream);
-        return;
-      }
-
-      const aspectRatio = streamWidth / streamHeight;
+      const aspectRatio = width / height;
 
       let keyFrames = [];
       let from = this.#currentScreenStyles[v.id];
@@ -829,7 +820,7 @@ class DeviceControlApp {
           this.#updateDeviceDisplaysInfo();
         });
 
-        this.#addMouseTracking(deviceDisplayVideo);
+        this.#addMouseTracking(deviceDisplayVideo, scaleDisplayCoordinates);
 
         deviceDisplays.appendChild(displayFragment);
 
@@ -891,6 +882,49 @@ class DeviceControlApp {
         .forEach(b => b.disabled = true);
   }
 
+  #initializeTouchpads() {
+    const touchpadListElem = document.getElementById("touchpad-list");
+    const touchpadElementContainer = touchpadListElem.querySelector(".touchpads");
+    const touchpadSelectorContainer = touchpadListElem.querySelector(".selectors");
+    const touchpads = this.#deviceConnection.description.touchpads;
+
+    let setActiveTouchpad = (tab_touchpad_id, touchpad_num) => {
+      const touchPadElem = document.getElementById(tab_touchpad_id);
+      const tabButtonElem = document.getElementById("touch_button_" + touchpad_num);
+
+      touchpadElementContainer.querySelectorAll(".selected").forEach(e => e.classList.remove("selected"));
+      touchpadSelectorContainer.querySelectorAll(".selected").forEach(e => e.classList.remove("selected"));
+
+      touchPadElem.classList.add("selected");
+      tabButtonElem.classList.add("selected");
+    };
+
+    for (let i = 0; i < touchpads.length; i++) {
+      const touchpad = touchpads[i];
+
+      let touchPadElem = document.createElement("div");
+      touchPadElem.classList.add("touchpad");
+      touchPadElem.style.aspectRatio = touchpad.x_res / touchpad.y_res;
+      touchPadElem.id = touchpad.label;
+      this.#addMouseTracking(touchPadElem, makeScaleTouchpadCoordinates(touchpad));
+      touchpadElementContainer.appendChild(touchPadElem);
+
+      let tabButtonElem = document.createElement("button");
+      tabButtonElem.id = "touch_button_" + i;
+      tabButtonElem.innerHTML = "Touchpad " + i;
+      tabButtonElem.class = "touchpad-tab-button"
+      tabButtonElem.onclick = () => {
+        setActiveTouchpad(touchpad.label, i);
+      };
+      touchpadSelectorContainer.appendChild(tabButtonElem);
+    }
+
+    if (touchpads.length > 0) {
+      document.getElementById("touchpad-modal-button").style.display = "block";
+      setActiveTouchpad(touchpads[0].label, 0);
+    }
+  }
+
   #onDeviceDisplayLoaded() {
     if (!this.#adbConnected) {
       // ADB may have connected before, don't show this message in that case
@@ -902,6 +936,8 @@ class DeviceControlApp {
     for (const deviceDisplay of deviceDisplayList) {
       deviceDisplay.style.visibility = 'visible';
     }
+
+    this.#initializeTouchpads();
 
     // Start the adb connection if it is not already started.
     this.#initializeAdb();
@@ -947,6 +983,11 @@ class DeviceControlApp {
   }
 
   #onKeyEvent(e) {
+    if (e.cancelable) {
+      // Some keyboard events cause unwanted side effects, like elements losing
+      // focus, if the default behavior is not prevented.
+      e.preventDefault();
+    }
     this.#deviceConnection.sendKeyEvent(e.code, e.type);
   }
 
@@ -964,154 +1005,8 @@ class DeviceControlApp {
     }
   }
 
-  #addMouseTracking(displayDeviceVideo) {
-    let $this = this;
-    let mouseIsDown = false;
-    let mouseCtx = {
-      down: false,
-      touchIdSlotMap: new Map(),
-      touchSlots: [],
-    };
-    function onStartDrag(e) {
-      // Can't prevent event default behavior to allow the element gain focus
-      // when touched and start capturing keyboard input in the parent.
-      // console.debug("mousedown at " + e.pageX + " / " + e.pageY);
-      mouseCtx.down = true;
-
-      $this.#sendEventUpdate(mouseCtx, e);
-    }
-
-    function onEndDrag(e) {
-      // Can't prevent event default behavior to allow the element gain focus
-      // when touched and start capturing keyboard input in the parent.
-      // console.debug("mouseup at " + e.pageX + " / " + e.pageY);
-      mouseCtx.down = false;
-
-      $this.#sendEventUpdate(mouseCtx, e);
-    }
-
-    function onContinueDrag(e) {
-      // Can't prevent event default behavior to allow the element gain focus
-      // when touched and start capturing keyboard input in the parent.
-      // console.debug("mousemove at " + e.pageX + " / " + e.pageY + ", down=" +
-      // mouseIsDown);
-      if (mouseCtx.down) {
-        $this.#sendEventUpdate(mouseCtx, e);
-      }
-    }
-
-    if (window.PointerEvent) {
-      displayDeviceVideo.addEventListener('pointerdown', onStartDrag);
-      displayDeviceVideo.addEventListener('pointermove', onContinueDrag);
-      displayDeviceVideo.addEventListener('pointerup', onEndDrag);
-    } else if (window.TouchEvent) {
-      displayDeviceVideo.addEventListener('touchstart', onStartDrag);
-      displayDeviceVideo.addEventListener('touchmove', onContinueDrag);
-      displayDeviceVideo.addEventListener('touchend', onEndDrag);
-    } else if (window.MouseEvent) {
-      displayDeviceVideo.addEventListener('mousedown', onStartDrag);
-      displayDeviceVideo.addEventListener('mousemove', onContinueDrag);
-      displayDeviceVideo.addEventListener('mouseup', onEndDrag);
-    }
-  }
-
-  #sendEventUpdate(ctx, e) {
-    let eventType = e.type.substring(0, 5);
-
-    // The <video> element:
-    const deviceDisplay = e.target;
-
-    // Before the first video frame arrives there is no way to know width and
-    // height of the device's screen, so turn every click into a click at 0x0.
-    // A click at that position is not more dangerous than anywhere else since
-    // the user is clicking blind anyways.
-    const videoWidth = deviceDisplay.videoWidth ? deviceDisplay.videoWidth : 1;
-    const elementWidth =
-        deviceDisplay.offsetWidth ? deviceDisplay.offsetWidth : 1;
-    const scaling = videoWidth / elementWidth;
-
-    let xArr = [];
-    let yArr = [];
-    let idArr = [];
-    let slotArr = [];
-
-    if (eventType == 'mouse' || eventType == 'point') {
-      xArr.push(e.offsetX);
-      yArr.push(e.offsetY);
-
-      let thisId = -1;
-      if (eventType == 'point') {
-        thisId = e.pointerId;
-      }
-
-      slotArr.push(0);
-      idArr.push(thisId);
-    } else if (eventType == 'touch') {
-      // touchstart: list of touch points that became active
-      // touchmove: list of touch points that changed
-      // touchend: list of touch points that were removed
-      let changes = e.changedTouches;
-      let rect = e.target.getBoundingClientRect();
-      for (let i = 0; i < changes.length; i++) {
-        xArr.push(changes[i].pageX - rect.left);
-        yArr.push(changes[i].pageY - rect.top);
-        if (ctx.touchIdSlotMap.has(changes[i].identifier)) {
-          let slot = ctx.touchIdSlotMap.get(changes[i].identifier);
-
-          slotArr.push(slot);
-          if (e.type == 'touchstart') {
-            // error
-            console.error('touchstart when already have slot');
-            return;
-          } else if (e.type == 'touchmove') {
-            idArr.push(changes[i].identifier);
-          } else if (e.type == 'touchend') {
-            ctx.touchSlots[slot] = false;
-            ctx.touchIdSlotMap.delete(changes[i].identifier);
-            idArr.push(-1);
-          }
-        } else {
-          if (e.type == 'touchstart') {
-            let slot = -1;
-            for (let j = 0; j < ctx.touchSlots.length; j++) {
-              if (!ctx.touchSlots[j]) {
-                slot = j;
-                break;
-              }
-            }
-            if (slot == -1) {
-              slot = ctx.touchSlots.length;
-              ctx.touchSlots.push(true);
-            }
-            slotArr.push(slot);
-            ctx.touchSlots[slot] = true;
-            ctx.touchIdSlotMap.set(changes[i].identifier, slot);
-            idArr.push(changes[i].identifier);
-          } else if (e.type == 'touchmove') {
-            // error
-            console.error('touchmove when no slot');
-            return;
-          } else if (e.type == 'touchend') {
-            // error
-            console.error('touchend when no slot');
-            return;
-          }
-        }
-      }
-    }
-
-    for (let i = 0; i < xArr.length; i++) {
-      xArr[i] = Math.trunc(xArr[i] * scaling);
-      yArr[i] = Math.trunc(yArr[i] * scaling);
-    }
-
-    // NOTE: Rotation is handled automatically because the CSS rotation through
-    // transforms also rotates the coordinates of events on the object.
-
-    const device_label = deviceDisplay.id;
-
-    this.#deviceConnection.sendMultiTouch(
-        {idArr, xArr, yArr, down: ctx.down, slotArr, device_label});
+  #addMouseTracking(touchInputElement, scaleCoordinates) {
+    trackPointerEvents(touchInputElement, this.#deviceConnection, scaleCoordinates);
   }
 
   #updateDisplayVisibility(displayId, powerMode) {

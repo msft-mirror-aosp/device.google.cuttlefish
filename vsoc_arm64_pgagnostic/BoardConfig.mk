@@ -44,6 +44,7 @@ HOST_CROSS_ARCH := arm64
 HOST_CROSS_2ND_ARCH :=
 
 -include device/google/cuttlefish/shared/BoardConfig.mk
+-include device/google/cuttlefish/shared/bluetooth/BoardConfig.mk
 -include device/google/cuttlefish/shared/camera/BoardConfig.mk
 -include device/google/cuttlefish/shared/graphics/BoardConfig.mk
 -include device/google/cuttlefish/shared/identity/BoardConfig.mk
@@ -55,4 +56,6 @@ HOST_CROSS_2ND_ARCH :=
 BOARD_SYSTEMIMAGE_FILE_SYSTEM_TYPE := erofs
 BOARD_SYSTEMIMAGE_EROFS_BLOCKSIZE := 16384
 BOARD_PRODUCTIMAGE_FILE_SYSTEM_TYPE := erofs
-BOARD_PRODUCTIMAGE_EROFS_COMPRESSOR := none
+
+BOARD_F2FS_BLOCKSIZE := 16384
+$(call soong_config_append,cvdhost,board_f2fs_blocksize,16384)

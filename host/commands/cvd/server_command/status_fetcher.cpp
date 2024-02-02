@@ -18,6 +18,7 @@
 
 #include <map>
 #include <mutex>
+#include <sstream>
 #include <vector>
 
 #include <fmt/core.h>
@@ -53,8 +54,9 @@ Result<void> StatusFetcher::Interrupt() {
 static Result<SharedFD> CreateFileToRedirect(
     const std::string& stderr_or_stdout) {
   auto thread_id = std::this_thread::get_id();
-  auto mem_fd_name =
-      fmt::format("cvd.status.{}.{}", stderr_or_stdout, thread_id);
+  std::stringstream ss;
+  ss << "cvd.status." << stderr_or_stdout << "." << thread_id;
+  auto mem_fd_name = ss.str();
   SharedFD fd = SharedFD::MemfdCreate(mem_fd_name);
   CF_EXPECT(fd->IsOpen());
   return fd;
@@ -100,8 +102,7 @@ Result<StatusFetcherOutput> StatusFetcher::FetchOneInstanceStatus(
                                             .err = redirect_stderr_fd};
   Command command = CF_EXPECT(ConstructCommand(construct_cmd_param));
 
-  SubprocessOptions options;
-  CF_EXPECT(subprocess_waiter_.Setup(command.Start(options)));
+  CF_EXPECT(subprocess_waiter_.Setup(command.Start()));
 
   interrupt_lock.unlock();
   auto infop = CF_EXPECT(subprocess_waiter_.Wait());

@@ -201,8 +201,11 @@ std::unique_ptr<SubprocessFlag> MakeDynamicFlag(
 }
 
 std::vector<gflags::CommandLineFlagInfo> FlagsForSubprocess(std::string helpxml_output) {
+  auto xml_begin = helpxml_output.find("<?xml");
+  CHECK(xml_begin != std::string::npos)
+      << "No xml found in '" << helpxml_output << "'";
   // Hack to try to filter out log messages that come before the xml
-  helpxml_output = helpxml_output.substr(helpxml_output.find("<?xml"));
+  helpxml_output = helpxml_output.substr(xml_begin);
 
   xmlDocPtr doc = xmlReadMemory(helpxml_output.c_str(), helpxml_output.size(),
                                 NULL, NULL, 0);
@@ -231,19 +234,29 @@ std::vector<gflags::CommandLineFlagInfo> FlagsForSubprocess(std::string helpxml_
 
 } // namespace
 
-FlagForwarder::FlagForwarder(std::set<std::string> subprocesses)
+FlagForwarder::FlagForwarder(std::set<std::string> subprocesses,
+                             const std::vector<std::vector<std::string>>& args)
     : subprocesses_(std::move(subprocesses)) {
   std::map<std::string, std::string> flag_to_type = CurrentFlagsToTypes();
 
+  int subprocess_index = 0;
   for (const auto& subprocess : subprocesses_) {
     cuttlefish::Command cmd(subprocess);
     cmd.AddParameter("--helpxml");
+
+    if (subprocess_index < args.size()) {
+      for (auto arg : args[subprocess_index]) {
+        cmd.AddParameter(arg);
+      }
+    }
+    subprocess_index++;
+
     std::string helpxml_input, helpxml_output, helpxml_error;
     cuttlefish::SubprocessOptions options;
     options.Verbose(false);
-    int helpxml_ret = cuttlefish::RunWithManagedStdio(std::move(cmd), &helpxml_input,
-                                               &helpxml_output, &helpxml_error,
-                                               options);
+    int helpxml_ret = cuttlefish::RunWithManagedStdio(
+        std::move(cmd), &helpxml_input, &helpxml_output, &helpxml_error,
+        std::move(options));
     if (helpxml_ret != 1) {
       LOG(FATAL) << subprocess << " --helpxml returned unexpected response "
                  << helpxml_ret << ". Stderr was " << helpxml_error;
@@ -293,9 +306,9 @@ void FlagForwarder::UpdateFlagDefaults() const {
     cmd.AddParameter("--helpxml");
     std::string helpxml_input, helpxml_output, helpxml_error;
     auto options = cuttlefish::SubprocessOptions().Verbose(false);
-    int helpxml_ret = cuttlefish::RunWithManagedStdio(std::move(cmd), &helpxml_input,
-                                               &helpxml_output, &helpxml_error,
-                                               options);
+    int helpxml_ret = cuttlefish::RunWithManagedStdio(
+        std::move(cmd), &helpxml_input, &helpxml_output, &helpxml_error,
+        std::move(options));
     if (helpxml_ret != 1) {
       LOG(FATAL) << subprocess << " --helpxml returned unexpected response "
                  << helpxml_ret << ". Stderr was " << helpxml_error;

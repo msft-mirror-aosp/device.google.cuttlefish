@@ -111,8 +111,7 @@ class CvdSnapshotCommandHandler : public CvdServerHandler {
     // may modify subcmd_args by consuming in parsing
     Command command =
         CF_EXPECT(NonHelpCommand(request, uid, subcmd, subcmd_args, envs));
-    SubprocessOptions options;
-    CF_EXPECT(subprocess_waiter_.Setup(command.Start(options)));
+    CF_EXPECT(subprocess_waiter_.Setup(command.Start()));
     interrupt_lock.unlock();
 
     auto infop = CF_EXPECT(subprocess_waiter_.Wait());
@@ -190,13 +189,6 @@ class CvdSnapshotCommandHandler : public CvdServerHandler {
         .err = request.Err()};
     Command command = CF_EXPECT(ConstructCommand(construct_cmd_param));
     return command;
-  }
-
-  bool IsHelp(const cvd_common::Args& cmd_args) const {
-    if (IsHelpSubcmd(cmd_args)) {
-      return true;
-    }
-    return (cmd_args.front() == "help");
   }
 
   Result<std::string> GetBin(const std::string& host_artifacts_path,

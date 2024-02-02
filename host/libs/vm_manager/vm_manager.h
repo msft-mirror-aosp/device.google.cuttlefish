@@ -60,7 +60,9 @@ class VmManager {
   // - /dev/hvc11 = keymint
   // - /dev/hvc12 = NFC
   // - /dev/hvc13 = sensors
-  static const int kDefaultNumHvcs = 14;
+  // - /dev/hvc14 = MCU control
+  // - /dev/hvc15 = MCU UART
+  static const int kDefaultNumHvcs = 16;
 
   // This is the number of virtual disks (block devices) that should be
   // configured by the VmManager. Related to the description above regarding
@@ -77,6 +79,10 @@ class VmManager {
   // from the powerwashed disk (operating system disk) and another set from
   // the persistent disk
   static const int kDefaultNumBootDevices = 2;
+
+  // LINT.IfChange(virtio_gpu_pci_address)
+  static constexpr const int kGpuPciSlotNum = 2;
+  // LINT.ThenChange(../../../shared/sepolicy/vendor/genfs_contexts:virtio_gpu_pci_address)
 
   virtual ~VmManager() = default;
 

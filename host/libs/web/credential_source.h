@@ -16,7 +16,9 @@
 #pragma once
 
 #include <chrono>
+#include <istream>
 #include <memory>
+#include <string>
 
 #include <json/json.h>
 #include <openssl/evp.h>
@@ -106,4 +108,10 @@ class ServiceAccountOauthCredentialSource : public CredentialSource {
   std::string latest_credential_;
   std::chrono::steady_clock::time_point expiration_;
 };
+
+Result<std::unique_ptr<CredentialSource>> GetCredentialSource(
+    HttpClient& http_client, const std::string& credential_source,
+    const std::string& oauth_filepath, const bool use_gce_metadata,
+    const std::string& credential_filepath,
+    const std::string& service_account_filepath);
 }

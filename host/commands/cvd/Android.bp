@@ -50,6 +50,13 @@ cc_defaults {
                 "libz",
             ],
         },
+        host_linux: {
+            static_libs: [
+                "libabsl_host",
+                "libcap",
+                "sandboxed_api_sandbox2"
+            ],
+        }
     },
     static_libs: [
         "libbuildversion",
@@ -97,10 +104,12 @@ cc_library_host_static {
         "handle_reset.cpp",
         "instance_lock.cpp",
         "instance_manager.cpp",
+        "interruptible_terminal.cpp",
         "lock_file.cpp",
         "logger.cpp",
         "request_context.cpp",
         "reset_client_utils.cpp",
+        "run_cvd_proc_collector.cpp",
         "run_server.cpp",
         "server.cc",
         "server_client.cpp",

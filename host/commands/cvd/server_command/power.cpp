@@ -73,15 +73,14 @@ class CvdDevicePowerCommandHandler : public CvdServerHandler {
         cvd_common::ConvertToEnvs(request.Message().command_request().env());
 
     auto [op, subcmd_args] = ParseInvocation(request.Message());
-    bool is_help = IsHelp(subcmd_args);
+    bool is_help = CF_EXPECT(IsHelp(subcmd_args));
 
     // may modify subcmd_args by consuming in parsing
     Command command =
         is_help
             ? CF_EXPECT(HelpCommand(request, uid, op, subcmd_args, envs))
             : CF_EXPECT(NonHelpCommand(request, uid, op, subcmd_args, envs));
-    SubprocessOptions options;
-    CF_EXPECT(subprocess_waiter_.Setup(command.Start(options)));
+    CF_EXPECT(subprocess_waiter_.Setup(command.Start()));
     interrupt_lock.unlock();
 
     auto infop = CF_EXPECT(subprocess_waiter_.Wait());
@@ -205,12 +204,12 @@ class CvdDevicePowerCommandHandler : public CvdServerHandler {
     return command;
   }
 
-  bool IsHelp(const cvd_common::Args& cmd_args) const {
+  Result<bool> IsHelp(const cvd_common::Args& cmd_args) const {
     if (cmd_args.empty()) {
       return false;
     }
     // cvd restart/powerwash --help, --helpxml, etc or simply cvd restart
-    if (IsHelpSubcmd(cmd_args)) {
+    if (CF_EXPECT(IsHelpSubcmd(cmd_args))) {
       return true;
     }
     // cvd restart/powerwash help <subcommand> format
