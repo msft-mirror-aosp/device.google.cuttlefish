@@ -25,8 +25,6 @@
 #include <unordered_map>
 #include <vector>
 
-#include <fruit/fruit.h>
-
 #include "common/libs/fs/shared_fd.h"
 #include "common/libs/utils/json.h"
 #include "common/libs/utils/result.h"
@@ -56,7 +54,7 @@ class InstanceManager {
   template <typename T>
   using Set = selector::Set<T>;
 
-  INJECT(InstanceManager(InstanceLockFileManager&, HostToolTargetManager&));
+  InstanceManager(InstanceLockFileManager&, HostToolTargetManager&);
 
   // For cvd start
   Result<GroupCreationInfo> Analyze(const std::string& sub_cmd,
@@ -64,72 +62,61 @@ class InstanceManager {
                                     const ucred& credential);
 
   Result<LocalInstanceGroup> SelectGroup(const cvd_common::Args& selector_args,
-                                         const cvd_common::Envs& envs,
-                                         const uid_t uid);
+                                         const cvd_common::Envs& envsd);
 
   Result<LocalInstanceGroup> SelectGroup(const cvd_common::Args& selector_args,
                                          const Queries& extra_queries,
-                                         const cvd_common::Envs& envs,
-                                         const uid_t uid);
+                                         const cvd_common::Envs& envs);
 
   Result<LocalInstance::Copy> SelectInstance(
       const cvd_common::Args& selector_args, const Queries& extra_queries,
-      const cvd_common::Envs& envs, const uid_t uid);
+      const cvd_common::Envs& envs);
 
   Result<LocalInstance::Copy> SelectInstance(
-      const cvd_common::Args& selector_args, const cvd_common::Envs& envs,
-      const uid_t uid);
+      const cvd_common::Args& selector_args, const cvd_common::Envs& envs);
 
-  bool HasInstanceGroups(const uid_t uid);
-  Result<void> SetInstanceGroup(const uid_t uid,
-                                const selector::GroupCreationInfo& group_info);
-  Result<void> SetBuildId(const uid_t uid, const std::string& group_name,
-                          const std::string& build_id);
-  void RemoveInstanceGroup(const uid_t uid, const std::string&);
+  bool HasInstanceGroups();
+  Result<void> SetInstanceGroup(const selector::GroupCreationInfo& group_info);
+  void RemoveInstanceGroup(const std::string&);
 
   cvd::Status CvdClear(const SharedFD& out, const SharedFD& err);
-  Result<cvd::Status> CvdFleet(const uid_t uid, const SharedFD& out,
-                               const SharedFD& err,
-                               const std::vector<std::string>& fleet_cmd_args);
   static Result<std::string> GetCuttlefishConfigPath(const std::string& home);
 
   Result<std::optional<InstanceLockFile>> TryAcquireLock(int instance_num);
 
-  Result<std::vector<LocalInstanceGroup>> FindGroups(const uid_t uid,
-                                                     const Query& query) const;
+  Result<std::vector<LocalInstanceGroup>> FindGroups(const Query& query) const;
   Result<std::vector<LocalInstanceGroup>> FindGroups(
-      const uid_t uid, const Queries& queries) const;
+      const Queries& queries) const;
   Result<std::vector<LocalInstance::Copy>> FindInstances(
-      const uid_t uid, const Query& query) const;
+      const Query& query) const;
   Result<std::vector<LocalInstance::Copy>> FindInstances(
-      const uid_t uid, const Queries& queries) const;
+      const Queries& queries) const;
 
-  Result<LocalInstanceGroup> FindGroup(const uid_t uid,
-                                       const Query& query) const;
-  Result<LocalInstanceGroup> FindGroup(const uid_t uid,
-                                       const Queries& queries) const;
-  Result<Json::Value> Serialize(const uid_t uid);
-  Result<void> LoadFromJson(const uid_t uid, const Json::Value&);
+  Result<LocalInstanceGroup> FindGroup(const Query& query) const;
+  Result<LocalInstanceGroup> FindGroup(const Queries& queries) const;
+  Result<Json::Value> Serialize();
+  Result<void> LoadFromJson(const Json::Value&);
+  std::vector<std::string> AllGroupNames() const;
+
+  struct UserGroupSelectionSummary {
+    // Index to group name. This is the index printed in the menu
+    // This field offers mapping between the number/index the user
+    // selects and the group that is to be chosen
+    std::unordered_map<int, std::string> idx_to_group_name;
+    std::string menu;
+  };
+  Result<UserGroupSelectionSummary> GroupSummaryMenu() const;
 
  private:
-  Result<cvd::Status> CvdFleetImpl(const uid_t uid, const SharedFD& out,
-                                   const SharedFD& err);
-  struct StatusCommandOutput {
-    std::string stderr_msg;
-    Json::Value stdout_json;
-  };
-  Result<StatusCommandOutput> IssueStatusCommand(
-      const selector::LocalInstanceGroup& group, const SharedFD& err);
   Result<void> IssueStopCommand(const SharedFD& out, const SharedFD& err,
                                 const std::string& config_file_path,
                                 const selector::LocalInstanceGroup& group);
   Result<std::string> StopBin(const std::string& host_android_out);
 
-  selector::InstanceDatabase& GetInstanceDB(const uid_t uid);
   InstanceLockFileManager& lock_manager_;
   HostToolTargetManager& host_tool_target_manager_;
   mutable std::mutex instance_db_mutex_;
-  std::unordered_map<uid_t, selector::InstanceDatabase> instance_dbs_;
+  selector::InstanceDatabase instance_db_;
 };
 
 }  // namespace cuttlefish

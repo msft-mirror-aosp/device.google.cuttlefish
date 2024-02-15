@@ -17,13 +17,16 @@ package {
     default_applicable_licenses: ["Android-Apache-2.0"],
 }
 
-cc_library_static {
+cc_library {
     name: "libcuttlefish_host_config",
     srcs: [
-        "bootconfig_args.cpp",
+        "display.cpp",
+        "touchpad.cpp",
         "config_flag.cpp",
+        "config_utils.cpp",
         "custom_actions.cpp",
         "cuttlefish_config.cpp",
+        "cuttlefish_config_environment.cpp",
         "cuttlefish_config_instance.cpp",
         "data_image.cpp",
         "esp.cpp",
@@ -46,5 +49,17 @@ cc_library_static {
         "libjsoncpp",
         "libz",
     ],
+    target: {
+        darwin: {
+            enabled: true,
+        },
+        host_linux: {
+            shared_libs: ["sandboxed_api_sandbox2"],
+            static_libs: [
+                "libabsl_host",
+                "libcap",
+            ],
+        },
+    },
     defaults: ["cuttlefish_host"],
 }

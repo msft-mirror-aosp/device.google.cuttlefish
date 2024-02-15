@@ -29,7 +29,8 @@
 #include "host/commands/assemble_cvd/flags_defaults.h"
 #include "host/commands/kernel_log_monitor/kernel_log_server.h"
 #include "host/commands/kernel_log_monitor/utils.h"
-#include "host/commands/run_cvd/runner_defs.h"
+#include "host/commands/run_cvd/validate.h"
+#include "host/libs/command_util/runner/defs.h"
 #include "host/libs/config/feature.h"
 
 DEFINE_int32(reboot_notification_fd, CF_DEFAULTS_REBOOT_NOTIFICATION_FD,
@@ -42,7 +43,18 @@ namespace {
 // process waits for boot events to come through the pipe and exits accordingly.
 SharedFD DaemonizeLauncher(const CuttlefishConfig& config) {
   auto instance = config.ForDefaultInstance();
-  SharedFD read_end, write_end;
+  auto restore_pipe_name = instance.restore_pipe_name();
+  SharedFD read_end, write_end, restore_pipe_read;
+  if (!config.snapshot_path().empty()) {
+    if (Result<SharedFD> restore_pipe = SharedFD::Fifo(restore_pipe_name, 0600);
+        !restore_pipe.ok()) {
+      LOG(ERROR) << "Unable to create restore fifo"
+                 << restore_pipe.error().FormatForEnv();
+      return {};
+    } else {
+      restore_pipe_read = restore_pipe.value();
+    }
+  }
   if (!SharedFD::Pipe(&read_end, &write_end)) {
     LOG(ERROR) << "Unable to create pipe";
     return {};  // a closed FD
@@ -53,6 +65,24 @@ SharedFD DaemonizeLauncher(const CuttlefishConfig& config) {
     // child process dies.
     write_end->Close();
     RunnerExitCodes exit_code;
+    if (!config.snapshot_path().empty()) {
+      if (!restore_pipe_read->IsOpen()) {
+        LOG(ERROR) << "Error opening restore pipe: "
+                   << restore_pipe_read->StrError();
+        std::exit(RunnerExitCodes::kDaemonizationError);
+      }
+      // Try to read from restore pipe. IF successfully reads, that means logcat
+      // has started, and the VM has resumed. Exit the thread.
+      char buff[1];
+      auto read = restore_pipe_read->Read(buff, 1);
+      if (read <= 0) {
+        LOG(ERROR) << "Could not read restore pipe: "
+                   << restore_pipe_read->StrError();
+        std::exit(RunnerExitCodes::kDaemonizationError);
+      }
+      exit_code = RunnerExitCodes::kSuccess;
+      std::exit(exit_code);
+    }
     auto bytes_read = read_end->Read(&exit_code, sizeof(exit_code));
     if (bytes_read != sizeof(exit_code)) {
       LOG(ERROR) << "Failed to read a complete exit code, read " << bytes_read
@@ -110,62 +140,43 @@ SharedFD DaemonizeLauncher(const CuttlefishConfig& config) {
   }
 }
 
-class ProcessLeader : public SetupFeature {
- public:
-  INJECT(ProcessLeader(const CuttlefishConfig& config,
-                       const CuttlefishConfig::InstanceSpecific& instance))
-      : config_(config), instance_(instance) {}
-
-  SharedFD ForegroundLauncherPipe() { return foreground_launcher_pipe_; }
-
-  // SetupFeature
-  std::string Name() const override { return "ProcessLeader"; }
-  bool Enabled() const override { return true; }
-
- private:
-  std::unordered_set<SetupFeature*> Dependencies() const override { return {}; }
-  bool Setup() override {
-    /* These two paths result in pretty different process state, but both
-     * achieve the same goal of making the current process the leader of a
-     * process group, and are therefore grouped together. */
-    if (instance_.run_as_daemon()) {
-      foreground_launcher_pipe_ = DaemonizeLauncher(config_);
-      if (!foreground_launcher_pipe_->IsOpen()) {
-        return false;
-      }
-    } else {
-      // Make sure the launcher runs in its own process group even when running
-      // in the foreground
-      if (getsid(0) != getpid()) {
-        int retval = setpgid(0, 0);
-        if (retval) {
-          PLOG(ERROR) << "Failed to create new process group: ";
-          return false;
-        }
-      }
-    }
-    return true;
+Result<SharedFD> ProcessLeader(
+    const CuttlefishConfig& config,
+    const CuttlefishConfig::InstanceSpecific& instance,
+    AutoSetup<ValidateTapDevices>::Type& /* dependency */) {
+  /* These two paths result in pretty different process state, but both
+   * achieve the same goal of making the current process the leader of a
+   * process group, and are therefore grouped together. */
+  if (instance.run_as_daemon()) {
+    auto foreground_launcher_pipe = DaemonizeLauncher(config);
+    CF_EXPECT(foreground_launcher_pipe->IsOpen());
+    return foreground_launcher_pipe;
   }
-
-  const CuttlefishConfig& config_;
-  const CuttlefishConfig::InstanceSpecific& instance_;
-  SharedFD foreground_launcher_pipe_;
-};
+  // Make sure the launcher runs in its own process group even when running
+  // in the foreground
+  if (getsid(0) != getpid()) {
+    CF_EXPECTF(setpgid(0, 0) == 0, "Failed to create new process group: {}",
+               strerror(errno));
+  }
+  return {};
+}
 
 // Maintains the state of the boot process, once a final state is reached
 // (success or failure) it sends the appropriate exit code to the foreground
 // launcher process
 class CvdBootStateMachine : public SetupFeature, public KernelLogPipeConsumer {
  public:
-  INJECT(CvdBootStateMachine(ProcessLeader& process_leader,
+  INJECT(CvdBootStateMachine(AutoSetup<ProcessLeader>::Type& process_leader,
                              KernelLogPipeProvider& kernel_log_pipe_provider))
       : process_leader_(process_leader),
         kernel_log_pipe_provider_(kernel_log_pipe_provider),
         state_(kBootStarted) {}
 
   ~CvdBootStateMachine() {
-    if (interrupt_fd_->IsOpen()) {
-      CHECK(interrupt_fd_->EventfdWrite(1) >= 0);
+    if (interrupt_fd_write_->IsOpen()) {
+      char c = 1;
+      CHECK_EQ(interrupt_fd_write_->Write(&c, 1), 1)
+          << interrupt_fd_write_->StrError();
     }
     if (boot_event_handler_.joinable()) {
       boot_event_handler_.join();
@@ -183,29 +194,24 @@ class CvdBootStateMachine : public SetupFeature, public KernelLogPipeConsumer {
         static_cast<SetupFeature*>(&kernel_log_pipe_provider_),
     };
   }
-  bool Setup() override {
-    interrupt_fd_ = SharedFD::Event();
-    if (!interrupt_fd_->IsOpen()) {
-      LOG(ERROR) << "Failed to open eventfd: " << interrupt_fd_->StrError();
-      return false;
-    }
-    fg_launcher_pipe_ = process_leader_.ForegroundLauncherPipe();
+  Result<void> ResultSetup() override {
+    CF_EXPECT(SharedFD::Pipe(&interrupt_fd_read_, &interrupt_fd_write_));
+    CF_EXPECT(interrupt_fd_read_->IsOpen(), interrupt_fd_read_->StrError());
+    CF_EXPECT(interrupt_fd_write_->IsOpen(), interrupt_fd_write_->StrError());
+    fg_launcher_pipe_ = *process_leader_;
     if (FLAGS_reboot_notification_fd >= 0) {
       reboot_notification_ = SharedFD::Dup(FLAGS_reboot_notification_fd);
-      if (!reboot_notification_->IsOpen()) {
-        LOG(ERROR) << "Could not dup fd given for reboot_notification_fd";
-        return false;
-      }
+      CF_EXPECTF(reboot_notification_->IsOpen(),
+                 "Could not dup fd given for reboot_notification_fd: {}",
+                 reboot_notification_->StrError());
       close(FLAGS_reboot_notification_fd);
     }
     SharedFD boot_events_pipe = kernel_log_pipe_provider_.KernelLogPipe();
-    if (!boot_events_pipe->IsOpen()) {
-      LOG(ERROR) << "Could not get boot events pipe";
-      return false;
-    }
+    CF_EXPECTF(boot_events_pipe->IsOpen(), "Could not get boot events pipe: {}",
+               boot_events_pipe->StrError());
     boot_event_handler_ = std::thread(
         [this, boot_events_pipe]() { ThreadLoop(boot_events_pipe); });
-    return true;
+    return {};
   }
 
   void ThreadLoop(SharedFD boot_events_pipe) {
@@ -216,7 +222,7 @@ class CvdBootStateMachine : public SetupFeature, public KernelLogPipeConsumer {
               .events = POLLIN | POLLHUP,
           },
           {
-              .fd = interrupt_fd_,
+              .fd = interrupt_fd_read_,
               .events = POLLIN | POLLHUP,
           }};
       int result = SharedFD::Poll(poll_shared_fd, -1);
@@ -289,13 +295,14 @@ class CvdBootStateMachine : public SetupFeature, public KernelLogPipeConsumer {
     return BootCompleted() || (state_ & kGuestBootFailed);
   }
 
-  ProcessLeader& process_leader_;
+  AutoSetup<ProcessLeader>::Type& process_leader_;
   KernelLogPipeProvider& kernel_log_pipe_provider_;
 
   std::thread boot_event_handler_;
   SharedFD fg_launcher_pipe_;
   SharedFD reboot_notification_;
-  SharedFD interrupt_fd_;
+  SharedFD interrupt_fd_read_;
+  SharedFD interrupt_fd_write_;
   int state_;
   static const int kBootStarted = 0;
   static const int kGuestBootCompleted = 1 << 0;
@@ -305,12 +312,13 @@ class CvdBootStateMachine : public SetupFeature, public KernelLogPipeConsumer {
 }  // namespace
 
 fruit::Component<fruit::Required<const CuttlefishConfig, KernelLogPipeProvider,
-                     const CuttlefishConfig::InstanceSpecific>>
+                                 const CuttlefishConfig::InstanceSpecific,
+                                 AutoSetup<ValidateTapDevices>::Type>>
 bootStateMachineComponent() {
   return fruit::createComponent()
       .addMultibinding<KernelLogPipeConsumer, CvdBootStateMachine>()
-      .addMultibinding<SetupFeature, ProcessLeader>()
-      .addMultibinding<SetupFeature, CvdBootStateMachine>();
+      .addMultibinding<SetupFeature, CvdBootStateMachine>()
+      .install(AutoSetup<ProcessLeader>::Component);
 }
 
 }  // namespace cuttlefish

@@ -15,19 +15,49 @@
  */
 
 #pragma once
+
+#include <string>
+#include <vector>
+
 #include <json/json.h>
+
 #include "common/libs/utils/result.h"
-#include "host/commands/cvd/parser/fetch_cvd_parser.h"
+#include "host/commands/cvd/parser/fetch_config_parser.h"
 
 namespace cuttlefish {
 
-typedef struct _CvdFlags {
+struct LoadDirectories {
+  std::string target_directory;
+  std::vector<std::string> target_subdirectories;
+  std::string launch_home_directory;
+  std::string host_package_directory;
+  std::string system_image_directory_flag;
+};
+
+struct CvdFlags {
   std::vector<std::string> launch_cvd_flags;
-  FetchCvdConfigs fetch_cvd_flags;
-} CvdFlags;
+  std::vector<std::string> selector_flags;
+  std::vector<std::string> fetch_cvd_flags;
+  LoadDirectories load_directories;
+};
 
-Result<Json::Value> ParseJsonFile(const std::string& file_path);
+struct Override {
+  std::string config_path;
+  std::string new_value;
+};
 
-Result<CvdFlags> ParseCvdConfigs(Json::Value& root);
+std::ostream& operator<<(std::ostream& out, const Override& override);
+
+struct LoadFlags {
+  std::vector<Override> overrides;
+  std::string config_path;
+  std::string credential_source;
+  std::string base_dir;
+};
+
+Result<LoadFlags> GetFlags(std::vector<std::string>& args,
+                           const std::string& working_directory);
+
+Result<CvdFlags> GetCvdFlags(const LoadFlags& flags);
 
 };  // namespace cuttlefish

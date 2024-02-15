@@ -16,8 +16,11 @@
 #pragma once
 
 #include <map>
+#include <memory>
 #include <ostream>
 #include <string>
+
+#include "common/libs/utils/result.h"
 
 namespace Json {
 class Value;
@@ -26,7 +29,7 @@ class Value;
 namespace cuttlefish {
 
 // Order in enum is not guaranteed to be stable, serialized as a string.
-enum FileSource {
+enum class FileSource {
   UNKNOWN_PURPOSE = 0,
   DEFAULT_BUILD,
   SYSTEM_BUILD,
@@ -34,6 +37,7 @@ enum FileSource {
   LOCAL_FILE,
   GENERATED,
   BOOTLOADER_BUILD,
+  ANDROID_EFI_LOADER_BUILD,
   BOOT_BUILD,
   HOST_PACKAGE_BUILD,
 };
@@ -68,7 +72,8 @@ std::ostream& operator<<(std::ostream&, const CvdFile&);
  */
 class FetcherConfig {
   std::unique_ptr<Json::Value> dictionary_;
-public:
+
+ public:
   FetcherConfig();
   FetcherConfig(FetcherConfig&&);
   ~FetcherConfig();
@@ -83,6 +88,12 @@ public:
   std::map<std::string, CvdFile> get_cvd_files() const;
 
   std::string FindCvdFileWithSuffix(const std::string& suffix) const;
+
+  Result<void> AddFilesToConfig(FileSource purpose, const std::string& build_id,
+                                const std::string& build_target,
+                                const std::vector<std::string>& paths,
+                                const std::string& directory_prefix,
+                                bool override_entry = false);
 };
 
 } // namespace cuttlefish

@@ -28,12 +28,12 @@
 #include <android-base/strings.h>
 
 #include "common/libs/utils/contains.h"
+#include "common/libs/utils/files.h"
 #include "common/libs/utils/flag_parser.h"
 #include "common/libs/utils/users.h"
 #include "host/commands/cvd/common_utils.h"
 #include "host/commands/cvd/selector/instance_database_utils.h"
 #include "host/commands/cvd/selector/selector_constants.h"
-#include "host/libs/config/cuttlefish_config.h"
 
 namespace cuttlefish {
 namespace selector {
@@ -42,7 +42,7 @@ static bool IsCvdStart(const std::string& cmd) {
   if (cmd.empty()) {
     return false;
   }
-  return cmd == "start";
+  return cmd == "start" || cmd == "launch_cvd";
 }
 
 Result<GroupCreationInfo> CreationAnalyzer::Analyze(
@@ -51,10 +51,9 @@ Result<GroupCreationInfo> CreationAnalyzer::Analyze(
     InstanceLockFileManager& instance_lock_file_manager) {
   CF_EXPECT(IsCvdStart(cmd),
             "CreationAnalyzer::Analyze() is for cvd start only.");
-  const auto client_uid = credential.uid;
   auto selector_options_parser =
       CF_EXPECT(StartSelectorParser::ConductSelectFlagsParser(
-          client_uid, param.selector_args, param.cmd_args, param.envs));
+          param.selector_args, param.cmd_args, param.envs));
   CreationAnalyzer analyzer(param, credential,
                             std::move(selector_options_parser),
                             instance_database, instance_lock_file_manager);
@@ -101,7 +100,7 @@ CreationAnalyzer::AnalyzeInstanceIdsInternal(
             "Instance IDs were specified, so should be one or more.");
   for (const auto id : requested_instance_ids) {
     CF_EXPECT(IsIdAvailable(instance_database_, id),
-              "instance ID #" << id << " is requeested but not available.");
+              "instance ID #" << id << " is requested but not available.");
   }
 
   std::vector<std::string> per_instance_names;
@@ -182,21 +181,14 @@ CreationAnalyzer::AnalyzeInstanceIdsInternal() {
   }
   auto unused_id_pool =
       CF_EXPECT(CollectUnusedIds(instance_database_, std::move(id_pool)));
-  auto unique_id_allocator = std::move(IdAllocator::New(unused_id_pool));
+  auto unique_id_allocator = IdAllocator::New(unused_id_pool);
   CF_EXPECT(unique_id_allocator != nullptr,
             "Memory allocation for UniqueResourceAllocator failed.");
 
   // auto-generation means the user did not specify much: e.g. "cvd start"
   // In this case, the user may expect the instance id to be 1+
-  using ReservationSet = UniqueResourceAllocator<unsigned>::ReservationSet;
-  std::optional<ReservationSet> allocated_ids_opt;
-  if (selector_options_parser_.IsMaybeDefaultGroup()) {
-    allocated_ids_opt = unique_id_allocator->TakeRange(1, 1 + n_instances);
-  }
-  if (!allocated_ids_opt) {
-    allocated_ids_opt =
-        unique_id_allocator->UniqueConsecutiveItems(n_instances);
-  }
+  auto allocated_ids_opt =
+      unique_id_allocator->UniqueConsecutiveItems(n_instances);
   CF_EXPECT(allocated_ids_opt != std::nullopt, "Unique ID allocation failed.");
 
   std::vector<unsigned> allocated_ids;
@@ -214,8 +206,12 @@ CreationAnalyzer::AnalyzeInstanceIdsInternal() {
   std::vector<PerInstanceInfo> instance_info;
   for (size_t i = 0; i != allocated_ids.size(); i++) {
     const auto id = allocated_ids.at(i);
-    std::string name = (per_instance_names_opt ? per_instance_names_opt->at(i)
-                                               : std::to_string(id));
+
+    std::string name = std::to_string(id);
+    // Use the user provided instance name only if it's not empty.
+    if (per_instance_names_opt && !(*per_instance_names_opt)[i].empty()) {
+      name = (*per_instance_names_opt)[i];
+    }
     instance_info.emplace_back(id, name, std::move(id_to_lockfile_map.at(id)));
   }
   return instance_info;
@@ -249,7 +245,7 @@ static Result<std::vector<std::string>> UpdateInstanceArgs(
       GflagsCompatFlag("num_instances", old_num_instances),
       GflagsCompatFlag("base_instance_num", old_base_instance_num)};
   // discard old ones
-  ParseFlags(instance_id_flags, new_args);
+  CF_EXPECT(ConsumeFlags(instance_id_flags, new_args));
 
   auto max = *(std::max_element(ids.cbegin(), ids.cend()));
   auto min = *(std::min_element(ids.cbegin(), ids.cend()));
@@ -278,7 +274,7 @@ Result<std::vector<std::string>> CreationAnalyzer::UpdateWebrtcDeviceId(
   std::vector<Flag> webrtc_device_id_flag{
       GflagsCompatFlag("webrtc_device_id", flag_value)};
   std::vector<std::string> copied_args{new_args};
-  CF_EXPECT(ParseFlags(webrtc_device_id_flag, copied_args));
+  CF_EXPECT(ConsumeFlags(webrtc_device_id_flag, copied_args));
 
   if (!flag_value.empty()) {
     return new_args;
@@ -307,7 +303,8 @@ Result<GroupCreationInfo> CreationAnalyzer::Analyze() {
   }
   cmd_args_ = CF_EXPECT(UpdateInstanceArgs(std::move(cmd_args_), ids));
 
-  group_name_ = CF_EXPECT(AnalyzeGroupName(instance_info));
+  auto group_info = CF_EXPECT(ExtractGroup(instance_info));
+  group_name_ = group_info.group_name;
   cmd_args_ =
       CF_EXPECT(UpdateWebrtcDeviceId(std::move(cmd_args_), instance_info));
 
@@ -324,14 +321,19 @@ Result<GroupCreationInfo> CreationAnalyzer::Analyze() {
                               .group_name = group_name_,
                               .instances = std::move(instance_info),
                               .args = cmd_args_,
-                              .envs = envs_};
+                              .envs = envs_,
+                              .is_default_group = group_info.default_group};
   return report;
 }
 
-Result<std::string> CreationAnalyzer::AnalyzeGroupName(
+Result<CreationAnalyzer::GroupInfo> CreationAnalyzer::ExtractGroup(
     const std::vector<PerInstanceInfo>& per_instance_infos) const {
   if (selector_options_parser_.GroupName()) {
-    return selector_options_parser_.GroupName().value();
+    CreationAnalyzer::GroupInfo group_name_info = {
+      .group_name = selector_options_parser_.GroupName().value(),
+      .default_group = false
+    };
+    return group_name_info;
   }
   // auto-generate group name
   std::vector<unsigned> ids;
@@ -340,17 +342,6 @@ Result<std::string> CreationAnalyzer::AnalyzeGroupName(
     ids.push_back(per_instance_info.instance_id_);
   }
   std::string base_name = GenDefaultGroupName();
-  if (selector_options_parser_.IsMaybeDefaultGroup()) {
-    /*
-     * this base_name might be already taken. In that case, the user's
-     * request should fail in the InstanceDatabase
-     */
-    auto groups =
-        CF_EXPECT(instance_database_.FindGroups({kGroupNameField, base_name}));
-    CF_EXPECT(groups.empty(), "The default instance group name, \""
-                                  << base_name << "\" has been already taken.");
-    return base_name;
-  }
 
   /* We cannot return simply "cvd" as we do not want duplication in the group
    * name across the instance groups owned by the user. Note that the set of ids
@@ -360,21 +351,17 @@ Result<std::string> CreationAnalyzer::AnalyzeGroupName(
    */
   auto unique_suffix =
       std::to_string(*std::min_element(ids.begin(), ids.end()));
-  return base_name + "_" + unique_suffix;
+  CreationAnalyzer::GroupInfo group_name_info = {
+    .group_name = base_name + "_" + unique_suffix,
+    .default_group = selector_options_parser_.IsMaybeDefaultGroup()
+  };
+  return group_name_info;
 }
 
 Result<std::string> CreationAnalyzer::AnalyzeHome() const {
-  auto system_wide_home = CF_EXPECT(SystemWideUserHome(credential_.uid));
+  auto system_wide_home = CF_EXPECT(SystemWideUserHome());
   if (Contains(envs_, "HOME") && envs_.at("HOME") != system_wide_home) {
     return envs_.at("HOME");
-  }
-
-  if (selector_options_parser_.IsMaybeDefaultGroup()) {
-    auto groups = CF_EXPECT(
-        instance_database_.FindGroups({kHomeField, system_wide_home}));
-    if (groups.empty()) {
-      return system_wide_home;
-    }
   }
 
   CF_EXPECT(!group_name_.empty(),
@@ -385,7 +372,7 @@ Result<std::string> CreationAnalyzer::AnalyzeHome() const {
       CF_EXPECT(ParentOfAutogeneratedHomes(client_uid, client_gid));
   auto_generated_home.append("/" + std::to_string(client_uid));
   auto_generated_home.append("/" + group_name_);
-  CF_EXPECT(EnsureDirectoryExistsAllTheWay(auto_generated_home));
+  CF_EXPECT(EnsureDirectoryExists(auto_generated_home));
   return auto_generated_home;
 }
 

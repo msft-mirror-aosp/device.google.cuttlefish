@@ -27,11 +27,20 @@ cc_binary_host {
         "libbase",
         "libcuttlefish_fs",
         "libcuttlefish_utils",
-        "libcuttlefish_display_flags",
         "libcuttlefish_host_config",
         "libgflags",
         "libjsoncpp",
         "liblog",
     ],
+    target: {
+        host_linux: {
+            shared_libs: ["sandboxed_api_sandbox2"],
+            static_libs: [
+                "libabsl_host",
+                "libcap",
+                "libprotobuf-cpp-full",
+            ],
+        },
+    },
     defaults: ["cuttlefish_host"],
 }

@@ -17,11 +17,25 @@
 
 #include <cstdint>
 #include <memory>
+#include <mutex>
 #include <set>
 
 #include <tss2/tss2_esys.h>
 
 namespace cuttlefish {
+
+class EsysLock {
+ public:
+  ESYS_CONTEXT* operator*() const { return esys_; }
+
+ private:
+  EsysLock(ESYS_CONTEXT*, std::unique_lock<std::mutex>);
+
+  ESYS_CONTEXT* esys_;
+  std::unique_lock<std::mutex> guard_;
+
+  friend class TpmResourceManager;
+};
 
 /**
  * Object slot manager for TPM memory. The TPM can only hold a fixed number of
@@ -33,7 +47,7 @@ namespace cuttlefish {
  * caching to avoid re-loading often-used resources.
  */
 class TpmResourceManager {
-public:
+ public:
   class ObjectSlot {
   public:
     friend class TpmResourceManager;
@@ -53,9 +67,14 @@ public:
   TpmResourceManager(ESYS_CONTEXT* esys);
   ~TpmResourceManager();
 
-  ESYS_CONTEXT* Esys();
+  // Returns a wrapped ESYS_CONTEXT* that can be used with Esys calls that also
+  // holds a lock. Callers should not hold onto the inner ESYS_CONTEXT* past the
+  // lifetime of the lock.
+  EsysLock Esys();
   std::shared_ptr<ObjectSlot> ReserveSlot();
-private:
+
+ private:
+  std::mutex mu_;
   ESYS_CONTEXT* esys_;
   const std::uint32_t maximum_object_slots_;
   std::atomic<std::uint32_t> used_slots_;

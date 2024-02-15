@@ -48,8 +48,8 @@ namespace selector {
 class StartSelectorParser {
  public:
   static Result<StartSelectorParser> ConductSelectFlagsParser(
-      const uid_t uid, const cvd_common::Args& selector_args,
-      const cvd_common::Args& cmd_args, const cvd_common::Envs& envs);
+      const cvd_common::Args& selector_args, const cvd_common::Args& cmd_args,
+      const cvd_common::Envs& envs);
   std::optional<std::string> GroupName() const;
   std::optional<std::vector<std::string>> PerInstanceNames() const;
   const std::optional<std::vector<unsigned>>& InstanceIds() const {
@@ -128,12 +128,6 @@ class StartSelectorParser {
       const unsigned default_n_instances = 1) const;
   Result<bool> CalcMayBeDefaultGroup();
   Result<bool> CalcAcquireFileLock();
-
-  struct WebrtcCalculatedNames {
-    std::optional<std::string> group_name;
-    std::optional<std::vector<std::string>> per_instance_names;
-  };
-  Result<WebrtcCalculatedNames> CalcNamesUsingWebrtcDeviceId();
 
   /**
    * The following are considered, and left empty if can't be figured out.

@@ -21,7 +21,6 @@ cc_library {
     name: "libcuttlefish_security",
     defaults: ["hidl_defaults", "cuttlefish_host"],
     srcs: [
-        "gatekeeper_channel.cpp",
         "keymaster_channel.cpp",
     ],
     header_libs: [
@@ -29,15 +28,26 @@ cc_library {
     ],
     shared_libs: [
         "libbase",
+        "libcuttlefish_transport",
+        "libcuttlefish_utils_result",
         "libgatekeeper",
         "libkeymaster_messages",
         "liblog",
     ],
     target: {
-        linux: {
-            shared_libs: [
-                "libcuttlefish_fs",
+        android: {
+            shared_libs: ["libcuttlefish_fs"],
+            srcs: [
+                "confui_sign.cpp",
+                "gatekeeper_channel_sharedfd.cpp",
+                "keymaster_channel_sharedfd.cpp",
             ],
+        },
+        darwin: {
+            enabled: true,
+        },
+        not_windows: { // Actually means "not-windows host code"
+            shared_libs: ["libcuttlefish_fs"],
             srcs: [
                 "confui_sign.cpp",
                 "gatekeeper_channel_sharedfd.cpp",
@@ -62,6 +72,7 @@ cc_test {
     shared_libs: [
         "libbase",
         "libcuttlefish_fs",
+        "libcuttlefish_utils_result",
         "libcuttlefish_security",
         "libgatekeeper",
         "libkeymaster_messages",

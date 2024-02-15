@@ -26,7 +26,10 @@
 namespace cuttlefish {
 
 AcloudConfig::AcloudConfig(const acloud::UserConfig& usr_cfg)
-    : launch_args(usr_cfg.launch_args()) {
+    : launch_args(usr_cfg.launch_args()),
+      project(usr_cfg.project()),
+      zone(usr_cfg.zone()),
+      use_legacy_acloud(usr_cfg.use_legacy_acloud()) {
   // TODO(weihsu): Add back fields/variables (except of cheeps and emulator
   // fields) in config files. Remove cheeps (Android on ChromeOS) and emulator
   // fields.
@@ -50,19 +53,18 @@ Result<ProtoType> ParseTextProtoConfigHelper(const std::string& config_path) {
 /**
  * Return path to default config file.
  */
-Result<const std::string> GetDefaultConfigFile(const uid_t uid) {
-  const std::string home = CF_EXPECT(SystemWideUserHome(uid));
+Result<const std::string> GetDefaultConfigFile() {
+  const std::string home = CF_EXPECT(SystemWideUserHome());
   return (std::string(home) + "/.config/acloud/acloud.config");
 }
 
-Result<AcloudConfig> LoadAcloudConfig(const std::string& user_config_path,
-                                      const uid_t uid) {
+Result<AcloudConfig> LoadAcloudConfig(const std::string& user_config_path) {
   acloud::UserConfig proto_result_user;
   if (FileExists(user_config_path)) {
     proto_result_user = CF_EXPECT(
         ParseTextProtoConfigHelper<acloud::UserConfig>(user_config_path));
   } else {
-    const std::string conf_path = CF_EXPECT(GetDefaultConfigFile(uid));
+    const std::string conf_path = CF_EXPECT(GetDefaultConfigFile());
     CF_EXPECT(user_config_path == conf_path,
               "The specified config file does not exist.");
 

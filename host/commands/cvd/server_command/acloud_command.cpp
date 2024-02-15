@@ -18,15 +18,20 @@
 
 #include <atomic>
 #include <mutex>
+#include <thread>
 
 #include <android-base/file.h>
 #include <android-base/strings.h>
-#include <fruit/fruit.h>
 
 #include "common/libs/fs/shared_buf.h"
 #include "common/libs/fs/shared_fd.h"
+#include "common/libs/utils/contains.h"
+#include "common/libs/utils/environment.h"
 #include "common/libs/utils/result.h"
 #include "cvd_server.pb.h"
+#include "host/commands/cvd/acloud/converter.h"
+#include "host/commands/cvd/acloud/create_converter_parser.h"
+#include "host/commands/cvd/command_sequence.h"
 #include "host/commands/cvd/instance_lock.h"
 #include "host/commands/cvd/server_command/acloud_common.h"
 #include "host/commands/cvd/server_command/server_handler.h"
@@ -34,19 +39,33 @@
 #include "host/commands/cvd/types.h"
 
 namespace cuttlefish {
+namespace {
+
+constexpr char kSummaryHelpText[] =
+    R"(Toggles translation of acloud commands to run through cvd if supported)";
+
+constexpr char kDetailedHelpText[] = R"(
+Usage:
+cvd acloud translator (--opt-out|--opt-in)
+Any acloud command will by default (and if supported by cvd) be translated to the appropriate cvd command and executed.
+If not supported by cvd, acloud will be used.
+
+To opt out or opt back in, run this translation toggle.
+)";
+
+}  // namespace
 
 class AcloudCommand : public CvdServerHandler {
  public:
-  INJECT(AcloudCommand(CommandSequenceExecutor& executor,
-                       ConvertAcloudCreateCommand& converter))
-      : executor_(executor), converter_(converter) {}
+  AcloudCommand(CommandSequenceExecutor& executor) : executor_(executor) {}
   ~AcloudCommand() = default;
 
   Result<bool> CanHandle(const RequestWithStdio& request) const override {
     auto invocation = ParseInvocation(request.Message());
     if (invocation.arguments.size() >= 2) {
       if (invocation.command == "acloud" &&
-          invocation.arguments[0] == "translator") {
+          (invocation.arguments[0] == "translator" ||
+           invocation.arguments[0] == "mix-super-image")) {
         return false;
       }
     }
@@ -55,48 +74,38 @@ class AcloudCommand : public CvdServerHandler {
 
   cvd_common::Args CmdList() const override { return {"acloud"}; }
 
-  Result<cvd::Response> Handle(const RequestWithStdio& request) override {
-    std::unique_lock interrupt_lock(interrupt_mutex_);
-    if (interrupted_) {
-      return CF_ERR("Interrupted");
-    }
-    CF_EXPECT(CanHandle(request));
-    CF_EXPECT(IsSubOperationSupported(request));
-    auto converted = CF_EXPECT(converter_.Convert(request));
-    interrupt_lock.unlock();
-    CF_EXPECT(executor_.Execute(converted.prep_requests, request.Err()));
-    auto start_response =
-        CF_EXPECT(executor_.ExecuteOne(converted.start_request, request.Err()));
+  Result<std::string> SummaryHelp() const override { return kSummaryHelpText; }
 
-    if (converter_.FetchCommandString() != "") {
-      // has cvd fetch command, update the fetch cvd command file
-      using android::base::WriteStringToFile;
-      CF_EXPECT(WriteStringToFile(converter_.FetchCommandString(),
-                                  converter_.FetchCvdArgsFile()),
-                true);
-    }
+  bool ShouldInterceptHelp() const override { return true; }
 
-    auto handle_response_result = HandleStartResponse(start_response);
-    if (handle_response_result.ok()) {
-      // print
-      std::optional<SharedFD> fd_opt;
-      if (converter_.Verbose()) {
-        fd_opt = request.Err();
-      }
-      auto write_result = PrintBriefSummary(*handle_response_result, fd_opt);
-      if (!write_result.ok()) {
-        LOG(ERROR) << "Failed to write the start response report.";
-      }
-    } else {
-      LOG(ERROR) << "Failed to analyze the cvd start response.";
-    }
-    cvd::Response response;
-    response.mutable_command_response();
-    return response;
+  Result<std::string> DetailedHelp(std::vector<std::string>&) const override {
+    return kDetailedHelpText;
   }
+
+  /**
+   * The `acloud` command satisfies the original `acloud CLI` command using
+   * either:
+   *
+   * 1. `cvd` for local instance management
+   *
+   * 2. Or `cvdr` for remote instance management.
+   *
+   */
+  Result<cvd::Response> Handle(const RequestWithStdio& request) override {
+    auto result = ValidateLocal(request);
+    if (result.ok()) {
+      return CF_EXPECT(HandleLocal(*result, request));
+    } else if (ValidateRemoteArgs(request)) {
+      return CF_EXPECT(HandleRemote(request));
+    }
+    CF_EXPECT(std::move(result));
+    return {};
+  }
+
   Result<void> Interrupt() override {
     std::scoped_lock interrupt_lock(interrupt_mutex_);
     interrupted_ = true;
+    CF_EXPECT(waiter_.Interrupt());
     CF_EXPECT(executor_.Interrupt());
     return {};
   }
@@ -106,18 +115,25 @@ class AcloudCommand : public CvdServerHandler {
       const cvd::Response& start_response);
   Result<void> PrintBriefSummary(const cvd::InstanceGroupInfo& group_info,
                                  std::optional<SharedFD> stream_fd) const;
+  Result<ConvertedAcloudCreateCommand> ValidateLocal(
+      const RequestWithStdio& request);
+  bool ValidateRemoteArgs(const RequestWithStdio& request);
+  Result<cvd::Response> HandleLocal(const ConvertedAcloudCreateCommand& command,
+                                    const RequestWithStdio& request);
+  Result<cvd::Response> HandleRemote(const RequestWithStdio& request);
+  Result<void> RunAcloudConnect(const RequestWithStdio& request,
+                                const std::string& hostname);
 
   CommandSequenceExecutor& executor_;
-  ConvertAcloudCreateCommand& converter_;
-
   std::mutex interrupt_mutex_;
   bool interrupted_ = false;
+  SubprocessWaiter waiter_;
 };
 
 Result<cvd::InstanceGroupInfo> AcloudCommand::HandleStartResponse(
     const cvd::Response& start_response) {
   CF_EXPECT(start_response.has_command_response(),
-            "cvd start did ont return a command response.");
+            "cvd start did not return a command response.");
   const auto& start_command_response = start_response.command_response();
   CF_EXPECT(start_command_response.has_instance_group_info(),
             "cvd start command response did not return instance_group_info.");
@@ -158,11 +174,161 @@ Result<void> AcloudCommand::PrintBriefSummary(
   return {};
 }
 
-fruit::Component<
-    fruit::Required<CommandSequenceExecutor, ConvertAcloudCreateCommand>>
-AcloudCommandComponent() {
-  return fruit::createComponent()
-      .addMultibinding<CvdServerHandler, AcloudCommand>();
+Result<ConvertedAcloudCreateCommand> AcloudCommand::ValidateLocal(
+    const RequestWithStdio& request) {
+  std::unique_lock interrupt_lock(interrupt_mutex_);
+  bool lock_released = false;
+  CF_EXPECT(!interrupted_, "Interrupted");
+  CF_EXPECT(CanHandle(request));
+  CF_EXPECT(IsSubOperationSupported(request));
+  // ConvertAcloudCreate may lock and unlock the lock
+  auto cb_unlock = [&lock_released, &interrupt_lock](void) -> Result<void> {
+    if (!lock_released) {
+      interrupt_lock.unlock();
+      lock_released = true;
+    }
+    return {};
+  };
+  auto cb_lock = [&lock_released, &interrupt_lock](void) -> Result<void> {
+    if (lock_released) {
+      interrupt_lock.lock();
+      lock_released = true;
+    }
+    return {};
+  };
+  // ConvertAcloudCreate converts acloud to cvd commands.
+  // The input parameters waiter_, cb_unlock, cb_lock are.used to
+  // support interrupt which have locking and unlocking functions
+  auto result =
+      acloud_impl::ConvertAcloudCreate(request, waiter_, cb_unlock, cb_lock);
+  if (!lock_released) {
+    interrupt_lock.unlock();
+  }
+  return result;
+}
+
+bool AcloudCommand::ValidateRemoteArgs(const RequestWithStdio& request) {
+  auto args = ParseInvocation(request.Message()).arguments;
+  return acloud_impl::CompileFromAcloudToCvdr(args).ok();
+}
+
+Result<cvd::Response> AcloudCommand::HandleLocal(
+    const ConvertedAcloudCreateCommand& command,
+    const RequestWithStdio& request) {
+  CF_EXPECT(executor_.Execute(command.prep_requests, request.Err()));
+  auto start_response =
+      CF_EXPECT(executor_.ExecuteOne(command.start_request, request.Err()));
+
+  if (!command.fetch_command_str.empty()) {
+    // has cvd fetch command, update the fetch cvd command file
+    using android::base::WriteStringToFile;
+    CF_EXPECT(WriteStringToFile(command.fetch_command_str,
+                                command.fetch_cvd_args_file),
+              true);
+  }
+
+  auto handle_response_result = HandleStartResponse(start_response);
+  if (handle_response_result.ok()) {
+    // print
+    std::optional<SharedFD> fd_opt;
+    if (command.verbose) {
+      fd_opt = request.Err();
+    }
+    auto write_result = PrintBriefSummary(*handle_response_result, fd_opt);
+    if (!write_result.ok()) {
+      LOG(ERROR) << "Failed to write the start response report.";
+    }
+  } else {
+    LOG(ERROR) << "Failed to analyze the cvd start response.";
+  }
+  cvd::Response response;
+  response.mutable_command_response();
+  return response;
+}
+
+Result<cvd::Response> AcloudCommand::HandleRemote(
+    const RequestWithStdio& request) {
+  auto args = ParseInvocation(request.Message()).arguments;
+  args = CF_EXPECT(acloud_impl::CompileFromAcloudToCvdr(args));
+  Command cmd = Command("cvdr");
+  for (auto a : args) {
+    cmd.AddParameter(a);
+  }
+  // Do not perform ADB connection with `cvdr` until acloud CLI is fully
+  // deprecated.
+  if (args[0] == "create") {
+    cmd.AddParameter("--auto_connect=false");
+  }
+  cmd.RedirectStdIO(Subprocess::StdIOChannel::kStdIn, request.In());
+  cmd.RedirectStdIO(Subprocess::StdIOChannel::kStdErr, request.Err());
+  std::string stdout_;
+  SharedFD stdout_pipe_read, stdout_pipe_write;
+  CF_EXPECT(SharedFD::Pipe(&stdout_pipe_read, &stdout_pipe_write),
+            "Could not create a pipe");
+  cmd.RedirectStdIO(Subprocess::StdIOChannel::kStdOut, stdout_pipe_write);
+  std::thread stdout_thread([stdout_pipe_read, &stdout_]() {
+    int read = ReadAll(stdout_pipe_read, &stdout_);
+    if (read < 0) {
+      LOG(ERROR) << "Error in reading stdout from process";
+    }
+  });
+  WriteAll(request.Err(),
+           "UPDATE! Try the new `cvdr` tool directly. Run `cvdr --help` to get "
+           "started.\n");
+  {
+    std::unique_lock interrupt_lock(interrupt_mutex_);
+    CF_EXPECT(!interrupted_, "Interrupted");
+    auto subprocess = cmd.Start();
+    CF_EXPECT(subprocess.Started());
+    CF_EXPECT(waiter_.Setup(std::move(subprocess)));
+  }
+  siginfo_t siginfo = CF_EXPECT(waiter_.Wait());
+  {
+    // Force the destructor to run by moving it into a smaller scope.
+    // This is necessary to close the write end of the pipe.
+    Command forceDelete = std::move(cmd);
+  }
+  stdout_pipe_write->Close();
+  stdout_thread.join();
+  WriteAll(request.Out(), stdout_);
+  if (args[0] == "create" && siginfo.si_status == EXIT_SUCCESS) {
+    std::string hostname = stdout_.substr(0, stdout_.find(" "));
+    CF_EXPECT(RunAcloudConnect(request, hostname));
+  }
+  cvd::Response response;
+  response.mutable_command_response();
+  return response;
+}
+
+Result<void> AcloudCommand::RunAcloudConnect(const RequestWithStdio& request,
+                                             const std::string& hostname) {
+  auto build_top = StringFromEnv("ANDROID_BUILD_TOP", "");
+  CF_EXPECT(
+      build_top != "",
+      "Missing ANDROID_BUILD_TOP environment variable. Please run `source "
+      "build/envsetup.sh`");
+  Command cmd =
+      Command(build_top + "/prebuilts/asuite/acloud/linux-x86/acloud");
+  cmd.AddParameter("reconnect");
+  cmd.AddParameter("--instance-names");
+  cmd.AddParameter(hostname);
+  cmd.RedirectStdIO(Subprocess::StdIOChannel::kStdIn, request.In());
+  cmd.RedirectStdIO(Subprocess::StdIOChannel::kStdOut, request.Out());
+  cmd.RedirectStdIO(Subprocess::StdIOChannel::kStdErr, request.Err());
+  {
+    std::unique_lock interrupt_lock(interrupt_mutex_);
+    CF_EXPECT(!interrupted_, "Interrupted");
+    auto subprocess = cmd.Start();
+    CF_EXPECT(subprocess.Started());
+    CF_EXPECT(waiter_.Setup(std::move(subprocess)));
+  }
+  CF_EXPECT(waiter_.Wait());
+  return {};
+}
+
+std::unique_ptr<CvdServerHandler> NewAcloudCommand(
+    CommandSequenceExecutor& executor) {
+  return std::unique_ptr<CvdServerHandler>(new AcloudCommand(executor));
 }
 
 }  // namespace cuttlefish

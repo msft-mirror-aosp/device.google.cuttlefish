@@ -18,8 +18,6 @@
 #include <set>
 #include <string>
 
-#include <fruit/fruit.h>
-
 #include "host/commands/cvd/lock_file.h"
 
 namespace cuttlefish {
@@ -47,7 +45,7 @@ class InstanceLockFileManager {
   using LockFileManager = cvd_impl::LockFileManager;
 
  public:
-  INJECT(InstanceLockFileManager());
+  InstanceLockFileManager();
 
   Result<InstanceLockFile> AcquireLock(int instance_num);
   Result<std::set<InstanceLockFile>> AcquireLocks(const std::set<int>& nums);
@@ -59,6 +57,11 @@ class InstanceLockFileManager {
   Result<std::optional<InstanceLockFile>> TryAcquireUnusedLock();
 
   Result<std::vector<InstanceLockFile>> LockAllAvailable();
+
+  // TODO: This routine should  be removed and replaced with allocd
+  // The caller must check if the instance_num belongs to the user, before
+  // calling this. It is a quick fix for b/316824572
+  Result<void> RemoveLockFile(int instance_num);
 
  private:
   /*

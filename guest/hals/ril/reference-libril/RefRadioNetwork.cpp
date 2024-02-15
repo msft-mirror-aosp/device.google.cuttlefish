@@ -50,6 +50,9 @@ ScopedAStatus RefRadioNetwork::getUsageSetting(int32_t serial) {
 ScopedAStatus RefRadioNetwork::setEmergencyMode(int32_t serial,
                                                 network::EmergencyMode emergencyMode) {
     network::EmergencyRegResult regState;
+    regState.accessNetwork = AccessNetwork::EUTRAN;
+    regState.regState = network::RegState::REG_HOME;
+    regState.emcDomain = network::Domain(3);  // CS_PS
     respond()->setEmergencyModeResponse(responseInfo(serial), regState);
     return ok();
 }
@@ -87,6 +90,30 @@ ScopedAStatus RefRadioNetwork::setNullCipherAndIntegrityEnabled(int32_t serial, 
 
 ScopedAStatus RefRadioNetwork::isNullCipherAndIntegrityEnabled(int32_t serial) {
     respond()->isNullCipherAndIntegrityEnabledResponse(responseInfo(serial), true);
+    return ok();
+}
+
+ScopedAStatus RefRadioNetwork::setCellularIdentifierTransparencyEnabled(int32_t serial, bool enabled) {
+    mIsCellularIdentifierTransparencyEnabled = enabled;
+    respond()->setCellularIdentifierTransparencyEnabledResponse(responseInfo(serial));
+    return ok();
+}
+
+ScopedAStatus RefRadioNetwork::isCellularIdentifierTransparencyEnabled(int32_t serial) {
+    respond()->isCellularIdentifierTransparencyEnabledResponse(
+            responseInfo(serial), mIsCellularIdentifierTransparencyEnabled);
+    return ok();
+}
+
+ScopedAStatus RefRadioNetwork::setSecurityAlgorithmsUpdatedEnabled(int32_t serial, bool enabled) {
+    mIsCipheringTransparencyEnabled = enabled;
+    respond()->setSecurityAlgorithmsUpdatedEnabledResponse(responseInfo(serial));
+    return ok();
+}
+
+ScopedAStatus RefRadioNetwork::isSecurityAlgorithmsUpdatedEnabled(int32_t serial) {
+    respond()->isSecurityAlgorithmsUpdatedEnabledResponse(responseInfo(serial),
+                                                          mIsCipheringTransparencyEnabled);
     return ok();
 }
 }  // namespace cf::ril

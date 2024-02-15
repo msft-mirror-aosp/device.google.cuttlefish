@@ -20,6 +20,7 @@
 #include <memory>
 #include <vector>
 
+#include "common/libs/utils/json.h"
 #include "common/libs/utils/result.h"
 #include "host/commands/cvd/selector/constant_reference.h"
 #include "host/commands/cvd/selector/instance_database_types.h"
@@ -38,6 +39,8 @@ class InstanceDatabase {
   using ConstInstanceHandler = ConstHandler<LocalInstance>;
 
  public:
+  static constexpr const char kJsonGroups[] = "Groups";
+
   InstanceDatabase();
   bool IsEmpty() const;
 
@@ -46,6 +49,7 @@ class InstanceDatabase {
     std::string home_dir;
     std::string host_artifacts_path;
     std::string product_out_path;
+    TimeStamp start_time;
   };
   /** Adds instance group.
    *
@@ -73,9 +77,6 @@ class InstanceDatabase {
   };
   Result<void> AddInstances(const std::string& group_name,
                             const std::vector<InstanceInfo>& instances);
-
-  Result<void> SetBuildId(const std::string& group_name,
-                          const std::string& build_id);
 
   /*
    *  auto group = CF_EXPEC(FindGroups(...));
@@ -107,22 +108,51 @@ class InstanceDatabase {
   template <typename T>
   Result<Set<ConstRef<T>>> Find(
       const Query& query,
-      const Map<FieldName, ConstHandler<T>>& handler_map) const;
+      const Map<FieldName, ConstHandler<T>>& handler_map) const {
+  static_assert(std::is_same<T, LocalInstance>::value ||
+                std::is_same<T, LocalInstanceGroup>::value);
+  const auto& [key, value] = query;
+  auto itr = handler_map.find(key);
+  if (itr == handler_map.end()) {
+    return CF_ERR("Handler does not exist for query " << key);
+  }
+  return (itr->second)(value);
+}
 
   template <typename T>
   Result<Set<ConstRef<T>>> Find(
       const Queries& queries,
-      const Map<FieldName, ConstHandler<T>>& handler_map) const;
+      const Map<FieldName, ConstHandler<T>>& handler_map) const {
+  static_assert(std::is_same<T, LocalInstance>::value ||
+                std::is_same<T, LocalInstanceGroup>::value);
+  if (queries.empty()) {
+    return CF_ERR("Queries must not be empty");
+  }
+  auto first_set = CF_EXPECT(Find<T>(queries[0], handler_map));
+  for (int i = 1; i < queries.size(); i++) {
+    auto subset = CF_EXPECT(Find<T>(queries[i], handler_map));
+    first_set = Intersection(first_set, subset);
+  }
+  return {first_set};
+}
 
   template <typename T>
   Result<ConstRef<T>> FindOne(
       const Query& query,
-      const Map<FieldName, ConstHandler<T>>& handler_map) const;
+      const Map<FieldName, ConstHandler<T>>& handler_map) const {
+  auto set = CF_EXPECT(Find<T>(query, handler_map));
+  CF_EXPECT_EQ(set.size(), 1, "Only one Instance (Group) is allowed.");
+  return {*set.cbegin()};
+}
 
   template <typename T>
   Result<ConstRef<T>> FindOne(
       const Queries& queries,
-      const Map<FieldName, ConstHandler<T>>& handler_map) const;
+      const Map<FieldName, ConstHandler<T>>& handler_map) const {
+  auto set = CF_EXPECT(Find<T>(queries, handler_map));
+  CF_EXPECT_EQ(set.size(), 1, "Only one Instance (Group) is allowed.");
+  return {*set.cbegin()};
+}
 
   std::vector<std::unique_ptr<LocalInstanceGroup>>::iterator FindIterator(
       const LocalInstanceGroup& group);
@@ -130,10 +160,14 @@ class InstanceDatabase {
   // actual Find implementations
   Result<Set<ConstRef<LocalInstanceGroup>>> FindGroupsByHome(
       const Value& home) const;
+  Result<Set<ConstRef<LocalInstanceGroup>>> FindGroupsById(
+      const Value& id) const;
   Result<Set<ConstRef<LocalInstanceGroup>>> FindGroupsByGroupName(
       const Value& group_name) const;
   Result<Set<ConstRef<LocalInstanceGroup>>> FindGroupsByInstanceName(
       const Value& instance_name) const;
+  Result<Set<ConstRef<LocalInstance>>> FindInstancesByHome(
+      const Value& home) const;
   Result<Set<ConstRef<LocalInstance>>> FindInstancesById(const Value& id) const;
   Result<Set<ConstRef<LocalInstance>>> FindInstancesByGroupName(
       const Value& instance_specific_name) const;
@@ -147,8 +181,6 @@ class InstanceDatabase {
   std::vector<std::unique_ptr<LocalInstanceGroup>> local_instance_groups_;
   Map<FieldName, ConstGroupHandler> group_handlers_;
   Map<FieldName, ConstInstanceHandler> instance_handlers_;
-
-  static constexpr const char kJsonGroups[] = "Groups";
 };
 
 }  // namespace selector

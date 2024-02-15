@@ -20,23 +20,37 @@ extern crate alloc;
 use kmr_wire::keymint::SecurityLevel;
 use libc::c_int;
 use log::error;
+use std::os::fd::OwnedFd;
 
 /// FFI wrapper around [`kmr_cf::ta_main`].
+///
+/// # Safety
+///
+/// `fd_in`, `fd_out`, and `snapshot_socket_fd` must be valid and open file descriptors and the
+/// caller must not use or close them after the call.
+///
+/// TODO: What are the preconditions for `trm`?
 #[no_mangle]
-pub extern "C" fn kmr_ta_main(
-    fd_in: c_int,
-    fd_out: c_int,
+pub unsafe extern "C" fn kmr_ta_main(
+    fd_in: OwnedFd,
+    fd_out: OwnedFd,
     security_level: c_int,
     trm: *mut libc::c_void,
+    snapshot_socket_fd: OwnedFd,
 ) {
-    let security_level = match security_level {
-        x if x == SecurityLevel::TrustedEnvironment as i32 => SecurityLevel::TrustedEnvironment,
-        x if x == SecurityLevel::Strongbox as i32 => SecurityLevel::Strongbox,
-        x if x == SecurityLevel::Software as i32 => SecurityLevel::Software,
+    let security_level = match SecurityLevel::n(security_level) {
+        Some(
+            x @ (SecurityLevel::Software
+            | SecurityLevel::TrustedEnvironment
+            | SecurityLevel::Strongbox),
+        ) => x,
         _ => {
             error!("unexpected security level {}, running as SOFTWARE", security_level);
             SecurityLevel::Software
         }
     };
-    kmr_cf::ta_main(fd_in, fd_out, security_level, trm)
+    // SAFETY: TODO: What are the preconditions for `trm`?
+    unsafe {
+        kmr_cf::ta_main(fd_in.into(), fd_out.into(), security_level, trm, snapshot_socket_fd.into())
+    }
 }

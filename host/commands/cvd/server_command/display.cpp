@@ -38,11 +38,27 @@
 #include "host/commands/cvd/types.h"
 
 namespace cuttlefish {
+namespace {
+constexpr char kSummaryHelpText[] =
+    R"(Enables hotplug/unplug of displays from running cuttlefish virtual devices)";
+
+constexpr char kDetailedHelpText[] =
+    R"(Cuttlefish Virtual Device (CVD) Display CLI.
+
+usage: cvd display <command> <args>
+
+Commands:
+    help <command>      Print help for a command.
+    add                 Adds a new display to a given device.
+    list                Prints the currently connected displays.
+    remove              Removes a display from a given device.
+)";
+}
 
 class CvdDisplayCommandHandler : public CvdServerHandler {
  public:
-  INJECT(CvdDisplayCommandHandler(InstanceManager& instance_manager,
-                                  SubprocessWaiter& subprocess_waiter))
+  CvdDisplayCommandHandler(InstanceManager& instance_manager,
+                           SubprocessWaiter& subprocess_waiter)
       : instance_manager_{instance_manager},
         subprocess_waiter_(subprocess_waiter),
         cvd_display_operations_{"display"} {}
@@ -57,19 +73,17 @@ class CvdDisplayCommandHandler : public CvdServerHandler {
     CF_EXPECT(!interrupted_, "Interrupted");
     CF_EXPECT(CanHandle(request));
     CF_EXPECT(VerifyPrecondition(request));
-    const uid_t uid = request.Credentials()->uid;
     cvd_common::Envs envs =
         cvd_common::ConvertToEnvs(request.Message().command_request().env());
 
     auto [_, subcmd_args] = ParseInvocation(request.Message());
 
-    bool is_help = IsHelp(subcmd_args);
+    bool is_help = CF_EXPECT(IsHelp(subcmd_args));
     // may modify subcmd_args by consuming in parsing
     Command command =
-        is_help ? CF_EXPECT(HelpCommand(request, uid, subcmd_args, envs))
-                : CF_EXPECT(NonHelpCommand(request, uid, subcmd_args, envs));
-    SubprocessOptions options;
-    CF_EXPECT(subprocess_waiter_.Setup(command.Start(options)));
+        is_help ? CF_EXPECT(HelpCommand(request, subcmd_args, envs))
+                : CF_EXPECT(NonHelpCommand(request, subcmd_args, envs));
+    CF_EXPECT(subprocess_waiter_.Setup(command.Start()));
     interrupt_lock.unlock();
 
     auto infop = CF_EXPECT(subprocess_waiter_.Wait());
@@ -88,8 +102,16 @@ class CvdDisplayCommandHandler : public CvdServerHandler {
                             cvd_display_operations_.end());
   }
 
+  Result<std::string> SummaryHelp() const override { return kSummaryHelpText; }
+
+  bool ShouldInterceptHelp() const override { return true; }
+
+  Result<std::string> DetailedHelp(std::vector<std::string>&) const override {
+    return kDetailedHelpText;
+  }
+
  private:
-  Result<Command> HelpCommand(const RequestWithStdio& request, const uid_t uid,
+  Result<Command> HelpCommand(const RequestWithStdio& request,
                               const cvd_common::Args& subcmd_args,
                               cvd_common::Envs envs) {
     CF_EXPECT(Contains(envs, kAndroidHostOut));
@@ -97,7 +119,7 @@ class CvdDisplayCommandHandler : public CvdServerHandler {
         ConcatToString(envs.at(kAndroidHostOut), "/bin/", kDisplayBin);
     std::string home = Contains(envs, "HOME")
                            ? envs.at("HOME")
-                           : CF_EXPECT(SystemWideUserHome(uid));
+                           : CF_EXPECT(SystemWideUserHome());
     envs["HOME"] = home;
     envs[kAndroidSoongHostOut] = envs.at(kAndroidHostOut);
     ConstructCommandParam construct_cmd_param{
@@ -115,7 +137,7 @@ class CvdDisplayCommandHandler : public CvdServerHandler {
   }
 
   Result<Command> NonHelpCommand(const RequestWithStdio& request,
-                                 const uid_t uid, cvd_common::Args& subcmd_args,
+                                 cvd_common::Args& subcmd_args,
                                  cvd_common::Envs envs) {
     // test if there is --instance_num flag
     CvdFlag<std::int32_t> instance_num_flag("instance_num");
@@ -130,8 +152,8 @@ class CvdDisplayCommandHandler : public CvdServerHandler {
         request.Message().command_request().selector_opts();
     const auto selector_args = cvd_common::ConvertToArgs(selector_opts.args());
 
-    auto instance = CF_EXPECT(instance_manager_.SelectInstance(
-        selector_args, extra_queries, envs, uid));
+    auto instance = CF_EXPECT(
+        instance_manager_.SelectInstance(selector_args, extra_queries, envs));
     const auto& instance_group = instance.ParentGroup();
     const auto& home = instance_group.HomeDir();
 
@@ -169,9 +191,9 @@ class CvdDisplayCommandHandler : public CvdServerHandler {
     return command;
   }
 
-  bool IsHelp(const cvd_common::Args& cmd_args) const {
+  Result<bool> IsHelp(const cvd_common::Args& cmd_args) const {
     // cvd display --help, --helpxml, etc or simply cvd display
-    if (cmd_args.empty() || IsHelpSubcmd(cmd_args)) {
+    if (cmd_args.empty() || CF_EXPECT(IsHelpSubcmd(cmd_args))) {
       return true;
     }
     // cvd display help <subcommand> format
@@ -186,10 +208,10 @@ class CvdDisplayCommandHandler : public CvdServerHandler {
   static constexpr char kDisplayBin[] = "cvd_internal_display";
 };
 
-fruit::Component<fruit::Required<InstanceManager, SubprocessWaiter>>
-CvdDisplayComponent() {
-  return fruit::createComponent()
-      .addMultibinding<CvdServerHandler, CvdDisplayCommandHandler>();
+std::unique_ptr<CvdServerHandler> NewCvdDisplayCommandHandler(
+    InstanceManager& instance_manager, SubprocessWaiter& subprocess_waiter) {
+  return std::unique_ptr<CvdServerHandler>(
+      new CvdDisplayCommandHandler(instance_manager, subprocess_waiter));
 }
 
 }  // namespace cuttlefish

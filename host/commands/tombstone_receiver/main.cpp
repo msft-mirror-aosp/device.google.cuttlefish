@@ -14,15 +14,14 @@
  * limitations under the License.
  */
 
-#include <gflags/gflags.h>
 #include <android-base/logging.h>
+#include <fmt/format.h>
 
 #include <chrono>
 #include <fstream>
-#include <iomanip>
-#include <sstream>
 
 #include "common/libs/fs/shared_fd.h"
+#include "common/libs/fs/shared_select.h"
 #include "common/libs/utils/flag_parser.h"
 #include "common/libs/utils/shared_fd_flag.h"
 #include "host/libs/config/logging.h"
@@ -32,12 +31,9 @@ namespace cuttlefish {
 static uint num_tombstones_in_last_second = 0;
 static std::string last_tombstone_name = "";
 
-static std::string next_tombstone_path(const std::string& tombstone_dir) {
-  auto in_time_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
-  std::stringstream ss;
-  ss << tombstone_dir << "/tombstone_"
-     << std::put_time(std::gmtime(&in_time_t), "%Y-%m-%d-%H%M%S");
-  auto retval = ss.str();
+static std::string next_tombstone_path(const std::string& dir) {
+  auto in_time = std::chrono::system_clock::now();
+  auto retval = fmt::format("{}/tombstone_{:%Y-%m-%d-%H%M%S}", dir, in_time);
 
   // Gives tombstones unique names
   if(retval == last_tombstone_name) {
@@ -53,6 +49,7 @@ static std::string next_tombstone_path(const std::string& tombstone_dir) {
 }
 
 static constexpr size_t CHUNK_RECV_MAX_LEN = 1024;
+static constexpr size_t TIMEOUT_SEC = 3;
 
 int TombstoneReceiverMain(int argc, char** argv) {
   DefaultSubprocessLogging(argv);
@@ -73,7 +70,9 @@ int TombstoneReceiverMain(int argc, char** argv) {
 
   std::vector<std::string> args =
       ArgsToVec(argc - 1, argv + 1);  // Skip argv[0]
-  CHECK(ParseFlags(flags, args)) << "Could not process command line flags.";
+  auto parse_res = ConsumeFlags(flags, args);
+  CHECK(parse_res.ok()) << "Could not process command line flags. "
+                        << parse_res.error().FormatForEnv();
 
   CHECK(server_fd->IsOpen()) << "Did not receive a server fd";
 
@@ -85,17 +84,40 @@ int TombstoneReceiverMain(int argc, char** argv) {
     auto conn = SharedFD::Accept(*server_fd);
     std::ofstream file(next_tombstone_path(tombstone_dir),
                        std::ofstream::out | std::ofstream::binary);
+    auto acc = 0;
+    auto cnt = 0;
 
+    SharedFDSet read_set;
+    read_set.Set(conn);
+
+    SharedFDSet error_set;
+    error_set.Set(conn);
     while (file.is_open()) {
-      char buff[CHUNK_RECV_MAX_LEN];
-      auto bytes_read = conn->Read(buff, sizeof(buff));
-      if (bytes_read <= 0) {
-        // reset the other side if it's still connected
+      struct timeval timeout = {TIMEOUT_SEC, 0};
+      auto val = Select(&read_set, nullptr, &error_set, &timeout);
+      if (val == 0) {
+        LOG(DEBUG) << "timeout";
         break;
-      } else {
-        file.write(buff, bytes_read);
+      }
+      if (read_set.IsSet(conn)) {
+        char buff[CHUNK_RECV_MAX_LEN];
+        auto bytes_read = conn->Recv(buff, sizeof(buff), 0);
+        acc += bytes_read;
+        if (bytes_read <= 0) {
+          // reset the other side if it's still connected
+          break;
+        } else {
+          file.write(buff, bytes_read);
+          cnt++;
+        }
+      }
+
+      if (error_set.IsSet(conn)) {
+        LOG(DEBUG) << "error";
+        break;
       }
     }
+    LOG(DEBUG) << "done: " << acc << " bytes via " << cnt;
   }
 
   return 0;

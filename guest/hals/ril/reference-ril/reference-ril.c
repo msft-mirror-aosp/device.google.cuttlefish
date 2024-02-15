@@ -560,11 +560,13 @@ static void set_Ip_Addr(const char *addr, const char* radioInterfaceName) {
   strncpy(request.ifr_name, radioInterfaceName, sizeof(request.ifr_name));
   request.ifr_name[sizeof(request.ifr_name) - 1] = '\0';
 
+  int pfxlen = 0;
   char *myaddr = strdup(addr);
   char *pch = NULL;
   pch = strchr(myaddr, '/');
   if (pch) {
     *pch = '\0';
+    pfxlen = atoi(++pch);
   }
 
   if (family == AF_INET) {
@@ -574,6 +576,10 @@ static void set_Ip_Addr(const char *addr, const char* radioInterfaceName) {
     if (ioctl(sock, SIOCSIFADDR, &request) < 0) {
       RLOGE("%s: SIOCSIFADDR IPv4 failed.", __func__);
     }
+    sin->sin_addr.s_addr = htonl(0xFFFFFFFFu << (32 - (pfxlen ?: 32)));
+    if (ioctl(sock, SIOCSIFNETMASK, &request) < 0) {
+      RLOGE("%s: SIOCSIFNETMASK failed.", __func__);
+    }
   } else {
     if (ioctl(sock, SIOGIFINDEX, &request) < 0) {
       RLOGE("%s: SIOCGIFINDEX failed.", __func__);
@@ -581,7 +587,7 @@ static void set_Ip_Addr(const char *addr, const char* radioInterfaceName) {
 
     struct in6_ifreq req6 = {
        // struct in6_addr ifr6_addr;
-       .ifr6_prefixlen = 64,  // __u32
+       .ifr6_prefixlen = pfxlen ?: 128,  // __u32
        .ifr6_ifindex = request.ifr_ifindex,  // int
     };
     if (inet_pton(AF_INET6, myaddr, &req6.ifr6_addr) != 1) {
@@ -845,8 +851,8 @@ static void requestOrSendDataCallList(int cid, RIL_Token *t)
          p_cur = p_cur->p_next)
         n++;
 
-    RIL_Data_Call_Response_v11 *responses =
-        alloca(n * sizeof(RIL_Data_Call_Response_v11));
+    RIL_Data_Call_Response_v11 *responses = (n == 0) ? NULL :
+                   alloca(n * sizeof(RIL_Data_Call_Response_v11));
 
     int i;
     for (i = 0; i < n; i++) {
@@ -996,7 +1002,7 @@ static void requestOrSendDataCallList(int cid, RIL_Token *t)
     // If cid = -1, return the data call list without processing CGCONTRDP (setupDataCall)
     if (cid == -1) {
         if (t != NULL)
-            RIL_onRequestComplete(*t, RIL_E_SUCCESS, &responses[0],
+            RIL_onRequestComplete(*t, RIL_E_SUCCESS, responses,
                                   sizeof(RIL_Data_Call_Response_v11));
         else
             RIL_onUnsolicitedResponse(RIL_UNSOL_DATA_CALL_LIST_CHANGED, responses,
@@ -1573,23 +1579,22 @@ static void requestDeviceIdentity(int request __unused, void *data __unused,
     int commas;
     int skip;
     int count = 4;
-
-    // Fixed values. TODO: Query modem
-    responseStr[0] ="358240051111110";
-    responseStr[1] =  "";
-    responseStr[2] = "77777777";
-    responseStr[3] = ""; // default empty for non-CDMA
+    char meid[14] = {0};
 
     err = at_send_command_numeric("AT+CGSN", &p_response);
     if (err < 0 || p_response->success == 0) {
         RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
         return;
-    } else {
-        if (TECH_BIT(sMdmInfo) == MDM_CDMA) {
-            responseStr[3] = p_response->p_intermediates->line;
-        } else {
-            responseStr[0] = p_response->p_intermediates->line;
-        }
+    }
+
+    responseStr[0] = p_response->p_intermediates->line;
+    responseStr[1] = "";
+    responseStr[2] = "77777777";
+    responseStr[3] = "";  // default empty for non-CDMA
+
+    if (TECH_BIT(sMdmInfo) == MDM_CDMA) {
+        strncpy(meid, responseStr[0], sizeof(meid));
+        responseStr[3] = meid;
     }
 
     RIL_onRequestComplete(t, RIL_E_SUCCESS, responseStr, count*sizeof(char*));
@@ -6206,6 +6211,77 @@ static void onUnsolicited (const char *s, const char *sms_pdu)
         }
 
         free(line);
+    } else if (strStartsWith(s, "+REMOTEIDDISCLOSURE")) {
+        RLOGD("starting REMOTEIDDISCLOSURE %s", s);
+        line = p = strdup(s);
+        if (!line) {
+            RLOGE("+REMOTEIDDISCLOSURE unable to allocate memory");
+            return;
+        }
+        if (at_tok_start(&p) < 0) {
+            RLOGE("invalid +REMOTEIDDISCLOSURE command: %s", s);
+            free(line);
+            return;
+        }
+
+        RIL_CellularIdentifierDisclosure disclosure;
+
+        if (at_tok_nextstr(&p, &disclosure.plmn) < 0) {
+            RLOGE("+REMOTEIDDISCLOSURE unable to parse plmn %s", s);
+            return;
+        }
+        if (at_tok_nextint(&p, &disclosure.identifierType) < 0) {
+            RLOGE("+REMOTEIDDISCLOSURE unable to parse identifier %s", s);
+            return;
+        }
+        if (at_tok_nextint(&p, &disclosure.protocolMessage) < 0) {
+            RLOGE("+REMOTEIDDISCLOSURE unable to parse protocol message %s", s);
+            return;
+        }
+        if (at_tok_nextbool(&p, (char*)&disclosure.isEmergency) < 0) {
+            RLOGE("+REMOTEIDDISCLOSURE unable to parse isEmergency %s", s);
+            return;
+        }
+
+        RIL_onUnsolicitedResponse(RIL_UNSOL_CELLULAR_IDENTIFIER_DISCLOSED, (void*)&disclosure,
+                                  sizeof(disclosure));
+        free(line);
+    } else if (strStartsWith(s, "+UPDATESECURITYALGORITHM")) {
+        RLOGD("starting UPDATESECURITYALGORITHM %s", s);
+        line = p = strdup(s);
+        if (!line) {
+            RLOGE("+UPDATESECURITYALGORITHM unable to allocate memory");
+            return;
+        }
+        if (at_tok_start(&p) < 0) {
+            RLOGE("invalid +UPDATESECURITYALGORITHM command: %s", s);
+            free(line);
+            return;
+        }
+
+        RIL_SecurityAlgorithmUpdate update;
+
+        if (at_tok_nextint(&p, &update.connectionEvent) < 0) {
+            RLOGE("+UPDATESECURITYALGORITHM unable to parse connection event %s", s);
+            return;
+        }
+        if (at_tok_nextint(&p, &update.encryption) < 0) {
+            RLOGE("+UPDATESECURITYALGORITHM unable to parse encryption %s", s);
+            return;
+        }
+        if (at_tok_nextint(&p, &update.integrity) < 0) {
+            RLOGE("+UPDATESECURITYALGORITHM unable to parse integrity %s", s);
+            return;
+        }
+        if (at_tok_nextbool(&p, (char*)&update.isUnprotectedEmergency) < 0) {
+            RLOGE("+UPDATESECURITYALGORITHM unable to parse isUnprotectedEmergency %s", s);
+            return;
+        }
+
+        RIL_onUnsolicitedResponse(RIL_UNSOL_SECURITY_ALGORITHM_UPDATED, &update, sizeof(update));
+        free(line);
+    } else {
+        RLOGE("Unexpected unsolicited request: %s", s);
     }
 }
 

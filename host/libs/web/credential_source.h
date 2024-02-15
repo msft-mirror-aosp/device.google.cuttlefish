@@ -16,7 +16,9 @@
 #pragma once
 
 #include <chrono>
+#include <istream>
 #include <memory>
+#include <string>
 
 #include <json/json.h>
 #include <openssl/evp.h>
@@ -25,6 +27,9 @@
 #include "host/libs/web/http_client/http_client.h"
 
 namespace cuttlefish {
+
+inline constexpr char kBuildScope[] =
+    "https://www.googleapis.com/auth/androidbuild.internal";
 
 class CredentialSource {
 public:
@@ -45,7 +50,7 @@ class GceMetadataCredentialSource : public CredentialSource {
 
   Result<std::string> Credential() override;
 
-  static std::unique_ptr<CredentialSource> make(HttpClient&);
+  static std::unique_ptr<CredentialSource> Make(HttpClient&);
 };
 
 class FixedCredentialSource : public CredentialSource {
@@ -55,7 +60,7 @@ public:
 
   Result<std::string> Credential() override;
 
-  static std::unique_ptr<CredentialSource> make(const std::string& credential);
+  static std::unique_ptr<CredentialSource> Make(const std::string& credential);
 };
 
 class RefreshCredentialSource : public CredentialSource {
@@ -103,4 +108,10 @@ class ServiceAccountOauthCredentialSource : public CredentialSource {
   std::string latest_credential_;
   std::chrono::steady_clock::time_point expiration_;
 };
+
+Result<std::unique_ptr<CredentialSource>> GetCredentialSource(
+    HttpClient& http_client, const std::string& credential_source,
+    const std::string& oauth_filepath, const bool use_gce_metadata,
+    const std::string& credential_filepath,
+    const std::string& service_account_filepath);
 }

@@ -14,29 +14,34 @@
  * limitations under the License.
  */
 
-#include "host/commands/cvd/server.h"
+#include "host/commands/cvd/server_command/restart.h"
 
 #include <sys/types.h>
 
 #include <cstdio>
 #include <iostream>
+#include <optional>
+#include <string>
+#include <variant>
+#include <vector>
 
 #include <android-base/file.h>
-#include <fruit/fruit.h>
 
 #include "common/libs/fs/shared_buf.h"
 #include "common/libs/fs/shared_fd.h"
 #include "common/libs/utils/contains.h"
+#include "common/libs/utils/files.h"
 #include "common/libs/utils/result.h"
 #include "cvd_server.pb.h"
 #include "host/commands/cvd/common_utils.h"
 #include "host/commands/cvd/epoll_loop.h"
 #include "host/commands/cvd/frontline_parser.h"
 #include "host/commands/cvd/instance_manager.h"
-#include "host/commands/cvd/server_command/components.h"
+#include "host/commands/cvd/server.h"
 #include "host/commands/cvd/server_command/utils.h"
 #include "host/commands/cvd/types.h"
-#include "host/libs/web/build_api.h"
+#include "host/libs/web/android_build_api.h"
+#include "host/libs/web/android_build_string.h"
 
 namespace cuttlefish {
 namespace {
@@ -57,10 +62,14 @@ Modes:
 )";
 
 Result<SharedFD> LatestCvdAsFd(BuildApi& build_api) {
-  static constexpr char kBuild[] = "aosp-master";
-  static constexpr char kTarget[] = "aosp_cf_x86_64_phone-userdebug";
-  auto latest = CF_EXPECT(build_api.LatestBuildId(kBuild, kTarget));
-  DeviceBuild build{latest, kTarget};
+  static constexpr char kTarget[] =
+      "aosp_cf_x86_64_phone-trunk_staging-userdebug";
+  const auto build_string =
+      DeviceBuildString{.branch_or_id = "aosp-main", .target = kTarget};
+  Build build = CF_EXPECT(build_api.GetBuild(build_string, kTarget));
+  CF_EXPECT(std::holds_alternative<DeviceBuild>(build),
+            "Unable to process non-DeviceBuild. Something has gone wrong.");
+  DeviceBuild device_build = *std::get_if<DeviceBuild>(&build);
 
   auto fd = SharedFD::MemfdCreate("cvd");
   CF_EXPECT(fd->IsOpen(), "MemfdCreate failed: " << fd->StrError());
@@ -76,15 +85,15 @@ Result<SharedFD> LatestCvdAsFd(BuildApi& build_api) {
     }
     return true;
   };
-  CF_EXPECT(build_api.ArtifactToCallback(build, "cvd", write));
+  CF_EXPECT(build_api.ArtifactToCallback(device_build, "cvd", write));
 
   return fd;
 }
 
 class CvdRestartHandler : public CvdServerHandler {
  public:
-  INJECT(CvdRestartHandler(BuildApi& build_api, CvdServer& server,
-                           InstanceManager& instance_manager))
+  CvdRestartHandler(BuildApi& build_api, CvdServer& server,
+                    InstanceManager& instance_manager)
       : build_api_(build_api),
         supported_modes_({"match-client", "latest", "reuse-server"}),
         server_(server),
@@ -102,6 +111,12 @@ class CvdRestartHandler : public CvdServerHandler {
   }
 
   Result<cvd::Response> Handle(const RequestWithStdio& request) override {
+    /*
+     * TODO(weihsu@): change the code accordingly per verbosity level control.
+     *
+     * Now, the server can start with a verbosity level. Change the code
+     * accordingly.
+     */
     CF_EXPECT(CanHandle(request));
     cvd::Response response;
     if (request.Message().has_shutdown_request()) {
@@ -133,11 +148,9 @@ class CvdRestartHandler : public CvdServerHandler {
     server_.Stop();
 
     CF_EXPECT(request.Credentials() != std::nullopt);
-    const uid_t client_uid = request.Credentials()->uid;
-    auto json_string =
-        CF_EXPECT(SerializedInstanceDatabaseToString(client_uid));
+    auto json_string = CF_EXPECT(SerializedInstanceDatabaseToString());
     std::optional<SharedFD> mem_fd;
-    if (instance_manager_.HasInstanceGroups(client_uid)) {
+    if (instance_manager_.HasInstanceGroups()) {
       mem_fd = CF_EXPECT(CreateMemFileWithSerializedDb(json_string));
       CF_EXPECT(mem_fd != std::nullopt && (*mem_fd)->IsOpen(),
                 "mem file not open?");
@@ -162,9 +175,8 @@ class CvdRestartHandler : public CvdServerHandler {
       return CF_ERR("unsupported subcommand");
     }
 
-    CF_EXPECT(server_.Exec({.new_exe = new_exe,
+    CF_EXPECT(server_.Exec({.new_exe = std::move(new_exe),
                             .carryover_client_fd = request.Client(),
-                            .client_stderr_fd = request.Err(),
                             .in_memory_data_fd = mem_fd,
                             .verbose = parsed.verbose}));
     return CF_ERR("Should be unreachable");
@@ -238,9 +250,8 @@ class CvdRestartHandler : public CvdServerHandler {
     return new_exe;
   }
 
-  Result<std::string> SerializedInstanceDatabaseToString(
-      const uid_t client_uid) {
-    auto db_json = CF_EXPECT(instance_manager_.Serialize(client_uid),
+  Result<std::string> SerializedInstanceDatabaseToString() {
+    auto db_json = CF_EXPECT(instance_manager_.Serialize(),
                              "Failed to serialized instance database");
     return db_json.toStyledString();
   }
@@ -276,10 +287,10 @@ class CvdRestartHandler : public CvdServerHandler {
 
 }  // namespace
 
-fruit::Component<fruit::Required<BuildApi, CvdServer, InstanceManager>>
-CvdRestartComponent() {
-  return fruit::createComponent()
-      .addMultibinding<CvdServerHandler, CvdRestartHandler>();
+std::unique_ptr<CvdServerHandler> NewCvdRestartHandler(
+    BuildApi& build_api, CvdServer& server, InstanceManager& instance_manager) {
+  return std::unique_ptr<CvdServerHandler>(
+      new CvdRestartHandler(build_api, server, instance_manager));
 }
 
 }  // namespace cuttlefish

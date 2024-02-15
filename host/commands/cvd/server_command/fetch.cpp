@@ -16,10 +16,13 @@
 
 #include "host/commands/cvd/server_command/fetch.h"
 
+#include <android-base/strings.h>
+
 #include "common/libs/fs/shared_buf.h"
 #include "common/libs/fs/shared_fd.h"
 #include "common/libs/utils/contains.h"
 #include "common/libs/utils/result.h"
+#include "common/libs/utils/subprocess.h"
 #include "host/commands/cvd/server_command/server_handler.h"
 #include "host/commands/cvd/server_command/utils.h"
 #include "host/commands/cvd/types.h"
@@ -28,7 +31,7 @@ namespace cuttlefish {
 
 class CvdFetchCommandHandler : public CvdServerHandler {
  public:
-  INJECT(CvdFetchCommandHandler(SubprocessWaiter& subprocess_waiter))
+  CvdFetchCommandHandler(SubprocessWaiter& subprocess_waiter)
       : subprocess_waiter_(subprocess_waiter),
         fetch_cmd_list_{std::vector<std::string>{"fetch", "fetch_cvd"}} {}
 
@@ -36,6 +39,9 @@ class CvdFetchCommandHandler : public CvdServerHandler {
   Result<cvd::Response> Handle(const RequestWithStdio& request) override;
   Result<void> Interrupt() override;
   cvd_common::Args CmdList() const override { return fetch_cmd_list_; }
+  Result<std::string> SummaryHelp() const override;
+  virtual bool ShouldInterceptHelp() const { return true; }
+  Result<std::string> DetailedHelp(std::vector<std::string>&) const override;
 
  private:
   SubprocessWaiter& subprocess_waiter_;
@@ -84,7 +90,7 @@ Result<cvd::Response> CvdFetchCommandHandler::Handle(
     }
   }
 
-  CF_EXPECT(subprocess_waiter_.Setup(command.Start(options)));
+  CF_EXPECT(subprocess_waiter_.Setup(command.Start(std::move(options))));
 
   if (command_request.wait_behavior() == cvd::WAIT_BEHAVIOR_START) {
     cvd::Response response;
@@ -107,10 +113,26 @@ Result<void> CvdFetchCommandHandler::Interrupt() {
   return {};
 }
 
-fruit::Component<fruit::Required<InstanceManager, SubprocessWaiter>>
-cvdFetchCommandComponent() {
-  return fruit::createComponent()
-      .addMultibinding<CvdServerHandler, CvdFetchCommandHandler>();
+Result<std::string> CvdFetchCommandHandler::SummaryHelp() const {
+  return "Retrieve build artifacts based on branch and target names";
+}
+
+Result<std::string> CvdFetchCommandHandler::DetailedHelp(
+    std::vector<std::string>&) const {
+  Command fetch_command("/proc/self/exe");
+  fetch_command.SetName("fetch_cvd");
+  fetch_command.SetExecutable("/proc/self/exe");
+  fetch_command.AddParameter("--help");
+
+  std::string output;
+  RunWithManagedStdio(std::move(fetch_command), nullptr, nullptr, &output);
+  return output;
+}
+
+std::unique_ptr<CvdServerHandler> NewCvdFetchCommandHandler(
+    SubprocessWaiter& subprocess_waiter) {
+  return std::unique_ptr<CvdServerHandler>(
+      new CvdFetchCommandHandler(subprocess_waiter));
 }
 
 }  // namespace cuttlefish

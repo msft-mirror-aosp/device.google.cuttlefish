@@ -18,6 +18,8 @@
 
 #include <unistd.h>
 
+#include <android-base/strings.h>
+
 #include "common/libs/utils/contains.h"
 #include "common/libs/utils/flag_parser.h"
 #include "common/libs/utils/users.h"
@@ -29,9 +31,8 @@ namespace cuttlefish {
 namespace selector {
 
 Result<SelectorCommonParser> SelectorCommonParser::Parse(
-    const uid_t client_uid, cvd_common::Args& selector_args,
-    const cvd_common::Envs& envs) {
-  std::string system_wide_home = CF_EXPECT(SystemWideUserHome(client_uid));
+    cvd_common::Args& selector_args, const cvd_common::Envs& envs) {
+  std::string system_wide_home = CF_EXPECT(SystemWideUserHome());
   SelectorCommonParser parser(system_wide_home, envs);
   CF_EXPECT(parser.ParseOptions(selector_args));
   return std::move(parser);
@@ -82,7 +83,7 @@ SelectorCommonParser::HandleNameOpts(const NameFlagsParam& name_flags) const {
 
   if (name_flags.instance_names) {
     instance_names_output =
-        std::move(CF_EXPECT(HandleInstanceNames(name_flags.instance_names)));
+        CF_EXPECT(HandleInstanceNames(name_flags.instance_names));
   }
   return {ParsedNameFlags{.group_name = std::move(group_name_output),
                           .instance_names = std::move(instance_names_output)}};
@@ -90,16 +91,17 @@ SelectorCommonParser::HandleNameOpts(const NameFlagsParam& name_flags) const {
 
 Result<std::vector<std::string>> SelectorCommonParser::HandleInstanceNames(
     const std::optional<std::string>& per_instance_names) const {
-  CF_EXPECT(per_instance_names && !per_instance_names.value().empty());
+  CF_EXPECT(per_instance_names.has_value());
 
-  auto instance_names =
-      CF_EXPECT(SeparateButWithNoEmptyToken(per_instance_names.value(), ","));
+  auto instance_names = android::base::Split(per_instance_names.value(), ",");
+  std::unordered_set<std::string> duplication_check;
   for (const auto& instance_name : instance_names) {
     CF_EXPECT(IsValidInstanceName(instance_name));
+    // Check that provided non-empty instance names are unique. Empty names will
+    // be replaced later with defaults guaranteed to be unique.
+    CF_EXPECT(instance_name.empty() || !Contains(duplication_check, instance_name));
+    duplication_check.insert(instance_name);
   }
-  std::unordered_set<std::string> duplication_check{instance_names.cbegin(),
-                                                    instance_names.cend()};
-  CF_EXPECT(duplication_check.size() == instance_names.size());
   return instance_names;
 }
 

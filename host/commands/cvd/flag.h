@@ -90,7 +90,7 @@ class CvdFlag {
       return std::nullopt;
     }
     T value;
-    CF_EXPECT(ParseFlags({gflag_factory_cb(name_, value)}, args),
+    CF_EXPECT(ConsumeFlags({gflag_factory_cb(name_, value)}, args),
               "Failed to parse --" << name_);
     if (args.size() == args_initial_size) {
       // not consumed
@@ -242,8 +242,8 @@ class FlagCollection {
   std::vector<CvdFlagProxy> Flags() const;
 
   struct FlagValuePair {
-    ValueVariant value;
     CvdFlagProxy flag;
+    ValueVariant value;
   };
 
   /* does not consider default values
