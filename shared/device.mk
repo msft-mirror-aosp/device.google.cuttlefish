@@ -281,6 +281,8 @@ ifeq ($(RELEASE_AIDL_USE_UNFROZEN),true)
 LOCAL_AUDIO_PRODUCT_PACKAGE += \
     android.hardware.audio.parameter_parser.example_service \
     com.android.hardware.audio
+PRODUCT_SYSTEM_EXT_PROPERTIES += \
+    ro.audio.ihaladaptervendorextension_enabled=true
 else
 LOCAL_AUDIO_PRODUCT_PACKAGE += \
     android.hardware.audio.service \
@@ -329,7 +331,10 @@ PRODUCT_PACKAGES += \
     android.hardware.drm@latest-service.clearkey
 endif
 
+LOCAL_ENABLE_WIDEVINE ?= true
+ifeq ($(LOCAL_ENABLE_WIDEVINE),true)
 -include vendor/widevine/libwvdrmengine/apex/device/device.mk
+endif
 
 #
 # Confirmation UI HAL
