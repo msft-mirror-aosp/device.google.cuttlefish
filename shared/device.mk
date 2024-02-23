@@ -40,6 +40,8 @@ PRODUCT_SOONG_NAMESPACES += device/generic/goldfish # for audio, wifi and sensor
 PRODUCT_USE_DYNAMIC_PARTITIONS := true
 DISABLE_RILD_OEM_HOOK := true
 
+PRODUCT_16K_DEVELOPER_OPTION := true
+
 # TODO(b/205788876) remove this condition when openwrt has an image for arm.
 ifndef PRODUCT_ENFORCE_MAC80211_HWSIM
 PRODUCT_ENFORCE_MAC80211_HWSIM := true
@@ -281,8 +283,6 @@ ifeq ($(RELEASE_AIDL_USE_UNFROZEN),true)
 LOCAL_AUDIO_PRODUCT_PACKAGE += \
     android.hardware.audio.parameter_parser.example_service \
     com.android.hardware.audio
-PRODUCT_SYSTEM_EXT_PROPERTIES += \
-    ro.audio.ihaladaptervendorextension_enabled=true
 else
 LOCAL_AUDIO_PRODUCT_PACKAGE += \
     android.hardware.audio.service \
@@ -331,10 +331,7 @@ PRODUCT_PACKAGES += \
     android.hardware.drm@latest-service.clearkey
 endif
 
-LOCAL_ENABLE_WIDEVINE ?= true
-ifeq ($(LOCAL_ENABLE_WIDEVINE),true)
 -include vendor/widevine/libwvdrmengine/apex/device/device.mk
-endif
 
 #
 # Confirmation UI HAL

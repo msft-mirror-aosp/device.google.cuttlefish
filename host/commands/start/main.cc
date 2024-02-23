@@ -344,7 +344,7 @@ int main(int argc, char** argv) {
   std::vector<std::string> assemble_args;
   std::string image_dir;
   std::vector<std::string> args_copy = args;
-  auto parse_res = cuttlefish::ConsumeFlags(
+  auto parse_res = cuttlefish::ParseFlags(
       {cuttlefish::GflagsCompatFlag("system_image_dir", image_dir)}, args_copy);
   LOG(INFO) << "Using system_image_dir of: " << image_dir;
 

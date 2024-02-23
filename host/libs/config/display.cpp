@@ -117,8 +117,7 @@ ParseDisplayConfigsFromArgs(std::vector<std::string>& args) {
           }),
   };
 
-  CF_EXPECT(ConsumeFlags(display_flags, args),
-            "Failed to parse display flags.");
+  CF_EXPECT(ParseFlags(display_flags, args), "Failed to parse display flags.");
 
   std::vector<CuttlefishConfig::DisplayConfig> displays_configs;
 

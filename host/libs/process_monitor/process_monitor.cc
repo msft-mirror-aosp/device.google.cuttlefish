@@ -249,13 +249,11 @@ Result<void> ProcessMonitor::StartSubprocesses(
     if (Contains(properties_.strace_commands_, short_name)) {
       options.Strace(properties.strace_log_dir_ + "/strace-" + short_name);
     }
-    if (properties.sandbox_processes_ && monitored.can_sandbox) {
-      options.SandboxArguments({
-          HostBinaryPath("process_sandboxer"),
-          "--log_dir=" + properties.strace_log_dir_,
-          "--host_artifacts_path=" + DefaultHostArtifactsPath(""),
-      });
+#ifdef CUTTLEFISH_LINUX_HOST
+    if (properties.sandbox_processes_) {
+      options.SandboxPolicy(std::move(monitored.policy));
     }
+#endif
     monitored.proc.reset(
         new Subprocess(monitored.cmd->Start(std::move(options))));
     CF_EXPECT(monitored.proc->Started(), "Failed to start subprocess");
@@ -320,7 +318,11 @@ ProcessMonitor::Properties ProcessMonitor::Properties::RestartSubprocesses(
 ProcessMonitor::Properties& ProcessMonitor::Properties::AddCommand(
     MonitorCommand cmd) & {
   auto& entry = entries_.emplace_back(std::move(cmd.command), cmd.is_critical);
-  entry.can_sandbox = cmd.can_sandbox;
+#ifdef CUTTLEFISH_LINUX_HOST
+  entry.policy = std::move(cmd.policy);
+#else
+  (void)entry;
+#endif
   return *this;
 }
 

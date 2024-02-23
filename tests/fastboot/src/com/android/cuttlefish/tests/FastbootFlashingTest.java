@@ -15,6 +15,9 @@
  */
 package com.android.cuttlefish.tests;
 
+import static org.junit.Assert.assertEquals;
+
+import com.android.tradefed.device.DeviceNotAvailableException;
 import com.android.tradefed.testtype.DeviceJUnit4ClassRunner;
 import com.android.tradefed.testtype.junit4.BaseHostJUnit4Test;
 
@@ -24,15 +27,34 @@ import org.junit.runner.RunWith;
 @RunWith(DeviceJUnit4ClassRunner.class)
 public class FastbootFlashingTest extends BaseHostJUnit4Test {
 
+    private static final String TMP_GUEST_FILE_PATH = "/data/check_factory_reset.txt";
+
     @Test
     public void testFastbootUserdataEraseClearsTheDevice() throws Exception {
-        FactoryResetUtils.createTemporaryGuestFile(getDevice());
+        createTemporaryGuestFile();
 
         getDevice().rebootIntoBootloader();
         // TODO(b/306232265) use fastboot -w instead of fastboot erase userspace
         getDevice().executeFastbootCommand("erase", "userdata");
         getDevice().reboot();
 
-        FactoryResetUtils.assertTemporaryGuestFileExists(getDevice(), false);
+        assertTemporaryGuestFileExists(false);
+    }
+
+    private void createTemporaryGuestFile() throws DeviceNotAvailableException {
+        getDevice().enableAdbRoot();
+        getDevice().executeShellV2Command("touch " + TMP_GUEST_FILE_PATH);
+
+        assertTemporaryGuestFileExists(true);
+    }
+
+    private void assertTemporaryGuestFileExists(boolean exists) throws DeviceNotAvailableException {
+        assertEquals(
+                String.format(
+                        "Expected file %s %s",
+                        TMP_GUEST_FILE_PATH,
+                        (exists ? "exists" : "not exists")),
+                exists,
+                getDevice().doesFileExist(TMP_GUEST_FILE_PATH));
     }
 }

@@ -32,24 +32,6 @@ Result<Json::Value> LoadFromFile(SharedFD json_fd);
 Result<Json::Value> LoadFromFile(const std::string& path_to_file);
 
 template <typename T>
-T As(const Json::Value& v);
-
-template <>
-inline int As(const Json::Value& v) {
-  return v.asInt();
-}
-
-template <>
-inline std::string As(const Json::Value& v) {
-  return v.asString();
-}
-
-template <>
-inline bool As(const Json::Value& v) {
-  return v.asBool();
-}
-
-template <typename T>
 Result<T> GetValue(const Json::Value& root,
                    const std::vector<std::string>& selectors) {
   const Json::Value* traversal = &root;
@@ -58,7 +40,7 @@ Result<T> GetValue(const Json::Value& root,
                "JSON selector \"{}\" does not exist", selector);
     traversal = &(*traversal)[selector];
   }
-  return As<T>(*traversal);
+  return traversal->as<T>();
 }
 
 template <typename T>

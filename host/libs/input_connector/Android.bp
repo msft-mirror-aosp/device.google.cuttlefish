@@ -27,8 +27,10 @@ cc_library {
         "libcuttlefish_fs",
         "libjsoncpp",
         "liblog",
+        "sandboxed_api_sandbox2",
     ],
     static_libs: [
+        "libabsl_host",
         "libcuttlefish_host_config",
         "libcuttlefish_utils",
     ],

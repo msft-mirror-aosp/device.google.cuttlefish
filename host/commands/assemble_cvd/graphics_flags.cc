@@ -28,12 +28,6 @@
 #include "host/libs/vm_manager/crosvm_manager.h"
 #include "host/libs/vm_manager/qemu_manager.h"
 
-#ifdef __APPLE__
-#define CF_UNUSED_ON_MACOS [[maybe_unused]]
-#else
-#define CF_UNUSED_ON_MACOS
-#endif
-
 namespace cuttlefish {
 namespace {
 
@@ -46,7 +40,6 @@ enum class RenderingMode {
   kVirglRenderer,
 };
 
-CF_UNUSED_ON_MACOS
 Result<RenderingMode> GetRenderingMode(const std::string& mode) {
   if (mode == std::string(kGpuModeDrmVirgl)) {
     return RenderingMode::kVirglRenderer;
@@ -125,7 +118,6 @@ bool IsLikelySoftwareRenderer(const std::string& renderer) {
   return lower_renderer.find("llvmpipe") != std::string::npos;
 }
 
-CF_UNUSED_ON_MACOS
 bool ShouldEnableAcceleratedRendering(
     const ::gfxstream::proto::GraphicsAvailability& availability) {
   const bool sufficient_gles2 =
@@ -149,7 +141,6 @@ struct AngleFeatureOverrides {
   std::string angle_feature_overrides_disabled;
 };
 
-CF_UNUSED_ON_MACOS
 Result<AngleFeatureOverrides> GetNeededAngleFeatures(
     const RenderingMode mode,
     const ::gfxstream::proto::GraphicsAvailability& availability) {
@@ -194,7 +185,6 @@ struct VhostUserGpuHostRendererFeatures {
   bool system_blob = false;
 };
 
-CF_UNUSED_ON_MACOS
 Result<VhostUserGpuHostRendererFeatures>
 GetNeededVhostUserGpuHostRendererFeatures(
     RenderingMode mode,
@@ -348,7 +338,6 @@ Result<std::string> GraphicsDetectorBinaryPath() {
   return CF_ERR("Graphics detector unavailable for host arch.");
 }
 
-CF_UNUSED_ON_MACOS
 Result<const gfxstream::proto::GraphicsAvailability>
 GetGraphicsAvailabilityWithSubprocessCheck() {
   Command graphics_detector_cmd(CF_EXPECT(GraphicsDetectorBinaryPath()));
@@ -387,7 +376,6 @@ bool IsAmdGpu(const gfxstream::proto::GraphicsAvailability& availability) {
 const std::string kGfxstreamTransportAsg = "virtio-gpu-asg";
 const std::string kGfxstreamTransportPipe = "virtio-gpu-pipe";
 
-CF_UNUSED_ON_MACOS
 Result<void> SetGfxstreamFlags(
     const std::string& gpu_mode, const GuestConfig& guest_config,
     const gfxstream::proto::GraphicsAvailability& availability,

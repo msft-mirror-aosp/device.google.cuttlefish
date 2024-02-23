@@ -20,6 +20,9 @@
 
 #include <android-base/logging.h>
 #include <fruit/fruit.h>
+#ifdef CUTTLEFISH_LINUX_HOST
+#include <sandboxed_api/sandbox2/policy.h>
+#endif
 
 #include "common/libs/utils/result.h"
 #include "common/libs/utils/subprocess.h"
@@ -30,12 +33,12 @@ namespace cuttlefish {
 struct MonitorCommand {
   Command command;
   bool is_critical;
-  bool can_sandbox;
+#ifdef CUTTLEFISH_LINUX_HOST
+  std::unique_ptr<sandbox2::Policy> policy;
+#endif
 
   MonitorCommand(Command command, bool is_critical = false)
-      : command(std::move(command)),
-        is_critical(is_critical),
-        can_sandbox(false) {}
+      : command(std::move(command)), is_critical(is_critical) {}
 };
 
 class CommandSource : public virtual SetupFeature {

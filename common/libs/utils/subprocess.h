@@ -34,6 +34,17 @@
 
 #include <android-base/logging.h>
 #include <android-base/strings.h>
+#ifdef CUTTLEFISH_LINUX_HOST
+// Pre-define the include guard variables used by abseil log headers to avoid
+// conflicting symbol definitions with <android-base/logging.h>
+#define ABSL_LOG_LOG_H_
+#define ABSL_LOG_CHECK_H_
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunused-parameter"
+#include <sandboxed_api/sandbox2/policy.h>
+#include <sandboxed_api/sandbox2/sandbox2.h>
+#pragma clang diagnostic pop
+#endif
 
 #include "common/libs/fs/shared_fd.h"
 
@@ -67,8 +78,22 @@ class Subprocess {
     kStdErr = 2,
   };
 
-  Subprocess(pid_t pid, SubprocessStopper stopper = KillSubprocess)
-      : pid_(pid), started_(pid > 0), stopper_(stopper) {}
+  Subprocess(pid_t pid, SubprocessStopper stopper = KillSubprocess
+#ifdef CUTTLEFISH_LINUX_HOST
+             ,
+             std::unique_ptr<sandbox2::Sandbox2> sandbox =
+                 std::unique_ptr<sandbox2::Sandbox2>()
+#endif
+                 )
+      : pid_(pid),
+        started_(pid > 0),
+        stopper_(stopper)
+#ifdef CUTTLEFISH_LINUX_HOST
+        ,
+        sandbox_(std::move(sandbox))
+#endif
+  {
+  }
   // The default implementation won't do because we need to reset the pid of the
   // moved object.
   Subprocess(Subprocess&&);
@@ -98,6 +123,9 @@ class Subprocess {
   std::atomic<pid_t> pid_ = -1;
   bool started_ = false;
   SubprocessStopper stopper_;
+#ifdef CUTTLEFISH_LINUX_HOST
+  std::unique_ptr<sandbox2::Sandbox2> sandbox_;
+#endif
 };
 
 class SubprocessOptions {
@@ -108,8 +136,12 @@ class SubprocessOptions {
   SubprocessOptions Verbose(bool verbose) &&;
   SubprocessOptions& ExitWithParent(bool exit_with_parent) &;
   SubprocessOptions ExitWithParent(bool exit_with_parent) &&;
-  SubprocessOptions& SandboxArguments(std::vector<std::string>) &;
-  SubprocessOptions SandboxArguments(std::vector<std::string>) &&;
+#ifdef CUTTLEFISH_LINUX_HOST
+  SubprocessOptions& SandboxPolicy(std::unique_ptr<sandbox2::Policy>) &;
+  SubprocessOptions SandboxPolicy(std::unique_ptr<sandbox2::Policy>) &&;
+  sandbox2::Policy* SandboxPolicy() const { return sandbox_policy_.get(); }
+  std::unique_ptr<sandbox2::Policy> MoveSandboxPolicy();
+#endif
   // The subprocess runs as head of its own process group.
   SubprocessOptions& InGroup(bool in_group) &;
   SubprocessOptions InGroup(bool in_group) &&;
@@ -119,16 +151,15 @@ class SubprocessOptions {
 
   bool Verbose() const { return verbose_; }
   bool ExitWithParent() const { return exit_with_parent_; }
-  const std::vector<std::string>& SandboxArguments() const {
-    return sandbox_arguments_;
-  }
   bool InGroup() const { return in_group_; }
   const std::string& Strace() const { return strace_; }
 
  private:
   bool verbose_;
   bool exit_with_parent_;
-  std::vector<std::string> sandbox_arguments_;
+#ifdef CUTTLEFISH_LINUX_HOST
+  std::unique_ptr<sandbox2::Policy> sandbox_policy_;
+#endif
   bool in_group_;
   std::string strace_;
 };
@@ -311,6 +342,10 @@ class Command {
   std::string AsBashScript(const std::string& redirected_stdio_path = "") const;
 
  private:
+#ifdef CUTTLEFISH_LINUX_HOST
+  Subprocess StartSandboxed(SubprocessOptions) const;
+#endif
+
   std::optional<std::string> executable_;  // When unset, use command_[0]
   std::vector<std::string> command_;
   std::vector<std::function<Result<void>()>> prerequisites_;
