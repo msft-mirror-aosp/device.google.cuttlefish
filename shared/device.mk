@@ -242,6 +242,7 @@ PRODUCT_COPY_FILES += \
 # Install .kcm/.kl/.idc files via input.config apex
 #
 PRODUCT_PACKAGES += com.google.cf.input.config
+PRODUCT_VENDOR_PROPERTIES += input_device.config_file.apex=com.google.cf.input.config
 
 PRODUCT_PACKAGES += \
     fstab.cf.f2fs.hctr2 \
@@ -299,8 +300,14 @@ LOCAL_AUDIO_PRODUCT_COPY_FILES := \
     device/generic/goldfish/audio/policy/primary_audio_policy_configuration.xml:$(TARGET_COPY_OUT_VENDOR)/etc/primary_audio_policy_configuration.xml \
     frameworks/av/services/audiopolicy/config/r_submix_audio_policy_configuration.xml:$(TARGET_COPY_OUT_VENDOR)/etc/r_submix_audio_policy_configuration.xml \
     frameworks/av/services/audiopolicy/config/audio_policy_volumes.xml:$(TARGET_COPY_OUT_VENDOR)/etc/audio_policy_volumes.xml \
-    frameworks/av/services/audiopolicy/config/default_volume_tables.xml:$(TARGET_COPY_OUT_VENDOR)/etc/default_volume_tables.xml \
+    frameworks/av/services/audiopolicy/config/default_volume_tables.xml:$(TARGET_COPY_OUT_VENDOR)/etc/default_volume_tables.xml
+ifeq ($(RELEASE_AIDL_USE_UNFROZEN),true)
+LOCAL_AUDIO_PRODUCT_COPY_FILES += \
+    hardware/interfaces/audio/aidl/default/audio_effects_config.xml:$(TARGET_COPY_OUT_VENDOR)/etc/audio_effects_config.xml
+else
+LOCAL_AUDIO_PRODUCT_COPY_FILES += \
     frameworks/av/media/libeffects/data/audio_effects.xml:$(TARGET_COPY_OUT_VENDOR)/etc/audio_effects.xml
+endif
 endif
 
 PRODUCT_PACKAGES += $(LOCAL_AUDIO_PRODUCT_PACKAGE)
