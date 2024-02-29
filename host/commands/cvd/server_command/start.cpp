@@ -57,7 +57,7 @@ std::optional<std::string> GetConfigPath(cvd_common::Args& args) {
   std::string config_file;
   std::vector<Flag> config_flags = {
       GflagsCompatFlag("config_file", config_file)};
-  auto result = ParseFlags(config_flags, args);
+  auto result = ConsumeFlags(config_flags, args);
   if (!result.ok() || initial_size == args.size()) {
     return std::nullopt;
   }
@@ -338,7 +338,7 @@ CvdStartCommandHandler::UpdateInstanceArgsAndEnvs(
       GflagsCompatFlag("num_instances", old_num_instances),
       GflagsCompatFlag("base_instance_num", old_base_instance_num)};
   // discard old ones
-  CF_EXPECT(ParseFlags(instance_id_flags, new_args));
+  CF_EXPECT(ConsumeFlags(instance_id_flags, new_args));
 
   auto check_flag = [artifacts_path, start_bin,
                      this](const std::string& flag_name) -> Result<void> {
@@ -543,7 +543,7 @@ static Result<void> ConsumeDaemonModeFlag(cvd_common::Args& args) {
                 "\"--daemon=true\"",
                 match.key, match.value, kPossibleCmds);
           });
-  CF_EXPECT(ParseFlags({flag}, args));
+  CF_EXPECT(ConsumeFlags({flag}, args));
   return {};
 }
 
@@ -745,6 +745,13 @@ Result<cvd::Response> CvdStartCommandHandler::PostStartExecutionActions(
     }
   }
   auto final_response = ResponseFromSiginfo(infop);
+
+  // For backward compatibility, we add extra symlink in system wide home
+  // when HOME is NOT overridden and selector flags are NOT given.
+  if (group_creation_info.is_default_group) {
+    CF_EXPECT(CreateSymlinks(group_creation_info));
+  }
+
   if (!final_response.has_status() ||
       final_response.status().code() != cvd::Status::OK) {
     return final_response;
@@ -755,12 +762,6 @@ Result<cvd::Response> CvdStartCommandHandler::PostStartExecutionActions(
   // As the destructor will release the file lock, the instance lock
   // files must be marked as used
   MarkLockfilesInUse(group_creation_info);
-
-  // For backward compatibility, we add extra symlink in system wide home
-  // when HOME is NOT overridden and selector flags are NOT given.
-  if (group_creation_info.is_default_group) {
-    CF_EXPECT(CreateSymlinks(group_creation_info));
-  }
 
   // group_creation_info is nullopt only if is_help is false
   return FillOutNewInstanceInfo(std::move(final_response), group_creation_info);
