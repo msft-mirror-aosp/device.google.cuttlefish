@@ -55,7 +55,7 @@ TARGET_USERDATAIMAGE_PARTITION_SIZE ?= 8589934592
 TARGET_VULKAN_SUPPORT ?= true
 
 # Enable Virtual A/B
-$(call inherit-product, $(SRC_TARGET_DIR)/product/virtual_ab_ota/android_t_baseline.mk)
+$(call inherit-product, $(SRC_TARGET_DIR)/product/virtual_ab_ota/vabc_features.mk)
 PRODUCT_VIRTUAL_AB_COMPRESSION_METHOD := lz4
 PRODUCT_VIRTUAL_AB_COW_VERSION := 3
 
@@ -278,20 +278,11 @@ ifndef LOCAL_AUDIO_PRODUCT_PACKAGE
 #
 # Still use HIDL Audio HAL on 'next'
 #
-ifeq ($(RELEASE_AIDL_USE_UNFROZEN),true)
 LOCAL_AUDIO_PRODUCT_PACKAGE += \
     android.hardware.audio.parameter_parser.example_service \
     com.android.hardware.audio
 PRODUCT_SYSTEM_EXT_PROPERTIES += \
     ro.audio.ihaladaptervendorextension_enabled=true
-else
-LOCAL_AUDIO_PRODUCT_PACKAGE += \
-    android.hardware.audio.service \
-    android.hardware.audio@7.1-impl.ranchu \
-    android.hardware.audio.effect@7.0-impl
-DEVICE_MANIFEST_FILE += \
-    device/google/cuttlefish/guest/hals/audio/effects/manifest.xml
-endif
 endif
 
 ifndef LOCAL_AUDIO_PRODUCT_COPY_FILES
@@ -301,13 +292,8 @@ LOCAL_AUDIO_PRODUCT_COPY_FILES := \
     frameworks/av/services/audiopolicy/config/r_submix_audio_policy_configuration.xml:$(TARGET_COPY_OUT_VENDOR)/etc/r_submix_audio_policy_configuration.xml \
     frameworks/av/services/audiopolicy/config/audio_policy_volumes.xml:$(TARGET_COPY_OUT_VENDOR)/etc/audio_policy_volumes.xml \
     frameworks/av/services/audiopolicy/config/default_volume_tables.xml:$(TARGET_COPY_OUT_VENDOR)/etc/default_volume_tables.xml
-ifeq ($(RELEASE_AIDL_USE_UNFROZEN),true)
 LOCAL_AUDIO_PRODUCT_COPY_FILES += \
     hardware/interfaces/audio/aidl/default/audio_effects_config.xml:$(TARGET_COPY_OUT_VENDOR)/etc/audio_effects_config.xml
-else
-LOCAL_AUDIO_PRODUCT_COPY_FILES += \
-    frameworks/av/media/libeffects/data/audio_effects.xml:$(TARGET_COPY_OUT_VENDOR)/etc/audio_effects.xml
-endif
 endif
 
 PRODUCT_PACKAGES += $(LOCAL_AUDIO_PRODUCT_PACKAGE)
@@ -423,18 +409,14 @@ PRODUCT_COPY_FILES += \
 #
 # Non-secure implementation of AuthGraph HAL for compliance.
 #
-ifeq ($(RELEASE_AIDL_USE_UNFROZEN),true)
 PRODUCT_PACKAGES += \
     com.android.hardware.security.authgraph
-endif
 
 #
 # Non-secure implementation of Secretkeeper HAL for compliance.
 #
-ifeq ($(RELEASE_AIDL_USE_UNFROZEN),true)
 PRODUCT_PACKAGES += \
     com.android.hardware.security.secretkeeper
-endif
 
 #
 # Power and PowerStats HALs
@@ -595,13 +577,9 @@ PRODUCT_PACKAGES += \
 PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/config/pci.ids:$(TARGET_COPY_OUT_VENDOR)/pci.ids
 
-# New in-development HAL services using unfrozen interfaces. Do not include if
-# RELEASE_AIDL_USE_UNFROZEN is true (in the 'next' release configuration).
-ifeq ($(RELEASE_AIDL_USE_UNFROZEN),true)
 # Thread Network AIDL HAL, simulation CLI and OT daemon controller
 PRODUCT_PACKAGES += \
     com.android.hardware.threadnetwork
-endif # RELEASE_AIDL_USE_UNFROZEN
 
 PRODUCT_CHECK_VENDOR_SEAPP_VIOLATIONS := true
 
