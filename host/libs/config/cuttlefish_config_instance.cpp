@@ -876,6 +876,14 @@ std::string CuttlefishConfig::InstanceSpecific::boot_slot() const {
   return (*Dictionary())[kBootSlot].asString();
 }
 
+static constexpr char kFailFast[] = "fail_fast";
+void CuttlefishConfig::MutableInstanceSpecific::set_fail_fast(bool fail_fast) {
+  (*Dictionary())[kFailFast] = fail_fast;
+}
+bool CuttlefishConfig::InstanceSpecific::fail_fast() const {
+  return (*Dictionary())[kFailFast].asBool();
+}
+
 static constexpr char kEnableWebRTC[] = "enable_webrtc";
 void CuttlefishConfig::MutableInstanceSpecific::set_enable_webrtc(bool enable_webrtc) {
   (*Dictionary())[kEnableWebRTC] = enable_webrtc;
@@ -1427,6 +1435,15 @@ int CuttlefishConfig::InstanceSpecific::vsock_guest_cid() const {
 void CuttlefishConfig::MutableInstanceSpecific::set_vsock_guest_cid(
     int vsock_guest_cid) {
   (*Dictionary())[kVsockGuestCid] = vsock_guest_cid;
+}
+
+static constexpr char kVsockGuestGroup[] = "vsock_guest_group";
+std::string CuttlefishConfig::InstanceSpecific::vsock_guest_group() const {
+  return (*Dictionary())[kVsockGuestGroup].asString();
+}
+void CuttlefishConfig::MutableInstanceSpecific::set_vsock_guest_group(
+    const std::string& vsock_guest_group) {
+  (*Dictionary())[kVsockGuestGroup] = vsock_guest_group;
 }
 
 static constexpr char kUuid[] = "uuid";

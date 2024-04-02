@@ -341,6 +341,7 @@ class CuttlefishConfig {
     uint32_t session_id() const;
     bool use_allocd() const;
     int vsock_guest_cid() const;
+    std::string vsock_guest_group() const;
     std::string uuid() const;
     std::string instance_name() const;
     std::string environment_name() const;
@@ -570,6 +571,7 @@ class CuttlefishConfig {
     bool protected_vm() const;
     bool mte() const;
     std::string boot_slot() const;
+    bool fail_fast() const;
 
     // Kernel and bootloader logging
     bool enable_kernel_log() const;
@@ -711,6 +713,7 @@ class CuttlefishConfig {
     void set_session_id(uint32_t session_id);
     void set_use_allocd(bool use_allocd);
     void set_vsock_guest_cid(int vsock_guest_cid);
+    void set_vsock_guest_group(const std::string& vsock_guest_group);
     void set_uuid(const std::string& uuid);
     void set_environment_name(const std::string& env_name);
     // modem simulator related
@@ -773,6 +776,7 @@ class CuttlefishConfig {
     void set_mte(bool mte);
     void set_boot_slot(const std::string& boot_slot);
     void set_grpc_socket_path(const std::string& sockets);
+    void set_fail_fast(bool fail_fast);
 
     // Kernel and bootloader logging
     void set_enable_kernel_log(bool enable_kernel_log);
