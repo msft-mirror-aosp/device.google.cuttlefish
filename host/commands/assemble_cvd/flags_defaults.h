@@ -158,7 +158,7 @@
 // Default network handler
 #define CF_DEFAULTS_NETSIM false
 #define CF_DEFAULTS_NETSIM_BT true
-#define CF_DEFAULTS_NETSIM_UWB false
+#define CF_DEFAULTS_NETSIM_UWB true
 
 // Netsim default parameters
 #define CF_DEFAULTS_NETSIM_ARGS ""
@@ -234,3 +234,6 @@
 
 // Whether to use sandbox2 to lock down host processes where policies exist
 #define CF_DEFAULTS_HOST_SANDBOX false
+
+// Whether to exit when heuristics predict the boot will not complete
+#define CF_DEFAULTS_FAIL_FAST true

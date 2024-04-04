@@ -479,6 +479,10 @@ DEFINE_string(straced_host_executables, CF_DEFAULTS_STRACED_HOST_EXECUTABLES,
 DEFINE_bool(enable_host_sandbox, CF_DEFAULTS_HOST_SANDBOX,
             "Lock down host processes with sandbox2");
 
+DEFINE_vec(
+    fail_fast, CF_DEFAULTS_FAIL_FAST ? "true" : "false",
+    "Whether to exit when a heuristic predicts the boot will not complete");
+
 DECLARE_string(assembly_dir);
 DECLARE_string(boot_image);
 DECLARE_string(system_image_dir);
@@ -950,9 +954,19 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
   tmp_config_obj.set_vm_manager(vm_manager_vec[0]);
   tmp_config_obj.set_ap_vm_manager(vm_manager_vec[0] + "_openwrt");
 
-  auto secure_hals = android::base::Split(FLAGS_secure_hals, ",");
+  auto secure_hals_strs = android::base::Split(FLAGS_secure_hals, ",");
   tmp_config_obj.set_secure_hals(
-      std::set<std::string>(secure_hals.begin(), secure_hals.end()));
+      std::set<std::string>(secure_hals_strs.begin(), secure_hals_strs.end()));
+  auto secure_hals = tmp_config_obj.secure_hals();
+  CF_EXPECT(!secure_hals.count(SecureHal::HostKeymintSecure) ||
+                !secure_hals.count(SecureHal::HostKeymintInsecure),
+            "Choose at most one host keymint implementation");
+  CF_EXPECT(!secure_hals.count(SecureHal::HostGatekeeperSecure) ||
+                !secure_hals.count(SecureHal::HostGatekeeperInsecure),
+            "Choose at most one host gatekeeper implementation");
+  CF_EXPECT(!secure_hals.count(SecureHal::HostOemlockSecure) ||
+                !secure_hals.count(SecureHal::HostOemlockInsecure),
+            "Choose at most one host oemlock implementation");
 
   tmp_config_obj.set_extra_kernel_cmdline(FLAGS_extra_kernel_cmdline);
 
@@ -1151,6 +1165,8 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
                                                    !restore_from_snapshot);
   std::vector<std::string> device_external_network_vec =
       CF_EXPECT(GET_FLAG_STR_VALUE(device_external_network));
+
+  std::vector<bool> fail_fast_vec = CF_EXPECT(GET_FLAG_BOOL_VALUE(fail_fast));
 
   std::vector<std::string> mcu_config_vec = CF_EXPECT(GET_FLAG_STR_VALUE(mcu_config_path));
 
@@ -1387,6 +1403,7 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     instance.set_kgdb(console_vec[instance_index] && kgdb_vec[instance_index]);
     instance.set_blank_data_image_mb(blank_data_image_mb_vec[instance_index]);
     instance.set_gdb_port(gdb_port_vec[instance_index]);
+    instance.set_fail_fast(fail_fast_vec[instance_index]);
 
     std::optional<std::vector<CuttlefishConfig::DisplayConfig>>
         binding_displays_configs;
