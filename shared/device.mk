@@ -55,7 +55,7 @@ TARGET_USERDATAIMAGE_PARTITION_SIZE ?= 8589934592
 TARGET_VULKAN_SUPPORT ?= true
 
 # Enable Virtual A/B
-$(call inherit-product, $(SRC_TARGET_DIR)/product/virtual_ab_ota/android_t_baseline.mk)
+$(call inherit-product, $(SRC_TARGET_DIR)/product/virtual_ab_ota/vabc_features.mk)
 PRODUCT_VIRTUAL_AB_COMPRESSION_METHOD := lz4
 PRODUCT_VIRTUAL_AB_COW_VERSION := 3
 
@@ -313,12 +313,6 @@ endif
 PRODUCT_PACKAGES += $(LOCAL_AUDIO_PRODUCT_PACKAGE)
 PRODUCT_COPY_FILES += $(LOCAL_AUDIO_PRODUCT_COPY_FILES)
 DEVICE_PACKAGE_OVERLAYS += $(LOCAL_AUDIO_DEVICE_PACKAGE_OVERLAYS)
-
-#
-# BiometricsFingerprint HAL (AIDL)
-#
-PRODUCT_PACKAGES += \
-    com.android.hardware.biometrics.fingerprint.virtual
 
 #
 # Contexthub HAL
