@@ -1,4 +1,4 @@
-/*
+/*crosvm
  * Copyright (C) 2019 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -114,6 +114,17 @@ CrosvmManager::ConfigureGraphics(
         {"androidboot.hardware.gltransport", gfxstream_transport},
         {"androidboot.opengles.version", "196609"},  // OpenGL ES 3.1
     };
+  } else if (instance.gpu_mode() == kGpuModeCustom) {
+    bootconfig_args = {
+        {"androidboot.cpuvulkan.version", "0"},
+        {"androidboot.hardware.gralloc", "minigbm"},
+        {"androidboot.hardware.hwcomposer", instance.hwcomposer()},
+        {"androidboot.hardware.hwcomposer.display_finder_mode", "drm"},
+        {"androidboot.hardware.egl", "angle"},
+        {"androidboot.hardware.vulkan", instance.guest_vulkan_driver()},
+        {"androidboot.hardware.gltransport", "virtio-gpu-asg"},
+        {"androidboot.opengles.version", "196609"},  // OpenGL ES 3.1
+    };
   } else if (instance.gpu_mode() == kGpuModeNone) {
     return {};
   } else {
@@ -214,17 +225,12 @@ Result<VhostUserDeviceCommands> BuildVhostUserGpu(
   Command gpu_device_logs_cmd(HostBinaryPath("log_tee"));
   gpu_device_logs_cmd.AddParameter("--process_name=crosvm_gpu");
   gpu_device_logs_cmd.AddParameter("--log_fd_in=", gpu_device_logs);
-  gpu_device_logs_cmd.SetStopper([](Subprocess* proc) {
+  gpu_device_logs_cmd.SetStopper(KillSubprocessFallback([](Subprocess* proc) {
     // Ask nicely so that log_tee gets a chance to process all the logs.
-    int rval = kill(proc->pid(), SIGINT);
-    if (rval != 0) {
-      LOG(ERROR) << "Failed to stop log_tee nicely, attempting to KILL";
-      return KillSubprocess(proc) == StopperResult::kStopSuccess
-                 ? StopperResult::kStopCrash
-                 : StopperResult::kStopFailure;
-    }
-    return StopperResult::kStopSuccess;
-  });
+    // TODO: b/335934714 - Make sure the process actually exits
+    bool res = kill(proc->pid(), SIGINT) == 0;
+    return res ? StopperResult::kStopSuccess : StopperResult::kStopFailure;
+  }));
 
   const std::string crosvm_path = CF_EXPECT(CrosvmPathForVhostUserGpu(config));
 
@@ -379,6 +385,10 @@ Result<void> ConfigureGpu(const CuttlefishConfig& config, Command* crosvm_cmd) {
     crosvm_cmd->AddParameter(
         "--gpu=context-types=gfxstream-vulkan:gfxstream-composer",
         gpu_common_3d_string);
+  } else if (gpu_mode == kGpuModeCustom) {
+    const std::string gpu_context_types =
+        "--gpu=context-types=" + instance.gpu_context_types();
+    crosvm_cmd->AddParameter(gpu_context_types, gpu_common_string);
   }
 
   MaybeConfigureVulkanIcd(config, crosvm_cmd);
@@ -456,7 +466,9 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
   // Disable USB passthrough. It isn't needed for any key use cases and it is
   // not compatible with crosvm suspend-resume support yet (b/266622743).
   // TODO: Allow it to be turned back on using a flag.
-  crosvm_cmd.Cmd().AddParameter("--no-usb");
+  if (!instance.enable_usb()) {
+    crosvm_cmd.Cmd().AddParameter("--no-usb");
+  }
 
   crosvm_cmd.Cmd().AddParameter("--core-scheduling=false");
 
@@ -669,17 +681,12 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
   Command crosvm_log_tee_cmd(HostBinaryPath("log_tee"));
   crosvm_log_tee_cmd.AddParameter("--process_name=crosvm");
   crosvm_log_tee_cmd.AddParameter("--log_fd_in=", crosvm_logs);
-  crosvm_log_tee_cmd.SetStopper([](Subprocess* proc) {
+  crosvm_log_tee_cmd.SetStopper(KillSubprocessFallback([](Subprocess* proc) {
     // Ask nicely so that log_tee gets a chance to process all the logs.
-    int rval = kill(proc->pid(), SIGINT);
-    if (rval != 0) {
-      LOG(ERROR) << "Failed to stop log_tee nicely, attempting to KILL";
-      return KillSubprocess(proc) == StopperResult::kStopSuccess
-                 ? StopperResult::kStopCrash
-                 : StopperResult::kStopFailure;
-    }
-    return StopperResult::kStopSuccess;
-  });
+    bool res = kill(proc->pid(), SIGINT) == 0;
+    // TODO: b/335934714 - Make sure the process actually exits
+    return res ? StopperResult::kStopSuccess : StopperResult::kStopFailure;
+  }));
 
   // /dev/hvc2 = serial logging
   // Serial port for logcat, redirected to a pipe
