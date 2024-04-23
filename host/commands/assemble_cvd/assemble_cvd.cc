@@ -132,6 +132,10 @@ Result<void> CreateLegacySymlinks(
   for (const auto& log_file : log_files) {
     auto symlink_location = instance.PerInstancePath(log_file.c_str());
     auto log_target = "logs/" + log_file;  // Relative path
+    if (FileExists(symlink_location, /* follow_symlinks */ false)) {
+      CF_EXPECT(RemoveFile(symlink_location),
+                "Failed to remove symlink " << symlink_location);
+    }
     if (symlink(log_target.c_str(), symlink_location.c_str()) != 0) {
       return CF_ERRNO("symlink(\"" << log_target << ", " << symlink_location
                                    << ") failed");
@@ -147,8 +151,7 @@ Result<void> CreateLegacySymlinks(
   auto legacy_instance_path = legacy_instance_path_stream.str();
 
   if (DirectoryExists(legacy_instance_path, /* follow_symlinks */ false)) {
-    CF_EXPECT(RecursivelyRemoveDirectory(legacy_instance_path),
-              "Failed to remove legacy directory " << legacy_instance_path);
+    CF_EXPECT(RecursivelyRemoveDirectory(legacy_instance_path));
   } else if (FileExists(legacy_instance_path, /* follow_symlinks */ false)) {
     CF_EXPECT(RemoveFile(legacy_instance_path),
               "Failed to remove instance_dir symlink " << legacy_instance_path);
@@ -220,6 +223,7 @@ Result<std::set<std::string>> PreservingOnResume(
   preserving.insert("os_composite_gpt_header.img");
   preserving.insert("os_composite_gpt_footer.img");
   preserving.insert("os_composite.img");
+  preserving.insert("os_vbmeta.img");
   preserving.insert("sdcard.img");
   preserving.insert("sdcard_overlay.img");
   preserving.insert("boot_repacked.img");
@@ -242,9 +246,19 @@ Result<std::set<std::string>> PreservingOnResume(
   preserving.insert("factory_reset_protected.img");
   preserving.insert("misc.img");
   preserving.insert("metadata.img");
-  preserving.insert("vbmeta.img");
+  preserving.insert("persistent_vbmeta.img");
   preserving.insert("oemlock_secure");
   preserving.insert("oemlock_insecure");
+  // Preserve logs if restoring from a snapshot.
+  if (!snapshot_path.empty()) {
+    preserving.insert("kernel.log");
+    preserving.insert("launcher.log");
+    preserving.insert("logcat");
+    preserving.insert("modem_simulator.log");
+    preserving.insert("crosvm_openwrt.log");
+    preserving.insert("crosvm_openwrt_boot.log");
+    preserving.insert("metrics.log");
+  }
   for (int i = 0; i < modem_simulator_count; i++) {
     std::stringstream ss;
     ss << "iccprofile_for_sim" << i << ".xml";
@@ -390,7 +404,9 @@ Result<const CuttlefishConfig*> InitFilesystemAndCreateConfig(
       auto vsock_dir =
           fmt::format("/tmp/vsock_{0}_{1}", instance.vsock_guest_cid(),
                       std::to_string(getuid()));
-      RecursivelyRemoveDirectory(vsock_dir);
+      if (DirectoryExists(vsock_dir, /* follow_symlinks */ false)) {
+        CF_EXPECT(RecursivelyRemoveDirectory(vsock_dir));
+      }
       CF_EXPECT(EnsureDirectoryExists(vsock_dir, default_mode, default_group));
 
       // TODO(schuffelen): Move this code somewhere better
@@ -405,8 +421,7 @@ Result<const CuttlefishConfig*> InitFilesystemAndCreateConfig(
   CF_EXPECT(config != nullptr, "Failed to obtain config singleton");
 
   if (DirectoryExists(FLAGS_assembly_dir, /* follow_symlinks */ false)) {
-    CF_EXPECT(RecursivelyRemoveDirectory(FLAGS_assembly_dir),
-              "Failed to remove directory " << FLAGS_assembly_dir);
+    CF_EXPECT(RecursivelyRemoveDirectory(FLAGS_assembly_dir));
   } else if (FileExists(FLAGS_assembly_dir, /* follow_symlinks */ false)) {
     CF_EXPECT(RemoveFile(FLAGS_assembly_dir),
               "Failed to remove file" << FLAGS_assembly_dir);

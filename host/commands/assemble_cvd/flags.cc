@@ -149,6 +149,11 @@ DEFINE_vec(gpu_capture_binary, CF_DEFAULTS_GPU_CAPTURE_BINARY,
 DEFINE_vec(enable_gpu_udmabuf,
            fmt::format("{}", CF_DEFAULTS_ENABLE_GPU_UDMABUF),
            "Use the udmabuf driver for zero-copy virtio-gpu");
+DEFINE_vec(
+    gpu_renderer_features, CF_DEFAULTS_GPU_RENDERER_FEATURES,
+    "Renderer specific features to enable. For Gfxstream, this should "
+    "be a semicolon separated list of \"<feature name>:[enabled|disabled]\""
+    "pairs.");
 
 DEFINE_vec(use_allocd, CF_DEFAULTS_USE_ALLOCD?"true":"false",
             "Acquire static resources from the resource allocator daemon.");
@@ -909,13 +914,6 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
         snapshot_path + "/assembly/cuttlefish_config.json";
     tmp_config_obj.LoadFromFile(snapshot_path_config.c_str());
     tmp_config_obj.set_snapshot_path(snapshot_path);
-    auto instance_nums =
-        CF_EXPECT(InstanceNumsCalculator().FromGlobalGflags().Calculate());
-
-    for (const auto& num : instance_nums) {
-      auto instance = tmp_config_obj.ForInstance(num);
-      instance.set_sock_vsock_proxy_wait_adbd_start(false);
-    }
     return tmp_config_obj;
   }
 
@@ -954,9 +952,19 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
   tmp_config_obj.set_vm_manager(vm_manager_vec[0]);
   tmp_config_obj.set_ap_vm_manager(vm_manager_vec[0] + "_openwrt");
 
-  auto secure_hals = android::base::Split(FLAGS_secure_hals, ",");
+  auto secure_hals_strs = android::base::Split(FLAGS_secure_hals, ",");
   tmp_config_obj.set_secure_hals(
-      std::set<std::string>(secure_hals.begin(), secure_hals.end()));
+      std::set<std::string>(secure_hals_strs.begin(), secure_hals_strs.end()));
+  auto secure_hals = tmp_config_obj.secure_hals();
+  CF_EXPECT(!secure_hals.count(SecureHal::HostKeymintSecure) ||
+                !secure_hals.count(SecureHal::HostKeymintInsecure),
+            "Choose at most one host keymint implementation");
+  CF_EXPECT(!secure_hals.count(SecureHal::HostGatekeeperSecure) ||
+                !secure_hals.count(SecureHal::HostGatekeeperInsecure),
+            "Choose at most one host gatekeeper implementation");
+  CF_EXPECT(!secure_hals.count(SecureHal::HostOemlockSecure) ||
+                !secure_hals.count(SecureHal::HostOemlockInsecure),
+            "Choose at most one host oemlock implementation");
 
   tmp_config_obj.set_extra_kernel_cmdline(FLAGS_extra_kernel_cmdline);
 
@@ -1114,6 +1122,8 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
   std::map<int, std::string> calculated_gpu_mode_vec;
   std::vector<std::string> gpu_vhost_user_mode_vec =
       CF_EXPECT(GET_FLAG_STR_VALUE(gpu_vhost_user_mode));
+  std::vector<std::string> gpu_renderer_features_vec =
+      CF_EXPECT(GET_FLAG_STR_VALUE(gpu_renderer_features));
 
   std::vector<std::string> gpu_capture_binary_vec =
       CF_EXPECT(GET_FLAG_STR_VALUE(gpu_capture_binary));
@@ -1151,8 +1161,6 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
       CF_EXPECT(GET_FLAG_BOOL_VALUE(crosvm_use_rng));
   std::vector<bool> use_pmem_vec = CF_EXPECT(GET_FLAG_BOOL_VALUE(use_pmem));
   const bool restore_from_snapshot = !std::string(FLAGS_snapshot_path).empty();
-  std::vector<bool> sock_vsock_proxy_wait_adbd_vec(instance_nums.size(),
-                                                   !restore_from_snapshot);
   std::vector<std::string> device_external_network_vec =
       CF_EXPECT(GET_FLAG_STR_VALUE(device_external_network));
 
@@ -1288,8 +1296,6 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     instance.set_crosvm_use_balloon(use_balloon_vec[instance_index]);
     instance.set_crosvm_use_rng(use_rng_vec[instance_index]);
     instance.set_use_pmem(use_pmem_vec[instance_index]);
-    instance.set_sock_vsock_proxy_wait_adbd_start(
-        sock_vsock_proxy_wait_adbd_vec[instance_index]);
     instance.set_bootconfig_supported(guest_configs[instance_index].bootconfig_supported);
     instance.set_filename_encryption_mode(
       guest_configs[instance_index].hctr2_supported ? "hctr2" : "cts");
@@ -1506,6 +1512,7 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     // gpu related settings
     const std::string gpu_mode = CF_EXPECT(ConfigureGpuSettings(
         gpu_mode_vec[instance_index], gpu_vhost_user_mode_vec[instance_index],
+        gpu_renderer_features_vec[instance_index],
         vm_manager_vec[instance_index], guest_configs[instance_index],
         instance));
     calculated_gpu_mode_vec[instance_index] = gpu_mode_vec[instance_index];
