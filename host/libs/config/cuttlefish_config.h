@@ -376,7 +376,6 @@ class CuttlefishConfig {
     std::string rotary_socket_path() const;
     std::string keyboard_socket_path() const;
     std::string switches_socket_path() const;
-    std::string frames_socket_path() const;
 
     std::string access_kregistry_path() const;
 
@@ -399,7 +398,6 @@ class CuttlefishConfig {
     std::string gnss_out_pipe_name() const;
 
     std::string logcat_pipe_name() const;
-    std::string restore_pipe_name() const;
     std::string restore_adbd_pipe_name() const;
 
     std::string launcher_log_path() const;
@@ -574,8 +572,12 @@ class CuttlefishConfig {
     bool vhost_net() const;
     bool vhost_user_vsock() const;
 
-    // The dns address of mobile network (RIL)
+    // Mobile network info (RIL)
     std::string ril_dns() const;
+    std::string ril_ipaddr() const;
+    std::string ril_gateway() const;
+    std::string ril_broadcast() const;
+    uint8_t ril_prefixlen() const;
 
     bool enable_webrtc() const;
     std::string webrtc_assets_dir() const;
@@ -603,6 +605,9 @@ class CuttlefishConfig {
     std::string gpu_capture_binary() const;
     std::string gpu_gfxstream_transport() const;
     std::string gpu_renderer_features() const;
+    std::string gpu_context_types() const;
+    std::string guest_vulkan_driver() const;
+    std::string frames_socket_path() const;
 
     std::string gpu_vhost_user_mode() const;
 
@@ -796,8 +801,12 @@ class CuttlefishConfig {
     void set_vhost_net(bool vhost_net);
     void set_vhost_user_vsock(bool vhost_user_vsock);
 
-    // The dns address of mobile network (RIL)
+    // Mobile network (RIL)
     void set_ril_dns(const std::string& ril_dns);
+    void set_ril_ipaddr(const std::string& ril_ipaddr);
+    void set_ril_gateway(const std::string& ril_gateway);
+    void set_ril_broadcast(const std::string& ril_broadcast);
+    void set_ril_prefixlen(uint8_t ril_prefixlen);
 
     // Configuration flags for a minimal device
     void set_enable_minimal_mode(bool enable_minimal_mode);
@@ -811,6 +820,10 @@ class CuttlefishConfig {
     void set_gpu_capture_binary(const std::string&);
     void set_gpu_gfxstream_transport(const std::string& transport);
     void set_gpu_renderer_features(const std::string& features);
+    void set_gpu_context_types(const std::string& context_types);
+    void set_guest_vulkan_driver(const std::string& driver);
+    void set_frames_socket_path(const std::string& driver);
+
     void set_enable_gpu_udmabuf(const bool enable_gpu_udmabuf);
     void set_enable_gpu_vhost_user(const bool enable_gpu_vhost_user);
     void set_enable_gpu_external_blob(const bool enable_gpu_external_blob);
@@ -974,6 +987,7 @@ extern const char* const kVhostUserVsockModeFalse;
 
 // GPU modes
 extern const char* const kGpuModeAuto;
+extern const char* const kGpuModeCustom;
 extern const char* const kGpuModeDrmVirgl;
 extern const char* const kGpuModeGfxstream;
 extern const char* const kGpuModeGfxstreamGuestAngle;

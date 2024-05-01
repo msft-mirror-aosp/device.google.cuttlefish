@@ -748,6 +748,24 @@ void CuttlefishConfig::MutableInstanceSpecific::set_gpu_renderer_features(
   (*Dictionary())[kGpuRendererFeatures] = transport;
 }
 
+static constexpr char kGpuContextTypes[] = "gpu_context_types";
+std::string CuttlefishConfig::InstanceSpecific::gpu_context_types() const {
+  return (*Dictionary())[kGpuContextTypes].asString();
+}
+void CuttlefishConfig::MutableInstanceSpecific::set_gpu_context_types(
+    const std::string& context_types) {
+  (*Dictionary())[kGpuContextTypes] = context_types;
+}
+
+static constexpr char kVulkanDriver[] = "guest_vulkan_driver";
+std::string CuttlefishConfig::InstanceSpecific::guest_vulkan_driver() const {
+  return (*Dictionary())[kVulkanDriver].asString();
+}
+void CuttlefishConfig::MutableInstanceSpecific::set_guest_vulkan_driver(
+    const std::string& driver) {
+  (*Dictionary())[kVulkanDriver] = driver;
+}
+
 static constexpr char kRestartSubprocesses[] = "restart_subprocesses";
 bool CuttlefishConfig::InstanceSpecific::restart_subprocesses() const {
   return (*Dictionary())[kRestartSubprocesses].asBool();
@@ -1036,6 +1054,42 @@ std::string CuttlefishConfig::InstanceSpecific::ril_dns() const {
   return (*Dictionary())[kRilDns].asString();
 }
 
+static constexpr char kRilIpaddr[] = "ril_ipaddr";
+void CuttlefishConfig::MutableInstanceSpecific::set_ril_ipaddr(
+    const std::string& ril_ipaddr) {
+  (*Dictionary())[kRilIpaddr] = ril_ipaddr;
+}
+std::string CuttlefishConfig::InstanceSpecific::ril_ipaddr() const {
+  return (*Dictionary())[kRilIpaddr].asString();
+}
+
+static constexpr char kRilGateway[] = "ril_gateway";
+void CuttlefishConfig::MutableInstanceSpecific::set_ril_gateway(
+    const std::string& ril_gateway) {
+  (*Dictionary())[kRilGateway] = ril_gateway;
+}
+std::string CuttlefishConfig::InstanceSpecific::ril_gateway() const {
+  return (*Dictionary())[kRilGateway].asString();
+}
+
+static constexpr char kRilBroadcast[] = "ril_broadcast";
+void CuttlefishConfig::MutableInstanceSpecific::set_ril_broadcast(
+    const std::string& ril_broadcast) {
+  (*Dictionary())[kRilBroadcast] = ril_broadcast;
+}
+std::string CuttlefishConfig::InstanceSpecific::ril_broadcast() const {
+  return (*Dictionary())[kRilBroadcast].asString();
+}
+
+static constexpr char kRilPrefixlen[] = "ril_prefixlen";
+void CuttlefishConfig::MutableInstanceSpecific::set_ril_prefixlen(
+    uint8_t ril_prefixlen) {
+  (*Dictionary())[kRilPrefixlen] = static_cast<Json::UInt>(ril_prefixlen);
+}
+uint8_t CuttlefishConfig::InstanceSpecific::ril_prefixlen() const {
+  return static_cast<uint8_t>((*Dictionary())[kRilPrefixlen].asUInt());
+}
+
 static constexpr char kDisplayConfigs[] = "display_configs";
 static constexpr char kXRes[] = "x_res";
 static constexpr char kYRes[] = "y_res";
@@ -1167,10 +1221,6 @@ std::string CuttlefishConfig::InstanceSpecific::console_dev() const {
 
 std::string CuttlefishConfig::InstanceSpecific::logcat_pipe_name() const {
   return AbsolutePath(PerInstanceInternalPath("logcat-pipe"));
-}
-
-std::string CuttlefishConfig::InstanceSpecific::restore_pipe_name() const {
-  return AbsolutePath(PerInstanceInternalPath("restore-pipe"));
 }
 
 std::string CuttlefishConfig::InstanceSpecific::restore_adbd_pipe_name() const {
@@ -1729,8 +1779,14 @@ std::string CuttlefishConfig::InstanceSpecific::switches_socket_path() const {
   return PerInstanceInternalUdsPath("switches.sock");
 }
 
+static constexpr char kFrameSockPath[] = "frame_sock_path";
+void CuttlefishConfig::MutableInstanceSpecific::set_frames_socket_path(
+    const std::string& frame_socket_path) {
+  (*Dictionary())[kFrameSockPath] = frame_socket_path;
+}
+
 std::string CuttlefishConfig::InstanceSpecific::frames_socket_path() const {
-  return PerInstanceInternalUdsPath("frames.sock");
+  return (*Dictionary())[kFrameSockPath].asString();
 }
 
 static constexpr char kWifiMacPrefix[] = "wifi_mac_prefix";

@@ -114,6 +114,17 @@ CrosvmManager::ConfigureGraphics(
         {"androidboot.hardware.gltransport", gfxstream_transport},
         {"androidboot.opengles.version", "196609"},  // OpenGL ES 3.1
     };
+  } else if (instance.gpu_mode() == kGpuModeCustom) {
+    bootconfig_args = {
+        {"androidboot.cpuvulkan.version", "0"},
+        {"androidboot.hardware.gralloc", "minigbm"},
+        {"androidboot.hardware.hwcomposer", instance.hwcomposer()},
+        {"androidboot.hardware.hwcomposer.display_finder_mode", "drm"},
+        {"androidboot.hardware.egl", "angle"},
+        {"androidboot.hardware.vulkan", instance.guest_vulkan_driver()},
+        {"androidboot.hardware.gltransport", "virtio-gpu-asg"},
+        {"androidboot.opengles.version", "196609"},  // OpenGL ES 3.1
+    };
   } else if (instance.gpu_mode() == kGpuModeNone) {
     return {};
   } else {
@@ -201,12 +212,6 @@ Result<VhostUserDeviceCommands> BuildVhostUserGpu(
 
   auto gpu_device_socket_path =
       instance.PerInstanceInternalUdsPath("vhost-user-gpu-socket");
-  auto gpu_device_socket = SharedFD::SocketLocalServer(
-      gpu_device_socket_path.c_str(), false, SOCK_STREAM, 0777);
-  CF_EXPECT(gpu_device_socket->IsOpen(),
-            "Failed to create socket for crosvm vhost user gpu's control"
-                << gpu_device_socket->StrError());
-
   auto gpu_device_logs_path =
       instance.PerInstanceInternalPath("crosvm_vhost_user_gpu.fifo");
   auto gpu_device_logs = CF_EXPECT(SharedFD::Fifo(gpu_device_logs_path, 0666));
@@ -307,6 +312,15 @@ Result<VhostUserDeviceCommands> BuildVhostUserGpu(
 
   // Connect device to main crosvm:
   gpu_device_cmd.Cmd().AddParameter("--socket=", gpu_device_socket_path);
+
+  main_crosvm_cmd->AddPrerequisite([gpu_device_socket_path]() -> Result<void> {
+#ifdef __linux__
+    return WaitForUnixSocketListeningWithoutConnect(gpu_device_socket_path,
+                                                    /*timeoutSec=*/30);
+#else
+    return CF_ERR("Unhandled check if vhost user gpu ready.");
+#endif
+  });
   main_crosvm_cmd->AddParameter(
       "--vhost-user=gpu,pci-address=", gpu_pci_address,
       ",socket=", gpu_device_socket_path);
@@ -374,6 +388,10 @@ Result<void> ConfigureGpu(const CuttlefishConfig& config, Command* crosvm_cmd) {
     crosvm_cmd->AddParameter(
         "--gpu=context-types=gfxstream-vulkan:gfxstream-composer",
         gpu_common_3d_string);
+  } else if (gpu_mode == kGpuModeCustom) {
+    const std::string gpu_context_types =
+        "--gpu=context-types=" + instance.gpu_context_types();
+    crosvm_cmd->AddParameter(gpu_context_types, gpu_common_string);
   }
 
   MaybeConfigureVulkanIcd(config, crosvm_cmd);
@@ -860,6 +878,33 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
   }
 
   return commands;
+}
+
+Result<void> CrosvmManager::WaitForRestoreComplete() const {
+  auto instance = CF_EXPECT(CuttlefishConfig::Get())->ForDefaultInstance();
+
+  // Wait for the control socket to exist. It is created early in crosvm's
+  // startup sequence, but the process may not even have been exec'd by CF at
+  // this point.
+  while (!FileExists(instance.CrosvmSocketPath())) {
+    usleep(50000);  // 50 ms, arbitrarily chosen
+  }
+
+  // Ask crosvm to resume the VM. crosvm promises to not complete this command
+  // until the vCPUs are started (even if it was never suspended to begin
+  // with).
+  auto infop = CF_EXPECT(Execute(
+      std::vector<std::string>{
+          instance.crosvm_binary(),
+          "resume",
+          instance.CrosvmSocketPath(),
+          "--full",
+      },
+      SubprocessOptions(), WEXITED));
+  CF_EXPECT_EQ(infop.si_code, CLD_EXITED);
+  CF_EXPECTF(infop.si_status == 0, "crosvm resume returns non zero code {}",
+             infop.si_status);
+  return {};
 }
 
 }  // namespace vm_manager
