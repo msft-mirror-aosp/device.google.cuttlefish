@@ -52,6 +52,7 @@
 #include "host/commands/assemble_cvd/flags_defaults.h"
 #include "host/commands/assemble_cvd/graphics_flags.h"
 #include "host/commands/assemble_cvd/misc_info.h"
+#include "host/commands/assemble_cvd/network_flags.h"
 #include "host/commands/assemble_cvd/touchpad.h"
 #include "host/libs/config/config_flag.h"
 #include "host/libs/config/cuttlefish_config.h"
@@ -979,7 +980,8 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
   tmp_config_obj.set_vm_manager(vm_manager_vec[0]);
   tmp_config_obj.set_ap_vm_manager(vm_manager_vec[0] + "_openwrt");
 
-  auto secure_hals_strs = android::base::Split(FLAGS_secure_hals, ",");
+  auto secure_hals_strs =
+      android::base::Tokenize(FLAGS_secure_hals, ",:;|/\\+");
   tmp_config_obj.set_secure_hals(
       std::set<std::string>(secure_hals_strs.begin(), secure_hals_strs.end()));
   auto secure_hals = tmp_config_obj.secure_hals();
@@ -1226,8 +1228,8 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
   if (FLAGS_casimir_instance_num > 0) {
     casimir_instance_num = FLAGS_casimir_instance_num - 1;
   }
-  tmp_config_obj.set_casimir_nci_port(7100 + casimir_instance_num);
-  tmp_config_obj.set_casimir_rf_port(8100 + casimir_instance_num);
+  tmp_config_obj.set_casimir_nci_port(7800 + casimir_instance_num);
+  tmp_config_obj.set_casimir_rf_port(7900 + casimir_instance_num);
   LOG(DEBUG) << "casimir_instance_num: " << casimir_instance_num;
   LOG(DEBUG) << "launch casimir: " << (FLAGS_casimir_instance_num <= 0);
 
@@ -1362,7 +1364,6 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     instance.set_qemu_binary_dir(qemu_binary_dir_vec[instance_index]);
 
     // wifi, bluetooth, connectivity setup
-    instance.set_ril_dns(ril_dns_vec[instance_index]);
 
     instance.set_vhost_net(vhost_net_vec[instance_index]);
 
@@ -1503,6 +1504,9 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     instance.set_ethernet_bridge_name("cvd-ebr");
     instance.set_mobile_tap_name(iface_config.mobile_tap.name);
 
+    CF_EXPECT(ConfigureNetworkSettings(ril_dns_vec[instance_index],
+                                       const_instance, instance));
+
     if (NetworkInterfaceExists(iface_config.non_bridged_wireless_tap.name) &&
         tmp_config_obj.virtio_mac80211_hwsim()) {
       instance.set_use_bridged_wifi_tap(false);
@@ -1540,8 +1544,8 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     instance.set_ethernet_ipv6(Ipv6ToString(ethernet_ipv6));
 
     instance.set_tombstone_receiver_port(calc_vsock_port(6600));
-    instance.set_audiocontrol_server_port(9410);  /* OK to use the same port number across instances */
-    instance.set_config_server_port(calc_vsock_port(6800));
+    instance.set_audiocontrol_server_port(
+        9410); /* OK to use the same port number across instances */
     instance.set_lights_server_port(calc_vsock_port(6900));
 
     // gpu related settings
