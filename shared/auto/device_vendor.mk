@@ -62,6 +62,11 @@ LOCAL_AUDIO_PRODUCT_COPY_FILES := \
     frameworks/av/services/audiopolicy/config/usb_audio_policy_configuration.xml:$(TARGET_COPY_OUT_VENDOR)/etc/usb_audio_policy_configuration.xml
 endif
 
+# Install automotive specific battery health HAL
+PRODUCT_PACKAGES += \
+    android.hardware.health-service.automotive \
+    android.hardware.health-service.automotive_recovery \
+
 # Include display settings for an auto device.
 PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/auto/display_settings.xml:$(TARGET_COPY_OUT_VENDOR)/etc/display_settings.xml
