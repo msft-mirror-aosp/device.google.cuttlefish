@@ -25,37 +25,32 @@
 #include <unistd.h>
 
 #include <cstdlib>
-#include <sstream>
+#include <iomanip>
 #include <string>
-#include <thread>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include <android-base/strings.h>
 #include <android-base/logging.h>
 #include <vulkan/vulkan.h>
 
-#include "common/libs/fs/shared_select.h"
 #include "common/libs/utils/files.h"
+#include "common/libs/utils/result.h"
 #include "common/libs/utils/subprocess.h"
-#include "common/libs/utils/users.h"
+#include "host/libs/config/command_source.h"
 #include "host/libs/config/cuttlefish_config.h"
-#include "host/libs/config/known_paths.h"
 
 namespace cuttlefish {
 namespace vm_manager {
 namespace {
 
 std::string GetMonitorPath(const CuttlefishConfig& config) {
-  return config.ForDefaultInstance()
-      .PerInstanceInternalPath("qemu_monitor.sock");
+  return config.ForDefaultInstance().PerInstanceInternalUdsPath(
+      "qemu_monitor.sock");
 }
 
-void LogAndSetEnv(const char* key, const std::string& value) {
-  setenv(key, value.c_str(), 1);
-  LOG(INFO) << key << "=" << value;
-}
-
-bool Stop() {
+StopperResult Stop() {
   auto config = CuttlefishConfig::Get();
   auto monitor_path = GetMonitorPath(*config);
   auto monitor_sock = SharedFD::SocketLocalClient(
@@ -63,7 +58,7 @@ bool Stop() {
 
   if (!monitor_sock->IsOpen()) {
     LOG(ERROR) << "The connection to qemu is closed, is it still running?";
-    return false;
+    return StopperResult::kStopFailure;
   }
   char msg[] = "{\"execute\":\"qmp_capabilities\"}{\"execute\":\"quit\"}";
   ssize_t len = sizeof(msg) - 1;
@@ -71,7 +66,7 @@ bool Stop() {
     int tmp = monitor_sock->Write(msg, len);
     if (tmp < 0) {
       LOG(ERROR) << "Error writing to socket: " << monitor_sock->StrError();
-      return false;
+      return StopperResult::kStopFailure;
     }
     len -= tmp;
   }
@@ -82,7 +77,7 @@ bool Stop() {
     LOG(INFO) << "From qemu monitor: " << buff;
   }
 
-  return true;
+  return StopperResult::kStopSuccess;
 }
 
 Result<std::pair<int, int>> GetQemuVersion(const std::string& qemu_binary) {
@@ -92,11 +87,9 @@ Result<std::pair<int, int>> GetQemuVersion(const std::string& qemu_binary) {
   std::string qemu_version_input, qemu_version_output, qemu_version_error;
   cuttlefish::SubprocessOptions options;
   options.Verbose(false);
-  int qemu_version_ret =
-      cuttlefish::RunWithManagedStdio(std::move(qemu_version_cmd),
-                                      &qemu_version_input,
-                                      &qemu_version_output,
-                                      &qemu_version_error, options);
+  int qemu_version_ret = cuttlefish::RunWithManagedStdio(
+      std::move(qemu_version_cmd), &qemu_version_input, &qemu_version_output,
+      &qemu_version_error, std::move(options));
   CF_EXPECT(qemu_version_ret == 0,
             qemu_binary << " -version returned unexpected response "
                         << qemu_version_output << ". Stderr was "
@@ -124,76 +117,104 @@ bool QemuManager::IsSupported() {
 Result<std::unordered_map<std::string, std::string>>
 QemuManager::ConfigureGraphics(
     const CuttlefishConfig::InstanceSpecific& instance) {
-  if (instance.gpu_mode() == kGpuModeGuestSwiftshader) {
-    // Override the default HAL search paths in all cases. We do this because
-    // the HAL search path allows for fallbacks, and fallbacks in conjunction
-    // with properities lead to non-deterministic behavior while loading the
-    // HALs.
-    return {{
+  // Override the default HAL search paths in all cases. We do this because
+  // the HAL search path allows for fallbacks, and fallbacks in conjunction
+  // with properities lead to non-deterministic behavior while loading the
+  // HALs.
+
+  std::unordered_map<std::string, std::string> bootconfig_args;
+  auto gpu_mode = instance.gpu_mode();
+  if (gpu_mode == kGpuModeGuestSwiftshader) {
+    bootconfig_args = {
         {"androidboot.cpuvulkan.version", std::to_string(VK_API_VERSION_1_2)},
         {"androidboot.hardware.gralloc", "minigbm"},
         {"androidboot.hardware.hwcomposer", instance.hwcomposer()},
+        {"androidboot.hardware.hwcomposer.display_finder_mode", "drm"},
         {"androidboot.hardware.egl", "angle"},
         {"androidboot.hardware.vulkan", "pastel"},
         // OpenGL ES 3.1
         {"androidboot.opengles.version", "196609"},
-    }};
-  }
-
-  if (instance.gpu_mode() == kGpuModeDrmVirgl) {
-    return {{
+    };
+  } else if (gpu_mode == kGpuModeDrmVirgl) {
+    bootconfig_args = {
         {"androidboot.cpuvulkan.version", "0"},
         {"androidboot.hardware.gralloc", "minigbm"},
         {"androidboot.hardware.hwcomposer", "ranchu"},
         {"androidboot.hardware.hwcomposer.mode", "client"},
+        {"androidboot.hardware.hwcomposer.display_finder_mode", "drm"},
         {"androidboot.hardware.egl", "mesa"},
         // No "hardware" Vulkan support, yet
         // OpenGL ES 3.0
         {"androidboot.opengles.version", "196608"},
-    }};
-  }
-
-  if (instance.gpu_mode() == kGpuModeNone) {
+    };
+  } else if (gpu_mode == kGpuModeGfxstream ||
+             gpu_mode == kGpuModeGfxstreamGuestAngle ||
+             gpu_mode == kGpuModeGfxstreamGuestAngleHostSwiftShader) {
+    const bool uses_angle =
+        gpu_mode == kGpuModeGfxstreamGuestAngle ||
+        gpu_mode == kGpuModeGfxstreamGuestAngleHostSwiftShader;
+    const std::string gles_impl = uses_angle ? "angle" : "emulation";
+    const std::string gltransport =
+        (instance.guest_android_version() == "11.0.0") ? "virtio-gpu-pipe"
+                                                       : "virtio-gpu-asg";
+    bootconfig_args = {
+        {"androidboot.cpuvulkan.version", "0"},
+        {"androidboot.hardware.gralloc", "minigbm"},
+        {"androidboot.hardware.hwcomposer", instance.hwcomposer()},
+        {"androidboot.hardware.hwcomposer.display_finder_mode", "drm"},
+        {"androidboot.hardware.egl", gles_impl},
+        {"androidboot.hardware.vulkan", "ranchu"},
+        {"androidboot.hardware.gltransport", gltransport},
+        {"androidboot.opengles.version", "196609"},  // OpenGL ES 3.1
+    };
+  } else if (instance.gpu_mode() == kGpuModeNone) {
     return {};
+  } else {
+    return CF_ERR("Unhandled GPU mode: " << instance.gpu_mode());
   }
 
-  return CF_ERR("Unhandled GPU mode: " << instance.gpu_mode());
+  if (!instance.gpu_angle_feature_overrides_enabled().empty()) {
+    bootconfig_args["androidboot.hardware.angle_feature_overrides_enabled"] =
+        instance.gpu_angle_feature_overrides_enabled();
+  }
+  if (!instance.gpu_angle_feature_overrides_disabled().empty()) {
+    bootconfig_args["androidboot.hardware.angle_feature_overrides_disabled"] =
+        instance.gpu_angle_feature_overrides_disabled();
+  }
+
+  return bootconfig_args;
 }
 
 Result<std::unordered_map<std::string, std::string>>
-QemuManager::ConfigureBootDevices(int num_disks, bool have_gpu) {
+QemuManager::ConfigureBootDevices(
+    const CuttlefishConfig::InstanceSpecific& instance) {
+  const int num_disks = instance.virtual_disk_paths().size();
+  const int num_gpu = instance.hwcomposer() != kHwComposerNone;
   switch (arch_) {
     case Arch::Arm:
       return {{{"androidboot.boot_devices", "3f000000.pcie"}}};
     case Arch::Arm64:
+#ifdef __APPLE__
+      return {{{"androidboot.boot_devices", "3f000000.pcie"}}};
+#else
       return {{{"androidboot.boot_devices", "4010000000.pcie"}}};
+#endif
     case Arch::RiscV64:
       return {{{"androidboot.boot_devices", "soc/30000000.pci"}}};
     case Arch::X86:
     case Arch::X86_64: {
       // QEMU has additional PCI devices for an ISA bridge and PIIX4
       // virtio_gpu precedes the first console or disk
-      return ConfigureMultipleBootDevices("pci0000:00/0000:00:",
-                                          2 + (have_gpu ? 1 : 0), num_disks);
+      int pci_offset = 2 + num_gpu - VmManager::kDefaultNumHvcs;
+      return ConfigureMultipleBootDevices("pci0000:00/0000:00:", pci_offset,
+                                          num_disks);
     }
   }
 }
 
-Result<std::vector<Command>> QemuManager::StartCommands(
-    const CuttlefishConfig& config) {
+Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
+    const CuttlefishConfig& config, std::vector<VmmDependencyCommand*>&) {
   auto instance = config.ForDefaultInstance();
-
-  auto stop = [](Subprocess* proc) {
-    auto stopped = Stop();
-    if (stopped) {
-      return StopperResult::kStopSuccess;
-    }
-    LOG(WARNING) << "Failed to stop VMM nicely, "
-                  << "attempting to KILL";
-    return KillSubprocess(proc) == StopperResult::kStopSuccess
-               ? StopperResult::kStopCrash
-               : StopperResult::kStopFailure;
-  };
   std::string qemu_binary = instance.qemu_binary_dir();
   switch (arch_) {
     case Arch::Arm:
@@ -214,7 +235,7 @@ Result<std::vector<Command>> QemuManager::StartCommands(
   }
 
   auto qemu_version = CF_EXPECT(GetQemuVersion(qemu_binary));
-  Command qemu_cmd(qemu_binary, stop);
+  Command qemu_cmd(qemu_binary, KillSubprocessFallback(Stop));
 
   int hvc_num = 0;
   int serial_num = 0;
@@ -224,7 +245,7 @@ Result<std::vector<Command>> QemuManager::StartCommands(
     qemu_cmd.AddParameter("-device");
     qemu_cmd.AddParameter(
         "virtio-serial-pci-non-transitional,max_ports=1,id=virtio-serial",
-        hvc_num);
+        hvc_num, ",bus=hvc-bridge,addr=", fmt::format("{:0>2x}", hvc_num + 1));
     qemu_cmd.AddParameter("-device");
     qemu_cmd.AddParameter("virtconsole,bus=virtio-serial", hvc_num,
                           ".0,chardev=hvc", hvc_num);
@@ -261,7 +282,7 @@ Result<std::vector<Command>> QemuManager::StartCommands(
     qemu_cmd.AddParameter("-device");
     qemu_cmd.AddParameter(
         "virtio-serial-pci-non-transitional,max_ports=1,id=virtio-serial",
-        hvc_num);
+        hvc_num, ",bus=hvc-bridge,addr=", fmt::format("{:0>2x}", hvc_num + 1));
     qemu_cmd.AddParameter("-device");
     qemu_cmd.AddParameter("virtconsole,bus=virtio-serial", hvc_num,
                           ".0,chardev=hvc", hvc_num);
@@ -273,7 +294,19 @@ Result<std::vector<Command>> QemuManager::StartCommands(
     qemu_cmd.AddParameter("-device");
     qemu_cmd.AddParameter(
         "virtio-serial-pci-non-transitional,max_ports=1,id=virtio-serial",
-        hvc_num);
+        hvc_num, ",bus=hvc-bridge,addr=", fmt::format("{:0>2x}", hvc_num + 1));
+    qemu_cmd.AddParameter("-device");
+    qemu_cmd.AddParameter("virtconsole,bus=virtio-serial", hvc_num,
+                          ".0,chardev=hvc", hvc_num);
+    hvc_num++;
+  };
+  auto add_hvc_serial = [&qemu_cmd, &hvc_num](const std::string& prefix) {
+    qemu_cmd.AddParameter("-chardev");
+    qemu_cmd.AddParameter("serial,id=hvc", hvc_num, ",path=", prefix);
+    qemu_cmd.AddParameter("-device");
+    qemu_cmd.AddParameter(
+        "virtio-serial-pci-non-transitional,max_ports=1,id=virtio-serial",
+        hvc_num, ",bus=hvc-bridge,addr=", fmt::format("{:0>2x}", hvc_num + 1));
     qemu_cmd.AddParameter("-device");
     qemu_cmd.AddParameter("virtconsole,bus=virtio-serial", hvc_num,
                           ".0,chardev=hvc", hvc_num);
@@ -282,7 +315,6 @@ Result<std::vector<Command>> QemuManager::StartCommands(
 
   bool is_arm = arch_ == Arch::Arm || arch_ == Arch::Arm64;
   bool is_x86 = arch_ == Arch::X86 || arch_ == Arch::X86_64;
-  bool is_arm64 = arch_ == Arch::Arm64;
   bool is_riscv64 = arch_ == Arch::RiscV64;
 
   auto access_kregistry_size_bytes = 0;
@@ -317,21 +349,25 @@ Result<std::vector<Command>> QemuManager::StartCommands(
   qemu_cmd.AddParameter("guest=", instance.instance_name(), ",debug-threads=on");
 
   qemu_cmd.AddParameter("-machine");
-  std::string machine = is_x86 ? "pc-i440fx-2.8,nvdimm=on" : "virt";
+  std::string machine = is_x86 ? "pc,nvdimm=on" : "virt";
   if (IsHostCompatible(arch_)) {
+#ifdef __linux__
     machine += ",accel=kvm";
+#elif defined(__APPLE__)
+    machine += ",accel=hvf";
+#else
+#error "Unknown OS"
+#endif
     if (is_arm) {
       machine += ",gic-version=3";
     }
   } else if (is_arm) {
     // QEMU doesn't support GICv3 with TCG yet
     machine += ",gic-version=2";
-    if (is_arm64) {
-      // Only enable MTE in TCG mode. We haven't started to run on ARMv8/ARMv9
-      // devices with KVM and MTE, so MTE will always require TCG
-      machine += ",mte=on";
-    }
     CF_EXPECT(instance.cpus() <= 8, "CPUs must be no more than 8 with GICv2");
+  }
+  if (instance.mte()) {
+    machine += ",mte=on";
   }
   qemu_cmd.AddParameter(machine, ",usb=off,dump-guest-core=off");
 
@@ -380,15 +416,29 @@ Result<std::vector<Command>> QemuManager::StartCommands(
   qemu_cmd.AddParameter("-mon");
   qemu_cmd.AddParameter("chardev=charmonitor,id=monitor,mode=control");
 
-  if (instance.gpu_mode() == kGpuModeDrmVirgl) {
+  auto gpu_mode = instance.gpu_mode();
+  if (gpu_mode == kGpuModeDrmVirgl) {
     qemu_cmd.AddParameter("-display");
     qemu_cmd.AddParameter("egl-headless");
 
     qemu_cmd.AddParameter("-vnc");
-    qemu_cmd.AddParameter(":", instance.qemu_vnc_server_port());
+    qemu_cmd.AddParameter("127.0.0.1:", instance.qemu_vnc_server_port());
+  } else if (gpu_mode == kGpuModeGuestSwiftshader ||
+             gpu_mode == kGpuModeGfxstream ||
+             gpu_mode == kGpuModeGfxstreamGuestAngle ||
+             gpu_mode == kGpuModeGfxstreamGuestAngleHostSwiftShader) {
+    qemu_cmd.AddParameter("-vnc");
+    qemu_cmd.AddParameter("127.0.0.1:", instance.qemu_vnc_server_port());
   } else {
     qemu_cmd.AddParameter("-display");
     qemu_cmd.AddParameter("none");
+  }
+
+  qemu_cmd.AddParameter("-device");
+  if (is_x86) {
+    qemu_cmd.AddParameter("pcie-pci-bridge,id=hvc-bridge,addr=01.2");
+  } else {
+    qemu_cmd.AddParameter("pcie-pci-bridge,id=hvc-bridge");
   }
 
   if (instance.hwcomposer() != kHwComposerNone) {
@@ -398,12 +448,36 @@ Result<std::vector<Command>> QemuManager::StartCommands(
 
     qemu_cmd.AddParameter("-device");
 
-    bool use_gpu_gl = qemu_version.first >= 6 &&
-                      instance.gpu_mode() != kGpuModeGuestSwiftshader;
-    qemu_cmd.AddParameter(use_gpu_gl ?
-                              "virtio-gpu-gl-pci" : "virtio-gpu-pci", ",id=gpu0",
-                          ",xres=", display_config.width,
-                          ",yres=", display_config.height);
+    std::string gpu_device;
+    if (gpu_mode == kGpuModeGuestSwiftshader || qemu_version.first < 6) {
+      gpu_device = "virtio-gpu-pci";
+    } else if (gpu_mode == kGpuModeDrmVirgl) {
+      gpu_device = "virtio-gpu-gl-pci";
+    } else if (gpu_mode == kGpuModeGfxstream) {
+      gpu_device =
+          "virtio-gpu-rutabaga,x-gfxstream-gles=on,gfxstream-vulkan=on,"
+          "x-gfxstream-composer=on,hostmem=256M";
+    } else if (gpu_mode == kGpuModeGfxstreamGuestAngle ||
+               gpu_mode == kGpuModeGfxstreamGuestAngleHostSwiftShader) {
+      gpu_device =
+          "virtio-gpu-rutabaga,gfxstream-vulkan=on,"
+          "x-gfxstream-composer=on,hostmem=256M";
+
+      if (gpu_mode == kGpuModeGfxstreamGuestAngleHostSwiftShader) {
+        // See https://github.com/KhronosGroup/Vulkan-Loader.
+        const std::string swiftshader_icd_json =
+            HostUsrSharePath("vulkan/icd.d/vk_swiftshader_icd.json");
+        qemu_cmd.AddEnvironmentVariable("VK_DRIVER_FILES",
+                                        swiftshader_icd_json);
+        qemu_cmd.AddEnvironmentVariable("VK_ICD_FILENAMES",
+                                        swiftshader_icd_json);
+      }
+    }
+
+    qemu_cmd.AddParameter(
+        gpu_device, ",id=gpu0",
+        fmt::format(",addr={:0>2x}.0", VmManager::kGpuPciSlotNum),
+        ",xres=", display_config.width, ",yres=", display_config.height);
   }
 
   if (!instance.console()) {
@@ -417,6 +491,7 @@ Result<std::vector<Command>> QemuManager::StartCommands(
     }
   }
 
+  // /dev/hvc0 = kernel console
   // If kernel log is enabled, the virtio-console port will be specified as
   // a true console for Linux, and kernel messages will be printed there.
   // Otherwise, the port will still be set up for bootloader and userspace
@@ -429,6 +504,7 @@ Result<std::vector<Command>> QemuManager::StartCommands(
   //  actually managed by the kernel as a console is handled elsewhere.)
   add_hvc_ro(instance.kernel_log_pipe_name());
 
+  // /dev/hvc1 = serial console
   if (instance.console()) {
     if (instance.kgdb() || instance.use_bootloader()) {
       add_serial_console(instance.console_pipe_prefix());
@@ -455,17 +531,23 @@ Result<std::vector<Command>> QemuManager::StartCommands(
     add_hvc_sink();
   }
 
+  // /dev/hvc2 = serial logging
   // Serial port for logcat, redirected to a pipe
   add_hvc_ro(instance.logcat_pipe_name());
 
+  // /dev/hvc3 = keymaster (C++ implementation)
   add_hvc(instance.PerInstanceInternalPath("keymaster_fifo_vm"));
+  // /dev/hvc4 = gatekeeper
   add_hvc(instance.PerInstanceInternalPath("gatekeeper_fifo_vm"));
+  // /dev/hvc5 = bt
   if (config.enable_host_bluetooth()) {
     add_hvc(instance.PerInstanceInternalPath("bt_fifo_vm"));
   } else {
     add_hvc_sink();
   }
 
+  // /dev/hvc6 = gnss
+  // /dev/hvc7 = location
   if (instance.enable_gnss_grpc_proxy()) {
     add_hvc(instance.PerInstanceInternalPath("gnsshvc_fifo_vm"));
     add_hvc(instance.PerInstanceInternalPath("locationhvc_fifo_vm"));
@@ -486,7 +568,51 @@ Result<std::vector<Command>> QemuManager::StartCommands(
    * confui_fifo_vm.{in/out} are created along with the streamer process,
    * which is not created w/ QEMU.
    */
+  // /dev/hvc8 = confirmationui
   add_hvc_sink();
+
+  // /dev/hvc9 = uwb
+  if (config.enable_host_uwb()) {
+    add_hvc(instance.PerInstanceInternalPath("uwb_fifo_vm"));
+  } else {
+    add_hvc_sink();
+  }
+
+  // /dev/hvc10 = oemlock
+  add_hvc(instance.PerInstanceInternalPath("oemlock_fifo_vm"));
+
+  // /dev/hvc11 = keymint (Rust implementation)
+  add_hvc(instance.PerInstanceInternalPath("keymint_fifo_vm"));
+
+  // /dev/hvc12 = nfc
+  if (config.enable_host_nfc()) {
+    add_hvc(instance.PerInstanceInternalPath("nfc_fifo_vm"));
+  } else {
+    add_hvc_sink();
+  }
+
+  // sensors_fifo_vm.{in/out} are created along with the streamer process,
+  // which is not created w/ QEMU.
+  // /dev/hvc13 = sensors
+  add_hvc_sink();
+
+  // /dev/hvc14 = MCU CONTROL
+  if (instance.mcu()["control"]["type"].asString() == "serial") {
+    auto path = instance.PerInstanceInternalPath("mcu");
+    path += "/" + instance.mcu()["control"]["path"].asString();
+    add_hvc_serial(path);
+  } else {
+    add_hvc_sink();
+  }
+
+  // /dev/hvc15 = MCU UART
+  if (instance.mcu()["uart0"]["type"].asString() == "serial") {
+    auto path = instance.PerInstanceInternalPath("mcu");
+    path += "/" + instance.mcu()["uart0"]["path"].asString();
+    add_hvc_serial(path);
+  } else {
+    add_hvc_sink();
+  }
 
   auto disk_num = instance.virtual_disk_paths().size();
 
@@ -505,20 +631,24 @@ Result<std::vector<Command>> QemuManager::StartCommands(
             "Provided too many disks (" << disk_num << "), maximum "
                                         << VmManager::kMaxDisks << "supported");
   auto readonly = instance.protected_vm() ? ",readonly" : "";
-  for (size_t i = 0; i < disk_num; i++) {
-    auto bootindex = i == 0 ? ",bootindex=1" : "";
-    auto format = i == 0 ? "" : ",format=raw";
-    auto disk = instance.virtual_disk_paths()[i];
+  size_t i = 0;
+  for (const auto& disk : instance.virtual_disk_paths()) {
     qemu_cmd.AddParameter("-drive");
     qemu_cmd.AddParameter("file=", disk, ",if=none,id=drive-virtio-disk", i,
-                          ",aio=threads", format, readonly);
+                          ",aio=threads", readonly);
     qemu_cmd.AddParameter("-device");
-    qemu_cmd.AddParameter("virtio-blk-pci-non-transitional,scsi=off,drive=drive-virtio-disk", i,
-                          ",id=virtio-disk", i, bootindex);
+    qemu_cmd.AddParameter(
+#ifdef __APPLE__
+        "virtio-blk-pci-non-transitional,drive=drive-virtio-disk", i,
+#else
+        "virtio-blk-pci-non-transitional,scsi=off,drive=drive-virtio-disk", i,
+#endif
+        ",id=virtio-disk", i, (i == 0 ? ",bootindex=1" : ""));
+    ++i;
   }
 
   if (is_x86 && FileExists(instance.pstore_path())) {
-    // QEMU will assign the NVDIMM (ramoops pstore region) 100000000-1001fffff
+    // QEMU will assign the NVDIMM (ramoops pstore region) 150000000-1501fffff
     // As we will pass this to ramoops, define this region first so it is always
     // located at this address. This is currently x86 only.
     qemu_cmd.AddParameter("-object");
@@ -578,44 +708,97 @@ Result<std::vector<Command>> QemuManager::StartCommands(
   qemu_cmd.AddParameter("-device");
   qemu_cmd.AddParameter("virtio-balloon-pci-non-transitional,id=balloon0");
 
-  qemu_cmd.AddParameter("-netdev");
-  qemu_cmd.AddParameter("tap,id=hostnet0,ifname=", instance.mobile_tap_name(),
-                        ",script=no,downscript=no", vhost_net);
+  switch (instance.external_network_mode()) {
+    case ExternalNetworkMode::kTap:
+      qemu_cmd.AddParameter("-netdev");
+      qemu_cmd.AddParameter(
+          "tap,id=hostnet0,ifname=", instance.mobile_tap_name(),
+          ",script=no,downscript=no", vhost_net);
 
-  qemu_cmd.AddParameter("-device");
-  qemu_cmd.AddParameter("virtio-net-pci-non-transitional,netdev=hostnet0,id=net0");
+      qemu_cmd.AddParameter("-netdev");
+      qemu_cmd.AddParameter(
+          "tap,id=hostnet1,ifname=", instance.ethernet_tap_name(),
+          ",script=no,downscript=no", vhost_net);
 
-  qemu_cmd.AddParameter("-netdev");
-  qemu_cmd.AddParameter("tap,id=hostnet1,ifname=", instance.ethernet_tap_name(),
-                        ",script=no,downscript=no", vhost_net);
+      if (!config.virtio_mac80211_hwsim()) {
+        qemu_cmd.AddParameter("-netdev");
+        qemu_cmd.AddParameter(
+            "tap,id=hostnet2,ifname=", instance.wifi_tap_name(),
+            ",script=no,downscript=no", vhost_net);
+      }
+      break;
+    case cuttlefish::ExternalNetworkMode::kSlirp: {
+      const std::string net =
+          fmt::format("{}/{}", instance.ril_ipaddr(), instance.ril_prefixlen());
+      const std::string& host = instance.ril_gateway();
+      qemu_cmd.AddParameter("-netdev");
+      // TODO(schuffelen): `dns` needs to match the first `nameserver` in
+      // `/etc/resolv.conf`. Implement something that generalizes beyond gLinux.
+      qemu_cmd.AddParameter("user,id=hostnet0,net=", net, ",host=", host,
+                            ",dns=127.0.0.1");
 
+      qemu_cmd.AddParameter("-netdev");
+      qemu_cmd.AddParameter("user,id=hostnet1,net=10.0.1.1/24,dns=8.8.4.4");
+
+      if (!config.virtio_mac80211_hwsim()) {
+        qemu_cmd.AddParameter("-netdev");
+        qemu_cmd.AddParameter("user,id=hostnet2,net=10.0.2.1/24,dns=1.1.1.1");
+      }
+      break;
+    }
+    default:
+      return CF_ERRF("Unexpected net mode {}",
+                     instance.external_network_mode());
+  }
+
+  // The ordering of virtio-net devices is important. Make sure any change here
+  // is reflected in ethprime u-boot variable
   qemu_cmd.AddParameter("-device");
-  qemu_cmd.AddParameter("virtio-net-pci-non-transitional,netdev=hostnet1,id=net1");
-#ifndef ENFORCE_MAC80211_HWSIM
-  qemu_cmd.AddParameter("-netdev");
-  qemu_cmd.AddParameter("tap,id=hostnet2,ifname=", instance.wifi_tap_name(),
-                        ",script=no,downscript=no", vhost_net);
+  qemu_cmd.AddParameter(
+      "virtio-net-pci-non-transitional,netdev=hostnet0,id=net0,mac=",
+      instance.mobile_mac());
   qemu_cmd.AddParameter("-device");
-  qemu_cmd.AddParameter("virtio-net-pci-non-transitional,netdev=hostnet2,id=net2");
-#endif
+  qemu_cmd.AddParameter("virtio-net-pci-non-transitional,netdev=hostnet1,id=net1,mac=",
+                        instance.ethernet_mac());
+  if (!config.virtio_mac80211_hwsim()) {
+    qemu_cmd.AddParameter("-device");
+    qemu_cmd.AddParameter("virtio-net-pci-non-transitional,netdev=hostnet2,id=net2,mac=",
+                          instance.wifi_mac());
+  }
 
   if (is_x86 || is_arm) {
     qemu_cmd.AddParameter("-cpu");
     qemu_cmd.AddParameter(IsHostCompatible(arch_) ? "host" : "max");
   }
 
+  // Explicitly enable the optional extensions of interest, in case the default
+  // behavior changes upstream.
+  if (is_riscv64) {
+    qemu_cmd.AddParameter("-cpu");
+    qemu_cmd.AddParameter("rv64",
+                          ",v=true,elen=64,vlen=128",
+                          ",zba=true,zbb=true,zbs=true");
+  }
+
   qemu_cmd.AddParameter("-msg");
   qemu_cmd.AddParameter("timestamp=on");
 
+#ifdef __linux__
   qemu_cmd.AddParameter("-device");
   qemu_cmd.AddParameter("vhost-vsock-pci-non-transitional,guest-cid=",
                         instance.vsock_guest_cid());
+#endif
 
   qemu_cmd.AddParameter("-device");
-  qemu_cmd.AddParameter("AC97");
+  qemu_cmd.AddParameter("AC97,audiodev=audio_none");
+  qemu_cmd.AddParameter("-audiodev");
+  qemu_cmd.AddParameter("driver=none,id=audio_none");
 
   qemu_cmd.AddParameter("-device");
   qemu_cmd.AddParameter("qemu-xhci,id=xhci");
+
+  qemu_cmd.AddParameter("-L");
+  qemu_cmd.AddParameter(HostQemuBiosPath());
 
   if (is_riscv64) {
     qemu_cmd.AddParameter("-kernel");
@@ -630,11 +813,9 @@ Result<std::vector<Command>> QemuManager::StartCommands(
     qemu_cmd.AddParameter("tcp::", instance.gdb_port());
   }
 
-  LogAndSetEnv("QEMU_AUDIO_DRV", "none");
-
-  std::vector<Command> ret;
-  ret.push_back(std::move(qemu_cmd));
-  return ret;
+  std::vector<MonitorCommand> commands;
+  commands.emplace_back(std::move(qemu_cmd), true);
+  return commands;
 }
 
 } // namespace vm_manager

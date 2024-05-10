@@ -21,7 +21,7 @@
   Overlay resources to configure car service based on each OEM's preference.
   See also packages/services/Car/service/res/values/config.xml
 -->
-<audioPolicyConfiguration version="1.0" xmlns:xi="http://www.w3.org/2001/XInclude">
+<audioPolicyConfiguration version="7.0" xmlns:xi="http://www.w3.org/2001/XInclude">
     <!-- Global configuration Decalaration -->
     <globalConfiguration speaker_drc_enabled="true"/>
     <modules>
@@ -29,6 +29,7 @@
         <attachedDevices>
             <item>Speaker</item>
             <item>Built-In Mic</item>
+            <item>FM Tuner</item>
         </attachedDevices>
         <defaultOutputDevice>Speaker</defaultOutputDevice>
         <mixPorts>
@@ -36,9 +37,13 @@
                 <profile name="" format="AUDIO_FORMAT_PCM_16_BIT"
                     samplingRates="44100" channelMasks="AUDIO_CHANNEL_OUT_STEREO"/>
             </mixPort>
-            <mixPort name="primary input" role="sink">
+            <mixPort name="primary input" role="sink" maxActiveCount="1" maxOpenCount="1">
                 <profile name="" format="AUDIO_FORMAT_PCM_16_BIT"
-                    samplingRates="8000,16000" channelMasks="AUDIO_CHANNEL_IN_MONO"/>
+                    samplingRates="8000 16000" channelMasks="AUDIO_CHANNEL_IN_MONO"/>
+            </mixPort>
+            <mixPort name="mixport_tuner0" role="sink">
+                <profile name="" format="AUDIO_FORMAT_PCM_16_BIT"
+                    samplingRates="48000" channelMasks="AUDIO_CHANNEL_IN_STEREO"/>
             </mixPort>
         </mixPorts>
         <devicePorts>
@@ -54,17 +59,32 @@
 
             <devicePort tagName="Built-In Mic" type="AUDIO_DEVICE_IN_BUILTIN_MIC" role="source">
             </devicePort>
+
+            <devicePort tagName="FM Tuner" type="AUDIO_DEVICE_IN_FM_TUNER" role="source"
+                address="tuner0">
+                <profile name="" format="AUDIO_FORMAT_PCM_16_BIT"
+                    samplingRates="48000" channelMasks="AUDIO_CHANNEL_IN_STEREO"/>
+                <gains>
+                    <gain name="" mode="AUDIO_GAIN_MODE_JOINT"
+                        minValueMB="-3200" maxValueMB="600" defaultValueMB="0" stepValueMB="100"/>
+                </gains>
+            </devicePort>
         </devicePorts>
         <routes>
             <route type="mix" sink="Speaker"
                 sources="primary output"/>
             <route type="mix" sink="primary input"
                 sources="Built-In Mic"/>
+            <route type="mix" sink="mixport_tuner0"
+                sources="FM Tuner"/>
         </routes>
       </module>
 
       <!-- Remote Submix Audio HAL -->
       <xi:include href="r_submix_audio_policy_configuration.xml"/>
+
+      <!-- Bluetooth Audio HAL -->
+      <xi:include href="bluetooth_audio_policy_configuration_7_0.xml"/>
     </modules>
 
     <xi:include href="audio_policy_volumes.xml"/>

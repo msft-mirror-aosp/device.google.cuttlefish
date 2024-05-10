@@ -20,23 +20,37 @@
 namespace cuttlefish {
 
 std::string AdbConnectorBinary();
-std::string ConfigServerBinary();
+std::string AvbToolBinary();
+std::string CasimirControlServerBinary();
 std::string ConsoleForwarderBinary();
+std::string ControlEnvProxyServerBinary();
+std::string EchoServerBinary();
 std::string GnssGrpcProxyBinary();
 std::string KernelLogMonitorBinary();
 std::string LogcatReceiverBinary();
 std::string MetricsBinary();
 std::string ModemSimulatorBinary();
+std::string NetsimdBinary();
 std::string OpenwrtControlServerBinary();
+std::string PicaBinary();
+std::string ProcessRestarterBinary();
 std::string RootCanalBinary();
-std::string EchoServerBinary();
+std::string TestKeyRsa2048();
+std::string TestKeyRsa4096();
+std::string TestPubKeyRsa2048();
+std::string TestPubKeyRsa4096();
+std::string CasimirBinary();
+std::string ScreenRecordingServerBinary();
+std::string SecureEnvBinary();
 std::string SocketVsockProxyBinary();
+std::string StopCvdBinary();
+std::string TcpConnectorBinary();
 std::string TombstoneReceiverBinary();
-std::string VehicleHalGrpcServerBinary();
 std::string WebRtcBinary();
 std::string WebRtcSigServerBinary();
 std::string WebRtcSigServerProxyBinary();
 std::string WmediumdBinary();
 std::string WmediumdGenConfigBinary();
+std::string AutomotiveProxyBinary();
 
 } // namespace cuttlefish

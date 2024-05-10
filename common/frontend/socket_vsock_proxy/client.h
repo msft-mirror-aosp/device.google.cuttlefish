@@ -15,6 +15,8 @@
 
 #pragma once
 
+#include <chrono>
+
 #include "common/libs/fs/shared_fd.h"
 
 namespace cuttlefish {
@@ -23,28 +25,33 @@ namespace socket_proxy {
 class Client {
  public:
   virtual SharedFD Start() = 0;
+  virtual std::string Describe() const = 0;
   virtual ~Client() = default;
 };
 
 class TcpClient : public Client {
  public:
-  TcpClient(std::string host, int port);
+  TcpClient(std::string host, int port, std::chrono::seconds timeout = std::chrono::seconds(0));
   SharedFD Start() override;
+  std::string Describe() const override;
 
  private:
   std::string host_;
   int port_;
+  std::chrono::seconds timeout_;
   int last_failure_reason_ = 0;
 };
 
 class VsockClient : public Client {
  public:
-  VsockClient(int id, int port);
+  VsockClient(int id, int port, bool vhost_user_vsock);
   SharedFD Start() override;
+  std::string Describe() const override;
 
  private:
   int id_;
   int port_;
+  bool vhost_user_vsock_;
   int last_failure_reason_ = 0;
 };
 

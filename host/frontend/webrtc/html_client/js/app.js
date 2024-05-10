@@ -117,8 +117,24 @@ class DeviceDetailsUpdater {
   }
 }  // DeviceDetailsUpdater
 
+// These classes provide the same interface as those from the server_connector,
+// but can't inherit from them because older versions of server_connector.js
+// don't provide them.
+// These classes are only meant to avoid having to check for null everytime.
+class EmptyDeviceDisplaysMessage {
+  addDisplay(display_id, width, height) {}
+  send() {}
+}
+
+class EmptyParentController {
+  createDeviceDisplaysMessage(rotation) {
+    return new EmptyDeviceDisplaysMessage();
+  }
+}
+
 class DeviceControlApp {
   #deviceConnection = {};
+  #parentController = null;
   #currentRotation = 0;
   #currentScreenStyles = {};
   #displayDescriptions = [];
@@ -128,16 +144,23 @@ class DeviceControlApp {
   #micActive = false;
   #adbConnected = false;
 
-  constructor(deviceConnection) {
+  constructor(deviceConnection, parentController) {
     this.#deviceConnection = deviceConnection;
+    this.#parentController = parentController;
   }
 
   start() {
     console.debug('Device description: ', this.#deviceConnection.description);
     this.#deviceConnection.onControlMessage(msg => this.#onControlMessage(msg));
+    this.#deviceConnection.onLightsMessage(msg => this.#onLightsMessage(msg));
+    this.#deviceConnection.onSensorsMessage(msg => this.#onSensorsMessage(msg));
     createToggleControl(
         document.getElementById('camera_off_btn'),
         enabled => this.#onCameraCaptureToggle(enabled));
+    // disable the camera button if we are not using VSOCK camera
+    if (!this.#deviceConnection.description.hardware.camera_passthrough) {
+      document.getElementById('camera_off_btn').style.display = "none";
+    }
     createToggleControl(
         document.getElementById('record_video_btn'),
         enabled => this.#onVideoCaptureToggle(enabled));
@@ -194,6 +217,12 @@ class DeviceControlApp {
         'device-details-button', 'device-details-modal',
         'device-details-close');
     createModalButton(
+        'rotation-modal-button', 'rotation-modal',
+        'rotation-modal-close');
+    createModalButton(
+      'touchpad-modal-button', 'touchpad-modal',
+      'touchpad-modal-close');
+    createModalButton(
         'bluetooth-modal-button', 'bluetooth-prompt', 'bluetooth-prompt-close');
     createModalButton(
         'bluetooth-prompt-wizard', 'bluetooth-wizard', 'bluetooth-wizard-close',
@@ -226,7 +255,7 @@ class DeviceControlApp {
     createModalButton(
         'location-set-cancel', 'location-prompt-modal', 'location-set-modal-close',
         'location-set-modal');
-
+    positionModal('rotation-modal-button', 'rotation-modal');
     positionModal('device-details-button', 'bluetooth-modal');
     positionModal('device-details-button', 'bluetooth-prompt');
     positionModal('device-details-button', 'bluetooth-wizard');
@@ -255,6 +284,19 @@ class DeviceControlApp {
 
     createButtonListener('location-set-confirm', null, this.#deviceConnection,
       evt => this.#onSendLocation(this.#deviceConnection, evt));
+
+    createButtonListener('left-position-button', null, this.#deviceConnection,
+      () => this.#setOrientation(-90));
+    createButtonListener('upright-position-button', null, this.#deviceConnection,
+      () => this.#setOrientation(0));
+
+    createButtonListener('right-position-button', null, this.#deviceConnection,
+      () => this.#setOrientation(90));
+
+    createButtonListener('upside-position-button', null, this.#deviceConnection,
+      () => this.#setOrientation(-180));
+
+    createSliderListener('rotation-slider', () => this.#onMotionChanged(this.#deviceConnection));
 
     if (this.#deviceConnection.description.custom_control_panel_buttons.length >
         0) {
@@ -308,8 +350,9 @@ class DeviceControlApp {
           .catch(e => console.error('Unable to get audio stream: ', e));
     }
 
-    // Set up keyboard capture
+    // Set up keyboard and wheel capture
     this.#startKeyboardCapture();
+    this.#startWheelCapture();
 
     this.#updateDeviceHardwareDetails(
         this.#deviceConnection.description.hardware);
@@ -403,6 +446,82 @@ class DeviceControlApp {
     let location_msg = longitude + "," +latitude + "," + altitude;
     deviceConnection.sendLocationMessage(location_msg);
   }
+
+  async #onSensorsMessage(message) {
+    var decoder = new TextDecoder("utf-8");
+    message = decoder.decode(message.data);
+
+    // Get sensor values from message.
+    var sensor_vals = message.split(" ");
+    sensor_vals = sensor_vals.map((val) => parseFloat(val).toFixed(3));
+
+    const acc_val = document.getElementById('accelerometer-value');
+    const mgn_val = document.getElementById('magnetometer-value');
+    const gyro_val = document.getElementById('gyroscope-value');
+    const xyz_val = document.getElementsByClassName('rotation-slider-value');
+    const xyz_range = document.getElementsByClassName('rotation-slider-range');
+
+    // TODO: move to webrtc backend.
+    // Inject sensors with new values.
+    adbShell(`/vendor/bin/cuttlefish_sensor_injection motion ${sensor_vals[3]} ${sensor_vals[4]} ${sensor_vals[5]} ${sensor_vals[6]} ${sensor_vals[7]} ${sensor_vals[8]} ${sensor_vals[9]} ${sensor_vals[10]} ${sensor_vals[11]}`);
+
+    // Display new sensor values after injection.
+    acc_val.textContent = `${sensor_vals[3]} ${sensor_vals[4]} ${sensor_vals[5]}`;
+    mgn_val.textContent = `${sensor_vals[6]} ${sensor_vals[7]} ${sensor_vals[8]}`;
+    gyro_val.textContent = `${sensor_vals[9]} ${sensor_vals[10]} ${sensor_vals[11]}`;
+
+    // Update xyz sliders with backend values.
+    // This is needed for preserving device's state when display is turned on
+    // and off, and for having the same state for multiple clients.
+    for(let i = 0; i < 3; i++) {
+      xyz_val[i].textContent = sensor_vals[i];
+      xyz_range[i].value = sensor_vals[i];
+    }
+  }
+
+  // Send new rotation angles for sensor values' processing.
+  #onMotionChanged(deviceConnection = this.#deviceConnection) {
+    let values = document.getElementsByClassName('rotation-slider-value');
+    let xyz = [];
+    for (var i = 0; i < values.length; i++) {
+      xyz[i] = values[i].innerHTML;
+    }
+    deviceConnection.sendSensorsMessage(`${xyz[0]} ${xyz[1]} ${xyz[2]}`);
+  }
+
+  // Gradually rotate to a fixed orientation.
+  #setOrientation(z) {
+    const sliders = document.getElementsByClassName('rotation-slider-range');
+    const values = document.getElementsByClassName('rotation-slider-value');
+    if (sliders.length != values.length && sliders.length != 3) {
+      return;
+    }
+    // Set XY axes to 0 (upright position).
+    sliders[0].value = '0';
+    values[0].textContent = '0';
+    sliders[1].value = '0';
+    values[1].textContent = '0';
+
+    // Gradually transition z axis to target angle.
+    let current_z = parseFloat(sliders[2].value);
+    const step = ((z > current_z) ? 0.5 : -0.5);
+    let move = setInterval(() => {
+      if (Math.abs(z - current_z) >= 0.5) {
+        current_z += step;
+      }
+      else {
+        current_z = z;
+      }
+      sliders[2].value = current_z;
+      values[2].textContent = `${current_z}`;
+      this.#onMotionChanged();
+      if (current_z == z) {
+        this.#onMotionChanged();
+        clearInterval(move);
+      }
+    }, 5);
+  }
+
   #onImportLocationsFile(deviceConnection, evt) {
 
     function onLoad_send_kml_data(xml) {
@@ -507,26 +626,14 @@ class DeviceControlApp {
     }
 
     document.querySelectorAll('.device-display-video').forEach((v, i) => {
-      const stream = v.srcObject;
-      if (stream == null) {
-        console.error('Missing corresponding device display video stream', l);
+      const width = v.videoWidth;
+      const height = v.videoHeight;
+      if (!width  || !height) {
+        console.error('Stream dimensions not yet available?', v);
         return;
       }
 
-      const streamVideoTracks = stream.getVideoTracks();
-      if (streamVideoTracks == null || streamVideoTracks.length == 0) {
-        return;
-      }
-
-      const streamSettings = stream.getVideoTracks()[0].getSettings();
-      const streamWidth = streamSettings.width;
-      const streamHeight = streamSettings.height;
-      if (streamWidth == 0 || streamHeight == 0) {
-        console.error('Stream dimensions not yet available?', stream);
-        return;
-      }
-
-      const aspectRatio = streamWidth / streamHeight;
+      const aspectRatio = width / height;
 
       let keyFrames = [];
       let from = this.#currentScreenStyles[v.id];
@@ -547,6 +654,14 @@ class DeviceControlApp {
 
   #updateDeviceDisplaysInfo() {
     let labels = document.querySelectorAll('.device-display-info');
+
+    // #currentRotation is device's physical rotation and currently used to
+    // determine display's rotation. It would be obtained from device's
+    // accelerometer sensor.
+    let deviceDisplaysMessage =
+        this.#parentController.createDeviceDisplaysMessage(
+            this.#currentRotation);
+
     labels.forEach(l => {
       let deviceDisplay = l.closest('.device-display');
       if (deviceDisplay == null) {
@@ -586,6 +701,9 @@ class DeviceControlApp {
           let streamWidth = streamSettings.width;
           let streamHeight = streamSettings.height;
 
+          deviceDisplaysMessage.addDisplay(
+              displayId, streamWidth, streamHeight);
+
           text += `${streamWidth}x${streamHeight}`;
         }
       }
@@ -596,6 +714,8 @@ class DeviceControlApp {
 
       l.textContent = text;
     });
+
+    deviceDisplaysMessage.send();
   }
 
   #onControlMessage(message) {
@@ -617,8 +737,15 @@ class DeviceControlApp {
       }
     }
     if (message_data.event == 'VIRTUAL_DEVICE_DISPLAY_POWER_MODE_CHANGED') {
+      this.#deviceConnection.expectStreamChange();
       this.#updateDisplayVisibility(metadata.display, metadata.mode);
     }
+  }
+
+  #onLightsMessage(message) {
+    let message_data = JSON.parse(message.data);
+    // TODO(286106270): Add an UI component for this
+    console.debug('Lights message received: ', message_data)
   }
 
   #updateDeviceStateDetails(lidSwitchOpen, hingeAngle) {
@@ -693,7 +820,7 @@ class DeviceControlApp {
           this.#updateDeviceDisplaysInfo();
         });
 
-        this.#addMouseTracking(deviceDisplayVideo);
+        this.#addMouseTracking(deviceDisplayVideo, scaleDisplayCoordinates);
 
         deviceDisplays.appendChild(displayFragment);
 
@@ -702,6 +829,8 @@ class DeviceControlApp {
         stream.addEventListener('removetrack', evt => {
           this.#updateDeviceDisplays();
         });
+
+        this.#requestNewFrameForDisplay(i);
       } else {
         console.debug('Removing display', i);
 
@@ -715,6 +844,15 @@ class DeviceControlApp {
     }
 
     this.#updateDeviceDisplaysInfo();
+  }
+
+  #requestNewFrameForDisplay(display_number) {
+    let message = {
+      command: "display",
+      refresh_display: display_number,
+    };
+    this.#deviceConnection.sendControlMessage(JSON.stringify(message));
+    console.debug('Control message sent: ', JSON.stringify(message));
   }
 
   #initializeAdb() {
@@ -744,6 +882,49 @@ class DeviceControlApp {
         .forEach(b => b.disabled = true);
   }
 
+  #initializeTouchpads() {
+    const touchpadListElem = document.getElementById("touchpad-list");
+    const touchpadElementContainer = touchpadListElem.querySelector(".touchpads");
+    const touchpadSelectorContainer = touchpadListElem.querySelector(".selectors");
+    const touchpads = this.#deviceConnection.description.touchpads;
+
+    let setActiveTouchpad = (tab_touchpad_id, touchpad_num) => {
+      const touchPadElem = document.getElementById(tab_touchpad_id);
+      const tabButtonElem = document.getElementById("touch_button_" + touchpad_num);
+
+      touchpadElementContainer.querySelectorAll(".selected").forEach(e => e.classList.remove("selected"));
+      touchpadSelectorContainer.querySelectorAll(".selected").forEach(e => e.classList.remove("selected"));
+
+      touchPadElem.classList.add("selected");
+      tabButtonElem.classList.add("selected");
+    };
+
+    for (let i = 0; i < touchpads.length; i++) {
+      const touchpad = touchpads[i];
+
+      let touchPadElem = document.createElement("div");
+      touchPadElem.classList.add("touchpad");
+      touchPadElem.style.aspectRatio = touchpad.x_res / touchpad.y_res;
+      touchPadElem.id = touchpad.label;
+      this.#addMouseTracking(touchPadElem, makeScaleTouchpadCoordinates(touchpad));
+      touchpadElementContainer.appendChild(touchPadElem);
+
+      let tabButtonElem = document.createElement("button");
+      tabButtonElem.id = "touch_button_" + i;
+      tabButtonElem.innerHTML = "Touchpad " + i;
+      tabButtonElem.class = "touchpad-tab-button"
+      tabButtonElem.onclick = () => {
+        setActiveTouchpad(touchpad.label, i);
+      };
+      touchpadSelectorContainer.appendChild(tabButtonElem);
+    }
+
+    if (touchpads.length > 0) {
+      document.getElementById("touchpad-modal-button").style.display = "block";
+      setActiveTouchpad(touchpads[0].label, 0);
+    }
+  }
+
   #onDeviceDisplayLoaded() {
     if (!this.#adbConnected) {
       // ADB may have connected before, don't show this message in that case
@@ -756,8 +937,12 @@ class DeviceControlApp {
       deviceDisplay.style.visibility = 'visible';
     }
 
+    this.#initializeTouchpads();
+
     // Start the adb connection if it is not already started.
     this.#initializeAdb();
+    // TODO(b/297361564)
+    this.#onMotionChanged();
   }
 
   #onRotateLeftButton(e) {
@@ -798,157 +983,30 @@ class DeviceControlApp {
   }
 
   #onKeyEvent(e) {
+    if (e.cancelable) {
+      // Some keyboard events cause unwanted side effects, like elements losing
+      // focus, if the default behavior is not prevented.
+      e.preventDefault();
+    }
     this.#deviceConnection.sendKeyEvent(e.code, e.type);
   }
 
-  #addMouseTracking(displayDeviceVideo) {
-    let $this = this;
-    let mouseIsDown = false;
-    let mouseCtx = {
-      down: false,
-      touchIdSlotMap: new Map(),
-      touchSlots: [],
-    };
-    function onStartDrag(e) {
-      // Can't prevent event default behavior to allow the element gain focus
-      // when touched and start capturing keyboard input in the parent.
-      // console.debug("mousedown at " + e.pageX + " / " + e.pageY);
-      mouseCtx.down = true;
+  #startWheelCapture() {
+    const deviceArea = document.querySelector('#device-displays');
+    deviceArea.addEventListener('wheel', evt => this.#onWheelEvent(evt),
+                                { passive: false });
+  }
 
-      $this.#sendEventUpdate(mouseCtx, e);
-    }
-
-    function onEndDrag(e) {
-      // Can't prevent event default behavior to allow the element gain focus
-      // when touched and start capturing keyboard input in the parent.
-      // console.debug("mouseup at " + e.pageX + " / " + e.pageY);
-      mouseCtx.down = false;
-
-      $this.#sendEventUpdate(mouseCtx, e);
-    }
-
-    function onContinueDrag(e) {
-      // Can't prevent event default behavior to allow the element gain focus
-      // when touched and start capturing keyboard input in the parent.
-      // console.debug("mousemove at " + e.pageX + " / " + e.pageY + ", down=" +
-      // mouseIsDown);
-      if (mouseCtx.down) {
-        $this.#sendEventUpdate(mouseCtx, e);
-      }
-    }
-
-    if (window.PointerEvent) {
-      displayDeviceVideo.addEventListener('pointerdown', onStartDrag);
-      displayDeviceVideo.addEventListener('pointermove', onContinueDrag);
-      displayDeviceVideo.addEventListener('pointerup', onEndDrag);
-    } else if (window.TouchEvent) {
-      displayDeviceVideo.addEventListener('touchstart', onStartDrag);
-      displayDeviceVideo.addEventListener('touchmove', onContinueDrag);
-      displayDeviceVideo.addEventListener('touchend', onEndDrag);
-    } else if (window.MouseEvent) {
-      displayDeviceVideo.addEventListener('mousedown', onStartDrag);
-      displayDeviceVideo.addEventListener('mousemove', onContinueDrag);
-      displayDeviceVideo.addEventListener('mouseup', onEndDrag);
+  #onWheelEvent(e) {
+    e.preventDefault();
+    // Vertical wheel pixel events only
+    if (e.deltaMode == WheelEvent.DOM_DELTA_PIXEL && e.deltaY != 0.0) {
+      this.#deviceConnection.sendWheelEvent(e.deltaY);
     }
   }
 
-  #sendEventUpdate(ctx, e) {
-    let eventType = e.type.substring(0, 5);
-
-    // The <video> element:
-    const deviceDisplay = e.target;
-
-    // Before the first video frame arrives there is no way to know width and
-    // height of the device's screen, so turn every click into a click at 0x0.
-    // A click at that position is not more dangerous than anywhere else since
-    // the user is clicking blind anyways.
-    const videoWidth = deviceDisplay.videoWidth ? deviceDisplay.videoWidth : 1;
-    const elementWidth =
-        deviceDisplay.offsetWidth ? deviceDisplay.offsetWidth : 1;
-    const scaling = videoWidth / elementWidth;
-
-    let xArr = [];
-    let yArr = [];
-    let idArr = [];
-    let slotArr = [];
-
-    if (eventType == 'mouse' || eventType == 'point') {
-      xArr.push(e.offsetX);
-      yArr.push(e.offsetY);
-
-      let thisId = -1;
-      if (eventType == 'point') {
-        thisId = e.pointerId;
-      }
-
-      slotArr.push(0);
-      idArr.push(thisId);
-    } else if (eventType == 'touch') {
-      // touchstart: list of touch points that became active
-      // touchmove: list of touch points that changed
-      // touchend: list of touch points that were removed
-      let changes = e.changedTouches;
-      let rect = e.target.getBoundingClientRect();
-      for (let i = 0; i < changes.length; i++) {
-        xArr.push(changes[i].pageX - rect.left);
-        yArr.push(changes[i].pageY - rect.top);
-        if (ctx.touchIdSlotMap.has(changes[i].identifier)) {
-          let slot = ctx.touchIdSlotMap.get(changes[i].identifier);
-
-          slotArr.push(slot);
-          if (e.type == 'touchstart') {
-            // error
-            console.error('touchstart when already have slot');
-            return;
-          } else if (e.type == 'touchmove') {
-            idArr.push(changes[i].identifier);
-          } else if (e.type == 'touchend') {
-            ctx.touchSlots[slot] = false;
-            ctx.touchIdSlotMap.delete(changes[i].identifier);
-            idArr.push(-1);
-          }
-        } else {
-          if (e.type == 'touchstart') {
-            let slot = -1;
-            for (let j = 0; j < ctx.touchSlots.length; j++) {
-              if (!ctx.touchSlots[j]) {
-                slot = j;
-                break;
-              }
-            }
-            if (slot == -1) {
-              slot = ctx.touchSlots.length;
-              ctx.touchSlots.push(true);
-            }
-            slotArr.push(slot);
-            ctx.touchSlots[slot] = true;
-            ctx.touchIdSlotMap.set(changes[i].identifier, slot);
-            idArr.push(changes[i].identifier);
-          } else if (e.type == 'touchmove') {
-            // error
-            console.error('touchmove when no slot');
-            return;
-          } else if (e.type == 'touchend') {
-            // error
-            console.error('touchend when no slot');
-            return;
-          }
-        }
-      }
-    }
-
-    for (let i = 0; i < xArr.length; i++) {
-      xArr[i] = Math.trunc(xArr[i] * scaling);
-      yArr[i] = Math.trunc(yArr[i] * scaling);
-    }
-
-    // NOTE: Rotation is handled automatically because the CSS rotation through
-    // transforms also rotates the coordinates of events on the object.
-
-    const display_label = deviceDisplay.id;
-
-    this.#deviceConnection.sendMultiTouch(
-        {idArr, xArr, yArr, down: ctx.down, slotArr, display_label});
+  #addMouseTracking(touchInputElement, scaleCoordinates) {
+    trackPointerEvents(touchInputElement, this.#deviceConnection, scaleCoordinates);
   }
 
   #updateDisplayVisibility(displayId, powerMode) {
@@ -963,10 +1021,18 @@ class DeviceControlApp {
       console.error('Unknown display id: ' + displayId);
       return;
     }
+
+    const display_number = parseInt(displayId);
+    if (isNaN(display_number)) {
+      console.error('Invalid display id: ' + displayId);
+      return;
+    }
+
     powerMode = powerMode.toLowerCase();
     switch (powerMode) {
       case 'on':
         display.style.visibility = 'visible';
+        this.#requestNewFrameForDisplay(display_number);
         break;
       case 'off':
         display.style.visibility = 'hidden';
@@ -1073,7 +1139,14 @@ window.addEventListener("load", async evt => {
     document.title = deviceId;
     let deviceConnection =
         await ConnectDevice(deviceId, await connectorModule.createConnector());
-    let deviceControlApp = new DeviceControlApp(deviceConnection);
+    let parentController = null;
+    if (connectorModule.createParentController) {
+      parentController = connectorModule.createParentController();
+    }
+    if (!parentController) {
+      parentController = new EmptyParentController();
+    }
+    let deviceControlApp = new DeviceControlApp(deviceConnection, parentController);
     deviceControlApp.start();
     document.getElementById('device-connection').style.display = 'block';
   } catch(err) {

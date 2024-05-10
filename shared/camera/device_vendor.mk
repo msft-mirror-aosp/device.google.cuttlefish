@@ -14,14 +14,20 @@
 # limitations under the License.
 #
 
-PRODUCT_VENDOR_PROPERTIES += \
-    ro.camerax.extensions.enabled=true
-
 # Enable Camera Extension sample
 ifeq ($(TARGET_USE_CAMERA_ADVANCED_EXTENSION_SAMPLE),true)
 PRODUCT_PACKAGES += \
     androidx.camera.extensions.impl.advanced advancedSample_camera_extensions.xml \
     libencoderjpeg_jni
+
+PRODUCT_ARTIFACT_PATH_REQUIREMENT_ALLOWED_LIST += \
+    system/app/EyesFreeVidService/EyesFreeVidService.apk
+
+PRODUCT_PACKAGES += EyesFreeVidService
+
+PRODUCT_VENDOR_PROPERTIES += \
+    ro.vendor.camera.extensions.package=android.camera.extensions.impl.service \
+    ro.vendor.camera.extensions.service=android.camera.extensions.impl.service.EyesFreeVidService
 else
 PRODUCT_PACKAGES += androidx.camera.extensions.impl sample_camera_extensions.xml
 endif
@@ -29,15 +35,20 @@ endif
 PRODUCT_SOONG_NAMESPACES += hardware/google/camera
 PRODUCT_SOONG_NAMESPACES += hardware/google/camera/devices/EmulatedCamera
 
-PRODUCT_COPY_FILES += \
-    frameworks/native/data/etc/android.hardware.camera.concurrent.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.camera.concurrent.xml \
-    frameworks/native/data/etc/android.hardware.camera.flash-autofocus.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.camera.flash-autofocus.xml \
-    frameworks/native/data/etc/android.hardware.camera.front.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.camera.front.xml \
-    frameworks/native/data/etc/android.hardware.camera.full.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.camera.full.xml \
-    frameworks/native/data/etc/android.hardware.camera.raw.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.camera.raw.xml \
-    hardware/google/camera/devices/EmulatedCamera/hwl/configs/emu_camera_back.json:$(TARGET_COPY_OUT_VENDOR)/etc/config/emu_camera_back.json \
-    hardware/google/camera/devices/EmulatedCamera/hwl/configs/emu_camera_front.json:$(TARGET_COPY_OUT_VENDOR)/etc/config/emu_camera_front.json \
-    hardware/google/camera/devices/EmulatedCamera/hwl/configs/emu_camera_depth.json:$(TARGET_COPY_OUT_VENDOR)/etc/config/emu_camera_depth.json
+# TODO(b/257379485): 3A is incrementally enabling cuttlefish build for native
+# code coverage support, temporary require separate namespace for folders that
+# can be built successfully.
+PRODUCT_SOONG_NAMESPACES += vendor/google/camera/common/g3_shared
+PRODUCT_SOONG_NAMESPACES += vendor/google/camera/google_3a/libs_v4/g3ABase
+PRODUCT_SOONG_NAMESPACES += vendor/google/camera/google_3a/libs_v4/gABC/native_coverage
+PRODUCT_SOONG_NAMESPACES += vendor/google/camera/google_3a/libs_v4/gAF
+PRODUCT_SOONG_NAMESPACES += vendor/google/camera/google_3a/libs_v4/gafd
+PRODUCT_SOONG_NAMESPACES += vendor/google/camera/google_3a/libs_v4/gHAWB/native_coverage
+
+# go/lyric-soong-variables
+$(call soong_config_set,lyric,camera_hardware,cuttlefish)
+$(call soong_config_set,lyric,tuning_product,cuttlefish)
+$(call soong_config_set,google3a_config,target_device,cuttlefish)
 
 ifeq ($(TARGET_USE_VSOCK_CAMERA_HAL_IMPL),true)
 PRODUCT_PACKAGES += \

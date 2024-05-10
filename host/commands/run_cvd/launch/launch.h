@@ -15,15 +15,20 @@
 
 #pragma once
 
-#include <fruit/fruit.h>
-
+#include <optional>
 #include <string>
 #include <vector>
 
+#include <fruit/fruit.h>
+
 #include "common/libs/fs/shared_fd.h"
 #include "common/libs/utils/subprocess.h"
+#include "host/commands/run_cvd/launch/auto_cmd.h"
 #include "host/commands/run_cvd/launch/grpc_socket_creator.h"
 #include "host/commands/run_cvd/launch/log_tee_creator.h"
+#include "host/commands/run_cvd/launch/snapshot_control_files.h"
+#include "host/commands/run_cvd/launch/webrtc_recorder.h"
+#include "host/commands/run_cvd/launch/wmediumd_server.h"
 #include "host/libs/config/command_source.h"
 #include "host/libs/config/custom_actions.h"
 #include "host/libs/config/cuttlefish_config.h"
@@ -33,43 +38,53 @@
 
 namespace cuttlefish {
 
-template <typename T>
-std::vector<T> single_element_emplace(T&& element) {
-  std::vector<T> vec;
-  vec.emplace_back(std::move(element));
-  return vec;
-}
+Result<std::optional<MonitorCommand>> UwbConnector(
+    const CuttlefishConfig&, const CuttlefishConfig::InstanceSpecific&);
 
-fruit::Component<fruit::Required<const CuttlefishConfig,
+std::optional<MonitorCommand> AutomotiveProxyService(const CuttlefishConfig&);
+
+fruit::Component<fruit::Required<const CuttlefishConfig, LogTeeCreator,
                                  const CuttlefishConfig::InstanceSpecific>>
-BluetoothConnectorComponent();
+VhostDeviceVsockComponent();
+
+Result<std::optional<MonitorCommand>> BluetoothConnector(
+    const CuttlefishConfig&, const CuttlefishConfig::InstanceSpecific&);
+
+Result<MonitorCommand> NfcConnector(const CuttlefishConfig&,
+                                    const CuttlefishConfig::InstanceSpecific&);
 
 fruit::Component<fruit::Required<const CuttlefishConfig::InstanceSpecific>,
                  KernelLogPipeProvider>
 KernelLogMonitorComponent();
 
-fruit::Component<fruit::Required<const CuttlefishConfig::InstanceSpecific>>
-LogcatReceiverComponent();
+Result<MonitorCommand> LogcatReceiver(
+    const CuttlefishConfig::InstanceSpecific&);
+std::string LogcatInfo(const CuttlefishConfig::InstanceSpecific&);
 
-fruit::Component<fruit::Required<const CuttlefishConfig::InstanceSpecific>>
-ConfigServerComponent();
+Result<std::optional<MonitorCommand>> CasimirControlServer(
+    const CuttlefishConfig&, const CuttlefishConfig::InstanceSpecific&,
+    GrpcSocketCreator&);
 
-fruit::Component<fruit::Required<const CuttlefishConfig::InstanceSpecific>>
-ConsoleForwarderComponent();
+Result<std::optional<MonitorCommand>> ConsoleForwarder(
+    const CuttlefishConfig::InstanceSpecific&);
+std::string ConsoleInfo(const CuttlefishConfig::InstanceSpecific&);
 
 fruit::Component<fruit::Required<const CuttlefishConfig::InstanceSpecific,
                                  GrpcSocketCreator>>
-GnssGrpcProxyServerComponent();
+ControlEnvProxyServerComponent();
 
-fruit::Component<fruit::Required<const CuttlefishConfig>>
-MetricsServiceComponent();
+Result<std::optional<MonitorCommand>> GnssGrpcProxyServer(
+    const CuttlefishConfig::InstanceSpecific&, GrpcSocketCreator&);
 
-fruit::Component<
-    fruit::Required<const CuttlefishConfig,
-                    const CuttlefishConfig::InstanceSpecific, LogTeeCreator>>
+std::optional<MonitorCommand> MetricsService(const CuttlefishConfig&);
+
+fruit::Component<fruit::Required<
+    const CuttlefishConfig, const CuttlefishConfig::EnvironmentSpecific,
+    const CuttlefishConfig::InstanceSpecific, LogTeeCreator, WmediumdServer>>
 OpenWrtComponent();
 
-fruit::Component<fruit::Required<const CuttlefishConfig::InstanceSpecific,
+fruit::Component<fruit::Required<const CuttlefishConfig,
+                                 const CuttlefishConfig::EnvironmentSpecific,
                                  GrpcSocketCreator>>
 OpenwrtControlServerComponent();
 
@@ -78,35 +93,48 @@ fruit::Component<
                     const CuttlefishConfig::InstanceSpecific, LogTeeCreator>>
 RootCanalComponent();
 
-fruit::Component<fruit::Required<GrpcSocketCreator>> EchoServerComponent();
+Result<std::vector<MonitorCommand>> Casimir(
+    const CuttlefishConfig&, const CuttlefishConfig::InstanceSpecific&,
+    LogTeeCreator&);
+
+Result<std::vector<MonitorCommand>> Pica(
+    const CuttlefishConfig&, const CuttlefishConfig::InstanceSpecific&,
+    LogTeeCreator&);
+
+MonitorCommand EchoServer(GrpcSocketCreator& grpc_socket);
 
 fruit::Component<fruit::Required<const CuttlefishConfig,
                                  const CuttlefishConfig::InstanceSpecific>>
 NetsimServerComponent();
 
-fruit::Component<fruit::Required<const CuttlefishConfig,
-                                 const CuttlefishConfig::InstanceSpecific,
-                                 KernelLogPipeProvider>>
-SecureEnvComponent();
+Result<std::optional<MonitorCommand>> ScreenRecordingServer(GrpcSocketCreator&);
 
-fruit::Component<fruit::Required<const CuttlefishConfig::InstanceSpecific>>
-TombstoneReceiverComponent();
+Result<MonitorCommand> SecureEnv(const CuttlefishConfig&,
+                                 const CuttlefishConfig::InstanceSpecific&,
+                                 AutoSnapshotControlFiles::Type&,
+                                 KernelLogPipeProvider&);
 
-fruit::Component<fruit::Required<const CuttlefishConfig::InstanceSpecific>>
-VehicleHalServerComponent();
+Result<MonitorCommand> TombstoneReceiver(
+    const CuttlefishConfig::InstanceSpecific&);
+
+fruit::Component<fruit::Required<
+    const CuttlefishConfig, const CuttlefishConfig::EnvironmentSpecific,
+    const CuttlefishConfig::InstanceSpecific, LogTeeCreator, GrpcSocketCreator>>
+WmediumdServerComponent();
+
+Result<std::optional<MonitorCommand>> ModemSimulator(
+    const CuttlefishConfig::InstanceSpecific&);
+
+fruit::Component<
+    fruit::Required<const CuttlefishConfig, KernelLogPipeProvider,
+                    const CuttlefishConfig::InstanceSpecific,
+                    const CustomActionConfigProvider, WebRtcRecorder>>
+launchStreamerComponent();
+
+fruit::Component<WebRtcRecorder> WebRtcRecorderComponent();
 
 fruit::Component<
     fruit::Required<const CuttlefishConfig,
                     const CuttlefishConfig::InstanceSpecific, LogTeeCreator>>
-WmediumdServerComponent();
-
-fruit::Component<fruit::Required<const CuttlefishConfig,
-                                 const CuttlefishConfig::InstanceSpecific>>
-launchModemComponent();
-
-fruit::Component<fruit::Required<const CuttlefishConfig, KernelLogPipeProvider,
-                                 const CuttlefishConfig::InstanceSpecific,
-                                 const CustomActionConfigProvider>>
-launchStreamerComponent();
-
+McuComponent();
 }  // namespace cuttlefish

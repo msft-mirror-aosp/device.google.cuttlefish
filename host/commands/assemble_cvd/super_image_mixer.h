@@ -12,6 +12,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+#pragma once
 
 #include <fruit/fruit.h>
 
@@ -27,6 +28,7 @@ fruit::Component<fruit::Required<const FetcherConfig, const CuttlefishConfig,
                                  const CuttlefishConfig::InstanceSpecific>,
                  SuperImageRebuilder>
 SuperImageRebuilderComponent();
-bool SuperImageNeedsRebuilding(const FetcherConfig& fetcher_config);
-
+Result<bool> SuperImageNeedsRebuilding(const FetcherConfig& fetcher_config,
+                                       const std::string& default_target_zip,
+                                       const std::string& system_target_zip);
 } // namespace cuttlefish

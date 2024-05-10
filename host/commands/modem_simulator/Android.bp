@@ -38,14 +38,11 @@ cc_defaults {
         "nvram_config.cpp"
     ],
     shared_libs: [
-        "libext2_blkid",
         "libcuttlefish_fs",
         "libcuttlefish_utils",
         "libbase",
         "libjsoncpp",
         "libnl",
-        "libcuttlefish_device_config",
-        "libcuttlefish_device_config_proto",
     ],
     static_libs: [
         "libcuttlefish_host_config",

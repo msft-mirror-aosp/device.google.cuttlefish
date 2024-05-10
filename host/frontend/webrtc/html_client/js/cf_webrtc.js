@@ -17,6 +17,7 @@
 function createDataChannel(pc, label, onMessage) {
   console.debug('creating data channel: ' + label);
   let dataChannel = pc.createDataChannel(label);
+  dataChannel.binaryType = "arraybuffer";
   // Return an object with a send function like that of the dataChannel, but
   // that only actually sends over the data channel once it has connected.
   return {
@@ -92,7 +93,9 @@ class DeviceConnection {
   #inputChannel;
   #adbChannel;
   #bluetoothChannel;
+  #lightsChannel;
   #locationChannel;
+  #sensorsChannel;
   #kmlLocationsChannel;
   #gpxLocationsChannel;
 
@@ -107,9 +110,11 @@ class DeviceConnection {
   #onAdbMessage;
   #onControlMessage;
   #onBluetoothMessage;
+  #onSensorsMessage
   #onLocationMessage;
   #onKmlLocationsMessage;
   #onGpxLocationsMessage;
+  #onLightsMessage;
 
   #micRequested = false;
   #cameraRequested = false;
@@ -127,6 +132,13 @@ class DeviceConnection {
       }
     };
     this.#inputChannel = createDataChannel(pc, 'input-channel');
+    this.#sensorsChannel = createDataChannel(pc, 'sensors-channel', (msg) => {
+      if (!this.#onSensorsMessage) {
+        console.error('Received unexpected Sensors message');
+        return;
+      }
+      this.#onSensorsMessage(msg);
+    });
     this.#adbChannel = createDataChannel(pc, 'adb-channel', (msg) => {
       if (!this.#onAdbMessage) {
         console.error('Received unexpected ADB message');
@@ -175,6 +187,14 @@ class DeviceConnection {
           }
           this.#onGpxLocationsMessage(msg.data);
         });
+    this.#lightsChannel = createDataChannel(pc, 'lights-channel', (msg) => {
+      if (!this.#onLightsMessage) {
+        console.error('Received unexpected Lights message');
+        return;
+      }
+      this.#onLightsMessage(msg);
+    });
+
     this.#streams = {};
     this.#streamPromiseResolvers = {};
 
@@ -248,6 +268,10 @@ class DeviceConnection {
     this.#streamChangeCallback = cb;
   }
 
+  expectStreamChange() {
+    this.#control.expectMessagesSoon(5000);
+  }
+
   #sendJsonInput(evt) {
     this.#inputChannel.send(JSON.stringify(evt));
   }
@@ -264,20 +288,28 @@ class DeviceConnection {
 
   // TODO (b/124121375): This should probably be an array of pointer events and
   // have different properties.
-  sendMultiTouch({idArr, xArr, yArr, down, slotArr, display_label}) {
-    this.#sendJsonInput({
-      type: 'multi-touch',
-      id: idArr,
-      x: xArr,
-      y: yArr,
-      down: down ? 1 : 0,
-      slot: slotArr,
-      display_label: display_label,
-    });
+  sendMultiTouch({idArr, xArr, yArr, down, device_label}) {
+    let events = {
+            type: 'multi-touch',
+            id: idArr,
+            x: xArr,
+            y: yArr,
+            down: down ? 1 : 0,
+            device_label: device_label,
+          };
+    this.#sendJsonInput(events);
   }
 
   sendKeyEvent(code, type) {
     this.#sendJsonInput({type: 'keyboard', keycode: code, event_type: type});
+  }
+
+  sendWheelEvent(pixels) {
+    this.#sendJsonInput({
+      type: 'wheel',
+      // convert double to int, forcing a base 10 conversion. pixels can be fractional.
+      pixels: parseInt(pixels, 10),
+    });
   }
 
   disconnect() {
@@ -300,7 +332,7 @@ class DeviceConnection {
   }
 
   async #useDevice(
-      in_use, senders_arr, device_opt, requestedFn = () => {in_use}) {
+      in_use, senders_arr, device_opt, requestedFn = () => {in_use}, enabledFn = (stream) => {}) {
     // An empty array means no tracks are currently in use
     if (senders_arr.length > 0 === !!in_use) {
       return in_use;
@@ -314,6 +346,7 @@ class DeviceConnection {
         if (!!in_use != requestedFn()) {
           return requestedFn();
         }
+        enabledFn(stream);
         stream.getTracks().forEach(track => {
           console.info(`Using ${track.kind} device: ${track.label}`);
           senders_arr.push(this.#pc.addTrack(track));
@@ -360,7 +393,8 @@ class DeviceConnection {
     this.#cameraRequested = !!in_use;
     return this.#useDevice(
         in_use, this.#micSenders, {audio: false, video: true},
-        () => this.#cameraRequested);
+        () => this.#cameraRequested,
+        (stream) => this.sendCameraResolution(stream));
   }
 
   sendCameraResolution(stream) {
@@ -415,6 +449,14 @@ class DeviceConnection {
     this.#locationChannel.send(msg);
   }
 
+  sendSensorsMessage(msg) {
+    this.#sensorsChannel.send(msg);
+  }
+
+  onSensorsMessage(cb) {
+    this.#onSensorsMessage = cb;
+  }
+
   onLocationMessage(cb) {
     this.#onLocationMessage = cb;
   }
@@ -440,12 +482,19 @@ class DeviceConnection {
     this.#pc.addEventListener(
         'connectionstatechange', evt => cb(this.#pc.connectionState));
   }
+
+  onLightsMessage(cb) {
+    this.#onLightsMessage = cb;
+  }
 }
 
 class Controller {
   #pc;
   #serverConnector;
   #connectedPr = Promise.resolve({});
+  // A list of callbacks that need to be called when the remote description is
+  // successfully added to the peer connection.
+  #onRemoteDescriptionSetCbs = [];
 
   constructor(serverConnector) {
     this.#serverConnector = serverConnector;
@@ -459,7 +508,7 @@ class Controller {
         this.#onOffer({type: 'offer', sdp: message.sdp});
         break;
       case 'answer':
-        this.#onAnswer({type: 'answer', sdp: message.sdp});
+        this.#onRemoteDescription({type: 'answer', sdp: message.sdp});
         break;
       case 'ice-candidate':
           this.#onIceCandidate(new RTCIceCandidate({
@@ -487,9 +536,8 @@ class Controller {
   }
 
   async #onOffer(desc) {
-    console.debug('Remote description (offer): ', desc);
     try {
-      await this.#pc.setRemoteDescription(desc);
+      await this.#onRemoteDescription(desc);
       let answer = await this.#pc.createAnswer();
       console.debug('Answer: ', answer);
       await this.#pc.setLocalDescription(answer);
@@ -500,12 +548,16 @@ class Controller {
     }
   }
 
-  async #onAnswer(answer) {
-    console.debug('Remote description (answer): ', answer);
+  async #onRemoteDescription(desc) {
+    console.debug(`Remote description (${desc.type}): `, desc);
     try {
-      await this.#pc.setRemoteDescription(answer);
+      await this.#pc.setRemoteDescription(desc);
+      for (const cb of this.#onRemoteDescriptionSetCbs) {
+        cb();
+      }
+      this.#onRemoteDescriptionSetCbs = [];
     } catch (e) {
-      console.error('Error processing remote description (answer)', e)
+      console.error(`Error processing remote description (${desc.type})`, e)
       throw e;
     }
   }
@@ -513,6 +565,14 @@ class Controller {
   #onIceCandidate(iceCandidate) {
     console.debug(`Remote ICE Candidate: `, iceCandidate);
     this.#pc.addIceCandidate(iceCandidate);
+  }
+
+  expectMessagesSoon(durationMilliseconds) {
+    if (this.#serverConnector.expectMessagesSoon) {
+      this.#serverConnector.expectMessagesSoon(durationMilliseconds);
+    } else {
+      console.warn(`Unavailable expectMessagesSoon(). Messages may be slow.`);
+    }
   }
 
   // This effectively ensures work that changes connection state doesn't run
@@ -523,6 +583,14 @@ class Controller {
     const connectedPr = this.#connectedPr.then(() => {
       const controller = new AbortController();
       const pr = new Promise((resolve, reject) => {
+        // The promise resolves when the connection changes state to 'connected'
+        // or when a remote description is set and the connection was already in
+        // 'connected' state.
+        this.#onRemoteDescriptionSetCbs.push(() => {
+          if (this.#pc.connectionState == 'connected') {
+            resolve({});
+          }
+        });
         this.#pc.addEventListener('connectionstatechange', evt => {
           let state = this.#pc.connectionState;
           if (state == 'connected') {
@@ -551,7 +619,12 @@ class Controller {
     // connection, while #onOffer may be called more than once due to
     // renegotiations.
     this.#pc.addEventListener('icecandidate', evt => {
-      if (evt.candidate) this.#sendIceCandidate(evt.candidate);
+      // The last candidate is null, which indicates the end of ICE gathering.
+      // Firefox's second to last candidate has the candidate property set to
+      // empty, skip that one.
+      if (evt.candidate && evt.candidate.candidate) {
+        this.#sendIceCandidate(evt.candidate);
+      }
     });
     return this.#onReadyToNegotiate(_ => {
       this.#serverConnector.sendToDevice(
@@ -565,7 +638,7 @@ class Controller {
       let offer = await this.#pc.createOffer();
       console.debug('Local description (offer): ', offer);
       await this.#pc.setLocalDescription(offer);
-      this.#serverConnector.sendToDevice({type: 'offer', sdp: offer.sdp});
+      await this.#serverConnector.sendToDevice({type: 'offer', sdp: offer.sdp});
     });
   }
 }

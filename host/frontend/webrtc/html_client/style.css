@@ -28,6 +28,7 @@ body, body.dark-theme {
   --modal-button-border: black;
   --modal-button-invalid-border: red;
   --modal-button-highlight-bg: #f4cccc; /* light red */
+  --modal-padding: 20px;
   --bt-label-fg: green;
   --bt-label-invalid-fg: red;
   --bt-action-bg: transparent;
@@ -37,6 +38,7 @@ body, body.dark-theme {
   --button-disabled-fg: #9aa0a6; /* Google grey 500 */
   --button-pressed-border: #505050;
   --button-pressed-bg: #303030;
+  --display-border: solid #202020 1px;
 }
 /* End of dark theme */
 
@@ -63,6 +65,7 @@ body.light-theme {
   --button-disabled-fg: #c4c4c4; /* Google grey 300 */
   --button-pressed-border: #c4c4c4; /* Google grey 300 */
   --button-pressed-bg: #d9d9d9; /* Google grey 200 */
+  --display-border: solid #f0f0f0 1px;
 }
 /* End of light theme */
 
@@ -104,9 +107,6 @@ body {
   align-items: center;
 }
 
-#camera_off_btn {
-  display: none !important;
-}
 #record_video_btn {
   display: none !important;
 }
@@ -162,7 +162,7 @@ body {
   position: absolute;
 
   border-radius: 10px;
-  padding: 20px;
+  padding: var(--modal-padding);
   padding-top: 1px;
 
   background-color: var(--modal-bg);
@@ -182,7 +182,7 @@ body {
   background-color: transparent;
 }
 .modal-button, .modal-button-highlight {
-  background:    var(--modal-button-bg)
+  background:    var(--modal-button-bg);
   border-radius: 10px;
   box-shadow:    1px 1px var(--modal-button-shadow);
   padding:       10px 20px;
@@ -267,7 +267,18 @@ body {
 .location-button {
   text-align: center;
 }
-
+.sensors{
+  position: sticky;
+  right: 0;
+  top: 0;
+  text-align: right;
+}
+.fixed-orientation{
+  position: sticky;
+  right: 0;
+  top: 0;
+  text-align: right;
+}
 .control-panel-column {
   width: 50px;
   /* Items inside this use a column Flexbox.*/
@@ -281,6 +292,8 @@ body {
   background-color: var(--custom-button-bg);
   height: fit-content;
   border-radius: 10px;
+  top: 10px;
+  position: sticky;
 }
 
 .control-panel-column button {
@@ -366,4 +379,68 @@ body {
   max-width: 100%;
   max-height: 100%;
   touch-action: none;
+  border: var(--display-border);
+}
+
+#touchpad-modal {
+  /* Disable select to avoid weird behavior when dragging mouse while
+  interacting with touchpads */
+  -webkit-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  width: 200px;
+}
+
+#touchpad-modal-header {
+  justify-content: right;
+  margin-right: calc(-1 * var(--modal-padding));
+}
+
+#touchpad-modal-button {
+  display: none;
+}
+
+#touchpad-controls {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  outline: 0px solid transparent;
+}
+
+.touchpad {
+  background-color: var(--button-fg);
+  touch-action: none;
+  position: relative;
+  flex-direction: column;
+  display: none;
+}
+
+.touchpad.selected {
+  display: block;
+}
+
+.touchpad:active {
+  background-color: var(--button-pressed-bg);
+}
+
+#touchpad-list .selectors {
+  margin-bottom: 10px;
+}
+
+#touchpad-list .selectors button {
+  color: var(--main-fg);
+  background: transparent;
+  border: none;
+  outline: none;
+  cursor: pointer;
+}
+
+#touchpad-list .selectors button:hover {
+  color: var(--main-bg);
+  background-color: var(--main-fg);
+}
+
+#touchpad-list .selectors button.selected {
+  color: var(--main-bg);
+  background-color: var(--button-fg);
 }

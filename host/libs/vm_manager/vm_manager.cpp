@@ -16,14 +16,20 @@
 
 #include "host/libs/vm_manager/vm_manager.h"
 
+#include <iomanip>
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
+
 #include <android-base/logging.h>
 #include <fruit/fruit.h>
 
-#include <iomanip>
-#include <memory>
-
+#include "common/libs/utils/result.h"
 #include "host/libs/config/command_source.h"
 #include "host/libs/config/cuttlefish_config.h"
+#include "host/libs/config/inject.h"
 #include "host/libs/vm_manager/crosvm_manager.h"
 #include "host/libs/vm_manager/gem5_manager.h"
 #include "host/libs/vm_manager/qemu_manager.h"
@@ -31,21 +37,22 @@
 namespace cuttlefish {
 namespace vm_manager {
 
-std::unique_ptr<VmManager> GetVmManager(const std::string& name, Arch arch) {
+std::unique_ptr<VmManager> GetVmManager(VmmMode vmm_mode, Arch arch) {
   std::unique_ptr<VmManager> vmm;
-  if (name == QemuManager::name()) {
+  if (vmm_mode == VmmMode::kQemu) {
     vmm.reset(new QemuManager(arch));
-  } else if (name == Gem5Manager::name()) {
+  } else if (vmm_mode == VmmMode::kGem5) {
     vmm.reset(new Gem5Manager(arch));
-  } else if (name == CrosvmManager::name()) {
+  } else if (vmm_mode == VmmMode::kCrosvm) {
     vmm.reset(new CrosvmManager());
   }
   if (!vmm) {
-    LOG(ERROR) << "Invalid VM manager: " << name;
+    LOG(ERROR) << "Invalid VM manager: " << vmm_mode;
     return {};
   }
   if (!vmm->IsSupported()) {
-    LOG(ERROR) << "VM manager " << name << " is not supported on this machine.";
+    LOG(ERROR) << "VM manager " << vmm_mode
+               << " is not supported on this machine.";
     return {};
   }
   return vmm;
@@ -67,26 +74,34 @@ ConfigureMultipleBootDevices(const std::string& pci_path, int pci_offset,
   return {{{"androidboot.boot_devices", boot_devices_prop_val}}};
 }
 
-class VmmCommands : public CommandSource {
+class VmmCommands : public CommandSource, public LateInjected {
  public:
   INJECT(VmmCommands(const CuttlefishConfig& config, VmManager& vmm))
       : config_(config), vmm_(vmm) {}
 
   // CommandSource
-  Result<std::vector<Command>> Commands() override {
-    return vmm_.StartCommands(config_);
+  Result<std::vector<MonitorCommand>> Commands() override {
+    return vmm_.StartCommands(config_, dependencyCommands_);
   }
 
   // SetupFeature
   std::string Name() const override { return "VirtualMachineManager"; }
   bool Enabled() const override { return true; }
 
+  // LateInjected
+  Result<void> LateInject(fruit::Injector<>& injector) override {
+    dependencyCommands_ = injector.getMultibindings<VmmDependencyCommand>();
+
+    return {};
+  }
+
  private:
   std::unordered_set<SetupFeature*> Dependencies() const override { return {}; }
-  bool Setup() override { return true; }
+  Result<void> ResultSetup() override { return {}; }
 
   const CuttlefishConfig& config_;
   VmManager& vmm_;
+  std::vector<VmmDependencyCommand*> dependencyCommands_;
 };
 
 fruit::Component<fruit::Required<const CuttlefishConfig,
@@ -102,6 +117,7 @@ VmManagerComponent() {
         return vmm.release();  // fruit takes ownership of raw pointers
       })
       .addMultibinding<CommandSource, VmmCommands>()
+      .addMultibinding<LateInjected, VmmCommands>()
       .addMultibinding<SetupFeature, VmmCommands>();
 }
 

@@ -16,7 +16,7 @@
 
 # FIXME: Split up and merge back in with shared/BoardConfig.mk
 
-TARGET_KERNEL_USE ?= 5.15
+TARGET_KERNEL_USE ?= 6.1
 TARGET_KERNEL_ARCH ?= $(TARGET_ARCH)
 TARGET_KERNEL_PATH ?= kernel/prebuilts/$(TARGET_KERNEL_USE)/$(TARGET_KERNEL_ARCH)/kernel-$(TARGET_KERNEL_USE)
 KERNEL_MODULES_PATH ?= \
@@ -37,18 +37,23 @@ RAMDISK_KERNEL_MODULES := \
     virtio-rng.ko \
     vmw_vsock_virtio_transport.ko \
 
-ifneq ($(filter-out 5.15,$(TARGET_KERNEL_USE)),)
-# GKI >5.15 will have and require virtio_pci_legacy_dev.ko
-RAMDISK_KERNEL_MODULES += virtio_pci_legacy_dev.ko
-endif
-
 BOARD_VENDOR_RAMDISK_KERNEL_MODULES := \
     $(patsubst %,$(KERNEL_MODULES_PATH)/%,$(RAMDISK_KERNEL_MODULES))
+
+# GKI >5.15 will have and require virtio_pci_legacy_dev.ko
+BOARD_VENDOR_RAMDISK_KERNEL_MODULES += $(wildcard $(KERNEL_MODULES_PATH)/virtio_pci_legacy_dev.ko)
+# GKI >6.4 will have an required vmw_vsock_virtio_transport_common.ko and vsock.ko
+BOARD_VENDOR_RAMDISK_KERNEL_MODULES += \
+	$(wildcard $(KERNEL_MODULES_PATH)/vmw_vsock_virtio_transport_common.ko) \
+	$(wildcard $(KERNEL_MODULES_PATH)/vsock.ko)
 
 TARGET_NO_RECOVERY := true
 
 BOARD_VENDOR_RAMDISK_KERNEL_MODULES_BLOCKLIST_FILE := \
     device/google/cuttlefish/shared/modules.blocklist
+
+BOARD_VENDOR_RAMDISK_KERNEL_MODULES_OPTIONS_FILE := \
+    device/google/cuttlefish/shared/config/first_stage_modules.options
 
 TARGET_BOOTLOADER_BOARD_NAME := cutf
 
@@ -120,7 +125,6 @@ BOARD_KERNEL_CMDLINE += init=/init
 BOARD_BOOTCONFIG += androidboot.hardware=$(LOCAL_ANDROIDBOOT_HARDWARE)
 BOARD_BOOTCONFIG += \
     androidboot.init_rc=$(LOCAL_ANDROIDBOOT_INIT_RC)
-BOARD_BOOTCONFIG += kernel.mac80211_hwsim.radios=0
 BOARD_BOOTCONFIG += \
     kernel.vmw_vsock_virtio_transport_common.virtio_transport_max_vsock_pkt_buf_size=16384
 BOARD_BOOTCONFIG += \
@@ -145,3 +149,5 @@ BOARD_SUPER_IMAGE_IN_UPDATE_PACKAGE := true
 
 TARGET_SKIP_OTA_PACKAGE := true
 TARGET_SKIP_OTATOOLS_PACKAGE := true
+
+BOARD_VENDOR_SEPOLICY_DIRS += device/google/cuttlefish/shared/sepolicy/vendor/seriallogging

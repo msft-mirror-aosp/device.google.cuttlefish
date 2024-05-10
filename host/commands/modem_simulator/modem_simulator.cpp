@@ -113,7 +113,7 @@ void ModemSimulator::DispatchCommand(const Client& client, std::string& command)
     }
   }
 
-  if (!success && client.type != Client::REMOTE) {
+  if (!success && client.Type() != Client::REMOTE) {
     LOG(DEBUG) << "Not supported AT command: " << command;
     client.SendCommandResponse(ModemService::kCmeErrorOperationNotSupported);
   }
@@ -156,6 +156,13 @@ void ModemSimulator::SetTimeZone(std::string timezone) {
   if (misc_service_) {
     misc_service_->SetTimeZone(timezone);
   }
+}
+
+bool ModemSimulator::SetPhoneNumber(std::string_view number) {
+  if (sim_service_) {
+    return sim_service_->SetPhoneNumber(number);
+  }
+  return false;
 }
 
 }  // namespace cuttlefish

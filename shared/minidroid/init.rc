@@ -14,6 +14,7 @@ import /system/etc/init/logd.rc
 # continue despite that. Remove the import once we can rely on .rc files from
 # /system/etc/init getting loaded automatically.
 import /system/etc/init/logcatd.rc
+import /vendor/etc/init/seriallogging.rc
 
 # Cgroups are mounted right before early-init using list from /etc/cgroups.json
 on early-init
@@ -56,8 +57,11 @@ on init
     restorecon /mnt/extra-apk
 
     # Wait for apexd to finish activating APEXes before starting more processes.
-    wait_for_prop apexd.status activated
-    perform_apex_config
+    # Note that minidroid starts apexd in VM mode in which apexd doesn't wait for init after setting
+    # apexd.status to activated, but immediately transitions to ready. Therefore, it's not safe to
+    # wait for the activated status, by the time this line is reached it may be already be ready.
+    wait_for_prop apexd.status ready
+    perform_apex_config --bootstrap
 
     # Notify to microdroid_manager that perform_apex_config is done.
     # Microdroid_manager shouldn't execute payload before this, because app
@@ -127,6 +131,8 @@ on post-fs
 
     mkdir /data/misc/authfs 0700 root root
 
+    start seriallogging
+
 on late-fs && property:ro.debuggable=1
     # Ensure that tracefs has the correct permissions.
     # This does not work correctly if it is called in post-fs.
@@ -163,6 +169,7 @@ on boot
     setprop sys.boot_completed 1
     setprop dev.bootcomplete 1
     write /dev/kmsg "VIRTUAL_DEVICE_BOOT_COMPLETED"
+    write /dev/kmsg "GUEST_BUILD_FINGERPRINT: ${ro.build.fingerprint}"
 
 service tombstone_transmit /system/bin/tombstone_transmit.microdroid -cid 2 -port 2000 -remove_tombstones_after_transmitting
     user system
@@ -181,7 +188,9 @@ service ueventd /system/bin/ueventd
     critical
     seclabel u:r:ueventd:s0
     shutdown critical
-    capabilities CHOWN DAC_OVERRIDE DAC_READ_SEARCH FOWNER FSETID MKNOD NET_ADMIN SETGID SETUID SYS_MODULE SYS_RAWIO
+    user root
+    group root
+    capabilities CHOWN DAC_OVERRIDE DAC_READ_SEARCH FOWNER FSETID MKNOD NET_ADMIN SETGID SETUID SYS_MODULE SYS_RAWIO SYS_ADMIN
 
 service console /system/bin/sh
     class core

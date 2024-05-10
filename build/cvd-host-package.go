@@ -68,6 +68,13 @@ func (c *cvdHostPackage) DepsMutator(ctx android.BottomUpMutatorContext) {
 		}
 	}
 
+	for _, dep := range strings.Split(
+		ctx.Config().VendorConfig("cvd").String("binary"), " ") {
+		if ctx.OtherModuleExists(dep) {
+			ctx.AddVariationDependencies(ctx.Target().Variations(), cvdHostPackageDependencyTag, dep)
+		}
+	}
+
 	// If cvd_custom_action_config is set, include custom action servers in the
 	// host package as specified by cvd_custom_action_servers.
 	customActionConfig := ctx.Config().VendorConfig("cvd").String("custom_action_config")
@@ -81,32 +88,38 @@ func (c *cvdHostPackage) DepsMutator(ctx android.BottomUpMutatorContext) {
 			}
 		}
 	}
+
+	// Include custom CSS file in host package if custom_style is set
+	custom_style := ctx.Config().VendorConfig("cvd").String("custom_style")
+	if custom_style == "" || !ctx.OtherModuleExists(custom_style) {
+		custom_style = "webrtc_custom_blank.css"
+	}
+	ctx.AddVariationDependencies(variations, cvdHostPackageDependencyTag, custom_style)
 }
 
 var pctx = android.NewPackageContext("android/soong/cuttlefish")
 
 func (c *cvdHostPackage) GenerateAndroidBuildActions(ctx android.ModuleContext) {
-	zipFile := android.PathForModuleOut(ctx, "package.zip")
-	c.CopyDepsToZip(ctx, c.GatherPackagingSpecs(ctx), zipFile)
+	packageDir := android.PathForModuleInstall(ctx, c.BaseModuleName())
 
-	// Dir where to extract the zip file and construct the final tar.gz from
-	packageDir := android.PathForModuleOut(ctx, ".temp")
-	builder := android.NewRuleBuilder(pctx, ctx)
-	builder.Command().
-		BuiltTool("zipsync").
-		FlagWithArg("-d ", packageDir.String()).
-		Input(zipFile)
+	stamp := android.PathForModuleOut(ctx, "package.stamp")
+	dirBuilder := android.NewRuleBuilder(pctx, ctx)
+	dirBuilder.Command().Text("rm").Flag("-rf").Text(packageDir.String())
+	dirBuilder.Command().Text("mkdir").Flag("-p").Text(packageDir.String())
+	c.CopySpecsToDir(ctx, dirBuilder, c.GatherPackagingSpecs(ctx), packageDir)
+	dirBuilder.Command().Text("touch").Output(stamp)
+	dirBuilder.Build("cvd_host_package", fmt.Sprintf("Packaging %s", c.BaseModuleName()))
+	ctx.InstallFile(android.PathForModuleInstall(ctx), c.BaseModuleName()+".stamp", stamp)
 
-	output := android.PathForModuleOut(ctx, "package.tar.gz")
-	builder.Command().Text("tar Scfz").
-		Output(output).
-		FlagWithArg("-C ", packageDir.String()).
+	tarball := android.PathForModuleOut(ctx, "package.tar.gz")
+	tarballBuilder := android.NewRuleBuilder(pctx, ctx)
+	tarballBuilder.Command().Text("tar Scfz").
+		Output(tarball).
+		Flag("-C").
+		Text(packageDir.String()).
+		Implicit(stamp).
 		Flag("--mtime='2020-01-01'"). // to have reproducible builds
 		Text(".")
-
-	builder.Command().Text("rm").Flag("-rf").Text(packageDir.String())
-
-	builder.Build("cvd_host_package", fmt.Sprintf("Packaging %s", c.BaseModuleName()))
-
-	ctx.InstallFile(android.PathForModuleInstall(ctx), c.BaseModuleName()+".tar.gz", output)
+	tarballBuilder.Build("cvd_host_tarball", fmt.Sprintf("Creating tarball for %s", c.BaseModuleName()))
+	ctx.InstallFile(android.PathForModuleInstall(ctx), c.BaseModuleName()+".tar.gz", tarball)
 }

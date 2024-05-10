@@ -20,10 +20,9 @@
 
 namespace cuttlefish {
 
-GatekeeperResponder::GatekeeperResponder(
-    cuttlefish::GatekeeperChannel& channel, gatekeeper::GateKeeper& gatekeeper)
-    : channel_(channel), gatekeeper_(gatekeeper) {
-}
+GatekeeperResponder::GatekeeperResponder(cuttlefish::GatekeeperChannel& channel,
+                                         gatekeeper::GateKeeper& gatekeeper)
+    : channel_(channel), gatekeeper_(gatekeeper) {}
 
 bool GatekeeperResponder::ProcessMessage() {
   auto request = channel_.ReceiveMessage();
@@ -33,7 +32,7 @@ bool GatekeeperResponder::ProcessMessage() {
   }
   const uint8_t* buffer = request->payload;
   const uint8_t* buffer_end = request->payload + request->payload_size;
-  switch(request->cmd) {
+  switch(request->command) {
     using namespace gatekeeper;
     case ENROLL: {
       EnrollRequest enroll_request;
@@ -58,7 +57,7 @@ bool GatekeeperResponder::ProcessMessage() {
       return channel_.SendResponse(VERIFY, response);
     }
     default:
-      LOG(ERROR) << "Unrecognized message id " << request->cmd;
+      LOG(ERROR) << "Unrecognized message id " << request->command;
       return false;
   }
 }

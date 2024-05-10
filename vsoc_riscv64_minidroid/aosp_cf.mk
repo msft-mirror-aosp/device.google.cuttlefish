@@ -14,6 +14,7 @@
 # limitations under the License.
 #
 
+$(call inherit-product, $(SRC_TARGET_DIR)/product/core_64_bit_only.mk)
 $(call inherit-product, device/google/cuttlefish/shared/minidroid/device.mk)
 
 $(call inherit-product, device/google/cuttlefish/vsoc_riscv64/bootloader.mk)
@@ -22,6 +23,8 @@ PRODUCT_NAME := aosp_cf_riscv64_minidroid
 PRODUCT_DEVICE := vsoc_riscv64_minidroid
 PRODUCT_MANUFACTURER := Google
 PRODUCT_MODEL := Cuttlefish riscv64 minidroid
+
+PRODUCT_ENFORCE_MAC80211_HWSIM := false
 
 PRODUCT_VENDOR_PROPERTIES += \
     ro.soc.manufacturer=$(PRODUCT_MANUFACTURER) \

@@ -14,12 +14,12 @@
  * limitations under the License.
  */
 
-#include <linux/input.h>
-
 #include <memory>
 
 #include <android-base/logging.h>
+#include <android-base/parseint.h>
 #include <android-base/strings.h>
+#include <fruit/fruit.h>
 #include <gflags/gflags.h>
 #include <libyuv.h>
 
@@ -31,18 +31,24 @@
 #include "host/frontend/webrtc/display_handler.h"
 #include "host/frontend/webrtc/kernel_log_events_handler.h"
 #include "host/frontend/webrtc/libdevice/camera_controller.h"
+#include "host/frontend/webrtc/libdevice/lights_observer.h"
 #include "host/frontend/webrtc/libdevice/local_recorder.h"
 #include "host/frontend/webrtc/libdevice/streamer.h"
 #include "host/frontend/webrtc/libdevice/video_sink.h"
 #include "host/libs/audio_connector/server.h"
 #include "host/libs/config/cuttlefish_config.h"
 #include "host/libs/config/logging.h"
+#include "host/libs/config/openwrt_args.h"
 #include "host/libs/confui/host_mode_ctrl.h"
 #include "host/libs/confui/host_server.h"
+#include "host/libs/input_connector/socket_input_connector.h"
 #include "host/libs/screen_connector/screen_connector.h"
 
+DEFINE_bool(multitouch, true,
+            "Whether to send multi-touch or single-touch events");
 DEFINE_string(touch_fds, "",
               "A list of fds to listen on for touch connections.");
+DEFINE_int32(rotary_fd, -1, "An fd to listen on for rotary connections.");
 DEFINE_int32(keyboard_fd, -1, "An fd to listen on for keyboard connections.");
 DEFINE_int32(switches_fd, -1, "An fd to listen on for switch connections.");
 DEFINE_int32(frame_server_fd, -1, "An fd to listen on for frame updates");
@@ -53,6 +59,8 @@ DEFINE_int32(confui_in_fd, -1,
              "Confirmation UI virtio-console from host to guest");
 DEFINE_int32(confui_out_fd, -1,
              "Confirmation UI virtio-console from guest to host");
+DEFINE_int32(sensors_in_fd, -1, "Sensors virtio-console from host to guest");
+DEFINE_int32(sensors_out_fd, -1, "Sensors virtio-console from guest to host");
 DEFINE_string(action_servers, "",
               "A comma-separated list of server_name:fd pairs, "
               "where each entry corresponds to one custom action server.");
@@ -61,16 +69,21 @@ DEFINE_bool(write_virtio_input, true,
 DEFINE_int32(audio_server_fd, -1, "An fd to listen on for audio frames");
 DEFINE_int32(camera_streamer_fd, -1, "An fd to send client camera frames");
 DEFINE_string(client_dir, "webrtc", "Location of the client files");
+DEFINE_string(group_id, "", "The group id of device");
 
 using cuttlefish::AudioHandler;
 using cuttlefish::CfConnectionObserverFactory;
 using cuttlefish::DisplayHandler;
 using cuttlefish::KernelLogEventsHandler;
-using cuttlefish::webrtc_streaming::LocalRecorder;
+using cuttlefish::webrtc_streaming::RecordingManager;
+using cuttlefish::webrtc_streaming::ServerConfig;
 using cuttlefish::webrtc_streaming::Streamer;
 using cuttlefish::webrtc_streaming::StreamerConfig;
 using cuttlefish::webrtc_streaming::VideoSink;
-using cuttlefish::webrtc_streaming::ServerConfig;
+
+constexpr auto kOpewnrtWanIpAddressName = "wan_ipaddr";
+constexpr auto kTouchscreenPrefix = "display_";
+constexpr auto kTouchpadPrefix = "touch_";
 
 class CfOperatorObserver
     : public cuttlefish::webrtc_streaming::OperatorObserver {
@@ -98,94 +111,114 @@ fruit::Component<cuttlefish::CustomActionConfigProvider> WebRtcComponent() {
       .install(cuttlefish::ConfigFlagPlaceholder)
       .install(cuttlefish::CustomActionsComponent);
 };
+
+fruit::Component<
+    cuttlefish::ScreenConnector<DisplayHandler::WebRtcScProcessedFrame>,
+    cuttlefish::confui::HostServer, cuttlefish::confui::HostVirtualInput>
+CreateConfirmationUIComponent(
+    int* frames_fd, cuttlefish::confui::PipeConnectionPair* pipe_io_pair, cuttlefish::InputConnector* input_connector) {
+  using cuttlefish::ScreenConnectorFrameRenderer;
+  using ScreenConnector = cuttlefish::DisplayHandler::ScreenConnector;
+  return fruit::createComponent()
+      .bindInstance<
+          fruit::Annotated<cuttlefish::WaylandScreenConnector::FramesFd, int>>(
+          *frames_fd)
+      .bindInstance(*pipe_io_pair)
+      .bind<ScreenConnectorFrameRenderer, ScreenConnector>()
+      .bindInstance(*input_connector);
+}
+
 int main(int argc, char** argv) {
   cuttlefish::DefaultSubprocessLogging(argv);
   ::gflags::ParseCommandLineFlags(&argc, &argv, true);
 
-  cuttlefish::InputSockets input_sockets;
+  auto control_socket = cuttlefish::SharedFD::Dup(FLAGS_command_fd);
+  close(FLAGS_command_fd);
 
-  auto counter = 0;
-  for (const auto& touch_fd_str : android::base::Split(FLAGS_touch_fds, ",")) {
-    auto touch_fd = std::stoi(touch_fd_str);
-    input_sockets.touch_servers["display_" + std::to_string(counter++)] =
-        cuttlefish::SharedFD::Dup(touch_fd);
+  auto cvd_config = cuttlefish::CuttlefishConfig::Get();
+  auto instance = cvd_config->ForDefaultInstance();
+
+  cuttlefish::InputSocketsConnectorBuilder inputs_builder(
+      FLAGS_write_virtio_input ? cuttlefish::InputEventType::Virtio
+                               : cuttlefish::InputEventType::Evdev);
+
+  const auto display_count = instance.display_configs().size();
+  const auto touch_fds = android::base::Split(FLAGS_touch_fds, ",");
+  CHECK(touch_fds.size() == display_count + instance.touchpad_configs().size())
+      << "Number of touch FDs does not match the number of configured displays "
+         "and touchpads";
+  for (int i = 0; i < touch_fds.size(); i++) {
+    int touch_fd;
+    CHECK(android::base::ParseInt(touch_fds[i], &touch_fd))
+        << "Invalid touch_fd: " << touch_fds[i];
+    // Displays are listed first, then touchpads
+    auto label_prefix =
+        i < display_count ? kTouchscreenPrefix : kTouchpadPrefix;
+    auto device_idx = i < display_count ? i : i - display_count;
+    auto device_label = fmt::format("{}{}", label_prefix, device_idx);
+    auto touch_shared_fd = cuttlefish::SharedFD::Dup(touch_fd);
+    if (FLAGS_multitouch) {
+      inputs_builder.WithMultitouchDevice(device_label, touch_shared_fd);
+    } else {
+      inputs_builder.WithTouchDevice(device_label, touch_shared_fd);
+    }
     close(touch_fd);
   }
-  input_sockets.keyboard_server = cuttlefish::SharedFD::Dup(FLAGS_keyboard_fd);
-  input_sockets.switches_server = cuttlefish::SharedFD::Dup(FLAGS_switches_fd);
-  auto control_socket = cuttlefish::SharedFD::Dup(FLAGS_command_fd);
-  close(FLAGS_keyboard_fd);
-  close(FLAGS_switches_fd);
-  close(FLAGS_command_fd);
-  // Accepting on these sockets here means the device won't register with the
-  // operator as soon as it could, but rather wait until crosvm's input display
-  // devices have been initialized. That's OK though, because without those
-  // devices there is no meaningful interaction the user can have with the
-  // device.
-  for (const auto& touch_entry : input_sockets.touch_servers) {
-    input_sockets.touch_clients[touch_entry.first] =
-        cuttlefish::SharedFD::Accept(*touch_entry.second);
+  if (FLAGS_rotary_fd >= 0) {
+    inputs_builder.WithRotary(cuttlefish::SharedFD::Dup(FLAGS_rotary_fd));
+    close(FLAGS_rotary_fd);
   }
-  input_sockets.keyboard_client =
-      cuttlefish::SharedFD::Accept(*input_sockets.keyboard_server);
-  input_sockets.switches_client =
-      cuttlefish::SharedFD::Accept(*input_sockets.switches_server);
+  if (FLAGS_keyboard_fd >= 0) {
+    inputs_builder.WithKeyboard(cuttlefish::SharedFD::Dup(FLAGS_keyboard_fd));
+    close(FLAGS_keyboard_fd);
+  }
+  if (FLAGS_switches_fd >= 0) {
+    inputs_builder.WithSwitches(cuttlefish::SharedFD::Dup(FLAGS_switches_fd));
+    close(FLAGS_switches_fd);
+  }
 
-  std::vector<std::thread> touch_accepters;
-  touch_accepters.reserve(input_sockets.touch_servers.size());
-  for (const auto& touch : input_sockets.touch_servers) {
-    auto label = touch.first;
-    touch_accepters.emplace_back([label, &input_sockets]() {
-      for (;;) {
-        input_sockets.touch_clients[label] =
-            cuttlefish::SharedFD::Accept(*input_sockets.touch_servers[label]);
-      }
-    });
-  }
-  std::thread keyboard_accepter([&input_sockets]() {
-    for (;;) {
-      input_sockets.keyboard_client =
-          cuttlefish::SharedFD::Accept(*input_sockets.keyboard_server);
-    }
-  });
-  std::thread switches_accepter([&input_sockets]() {
-    for (;;) {
-      input_sockets.switches_client =
-          cuttlefish::SharedFD::Accept(*input_sockets.switches_server);
-    }
-  });
+  auto input_connector = std::move(inputs_builder).Build();
 
   auto kernel_log_events_client =
       cuttlefish::SharedFD::Dup(FLAGS_kernel_log_events_fd);
   close(FLAGS_kernel_log_events_fd);
 
-  auto cvd_config = cuttlefish::CuttlefishConfig::Get();
-  auto instance = cvd_config->ForDefaultInstance();
-  auto& host_mode_ctrl = cuttlefish::HostModeCtrl::Get();
-  auto screen_connector_ptr = cuttlefish::DisplayHandler::ScreenConnector::Get(
-      FLAGS_frame_server_fd, host_mode_ctrl);
-  auto& screen_connector = *(screen_connector_ptr.get());
-  auto client_server = cuttlefish::ClientFilesServer::New(FLAGS_client_dir);
-  CHECK(client_server) << "Failed to initialize client files server";
-
-  // create confirmation UI service, giving host_mode_ctrl and
-  // screen_connector
-  // keep this singleton object alive until the webRTC process ends
-  auto confui_to_guest_fd = cuttlefish::SharedFD::Dup(FLAGS_confui_in_fd);
+  cuttlefish::confui::PipeConnectionPair conf_ui_comm_fd_pair{
+      .from_guest_ = cuttlefish::SharedFD::Dup(FLAGS_confui_out_fd),
+      .to_guest_ = cuttlefish::SharedFD::Dup(FLAGS_confui_in_fd)};
   close(FLAGS_confui_in_fd);
-  auto confui_from_guest_fd = cuttlefish::SharedFD::Dup(FLAGS_confui_out_fd);
   close(FLAGS_confui_out_fd);
 
-  auto& host_confui_server = cuttlefish::confui::HostServer::Get(
-      host_mode_ctrl, screen_connector, confui_from_guest_fd,
-      confui_to_guest_fd);
+  int frames_fd = FLAGS_frame_server_fd;
+  fruit::Injector<
+      cuttlefish::ScreenConnector<DisplayHandler::WebRtcScProcessedFrame>,
+      cuttlefish::confui::HostServer, cuttlefish::confui::HostVirtualInput>
+      conf_ui_components_injector(CreateConfirmationUIComponent,
+                                  std::addressof(frames_fd),
+                                  &conf_ui_comm_fd_pair, input_connector.get());
+  auto& screen_connector =
+      conf_ui_components_injector.get<DisplayHandler::ScreenConnector&>();
+
+  auto client_server = cuttlefish::ClientFilesServer::New(FLAGS_client_dir);
+  CHECK(client_server) << "Failed to initialize client files server";
+  auto& host_confui_server =
+      conf_ui_components_injector.get<cuttlefish::confui::HostServer&>();
+  auto& confui_virtual_input =
+      conf_ui_components_injector.get<cuttlefish::confui::HostVirtualInput&>();
 
   StreamerConfig streamer_config;
 
   streamer_config.device_id = instance.webrtc_device_id();
+  streamer_config.group_id = FLAGS_group_id;
   streamer_config.client_files_port = client_server->port();
   streamer_config.tcp_port_range = instance.webrtc_tcp_port_range();
   streamer_config.udp_port_range = instance.webrtc_udp_port_range();
+  streamer_config.openwrt_device_id =
+      cvd_config->Instances()[0].webrtc_device_id();
+  streamer_config.openwrt_addr = OpenwrtArgsFromConfig(
+      cvd_config->Instances()[0])[kOpewnrtWanIpAddressName];
+  streamer_config.control_env_proxy_server_path =
+      instance.grpc_socket_path() + "/ControlEnvProxyServer.sock";
   streamer_config.operator_server.addr = cvd_config->sig_server_address();
   streamer_config.operator_server.port = cvd_config->sig_server_port();
   streamer_config.operator_server.path = cvd_config->sig_server_path();
@@ -200,10 +233,23 @@ int main(int argc, char** argv) {
   }
 
   KernelLogEventsHandler kernel_logs_event_handler(kernel_log_events_client);
-  auto observer_factory = std::make_shared<CfConnectionObserverFactory>(
-      input_sockets, &kernel_logs_event_handler, host_confui_server);
 
-  auto streamer = Streamer::Create(streamer_config, observer_factory);
+  std::shared_ptr<cuttlefish::webrtc_streaming::LightsObserver> lights_observer;
+  if (instance.lights_server_port()) {
+    lights_observer =
+        std::make_shared<cuttlefish::webrtc_streaming::LightsObserver>(
+            instance.lights_server_port(), instance.vsock_guest_cid(),
+            instance.vhost_user_vsock());
+    lights_observer->Start();
+  }
+
+  auto observer_factory = std::make_shared<CfConnectionObserverFactory>(
+      confui_virtual_input, &kernel_logs_event_handler, lights_observer);
+
+  RecordingManager recording_manager;
+
+  auto streamer =
+      Streamer::Create(streamer_config, recording_manager, observer_factory);
   CHECK(streamer) << "Could not create streamer";
 
   auto display_handler =
@@ -211,27 +257,20 @@ int main(int argc, char** argv) {
 
   if (instance.camera_server_port()) {
     auto camera_controller = streamer->AddCamera(instance.camera_server_port(),
-                                                 instance.vsock_guest_cid());
+                                                 instance.vsock_guest_cid(),
+                                                 instance.vhost_user_vsock());
     observer_factory->SetCameraHandler(camera_controller);
-  }
-
-  std::unique_ptr<cuttlefish::webrtc_streaming::LocalRecorder> local_recorder;
-  if (instance.record_screen()) {
-    int recording_num = 0;
-    std::string recording_path;
-    do {
-      recording_path = instance.PerInstancePath("recording/recording_");
-      recording_path += std::to_string(recording_num);
-      recording_path += ".webm";
-      recording_num++;
-    } while (cuttlefish::FileExists(recording_path));
-    local_recorder = LocalRecorder::Create(recording_path);
-    CHECK(local_recorder) << "Could not create local recorder";
-
-    streamer->RecordDisplays(*local_recorder);
+    streamer->SetHardwareSpec("camera_passthrough", true);
   }
 
   observer_factory->SetDisplayHandler(display_handler);
+
+  const auto touchpad_configs = instance.touchpad_configs();
+  for (int i = 0; i < touchpad_configs.size(); i++) {
+    streamer->AddTouchpad(kTouchpadPrefix + std::to_string(i),
+                          touchpad_configs[i].width,
+                          touchpad_configs[i].height);
+  }
 
   streamer->SetHardwareSpec("CPUs", instance.cpus());
   streamer->SetHardwareSpec("RAM", std::to_string(instance.memory_mb()) + " mb");
@@ -240,9 +279,14 @@ int main(int argc, char** argv) {
   if (instance.gpu_mode() == cuttlefish::kGpuModeGuestSwiftshader) {
     user_friendly_gpu_mode = "SwiftShader (Guest CPU Rendering)";
   } else if (instance.gpu_mode() == cuttlefish::kGpuModeDrmVirgl) {
-    user_friendly_gpu_mode = "VirglRenderer (Accelerated Host GPU Rendering)";
-  } else if (instance.gpu_mode() == cuttlefish::kGpuModeGfxStream) {
-    user_friendly_gpu_mode = "Gfxstream (Accelerated Host GPU Rendering)";
+    user_friendly_gpu_mode =
+        "VirglRenderer (Accelerated Rendering using Host OpenGL)";
+  } else if (instance.gpu_mode() == cuttlefish::kGpuModeGfxstream) {
+    user_friendly_gpu_mode =
+        "Gfxstream (Accelerated Rendering using Host OpenGL and Vulkan)";
+  } else if (instance.gpu_mode() == cuttlefish::kGpuModeGfxstreamGuestAngle) {
+    user_friendly_gpu_mode =
+        "Gfxstream (Accelerated Rendering using Host Vulkan)";
   } else {
     user_friendly_gpu_mode = instance.gpu_mode();
   }
@@ -333,21 +377,21 @@ int main(int argc, char** argv) {
       new CfOperatorObserver());
   streamer->Register(operator_observer);
 
-  std::thread control_thread([control_socket, &local_recorder]() {
-    if (!local_recorder) {
-      return;
-    }
+  std::thread control_thread([control_socket, &recording_manager]() {
     std::string message = "_";
     int read_ret;
     while ((read_ret = cuttlefish::ReadExact(control_socket, &message)) > 0) {
       LOG(VERBOSE) << "received control message: " << message;
-      if (message[0] == 'C') {
-        LOG(DEBUG) << "Finalizing screen recording...";
-        local_recorder->Stop();
-        LOG(INFO) << "Finalized screen recording.";
-        message = "Y";
-        cuttlefish::WriteAll(control_socket, message);
+      if (message[0] == 'T') {
+        LOG(INFO) << "Received command to start recording in main.cpp.";
+        recording_manager.Start();
+      } else if (message[0] == 'C') {
+        LOG(INFO) << "Received command to stop recording in main.cpp.";
+        recording_manager.Stop();
       }
+      // Send feedback an indication of command received.
+      CHECK(cuttlefish::WriteAll(control_socket, "Y") == 1) << "Failed to send response: "
+                                                            << control_socket->StrError();
     }
     LOG(DEBUG) << "control socket closed";
   });
@@ -356,6 +400,13 @@ int main(int argc, char** argv) {
     audio_handler->Start();
   }
   host_confui_server.Start();
+
+  if (instance.record_screen()) {
+    LOG(VERBOSE) << "Waiting for recording manager initializing.";
+    recording_manager.WaitForSources(instance.display_configs().size());
+    recording_manager.Start();
+  }
+
   display_handler->Loop();
 
   return 0;

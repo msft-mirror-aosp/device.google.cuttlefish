@@ -157,7 +157,7 @@ Result<void> ConnectionController::OnAnswerMsg(
 
 Result<void> ConnectionController::OnIceCandidateMsg(
     std::unique_ptr<webrtc::IceCandidateInterface> candidate) {
-  if (peer_connection_->current_remote_description()) {
+  if (peer_connection_->remote_description()) {
     peer_connection_->AddIceCandidate(
         std::move(candidate), [this](webrtc::RTCError error) {
           if (!error.ok()) {
@@ -222,7 +222,7 @@ void ConnectionController::OnSetRemoteDescriptionComplete(
     return;
   }
   AddPendingIceCandidates();
-  auto remote_desc = peer_connection_->current_remote_description();
+  auto remote_desc = peer_connection_->remote_description();
   CHECK(remote_desc) << "The remote description was just added successfully in "
                         "this thread, so it can't be nullptr";
   if (remote_desc->GetType() != webrtc::SdpType::kOffer) {
@@ -254,8 +254,7 @@ ConnectionController::ThisAsSetRemoteSDPObserver() {
 void ConnectionController::HandleSignalingMessage(const Json::Value& msg) {
   auto result = HandleSignalingMessageInner(msg);
   if (!result.ok()) {
-    LOG(ERROR) << result.error().Message();
-    LOG(DEBUG) << result.error().Trace();
+    LOG(ERROR) << result.error().FormatForEnv();
     FailConnection(result.error().Message());
   }
 }

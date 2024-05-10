@@ -14,66 +14,111 @@
  * limitations under the License.
  */
 
-#include <signal.h>
-#include <stdlib.h>
-#include <sys/prctl.h>
-#include <sys/types.h>
 #include <sys/wait.h>
-#include <unistd.h>
+
 #include <cstdlib>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <vector>
 
-#include <android-base/logging.h>
-#include <android-base/parseint.h>
+#include <android-base/strings.h>
 
+#include "common/libs/utils/contains.h"
 #include "common/libs/utils/result.h"
+#include "common/libs/utils/subprocess.h"
+#include "host/commands/process_restarter/parser.h"
+#include "host/libs/config/cuttlefish_config.h"
 #include "host/libs/config/logging.h"
 
 namespace cuttlefish {
 namespace {
 
-Result<int> RunProcessRestarter(const char* exit_code_string,
-                                const char* exec_filepath, char** exec_args) {
+static bool ShouldRestartProcess(siginfo_t const& info, const Parser& parsed) {
+  if (info.si_code == CLD_DUMPED && parsed.when_dumped) {
+    return true;
+  }
+  if (info.si_code == CLD_KILLED && parsed.when_killed) {
+    return true;
+  }
+  if (info.si_code == CLD_EXITED && parsed.when_exited_with_failure &&
+      info.si_status != 0) {
+    return true;
+  }
+  if (info.si_code == CLD_EXITED &&
+      info.si_status == parsed.when_exited_with_code) {
+    return true;
+  }
+  return false;
+}
+
+std::string_view ExecutableShortName(std::string_view short_name) {
+  auto last_slash = short_name.find_last_of('/');
+  if (last_slash != std::string::npos) {
+    short_name = short_name.substr(last_slash + 1);
+  }
+  return short_name;
+}
+
+Result<SubprocessOptions> OptionsForExecutable(std::string_view name) {
+  const auto& config = CF_EXPECT(CuttlefishConfig::Get());
+  auto options = SubprocessOptions().ExitWithParent(true);
+  std::string short_name{ExecutableShortName(name)};
+  if (Contains(config->straced_host_executables(), short_name)) {
+    const auto& instance = config->ForDefaultInstance();
+    options.Strace(instance.PerInstanceLogPath("/strace-" + short_name));
+  }
+  return options;
+}
+
+Result<int> RunProcessRestarter(std::vector<std::string> args) {
   LOG(VERBOSE) << "process_restarter starting";
-  int restart_exit_code;
-  CF_EXPECT(android::base::ParseInt(exit_code_string, &restart_exit_code),
-            "Unable to parse exit code as int" << exit_code_string);
-  siginfo_t infop;
-  do {
-    LOG(VERBOSE) << "Starting monitored process " << exec_filepath;
-    pid_t pid = fork();
-    CF_EXPECT(pid != -1, "fork failed (" << strerror(errno) << ")");
-    if (pid == 0) {                     // child process
-      prctl(PR_SET_PDEATHSIG, SIGHUP);  // Die when parent dies
-      execvp(exec_filepath, exec_args);
-      // if exec returns, it failed
-      return CF_ERRNO("exec failed (" << strerror(errno) << ")");
-    } else {  // parent process
-      int return_val = TEMP_FAILURE_RETRY(waitid(P_PID, pid, &infop, WEXITED));
-      CF_EXPECT(return_val != -1,
-                "waitid call failed (" << strerror(errno) << ")");
-      LOG(VERBOSE) << exec_filepath
-                   << " exited with exit code: " << infop.si_status;
+  auto parsed = CF_EXPECT(Parser::ConsumeAndParse(args));
+
+  // move-assign the remaining args to exec_args
+  std::vector<std::string> exec_args = std::move(args);
+
+  bool needs_pop = false;
+  if (!parsed.first_time_argument.empty()) {
+    exec_args.push_back(parsed.first_time_argument);
+    needs_pop = true;
+  }
+
+  for (;;) {
+    CF_EXPECT(!exec_args.empty());
+    LOG(VERBOSE) << "Starting monitored process " << exec_args.front();
+    // The Execute() API and all APIs effectively called by it show the proper
+    // error message using LOG(ERROR).
+    auto options = CF_EXPECT(OptionsForExecutable(exec_args.front()));
+    siginfo_t info =
+        CF_EXPECTF(Execute(exec_args, std::move(options), WEXITED),
+                   "Executing '{}' failed.", fmt::join(exec_args, "' '"));
+
+    if (needs_pop) {
+      needs_pop = false;
+      exec_args.pop_back();
     }
-  } while (infop.si_code == CLD_EXITED && infop.si_status == restart_exit_code);
-  return {infop.si_status};
+
+    if (ShouldRestartProcess(info, parsed)) {
+      continue;
+    }
+    if (info.si_code == CLD_EXITED) {
+      return info.si_status;
+    }
+    LOG(ERROR) << "Process exited with unexpected si_code: " << info.si_code;
+    return 1;
+  }
 }
 
 }  // namespace
 }  // namespace cuttlefish
 
 int main(int argc, char** argv) {
-  ::android::base::InitLogging(argv, android::base::StderrLogger);
-  // these stderr logs are directed to log tee and logged at the proper level
-  ::android::base::SetMinimumLogSeverity(android::base::VERBOSE);
-  if (argc < 3) {
-    LOG(ERROR) << argc << " arguments provided, expected at least:"
-               << " <filename> <restart_exit_code> <crosvm>";
-    return EXIT_FAILURE;
-  }
-  auto result = cuttlefish::RunProcessRestarter(argv[1], argv[2], argv + 2);
+  cuttlefish::DefaultSubprocessLogging(argv);
+  auto result = cuttlefish::RunProcessRestarter(
+      cuttlefish::ArgsToVec(argc - 1, argv + 1));
   if (!result.ok()) {
-    LOG(ERROR) << result.error().Message();
-    LOG(DEBUG) << result.error().Trace();
+    LOG(DEBUG) << result.error().FormatForEnv();
     return EXIT_FAILURE;
   }
   return result.value();

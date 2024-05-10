@@ -15,7 +15,16 @@
 
 #include "host/commands/run_cvd/launch/launch.h"
 
+#include <string>
+#include <unordered_set>
+#include <utility>
+#include <vector>
+
+#include <fruit/fruit.h>
+
+#include "common/libs/utils/result.h"
 #include "host/commands/run_cvd/reporting.h"
+#include "host/libs/config/command_source.h"
 #include "host/libs/config/inject.h"
 #include "host/libs/config/known_paths.h"
 
@@ -42,7 +51,7 @@ class KernelLogMonitor : public CommandSource,
   }
 
   // CommandSource
-  Result<std::vector<Command>> Commands() override {
+  Result<std::vector<MonitorCommand>> Commands() override {
     Command command(KernelLogMonitorBinary());
     command.AddParameter("-log_pipe_fd=", fifo_);
 
@@ -55,13 +64,16 @@ class KernelLogMonitor : public CommandSource,
         command.AppendToLastParameter(event_pipe_write_ends_[i]);
       }
     }
-
-    return single_element_emplace(std::move(command));
+    std::vector<MonitorCommand> commands;
+    commands.emplace_back(std::move(command)).can_sandbox = true;
+    return commands;
   }
 
   // KernelLogPipeProvider
   SharedFD KernelLogPipe() override {
-    CHECK(!event_pipe_read_ends_.empty()) << "No more kernel pipes left";
+    CHECK(!event_pipe_read_ends_.empty()) << "No more kernel pipes left. Make sure you inhereted "
+                                             "KernelLogPipeProvider and provided multibinding "
+                                             "from KernelLogPipeConsumer to your type.";
     SharedFD ret = event_pipe_read_ends_.back();
     event_pipe_read_ends_.pop_back();
     return ret;
@@ -76,17 +88,11 @@ class KernelLogMonitor : public CommandSource,
   std::unordered_set<SetupFeature*> Dependencies() const override { return {}; }
   Result<void> ResultSetup() override {
     auto log_name = instance_.kernel_log_pipe_name();
-    CF_EXPECT(mkfifo(log_name.c_str(), 0600) == 0,
-              "Unable to create named pipe at " << log_name << ": "
-                                                << strerror(errno));
-
     // Open the pipe here (from the launcher) to ensure the pipe is not deleted
     // due to the usage counters in the kernel reaching zero. If this is not
     // done and the kernel_log_monitor crashes for some reason the VMM may get
     // SIGPIPE.
-    fifo_ = SharedFD::Open(log_name, O_RDWR);
-    CF_EXPECT(fifo_->IsOpen(),
-              "Unable to open \"" << log_name << "\": " << fifo_->StrError());
+    fifo_ = CF_EXPECT(SharedFD::Fifo(log_name, 0600));
 
     for (unsigned int i = 0; i < number_of_event_pipes_; ++i) {
       SharedFD event_pipe_write_end, event_pipe_read_end;

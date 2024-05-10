@@ -16,6 +16,8 @@
 
 # If downstream target does not want telephony, do not include this file
 
+ifneq ($(TARGET_NO_TELEPHONY), true)
+
 $(call inherit-product, $(SRC_TARGET_DIR)/product/telephony_vendor.mk)
 
 PRODUCT_VENDOR_PROPERTIES += \
@@ -25,18 +27,10 @@ PRODUCT_VENDOR_PROPERTIES += \
     ro.com.android.dataroaming=true \
     ro.telephony.default_network=9 \
 
-ifeq ($(LOCAL_PREFER_VENDOR_APEX),true)
-PRODUCT_PACKAGES += com.google.cf.rild
-else
 # If downstream target provides its own RILD, set TARGET_USES_CF_RILD := false
-# If the target prefers vendor APEX, this feature is not supported
 TARGET_USES_CF_RILD ?= true
 ifeq ($(TARGET_USES_CF_RILD),true)
-PRODUCT_PACKAGES += \
-    libcuttlefish-ril-2 \
-    libcuttlefish-rild
+    PRODUCT_PACKAGES += com.google.cf.rild
 endif
-PRODUCT_COPY_FILES += \
-    frameworks/native/data/etc/android.hardware.telephony.gsm.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.telephony.gsm.xml \
-    frameworks/native/data/etc/android.hardware.telephony.ims.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.telephony.ims.xml
-endif
+
+endif # if not TARGET_NO_TELEPHONY

@@ -43,6 +43,7 @@ constexpr struct {
 enum EventFormat {
   kBare,          // Just an event, no extra data
   kKeyValuePair,  // <stage> <key>=<value>
+  kPrefix,        // <stage> <more data>
 };
 
 constexpr struct {
@@ -51,15 +52,17 @@ constexpr struct {
   EventFormat format;      // how the log message is formatted
 } kStageTable[] = {
     {cuttlefish::kBootStartedMessage, Event::BootStarted, kBare},
+    {cuttlefish::kBootPendingMessage, Event::BootPending, kPrefix},
     {cuttlefish::kBootCompletedMessage, Event::BootCompleted, kBare},
-    {cuttlefish::kBootFailedMessage, Event::BootFailed, kKeyValuePair},
+    {cuttlefish::kBootFailedMessage, Event::BootFailed, kPrefix},
     {cuttlefish::kMobileNetworkConnectedMessage, Event::MobileNetworkConnected,
      kBare},
     {cuttlefish::kWifiConnectedMessage, Event::WifiNetworkConnected, kBare},
     {cuttlefish::kEthernetConnectedMessage, Event::EthernetNetworkConnected,
      kBare},
-    // TODO(b/131864854): Replace this with a string less likely to change
-    {"init: starting service 'adbd'...", Event::AdbdStarted, kBare},
+    {cuttlefish::kAdbdStartedMessage, Event::AdbdStarted, kBare},
+    {cuttlefish::kFastbootdStartedMessage, Event::FastbootStarted, kBare},
+    {cuttlefish::kFastbootStartedMessage, Event::FastbootStarted, kBare},
     {cuttlefish::kScreenChangedMessage, Event::ScreenChanged, kKeyValuePair},
     {cuttlefish::kBootloaderLoadedMessage, Event::BootloaderLoaded, kBare},
     {cuttlefish::kKernelLoadedMessage, Event::KernelLoaded, kBare},
@@ -118,7 +121,9 @@ bool KernelLogServer::HandleIncomingMessage() {
     LOG(ERROR) << "Could not read kernel logs: " << pipe_fd_->StrError();
     return false;
   }
-  if (ret == 0) return false;
+  if (ret == 0) {
+    return false;
+  }
   // Write the log to a file
   if (log_fd_->Write(buf, ret) < 0) {
     LOG(ERROR) << "Could not write kernel log to file: " << log_fd_->StrError();
@@ -138,7 +143,11 @@ bool KernelLogServer::HandleIncomingMessage() {
         auto pos = line_.find(stage);
         if (std::string::npos != pos) {
           // Log the stage
-          LOG(INFO) << stage;
+          if (format == kPrefix) {
+            LOG(INFO) << line_.substr(pos);
+          } else {
+            LOG(INFO) << stage;
+          }
 
           Json::Value message;
           message["event"] = event;

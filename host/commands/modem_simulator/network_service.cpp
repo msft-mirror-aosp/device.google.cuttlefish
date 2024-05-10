@@ -108,6 +108,16 @@ std::vector<CommandHandler> NetworkService::InitializeCommandHandlers() {
                      [this](const Client& client, std::string& cmd) {
                        this->HandleReceiveRemoteVoiceDataReg(client, cmd);
                      }),
+      CommandHandler("+REMOTEIDDISCLOSURE",
+                     [this](const Client& client, std::string& cmd) {
+                       (void)client;
+                       this->HandleIdentifierDisclosure(cmd);
+                     }),
+      CommandHandler("+UPDATESECURITYALGORITHM",
+                     [this](const Client& client, std::string& cmd) {
+                       (void)client;
+                       this->HandleSecurityAlgorithmUpdate(cmd);
+                     }),
   };
   return (command_handlers);
 }
@@ -150,18 +160,15 @@ void NetworkService::InitializeNetworkOperator() {
     current_operator_numeric_ = operator_list_.begin()->numeric;
     operator_list_.begin()->operator_state = NetworkOperator::OPER_STATE_CURRENT;
   } else if (oper_selection_mode_ == OperatorSelectionMode::OPER_SELECTION_MANUAL_AUTOMATIC) {
-    auto iter = operator_list_.begin();
-    for (; iter != operator_list_.end(); ++iter) {
-      if (iter->numeric == current_operator_numeric_) {
-        break;
+    for (auto& iter : operator_list_) {
+      if (iter.numeric == current_operator_numeric_) {
+        iter.operator_state = NetworkOperator::OPER_STATE_CURRENT;
+        return;
       }
     }
-    if (iter == operator_list_.end()) {
-      current_operator_numeric_ = operator_list_.begin()->numeric;
-      operator_list_.begin()->operator_state = NetworkOperator::OPER_STATE_CURRENT;
-    } else {
-      iter->operator_state = NetworkOperator::OPER_STATE_CURRENT;
-    }
+    current_operator_numeric_ = operator_list_.begin()->numeric;
+    operator_list_.begin()->operator_state =
+        NetworkOperator::OPER_STATE_CURRENT;
   }
 }
 
@@ -197,11 +204,16 @@ void NetworkService::InitializeSimOperator() {
       LOG(ERROR) << "unable to load XML file '" << file << " ', error " << err;
       return;
     }
-    XMLElement *resources = doc.RootElement();
-    if (resources == NULL)  return;
 
-    XMLElement *stringArray = resources->FirstChildElement("string-array");
-    if (stringArray == NULL) return;
+    XMLElement* resources = doc.RootElement();
+    if (resources == NULL) {
+      return;
+    }
+
+    XMLElement* stringArray = resources->FirstChildElement("string-array");
+    if (stringArray == NULL) {
+      return;
+    }
 
     XMLElement *item = stringArray->FirstChildElement("item");
     while (item) {
@@ -975,10 +987,11 @@ int NetworkService::getModemTechFromPrefer(int preferred_mask) {
 
   // Current implementation will only return the highest priority,
   // lowest numbered technology that is set in the mask.
-  for (i = 3 ; i >= 0; i--) {
-    for (j = 7 ; j >= 0 ; j--) {
-      if (preferred_mask & (1 << (j + 8 * i)))
-          return 1 << j;
+  for (i = 3; i >= 0; i--) {
+    for (j = 7; j >= 0; j--) {
+      if (preferred_mask & (1 << (j + 8 * i))) {
+        return 1 << j;
+      }
     }
   }
   // This should never happen. Just to please the compiler.
@@ -1243,6 +1256,16 @@ void NetworkService::HandleReceiveRemoteSignal(const Client& client,
   }
 
   OnSignalStrengthChanged();
+}
+
+void NetworkService::HandleIdentifierDisclosure(const std::string& command) {
+  LOG(INFO) << "Handling disclosure event: " << command;
+  SendUnsolicitedCommand(command.substr(2));
+}
+
+void NetworkService::HandleSecurityAlgorithmUpdate(const std::string& command) {
+  LOG(INFO) << "Handling security algorithm update event: " << command;
+  SendUnsolicitedCommand(command.substr(2));
 }
 
 void NetworkService::OnSignalStrengthChanged() {

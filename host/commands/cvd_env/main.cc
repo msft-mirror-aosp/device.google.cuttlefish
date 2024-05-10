@@ -14,151 +14,89 @@
  * limitations under the License.
  */
 
-#include <filesystem>
-#include <unordered_map>
+#include <iostream>
 
 #include <android-base/logging.h>
 #include <android-base/strings.h>
-#include <gflags/gflags.h>
-#include <grpcpp/ext/proto_server_reflection_plugin.h>
-#include <grpcpp/grpcpp.h>
-#include <test/cpp/util/grpc_tool.h>
 
-#include "common/libs/utils/contains.h"
 #include "common/libs/utils/result.h"
 #include "host/libs/config/cuttlefish_config.h"
-
-using grpc::InsecureChannelCredentials;
-
-DECLARE_string(call_creds);
-
-namespace grpc {
-namespace testing {
-DECLARE_bool(l);
-}  // namespace testing
-}  // namespace grpc
+#include "host/libs/control_env/grpc_service_handler.h"
 
 namespace cuttlefish {
 namespace {
 
-bool PrintStream(std::stringstream* ss, const grpc::string& output) {
-  (*ss) << output;
-  return true;
-}
+constexpr char kCvdEnvHelpMessage[] =
+    "cvd env: cuttlefish environment controller\n"
+    "  e.g. Wmediumd & OpenWRT for Wifi, GNSS for geolocation\n"
+    "\n"
+    "Please visit following link for the more information.\n"
+    "https://source.android.com/docs/setup/create/"
+    "cuttlefish-control-environment\n"
+    "\n"
+    "Basic usage: cvd [SELECTOR_OPTIONS] env [SUBCOMMAND] [ARGS]\n"
+    "\n"
+    "Subcommands:\n"
+    "  ls: List available services or methods\n"
+    "    Get a list of all services:\n"
+    "      Usage: cvd [SELECTOR_OPTIONS] env ls\n"
+    "    Get a list of all methods for a service:\n"
+    "      Usage: cvd [SELECTOR_OPTIONS] env ls [SERVICE_NAME]\n"
+    "    Get detailed information like request or response message types of a "
+    "method:\n"
+    "      Usage: cvd [SELECTOR_OPTIONS] env ls [SERVICE_NAME] [METHOD_NAME]\n"
+    "  call: Send RPC request to make changes to the environment\n"
+    "      Usage: cvd [SELECTOR_OPTIONS] env call [SERVICE_NAME] [METHOD_NAME] "
+    "[JSON_FORMATTED_PROTO]\n"
+    "  type: Get detailed information on message types\n"
+    "      Usage: cvd [SELECTOR_OPTIONS] env type [SERVICE_NAME] [TYPE_NAME]\n"
+    "\n"
+    "Arguments:\n"
+    "  SERVICE_NAME         : gRPC service name\n"
+    "  METHOD_NAME          : method name in given service\n"
+    "  TYPE_NAME            : Protobuf message type name including request or "
+    "response messages\n"
+    "  JSON_FORMATTED_PROTO : Protobuf message data with JSON format\n"
+    "\n"
+    "* \"cvd [SELECTOR_OPTIONS] env\" can be replaced with: \"cvd_internal_env "
+    "[INTERNAL_DEVICE_NAME]\"\n";
 
-class InsecureCliCredentials final : public grpc::testing::CliCredentials {
- public:
-  std::shared_ptr<grpc::ChannelCredentials> GetChannelCredentials()
-      const override {
-    return InsecureChannelCredentials();
-  }
-  const grpc::string GetCredentialUsage() const override { return ""; }
-};
+constexpr char kServiceControlEnvProxy[] = "ControlEnvProxyService";
 
-std::vector<std::string> GetServiceList(const std::string& server_address) {
-  std::vector<std::string> service_list;
-  std::stringstream output_stream;
-
-  grpc::testing::FLAGS_l = false;
-  const char* new_argv[] = {"grpc_cli", "ls", server_address.c_str()};
-  grpc::testing::GrpcToolMainLib(
-      std::size(new_argv), new_argv, InsecureCliCredentials(),
-      std::bind(PrintStream, &output_stream, std::placeholders::_1));
-
-  std::string service_name;
-  while (std::getline(output_stream, service_name)) {
-    if (service_name.compare("grpc.reflection.v1alpha.ServerReflection") == 0) {
-      continue;
-    }
-    service_list.emplace_back(service_name);
-  }
-  return service_list;
-}
-
-std::vector<std::string> CandidateServices(
-    const std::vector<std::string>& server_address_list,
-    const std::string& service_name) {
-  std::vector<std::string> candidates;
-
-  for (const auto& server_address : server_address_list) {
-    for (auto& s : GetServiceList(server_address)) {
-      if (android::base::EndsWith(s, service_name)) {
-        candidates.emplace_back(server_address);
-        break;
-      }
+bool ContainHelpOption(int argc, char** argv) {
+  for (int i = 0; i < argc; i++) {
+    if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-help") == 0) {
+      return true;
     }
   }
-
-  return candidates;
-}
-
-std::string CallMethod(const std::string& server_address,
-                       const std::string& service_name,
-                       const std::string& method_name,
-                       const std::string& proto_text_format) {
-  std::stringstream output_stream;
-  const std::string formatted_method_name = service_name + "/" + method_name;
-  const char* new_argv[] = {"grpc_cli", "call", server_address.c_str(),
-                            formatted_method_name.c_str(),
-                            proto_text_format.c_str()};
-
-  GrpcToolMainLib(
-      std::size(new_argv), new_argv, InsecureCliCredentials(),
-      std::bind(PrintStream, &output_stream, std::placeholders::_1));
-
-  return output_stream.str();
-}
-
-Result<void> HandleLsCmd(const std::vector<std::string>& server_address_list,
-                         const std::vector<std::string>& args) {
-  // TODO(b/264201498)
-  LOG(INFO) << "TODO(b/264201498)";
-  return {};
-}
-
-Result<void> HandleTypeCmd(const std::vector<std::string>& server_address_list,
-                           const std::vector<std::string>& args) {
-  // TODO(b/264201498)
-  LOG(INFO) << "TODO(b/264201498)";
-  return {};
-}
-
-Result<void> HandleCallCmd(const std::vector<std::string>& server_address_list,
-                           const std::vector<std::string>& args) {
-  CF_EXPECT(args.size() >= 3,
-            "need to specify a service name, a method name, and text-formatted "
-            "proto");
-
-  const auto& service_name = args[0];
-  const auto& method_name = args[1];
-  // TODO(b/265384449): support more input options.
-  const auto& proto_text_format = args[2];
-  const auto& candidates = CandidateServices(server_address_list, service_name);
-
-  CF_EXPECT(candidates.size() != 0, service_name + "." + method_name + "(" +
-                                        proto_text_format + ") is not found");
-  CF_EXPECT(candidates.size() < 2, service_name + " is ambiguous.");
-
-  std::cout << CallMethod(candidates[0], service_name, method_name,
-                          proto_text_format);
-  return {};
+  return false;
 }
 
 Result<void> CvdEnvMain(int argc, char** argv) {
   ::android::base::InitLogging(argv, android::base::StderrLogger);
-  FLAGS_call_creds = "none";
-  CF_EXPECT(argc >= 3, " need to specify a receiver and a command");
+  if (ContainHelpOption(argc, argv)) {
+    std::cout << kCvdEnvHelpMessage;
+    return {};
+  }
 
+  CF_EXPECT(argc >= 3, " need to specify a receiver and a command");
   const auto& receiver = argv[1];
   const auto& cmd = argv[2];
+
   std::vector<std::string> args;
   for (int i = 3; i < argc; i++) {
-    args.push_back(argv[i]);
+    // Ignore options, not to be applied when calling grpc_cli.
+    if (!android::base::StartsWith(argv[i], '-')) {
+      args.push_back(argv[i]);
+    }
+  }
+  if (args.size() > 0) {
+    CF_EXPECT(args[0].compare(kServiceControlEnvProxy) != 0,
+              "Prohibited service name");
   }
 
   const auto* config = CuttlefishConfig::Get();
   CF_EXPECT(config != nullptr, "Unable to find the config");
-  std::vector<std::string> server_address_list;
   const auto& instances = config->Instances();
   auto receiver_instance = std::find_if(
       begin(instances), end(instances), [&receiver](const auto& instance) {
@@ -169,24 +107,10 @@ Result<void> CvdEnvMain(int argc, char** argv) {
             "there is no instance of which name is "
                 << receiver << ". please check instance name by cvd fleet");
 
-  for (const auto& entry : std::filesystem::directory_iterator(
-           receiver_instance->grpc_socket_path())) {
-    LOG(INFO) << "loading " << entry.path();
-    server_address_list.emplace_back("unix:" + entry.path().string());
-  }
+  auto command_output =
+      CF_EXPECT(HandleCmds(receiver_instance->grpc_socket_path(), cmd, args));
 
-  auto command_map =
-      std::unordered_map<std::string, std::function<Result<void>(
-                                          const std::vector<std::string>&,
-                                          const std::vector<std::string>&)>>{{
-          {"call", HandleCallCmd},
-          {"ls", HandleLsCmd},
-          {"type", HandleTypeCmd},
-      }};
-
-  CF_EXPECT(Contains(command_map, cmd), cmd << " isn't supported");
-
-  CF_EXPECT(command_map[cmd](server_address_list, args));
+  std::cout << command_output;
 
   return {};
 }
@@ -196,6 +120,6 @@ Result<void> CvdEnvMain(int argc, char** argv) {
 
 int main(int argc, char** argv) {
   const auto& ret = cuttlefish::CvdEnvMain(argc, argv);
-  CHECK(ret.ok()) << ret.error().Message();
+  CHECK(ret.ok()) << ret.error().FormatForEnv();
   return 0;
 }

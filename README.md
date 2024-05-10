@@ -27,10 +27,12 @@
    sudo apt install -y git devscripts config-package-dev debhelper-compat golang curl
    git clone https://github.com/google/android-cuttlefish
    cd android-cuttlefish
+   sudo apt install devscripts equivs
    for dir in base frontend; do
-     cd $dir
-     debuild -i -us -uc -b -d
-     cd ..
+     pushd $dir
+     sudo mk-build-deps -i
+     dpkg-buildpackage -uc -us
+     popd
    done
    sudo dpkg -i ./cuttlefish-base_*_*64.deb || sudo apt-get install -f
    sudo dpkg -i ./cuttlefish-user_*_*64.deb || sudo apt-get install -f
@@ -42,12 +44,12 @@
    udev rules.
 
 3. Go to http://ci.android.com/
-4. Enter a branch name. Start with `aosp-master` if you don't know what you're
+4. Enter a branch name. Start with `aosp-main` if you don't know what you're
    looking for
 5. Navigate to `aosp_cf_x86_64_phone` and click on `userdebug` for the latest build
 
 *** promo
-   For ARM, use branch `aosp-master-throttled-copped` and device target `aosp_cf_arm64_only_phone-userdebug`
+   For ARM, use branch `aosp-main-throttled` and device target `aosp_cf_arm64_only_phone-trunk_staging-userdebug`
 ***
 
 6. Click on `Artifacts`

@@ -18,6 +18,7 @@
 
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <vector>
 
 #include "host/frontend/webrtc/cvd_video_frame_buffer.h"
@@ -55,13 +56,16 @@ class DisplayHandler {
  public:
   using ScreenConnector = cuttlefish::ScreenConnector<WebRtcScProcessedFrame>;
   using GenerateProcessedFrameCallback = ScreenConnector::GenerateProcessedFrameCallback;
+  using WebRtcScProcessedFrame = cuttlefish::WebRtcScProcessedFrame;
 
   DisplayHandler(webrtc_streaming::Streamer& streamer,
                  ScreenConnector& screen_connector);
   ~DisplayHandler() = default;
 
   [[noreturn]] void Loop();
-  void SendLastFrame();
+
+  // If std::nullopt, send last frame for all displays.
+  void SendLastFrame(std::optional<uint32_t> display_number);
 
  private:
   GenerateProcessedFrameCallback GetScreenConnectorCallback();
@@ -69,8 +73,8 @@ class DisplayHandler {
       display_sinks_;
   webrtc_streaming::Streamer& streamer_;
   ScreenConnector& screen_connector_;
-  std::shared_ptr<webrtc_streaming::VideoFrameBuffer> last_buffer_;
-  std::uint32_t last_buffer_display_ = 0;
+  std::map<uint32_t, std::shared_ptr<webrtc_streaming::VideoFrameBuffer>>
+      display_last_buffers_;
   std::mutex last_buffer_mutex_;
   std::mutex next_frame_mutex_;
 };

@@ -89,10 +89,18 @@ class SoftGateKeeper : public GateKeeper {
     }
 
     virtual uint64_t GetMillisecondsSinceBoot() const {
+#ifdef _WIN32
+        return GetTickCount64();
+#else
         struct timespec time;
+#ifdef __linux__
         int res = clock_gettime(CLOCK_BOOTTIME, &time);
+#else
+        int res = clock_gettime(CLOCK_MONOTONIC, &time);
+#endif
         if (res < 0) return 0;
         return (time.tv_sec * 1000) + (time.tv_nsec / 1000 / 1000);
+#endif
     }
 
     virtual bool IsHardwareBacked() const { return false; }

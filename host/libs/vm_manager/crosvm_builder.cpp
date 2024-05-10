@@ -18,20 +18,40 @@
 #include <android-base/logging.h>
 
 #include <string>
+#include <vector>
 
+#include "common/libs/utils/json.h"
 #include "common/libs/utils/network.h"
 #include "common/libs/utils/subprocess.h"
+#include "host/libs/command_util/snapshot_utils.h"
 #include "host/libs/config/cuttlefish_config.h"
+#include "host/libs/config/known_paths.h"
 
 namespace cuttlefish {
+namespace {
+
+std::string MacCrosvmArgument(std::optional<std::string_view> mac) {
+  return mac.has_value() ? fmt::format(",mac={}", mac.value()) : "";
+}
+
+std::string PciCrosvmArgument(std::optional<pci::Address> pci) {
+  return pci.has_value() ? fmt::format(",pci-address={}", pci.value().Id()) : "";
+}
+
+}
 
 CrosvmBuilder::CrosvmBuilder() : command_("crosvm") {}
 
-void CrosvmBuilder::ApplyProcessRestarter(const std::string& crosvm_binary,
-                                          int exit_code) {
-  constexpr auto process_restarter = "process_restarter";
-  command_.SetExecutableAndName(HostBinaryPath(process_restarter));
-  command_.AddParameter(exit_code);
+void CrosvmBuilder::ApplyProcessRestarter(
+    const std::string& crosvm_binary, const std::string& first_time_argument,
+    int exit_code) {
+  command_.SetExecutableAndName(ProcessRestarterBinary());
+  command_.AddParameter("-when_exited_with_code=", exit_code);
+  command_.AddParameter("-ignore_sigtstp");
+  if (!first_time_argument.empty()) {
+    command_.AddParameter("-first_time_argument=", first_time_argument);
+  }
+  command_.AddParameter("--");
   command_.AddParameter(crosvm_binary);
   // Flag allows exit codes other than 0 or 1, must be before command argument
   command_.AddParameter("--extended-status");
@@ -39,18 +59,14 @@ void CrosvmBuilder::ApplyProcessRestarter(const std::string& crosvm_binary,
 
 void CrosvmBuilder::AddControlSocket(const std::string& control_socket,
                                      const std::string& executable_path) {
-  command_.SetStopper([executable_path, control_socket](Subprocess* proc) {
+  auto stopper = [executable_path, control_socket]() {
     Command stop_cmd(executable_path);
     stop_cmd.AddParameter("stop");
     stop_cmd.AddParameter(control_socket);
-    if (stop_cmd.Start().Wait() == 0) {
-      return StopperResult::kStopSuccess;
-    }
-    LOG(WARNING) << "Failed to stop VMM nicely, attempting to KILL";
-    return KillSubprocess(proc) == StopperResult::kStopSuccess
-               ? StopperResult::kStopCrash
-               : StopperResult::kStopFailure;
-  });
+    return stop_cmd.Start().Wait() == 0 ? StopperResult::kStopSuccess
+                                        : StopperResult::kStopFailure;
+  };
+  command_.SetStopper(KillSubprocessFallback(stopper));
   command_.AddParameter("--socket=", control_socket);
 }
 
@@ -98,10 +114,13 @@ void CrosvmBuilder::AddSerial(const std::string& output,
                         ",type=file,path=", output, ",input=", input);
 }
 
-SharedFD CrosvmBuilder::AddTap(const std::string& tap_name) {
+#ifdef __linux__
+SharedFD CrosvmBuilder::AddTap(const std::string& tap_name,
+                               std::optional<std::string_view> mac,
+                               const std::optional<pci::Address>& pci) {
   auto tap_fd = OpenTapInterface(tap_name);
   if (tap_fd->IsOpen()) {
-    command_.AddParameter("--net=tap-fd=", tap_fd);
+    command_.AddParameter("--net=tap-fd=", tap_fd, MacCrosvmArgument(mac), PciCrosvmArgument(pci));
   } else {
     LOG(ERROR) << "Unable to connect to \"" << tap_name
                << "\": " << tap_fd->StrError();
@@ -109,18 +128,26 @@ SharedFD CrosvmBuilder::AddTap(const std::string& tap_name) {
   return tap_fd;
 }
 
-SharedFD CrosvmBuilder::AddTap(const std::string& tap_name, const std::string& mac) {
-  auto tap_fd = OpenTapInterface(tap_name);
-  if (tap_fd->IsOpen()) {
-    command_.AddParameter("--net=tap-fd=", tap_fd, ",mac=\"", mac, "\"");
-  } else {
-    LOG(ERROR) << "Unable to connect to \"" << tap_name
-               << "\": " << tap_fd->StrError();
-  }
-  return tap_fd;
-}
+#endif
 
 int CrosvmBuilder::HvcNum() { return hvc_num_; }
+
+Result<void> CrosvmBuilder::SetToRestoreFromSnapshot(
+    const std::string& snapshot_dir_path, const std::string& instance_id_in_str,
+    const std::string& snapshot_name) {
+  auto meta_info_json = CF_EXPECT(LoadMetaJson(snapshot_dir_path));
+  const std::vector<std::string> selectors{kGuestSnapshotField,
+                                           instance_id_in_str};
+  const auto guest_snapshot_dir_suffix =
+      CF_EXPECT(GetValue<std::string>(meta_info_json, selectors));
+  // guest_snapshot_dir_suffix is a relative to
+  // the snapshot_path
+  const auto restore_path = snapshot_dir_path + "/" +
+                            guest_snapshot_dir_suffix + "/" +
+                            kGuestSnapshotBase + snapshot_name;
+  command_.AddParameter("--restore=", restore_path);
+  return {};
+}
 
 Command& CrosvmBuilder::Cmd() { return command_; }
 

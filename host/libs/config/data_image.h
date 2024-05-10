@@ -19,16 +19,13 @@
 
 #include <fruit/fruit.h>
 
+#include "common/libs/utils/result.h"
 #include "host/libs/config/cuttlefish_config.h"
 #include "host/libs/config/feature.h"
 
 namespace cuttlefish {
 
-class InitializeDataImage : public SetupFeature {};
-
-fruit::Component<fruit::Required<const CuttlefishConfig::InstanceSpecific>,
-                 InitializeDataImage>
-InitializeDataImageComponent();
+Result<void> InitializeDataImage(const CuttlefishConfig::InstanceSpecific&);
 
 class InitializeEspImage : public SetupFeature {};
 
@@ -37,13 +34,9 @@ fruit::Component<fruit::Required<const CuttlefishConfig,
                  InitializeEspImage>
 InitializeEspImageComponent();
 
-bool CreateBlankImage(
-    const std::string& image, int num_mb, const std::string& image_fmt);
+Result<void> CreateBlankImage(const std::string& image, int num_mb,
+                              const std::string& image_fmt);
 
-class InitializeMiscImage : public SetupFeature {};
-
-fruit::Component<fruit::Required<const CuttlefishConfig::InstanceSpecific>,
-                 InitializeMiscImage>
-InitializeMiscImageComponent();
+Result<void> InitializeMiscImage(const CuttlefishConfig::InstanceSpecific&);
 
 } // namespace cuttlefish

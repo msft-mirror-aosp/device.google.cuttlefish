@@ -379,7 +379,7 @@ static bool s_stkServiceRunning = false;
 static char *s_stkUnsolResponse = NULL;
 
 // Next available handle for keep alive session
-static uint32_t s_session_handle = 1;
+static int32_t s_session_handle = 1;
 
 typedef enum {
     STK_UNSOL_EVENT_UNKNOWN,
@@ -549,7 +549,8 @@ static void set_Ip_Addr(const char *addr, const char* radioInterfaceName) {
         radioInterfaceName);
   struct ifreq request;
   int status = 0;
-  int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
+  int family = strchr(addr, ':') ? AF_INET6 : AF_INET;
+  int sock = socket(family, SOCK_DGRAM, 0);
   if (sock == -1) {
     RLOGE("Failed to open interface socket: %s (%d)", strerror(errno), errno);
     return;
@@ -559,18 +560,43 @@ static void set_Ip_Addr(const char *addr, const char* radioInterfaceName) {
   strncpy(request.ifr_name, radioInterfaceName, sizeof(request.ifr_name));
   request.ifr_name[sizeof(request.ifr_name) - 1] = '\0';
 
+  int pfxlen = 0;
   char *myaddr = strdup(addr);
   char *pch = NULL;
   pch = strchr(myaddr, '/');
   if (pch) {
     *pch = '\0';
+    pfxlen = atoi(++pch);
   }
 
-  struct sockaddr_in *sin = (struct sockaddr_in *)&request.ifr_addr;
-  sin->sin_family = AF_INET;
-  sin->sin_addr.s_addr = inet_addr(myaddr);
-  if (ioctl(sock, SIOCSIFADDR, &request) < 0) {
-    RLOGE("%s: failed.", __func__);
+  if (family == AF_INET) {
+    struct sockaddr_in *sin = (struct sockaddr_in *)&request.ifr_addr;
+    sin->sin_family = AF_INET;
+    sin->sin_addr.s_addr = inet_addr(myaddr);
+    if (ioctl(sock, SIOCSIFADDR, &request) < 0) {
+      RLOGE("%s: SIOCSIFADDR IPv4 failed.", __func__);
+    }
+    sin->sin_addr.s_addr = htonl(0xFFFFFFFFu << (32 - (pfxlen ?: 32)));
+    if (ioctl(sock, SIOCSIFNETMASK, &request) < 0) {
+      RLOGE("%s: SIOCSIFNETMASK failed.", __func__);
+    }
+  } else {
+    if (ioctl(sock, SIOGIFINDEX, &request) < 0) {
+      RLOGE("%s: SIOCGIFINDEX failed.", __func__);
+    }
+
+    struct in6_ifreq req6 = {
+       // struct in6_addr ifr6_addr;
+       .ifr6_prefixlen = pfxlen ?: 128,  // __u32
+       .ifr6_ifindex = request.ifr_ifindex,  // int
+    };
+    if (inet_pton(AF_INET6, myaddr, &req6.ifr6_addr) != 1) {
+      RLOGE("%s: inet_pton(AF_INET6, '%s') failed.", __func__, myaddr);
+    }
+
+    if (ioctl(sock, SIOCSIFADDR, &req6) < 0) {
+      RLOGE("%s: SIOCSIFADDR IPv6 failed.", __func__);
+    }
   }
 
   close(sock);
@@ -825,8 +851,8 @@ static void requestOrSendDataCallList(int cid, RIL_Token *t)
          p_cur = p_cur->p_next)
         n++;
 
-    RIL_Data_Call_Response_v11 *responses =
-        alloca(n * sizeof(RIL_Data_Call_Response_v11));
+    RIL_Data_Call_Response_v11 *responses = (n == 0) ? NULL :
+                   alloca(n * sizeof(RIL_Data_Call_Response_v11));
 
     int i;
     for (i = 0; i < n; i++) {
@@ -892,6 +918,10 @@ static void requestOrSendDataCallList(int cid, RIL_Token *t)
             continue;
 
         i = ncid - 1;
+
+        if (i >= n || i < 0)
+            goto error;
+
         // Assume no error
         responses[i].status = 0;
 
@@ -976,7 +1006,7 @@ static void requestOrSendDataCallList(int cid, RIL_Token *t)
     // If cid = -1, return the data call list without processing CGCONTRDP (setupDataCall)
     if (cid == -1) {
         if (t != NULL)
-            RIL_onRequestComplete(*t, RIL_E_SUCCESS, &responses[0],
+            RIL_onRequestComplete(*t, RIL_E_SUCCESS, responses,
                                   sizeof(RIL_Data_Call_Response_v11));
         else
             RIL_onUnsolicitedResponse(RIL_UNSOL_DATA_CALL_LIST_CHANGED, responses,
@@ -1020,19 +1050,29 @@ static void requestOrSendDataCallList(int cid, RIL_Token *t)
     err = at_tok_nextstr(&input, &sskip);  // local_addr_and_subnet_mask
     if (err < 0) goto error;
 
-    err = at_tok_nextstr(&input, &responses[i].gateways);  // gw_addr
+    err = at_tok_nextstr(
+        &input, (responses) ? &responses[i].gateways : &sskip);  // gw_addr
     if (err < 0) goto error;
 
-    err = at_tok_nextstr(&input, &responses[i].dnses);  // dns_prim_addr
+    err = at_tok_nextstr(
+        &input, (responses) ? &responses[i].dnses : &sskip);  // dns_prim_addr
     if (err < 0) goto error;
+
+    size_t response_size = 0;
+    RIL_Data_Call_Response_v11 *presponse = NULL;
+    if (responses) {
+        if (i >= n || i < 0)
+            goto error;
+        presponse = &responses[i];
+        response_size = sizeof(*presponse);
+    }
 
     if (t != NULL)
-        RIL_onRequestComplete(*t, RIL_E_SUCCESS, &responses[i],
-                               sizeof(RIL_Data_Call_Response_v11));
+      RIL_onRequestComplete(*t, RIL_E_SUCCESS,
+                            presponse, response_size);
     else
         RIL_onUnsolicitedResponse(RIL_UNSOL_DATA_CALL_LIST_CHANGED,
-                                  responses,
-                                  n * sizeof(RIL_Data_Call_Response_v11));
+                                  responses, n * response_size);
 
     at_response_free(p_response);
     return;
@@ -1553,23 +1593,22 @@ static void requestDeviceIdentity(int request __unused, void *data __unused,
     int commas;
     int skip;
     int count = 4;
-
-    // Fixed values. TODO: Query modem
-    responseStr[0] ="358240051111110";
-    responseStr[1] =  "";
-    responseStr[2] = "77777777";
-    responseStr[3] = ""; // default empty for non-CDMA
+    char meid[14] = {0};
 
     err = at_send_command_numeric("AT+CGSN", &p_response);
     if (err < 0 || p_response->success == 0) {
         RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
         return;
-    } else {
-        if (TECH_BIT(sMdmInfo) == MDM_CDMA) {
-            responseStr[3] = p_response->p_intermediates->line;
-        } else {
-            responseStr[0] = p_response->p_intermediates->line;
-        }
+    }
+
+    responseStr[0] = p_response->p_intermediates->line;
+    responseStr[1] = "";
+    responseStr[2] = "77777777";
+    responseStr[3] = "";  // default empty for non-CDMA
+
+    if (TECH_BIT(sMdmInfo) == MDM_CDMA) {
+        strncpy(meid, responseStr[0], sizeof(meid));
+        responseStr[3] = meid;
     }
 
     RIL_onRequestComplete(t, RIL_E_SUCCESS, responseStr, count*sizeof(char*));
@@ -4322,9 +4361,15 @@ error:
     RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
 }
 
-static void requestStartKeepalive(RIL_Token t) {
+static void requestStartKeepalive(void* data, size_t datalen __unused, RIL_Token t) {
+    RIL_KeepaliveRequest* kaRequest = (RIL_KeepaliveRequest*)data;
+    if (kaRequest->cid > MAX_PDP) {
+        RLOGE("Invalid cid for keepalive!");
+        RIL_onRequestComplete(t, RIL_E_INVALID_ARGUMENTS, NULL, 0);
+        return;
+    }
     RIL_KeepaliveStatus resp;
-    resp.sessionHandle = s_session_handle++;
+    resp.sessionHandle = __sync_fetch_and_add(&s_session_handle, 1);
     resp.code = KEEPALIVE_ACTIVE;
     RIL_onRequestComplete(t, RIL_E_SUCCESS, &resp, sizeof(resp));
 }
@@ -5116,10 +5161,22 @@ onRequest (int request, void *data, size_t datalen, RIL_Token t)
             RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
             break;
         case RIL_REQUEST_START_KEEPALIVE:
-            requestStartKeepalive(t);
+            requestStartKeepalive(data, datalen, t);
             break;
         case RIL_REQUEST_STOP_KEEPALIVE:
-            RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
+            if (data == NULL || datalen != sizeof(int)) {
+                RIL_onRequestComplete(t, RIL_E_INTERNAL_ERR, NULL, 0);
+                break;
+            }
+            int sessionHandle = *(int*)(data);
+            if ((int32_t)sessionHandle < s_session_handle) {
+                // check that the session handle is one we've assigned previously
+                // note that this doesn't handle duplicate stop requests properly
+                RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
+            } else {
+                RLOGE("Invalid session handle for keepalive!");
+                RIL_onRequestComplete(t, RIL_E_INVALID_ARGUMENTS, NULL, 0);
+            }
             break;
         case RIL_REQUEST_SET_UNSOLICITED_RESPONSE_FILTER:
             RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);

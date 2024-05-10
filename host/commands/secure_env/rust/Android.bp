@@ -17,19 +17,30 @@ package {
     default_applicable_licenses: ["Android-Apache-2.0"],
 }
 
+rust_protobuf {
+    name: "libkmr_proto_rust",
+    crate_name: "kmr_proto",
+    protos: ["storage.proto"],
+    source_stem: "kmr_proto",
+    host_supported: true,
+}
+
 rust_library_host {
     name: "libkmr_cf",
-    srcs: [ "lib.rs" ],
+    srcs: ["lib.rs"],
     crate_name: "kmr_cf",
     rustlibs: [
-        "libenv_logger",
         "libhex",
         "libkmr_common",
         "libkmr_crypto_boring",
+        "libkmr_proto_rust",
         "libkmr_ta",
+        "libkmr_ta_nonsecure",
         "libkmr_wire",
         "liblibc",
         "liblog_rust",
+        "libnix",
+        "libprotobuf",
         "libsecure_env_tpm",
     ],
     defaults: ["cuttlefish_buildhost_only"],
@@ -38,7 +49,7 @@ rust_library_host {
 rust_ffi_host {
     name: "libkmr_cf_ffi",
     compile_multilib: "64",
-    srcs: [ "ffi.rs" ],
+    srcs: ["ffi.rs"],
     crate_name: "kmr_cf_ffi",
     rustlibs: [
         "libkmr_cf",
@@ -53,15 +64,18 @@ rust_test_host {
     name: "libkmr_cf_test",
     srcs: ["lib.rs"],
     rustlibs: [
-        "libenv_logger",
         "libhex",
         "libkmr_common",
         "libkmr_crypto_boring",
+        "libkmr_proto_rust",
         "libkmr_ta",
+        "libkmr_ta_nonsecure",
         "libkmr_tests",
         "libkmr_wire",
         "liblibc",
         "liblog_rust",
+        "libnix",
+        "libprotobuf",
         "libsecure_env_tpm",
     ],
     defaults: ["cuttlefish_buildhost_only"],

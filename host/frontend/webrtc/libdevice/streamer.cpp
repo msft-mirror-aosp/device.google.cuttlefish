@@ -32,6 +32,7 @@
 #include <media/base/video_broadcaster.h>
 #include <pc/video_track_source.h>
 
+#include "common/libs/fs/shared_fd.h"
 #include "host/frontend/webrtc/libcommon/audio_device.h"
 #include "host/frontend/webrtc/libcommon/peer_connection_utils.h"
 #include "host/frontend/webrtc/libcommon/port_range_socket_factory.h"
@@ -48,13 +49,19 @@ namespace webrtc_streaming {
 namespace {
 
 constexpr auto kStreamIdField = "stream_id";
+constexpr auto kLabelField = "label";
 constexpr auto kXResField = "x_res";
 constexpr auto kYResField = "y_res";
 constexpr auto kDpiField = "dpi";
 constexpr auto kIsTouchField = "is_touch";
 constexpr auto kDisplaysField = "displays";
+constexpr auto kTouchpadsField = "touchpads";
 constexpr auto kAudioStreamsField = "audio_streams";
 constexpr auto kHardwareField = "hardware";
+constexpr auto kOpenwrtDeviceIdField = "openwrt_device_id";
+constexpr auto kOpenwrtAddrField = "openwrt_addr";
+constexpr auto kControlEnvProxyServerPathField =
+    "control_env_proxy_server_path";
 constexpr auto kControlPanelButtonCommand = "command";
 constexpr auto kControlPanelButtonTitle = "title";
 constexpr auto kControlPanelButtonIconName = "icon_name";
@@ -63,6 +70,7 @@ constexpr auto kControlPanelButtonDeviceStates = "device_states";
 constexpr auto kControlPanelButtonLidSwitchOpen = "lid_switch_open";
 constexpr auto kControlPanelButtonHingeAngleValue = "hinge_angle_value";
 constexpr auto kCustomControlPanelButtonsField = "custom_control_panel_buttons";
+constexpr auto kGroupIdField = "group_id";
 
 constexpr int kRegistrationRetries = 3;
 constexpr int kRetryFirstIntervalMs = 1000;
@@ -83,6 +91,11 @@ struct DisplayDescriptor {
   int dpi;
   bool touch_enabled;
   rtc::scoped_refptr<webrtc::VideoTrackSourceInterface> source;
+};
+
+struct TouchpadDescriptor {
+  int width;
+  int height;
 };
 
 struct ControlPanelButtonDescriptor {
@@ -162,6 +175,7 @@ class Streamer::Impl : public ServerConnectionObserver,
   std::unique_ptr<rtc::Thread> worker_thread_;
   std::unique_ptr<rtc::Thread> signal_thread_;
   std::map<std::string, DisplayDescriptor> displays_;
+  std::map<std::string, TouchpadDescriptor> touchpads_;
   std::map<std::string, rtc::scoped_refptr<AudioTrackSourceImpl>>
       audio_sources_;
   std::map<int, std::shared_ptr<ClientHandler>> clients_;
@@ -172,6 +186,7 @@ class Streamer::Impl : public ServerConnectionObserver,
   std::unique_ptr<CameraStreamer> camera_streamer_;
   int registration_retries_left_ = kRegistrationRetries;
   int retry_interval_ms_ = kRetryFirstIntervalMs;
+  RecordingManager* recording_manager_ = nullptr;
 };
 
 Streamer::Streamer(std::unique_ptr<Streamer::Impl> impl)
@@ -179,32 +194,32 @@ Streamer::Streamer(std::unique_ptr<Streamer::Impl> impl)
 
 /* static */
 std::unique_ptr<Streamer> Streamer::Create(
-    const StreamerConfig& cfg,
+    const StreamerConfig& cfg, RecordingManager& recording_manager,
     std::shared_ptr<ConnectionObserverFactory> connection_observer_factory) {
-
   rtc::LogMessage::LogToDebug(rtc::LS_ERROR);
 
   std::unique_ptr<Streamer::Impl> impl(new Streamer::Impl());
   impl->config_ = cfg;
+  impl->recording_manager_ = &recording_manager;
   impl->connection_observer_factory_ = connection_observer_factory;
 
   auto network_thread_result = CreateAndStartThread("network-thread");
   if (!network_thread_result.ok()) {
-    LOG(ERROR) << network_thread_result.error().Trace();
+    LOG(ERROR) << network_thread_result.error().FormatForEnv();
     return nullptr;
   }
   impl->network_thread_ = std::move(*network_thread_result);
 
   auto worker_thread_result = CreateAndStartThread("worker-thread");
   if (!worker_thread_result.ok()) {
-    LOG(ERROR) << worker_thread_result.error().Trace();
+    LOG(ERROR) << worker_thread_result.error().FormatForEnv();
     return nullptr;
   }
   impl->worker_thread_ = std::move(*worker_thread_result);
 
   auto signal_thread_result = CreateAndStartThread("signal-thread");
   if (!signal_thread_result.ok()) {
-    LOG(ERROR) << signal_thread_result.error().Trace();
+    LOG(ERROR) << signal_thread_result.error().FormatForEnv();
     return nullptr;
   }
   impl->signal_thread_ = std::move(*signal_thread_result);
@@ -218,7 +233,7 @@ std::unique_ptr<Streamer> Streamer::Create(
       impl->signal_thread_.get(), impl->audio_device_module_->device_module());
 
   if (!result.ok()) {
-    LOG(ERROR) << result.error().Trace();
+    LOG(ERROR) << result.error().FormatForEnv();
     return nullptr;
   }
   impl->peer_connection_factory_ = *result;
@@ -248,6 +263,17 @@ std::shared_ptr<VideoSink> Streamer::AddDisplay(const std::string& label,
           client->AddDisplay(video_track, label);
         }
 
+        if (impl_->recording_manager_) {
+          rtc::scoped_refptr<webrtc::VideoTrackSourceInterface> source2 =
+              source;
+          auto deleter = [](webrtc::VideoTrackSourceInterface* source) {
+            source->Release();
+          };
+          std::shared_ptr<webrtc::VideoTrackSourceInterface> source_shared(
+              source2.release(), deleter);
+          impl_->recording_manager_->AddSource(width, height, source_shared, label);
+        }
+
         return std::shared_ptr<VideoSink>(
             new VideoTrackSourceImplSinkWrapper(source));
       });
@@ -257,11 +283,29 @@ bool Streamer::RemoveDisplay(const std::string& label) {
   // Usually called from an application thread
   return impl_->signal_thread_->BlockingCall(
       [this, &label]() -> bool {
+        if (impl_->recording_manager_) {
+          impl_->recording_manager_->RemoveSource(label);
+        }
+
         for (auto& [_, client] : impl_->clients_) {
           client->RemoveDisplay(label);
         }
 
         impl_->displays_.erase(label);
+        return true;
+      });
+}
+
+bool Streamer::AddTouchpad(const std::string& label, int width, int height) {
+  // Usually called from an application thread
+  return impl_->signal_thread_->BlockingCall(
+      [this, &label, width, height]() -> bool {
+        if (impl_->touchpads_.count(label)) {
+          LOG(ERROR) << "Touchpad with same label already exists: " << label;
+          return false;
+        }
+        impl_->touchpads_[label] = {width, height};
+
         return true;
       });
 }
@@ -287,8 +331,10 @@ std::shared_ptr<AudioSource> Streamer::GetAudioSource() {
   return impl_->audio_device_module_;
 }
 
-CameraController* Streamer::AddCamera(unsigned int port, unsigned int cid) {
-  impl_->camera_streamer_ = std::make_unique<CameraStreamer>(port, cid);
+CameraController* Streamer::AddCamera(unsigned int port, unsigned int cid,
+                                      bool vhost_user) {
+  impl_->camera_streamer_ =
+      std::make_unique<CameraStreamer>(port, cid, vhost_user);
   return impl_->camera_streamer_.get();
 }
 
@@ -338,19 +384,6 @@ void Streamer::Unregister() {
       [this]() { impl_->server_connection_.reset(); });
 }
 
-void Streamer::RecordDisplays(LocalRecorder& recorder) {
-  for (auto& [key, display] : impl_->displays_) {
-    rtc::scoped_refptr<webrtc::VideoTrackSourceInterface> source =
-        display.source;
-    auto deleter = [](webrtc::VideoTrackSourceInterface* source) {
-      source->Release();
-    };
-    std::shared_ptr<webrtc::VideoTrackSourceInterface> source_shared(
-        source.release(), deleter);
-    recorder.AddDisplay(display.width, display.height, source_shared);
-  }
-}
-
 void Streamer::Impl::Register(std::weak_ptr<OperatorObserver> observer) {
   operator_observer_ = observer;
   // When the connection is established the OnOpen function will be called where
@@ -392,7 +425,19 @@ void Streamer::Impl::OnOpen() {
       display[kIsTouchField] = true;
       displays.append(display);
     }
+
+    device_info[kGroupIdField] = config_.group_id;
     device_info[kDisplaysField] = displays;
+
+    Json::Value touchpads(Json::ValueType::arrayValue);
+    for (const auto& [label, touchpad_desc] : touchpads_) {
+      Json::Value touchpad;
+      touchpad[kXResField] = touchpad_desc.width;
+      touchpad[kYResField] = touchpad_desc.height;
+      touchpad[kLabelField] = label;
+      touchpads.append(touchpad);
+    }
+    device_info[kTouchpadsField] = touchpads;
     Json::Value audio_streams(Json::ValueType::arrayValue);
     for (auto& entry : audio_sources_) {
       Json::Value audio;
@@ -405,6 +450,10 @@ void Streamer::Impl::OnOpen() {
       hardware[k] = v;
     }
     device_info[kHardwareField] = hardware;
+    device_info[kOpenwrtDeviceIdField] = config_.openwrt_device_id;
+    device_info[kOpenwrtAddrField] = config_.openwrt_addr;
+    device_info[kControlEnvProxyServerPathField] =
+        config_.control_env_proxy_server_path;
     Json::Value custom_control_panel_buttons(Json::arrayValue);
     for (const auto& button : custom_control_panel_buttons_) {
       Json::Value button_entry;
@@ -493,7 +542,7 @@ void Streamer::Impl::HandleConfigMessage(const Json::Value& server_message) {
   auto result = ParseIceServersMessage(server_message);
   if (!result.ok()) {
     LOG(WARNING) << "Failed to parse ice servers message from server: "
-                 << result.error().Trace();
+                 << result.error().FormatForEnv();
   }
   operator_config_.servers = *result;
 }

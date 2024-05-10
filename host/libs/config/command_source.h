@@ -15,8 +15,11 @@
 
 #pragma once
 
-#include <fruit/fruit.h>
+#include <utility>
 #include <vector>
+
+#include <android-base/logging.h>
+#include <fruit/fruit.h>
 
 #include "common/libs/utils/result.h"
 #include "common/libs/utils/subprocess.h"
@@ -24,10 +27,26 @@
 
 namespace cuttlefish {
 
+struct MonitorCommand {
+  Command command;
+  bool is_critical;
+  bool can_sandbox;
+
+  MonitorCommand(Command command, bool is_critical = false)
+      : command(std::move(command)),
+        is_critical(is_critical),
+        can_sandbox(false) {}
+};
+
 class CommandSource : public virtual SetupFeature {
  public:
   virtual ~CommandSource() = default;
-  virtual Result<std::vector<Command>> Commands() = 0;
+  virtual Result<std::vector<MonitorCommand>> Commands() = 0;
+};
+
+class StatusCheckCommandSource : public virtual CommandSource {
+ public:
+  virtual Result<void> WaitForAvailability() const = 0;
 };
 
 }  // namespace cuttlefish

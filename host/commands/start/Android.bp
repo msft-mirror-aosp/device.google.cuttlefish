@@ -26,13 +26,11 @@ cc_binary {
         "main.cc",
     ],
     shared_libs: [
-        "libext2_blkid",
+        "libbase",
+        "libcuttlefish_command_util",
         "libcuttlefish_fs",
         "libcuttlefish_utils",
-        "libbase",
         "libjsoncpp",
-        "libfruit",
-        "libnl",
         "libxml2",
         "libz",
     ],
@@ -45,5 +43,10 @@ cc_binary {
         "assemble_cvd",
         "run_cvd",
     ],
-    defaults: ["cuttlefish_host", "cuttlefish_libicuuc"],
+    target: {
+        darwin: {
+            enabled: true,
+        },
+    },
+    defaults: ["cuttlefish_host"],
 }

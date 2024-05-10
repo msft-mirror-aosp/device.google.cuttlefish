@@ -16,7 +16,11 @@
 
 #define LOG_TAG "RILC"
 
+#include "RefImsMedia.h"
+#include "RefRadioIms.h"
+#include "RefRadioModem.h"
 #include "RefRadioNetwork.h"
+#include "RefRadioSim.h"
 
 #include <android-base/logging.h>
 #include <android/binder_manager.h>
@@ -27,6 +31,8 @@
 #include <android/hardware/radio/1.6/types.h>
 #include <libradiocompat/CallbackManager.h>
 #include <libradiocompat/RadioData.h>
+#include <libradiocompat/RadioIms.h>
+#include <libradiocompat/RadioImsMedia.h>
 #include <libradiocompat/RadioMessaging.h>
 #include <libradiocompat/RadioModem.h>
 #include <libradiocompat/RadioSim.h>
@@ -3379,12 +3385,7 @@ Return<void> RadioImpl_1_6::stopKeepalive(int32_t serial, int32_t sessionHandle)
 #if VDBG
     RLOGD("%s(): %d", __FUNCTION__, serial);
 #endif
-    RequestInfo *pRI = android::addRequestToList(serial, mSlotId, RIL_REQUEST_STOP_KEEPALIVE);
-    if (pRI == NULL) {
-        return Void();
-    }
-
-    CALL_ONREQUEST(pRI->pCI->requestNumber, &sessionHandle, sizeof(uint32_t), pRI, mSlotId);
+    dispatchInts(serial, mSlotId, RIL_REQUEST_STOP_KEEPALIVE, 1, sessionHandle);
     return Void();
 }
 
@@ -4311,41 +4312,47 @@ int prepareNetworkScanRequest_1_5(RIL_NetworkScanRequest_v1_5 &scan_request,
         ras_to.channels_length = ras_from.channels.size();
 
         std::copy(ras_from.channels.begin(), ras_from.channels.end(), ras_to.channels);
-        const std::vector<uint32_t> * bands = nullptr;
         switch (request.specifiers[i].radioAccessNetwork) {
-            case V1_5::RadioAccessNetworks::GERAN:
-                ras_to.bands_length = ras_from.bands.geranBands().size();
-
-                bands = (std::vector<uint32_t> *) &ras_from.bands.geranBands();
+            case V1_5::RadioAccessNetworks::GERAN: {
+                hidl_vec<V1_1::GeranBands> geranBands = ras_from.bands.geranBands();
+                ras_to.bands_length = MIN(geranBands.size(), MAX_BANDS);
                 // safe to copy to geran_bands because it's a union member
                 for (size_t idx = 0; idx < ras_to.bands_length; ++idx) {
-                    ras_to.bands.geran_bands[idx] = (RIL_GeranBands) (*bands)[idx];
+                    ras_to.bands.geran_bands[idx] =
+                            static_cast<RIL_GeranBands>(geranBands[idx]);
                 }
                 break;
-            case V1_5::RadioAccessNetworks::UTRAN:
-                ras_to.bands_length = ras_from.bands.utranBands().size();
-                bands = (std::vector<uint32_t> *) &ras_from.bands;
-                // safe to copy to geran_bands because it's a union member
+            }
+            case V1_5::RadioAccessNetworks::UTRAN: {
+                hidl_vec<V1_5::UtranBands> utranBands = ras_from.bands.utranBands();
+                ras_to.bands_length = MIN(utranBands.size(), MAX_BANDS);
+                // safe to copy to utran_bands because it's a union member
                 for (size_t idx = 0; idx < ras_to.bands_length; ++idx) {
-                    ras_to.bands.utran_bands[idx] = (RIL_UtranBands) (*bands)[idx];
+                    ras_to.bands.utran_bands[idx] =
+                            static_cast<RIL_UtranBands>(utranBands[idx]);
                 }
                 break;
-            case V1_5::RadioAccessNetworks::EUTRAN:
-                ras_to.bands_length = ras_from.bands.eutranBands().size();
-                bands = (std::vector<uint32_t> *) &ras_from.bands;
-                // safe to copy to geran_bands because it's a union member
+            }
+            case V1_5::RadioAccessNetworks::EUTRAN: {
+                hidl_vec<V1_5::EutranBands> eutranBands = ras_from.bands.eutranBands();
+                ras_to.bands_length = MIN(eutranBands.size(), MAX_BANDS);
+                // safe to copy to eutran_bands because it's a union member
                 for (size_t idx = 0; idx < ras_to.bands_length; ++idx) {
-                    ras_to.bands.eutran_bands[idx] = (RIL_EutranBands) (*bands)[idx];
+                    ras_to.bands.eutran_bands[idx] =
+                            static_cast<RIL_EutranBands>(eutranBands[idx]);
                 }
                 break;
-            case V1_5::RadioAccessNetworks::NGRAN:
-                ras_to.bands_length = ras_from.bands.ngranBands().size();
-                bands = (std::vector<uint32_t> *) &ras_from.bands;
-                // safe to copy to geran_bands because it's a union member
+            }
+            case V1_5::RadioAccessNetworks::NGRAN: {
+                hidl_vec<V1_5::NgranBands> ngranBands = ras_from.bands.ngranBands();
+                ras_to.bands_length = MIN(ngranBands.size(), MAX_BANDS);
+                // safe to copy to ngran_bands because it's a union member
                 for (size_t idx = 0; idx < ras_to.bands_length; ++idx) {
-                    ras_to.bands.ngran_bands[idx] = (RIL_NgranBands) (*bands)[idx];
+                    ras_to.bands.ngran_bands[idx] =
+                            static_cast<RIL_NgranBands>(ngranBands[idx]);
                 }
                 break;
+            }
             default:
                 sendErrorResponse(pRI, RIL_E_INVALID_ARGUMENTS);
                 return -1;
@@ -4551,7 +4558,7 @@ Return<void> RadioImpl_1_6::setIndicationFilter_1_5(
         int32_t serial,
         hidl_bitfield<::android::hardware::radio::V1_5::IndicationFilter> indicationFilter) {
 #if VDBG
-    RLOGE("setIndicationFilter_1_5: serial %d");
+    RLOGE("setIndicationFilter_1_5: serial %d", serial);
 #endif
     dispatchInts(serial, mSlotId, RIL_REQUEST_SET_UNSOLICITED_RESPONSE_FILTER, 1, indicationFilter);
     return Void();
@@ -11060,15 +11067,17 @@ void convertRilDataCallToHal(RIL_Data_Call_Response_v11* dcResponse,
     dcResult.ifname = convertCharPtrToHidlString(dcResponse->ifname);
 
     std::vector<::android::hardware::radio::V1_5::LinkAddress> linkAddresses;
-    std::stringstream ss(static_cast<std::string>(dcResponse->addresses));
-    std::string tok;
-    while(getline(ss, tok, ' ')) {
-        ::android::hardware::radio::V1_5::LinkAddress la;
-        la.address = hidl_string(tok);
-        la.properties = 0;
-        la.deprecationTime = 0;
-        la.expirationTime = 0;
-        linkAddresses.push_back(la);
+    if (dcResponse->addresses != NULL) {
+        std::stringstream ss(static_cast<std::string>(dcResponse->addresses));
+        std::string tok;
+        while (getline(ss, tok, ' ')) {
+            ::android::hardware::radio::V1_5::LinkAddress la;
+            la.address = hidl_string(tok);
+            la.properties = 0;
+            la.deprecationTime = INT64_MAX;  // LinkAddress.java LIFETIME_PERMANENT = Long.MAX_VALUE
+            la.expirationTime = INT64_MAX;   // --"--
+            linkAddresses.push_back(la);
+        }
     }
 
     dcResult.addresses = linkAddresses;
@@ -11095,8 +11104,8 @@ void convertRilDataCallToHal(RIL_Data_Call_Response_v11* dcResponse,
         ::android::hardware::radio::V1_5::LinkAddress la;
         la.address = hidl_string(tok);
         la.properties = 0;
-        la.deprecationTime = 0;
-        la.expirationTime = 0;
+        la.deprecationTime = INT64_MAX;  // LinkAddress.java LIFETIME_PERMANENT = Long.MAX_VALUE
+        la.expirationTime = INT64_MAX;  // --"--
         linkAddresses.push_back(la);
     }
 
@@ -13374,6 +13383,13 @@ static void publishRadioHal(std::shared_ptr<compat::DriverContext> ctx, sp<V1_5:
     const auto instance = T::descriptor + "/"s + slot;
     RLOGD("Publishing %s", instance.c_str());
 
+    if (!AServiceManager_isDeclared(instance.c_str())) {
+        RLOGW("%s is not declared in VINTF (this may be intentional on `next` when interface is "
+              "not frozen)",
+              instance.c_str());
+        return;
+    }
+
     auto aidlHal = ndk::SharedRefBase::make<T>(ctx, hidlHal, cm);
     gPublishedHals.push_back(aidlHal);
     const auto status = AServiceManager_addService(aidlHal->asBinder().get(), instance.c_str());
@@ -13429,6 +13445,11 @@ void radio_1_6::registerService(RIL_RadioFunctions *callbacks, CommandInfo *comm
         publishRadioHal<cf::ril::RefRadioNetwork>(context, radioHidl, callbackMgr, slot);
         publishRadioHal<compat::RadioSim>(context, radioHidl, callbackMgr, slot);
         publishRadioHal<compat::RadioVoice>(context, radioHidl, callbackMgr, slot);
+        publishRadioHal<cf::ril::RefRadioIms>(context, radioHidl, callbackMgr, slot);
+        publishRadioHal<cf::ril::RefImsMedia>(context, radioHidl, callbackMgr,
+                                              std::string("default"));
+        publishRadioHal<cf::ril::RefRadioModem>(context, radioHidl, callbackMgr, slot);
+        publishRadioHal<cf::ril::RefRadioSim>(context, radioHidl, callbackMgr, slot);
 
         RLOGD("registerService: OemHook is enabled = %s", kOemHookEnabled ? "true" : "false");
         if (kOemHookEnabled) {
@@ -13436,7 +13457,6 @@ void radio_1_6::registerService(RIL_RadioFunctions *callbacks, CommandInfo *comm
             oemHookService[i]->mSlotId = i;
             // status = oemHookService[i]->registerAsService(serviceNames[i]);
         }
-
         ret = pthread_rwlock_unlock(radioServiceRwlockPtr);
         CHECK_EQ(ret, 0);
     }

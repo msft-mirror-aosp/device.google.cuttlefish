@@ -349,6 +349,10 @@ std::vector<CommandHandler> SimService::InitializeCommandHandlers() {
                     [this](const Client& client, std::string& cmd) {
                     this->HandleSimAuthentication(client, cmd);
                     }),
+      CommandHandler("+REMOTEUPADATEPHONENUMBER",
+                    [this](const Client& client, std::string& cmd) {
+                      this->HandlePhoneNumberUpdate(client,cmd);
+                    }),
   };
   return (command_handlers);
 }
@@ -439,10 +443,14 @@ void SimService::InitializeSimFileSystemAndSimState() {
       }
     }
     auto pin_code = pin_profile->FirstChildElement("PINCODE");
-    if (pin_code) pin1_status_.pin_ = pin_code->GetText();
+    if (pin_code) {
+      pin1_status_.pin_ = pin_code->GetText();
+    }
 
     auto puk_code = pin_profile->FirstChildElement("PUKCODE");
-    if (puk_code) pin1_status_.puk_ = puk_code->GetText();
+    if (puk_code) {
+      pin1_status_.puk_ = puk_code->GetText();
+    }
 
     auto pin_remaining_times = pin_profile->FirstChildElement("PINREMAINTIMES");
     if (pin_remaining_times) {
@@ -456,10 +464,14 @@ void SimService::InitializeSimFileSystemAndSimState() {
 
     // Pin2 status
     auto pin2_code = pin_profile->FirstChildElement("PIN2CODE");
-    if (pin2_code) pin2_status_.pin_ = pin2_code->GetText();
+    if (pin2_code) {
+      pin2_status_.pin_ = pin2_code->GetText();
+    }
 
     auto puk2_code = pin_profile->FirstChildElement("PUK2CODE");
-    if (puk2_code) pin2_status_.puk_ = puk2_code->GetText();
+    if (puk2_code) {
+      pin2_status_.puk_ = puk2_code->GetText();
+    }
 
     auto pin2_remaining_times = pin_profile->FirstChildElement("PIN2REMAINTIMES");
     if (pin2_remaining_times) {
@@ -674,8 +686,10 @@ bool SimService::IsFDNEnabled() {
 }
 
 bool SimService::IsFixedDialNumber(std::string_view number) {
-  XMLElement *root = sim_file_system_.GetRootElement();
-  if (!root) return false;
+  XMLElement* root = sim_file_system_.GetRootElement();
+  if (!root) {
+    return false;
+  }
 
   auto path = SimFileSystem::GetUsimEFPath(SimFileSystem::EFId::EF_FDN);
 
@@ -684,13 +698,17 @@ bool SimService::IsFixedDialNumber(std::string_view number) {
   while (pos < path.length()) {
     std::string sub_path(path.substr(pos, 4));
     auto app = SimFileSystem::FindAttribute(parent, "path", sub_path);
-    if (!app) return false;
+    if (!app) {
+      return false;
+    }
     pos += 4;
     parent = app;
   }
 
   XMLElement* ef = SimFileSystem::FindAttribute(parent, "id", "6F3B");
-  if (!ef) return false;
+  if (!ef) {
+    return false;
+  }
 
   XMLElement *final = ef->FirstChildElement("SIMIO");
   while (final) {
@@ -725,27 +743,10 @@ XMLElement* SimService::GetIccProfile() {
 }
 
 std::string SimService::GetPhoneNumber() {
-  XMLElement *root = sim_file_system_.GetRootElement();
-  if (!root) return "";
-
-  auto path = SimFileSystem::GetUsimEFPath(SimFileSystem::EFId::EF_MSISDN);
-
-  size_t pos = 0;
-  auto parent = root;
-  while (pos < path.length()) {
-    std::string sub_path(path.substr(pos, 4));
-    auto app = SimFileSystem::FindAttribute(parent, "path", sub_path);
-    if (!app) return "";
-    pos += 4;
-    parent = app;
+  XMLElement* final = GetPhoneNumberElement();
+  if (!final) {
+    return "";
   }
-
-  XMLElement* ef = SimFileSystem::FindAttribute(parent, "id", "6F40");
-  if (!ef) return "";
-
-  XMLElement *final = SimFileSystem::FindAttribute(ef, "cmd", "B2");;
-  if (!final) return "";
-
   std::string record = final->GetText();
   int footerOffset = record.length() - kFooterSizeBytes * 2;
   int numberLength = (record[footerOffset] - '0') * 16 +
@@ -764,29 +765,71 @@ std::string SimService::GetPhoneNumber() {
   return PDUParser::BCDToString(bcd_number);
 }
 
+bool SimService::SetPhoneNumber(std::string_view number) {
+  if (number.size() > kMaxNumberSizeBytes) {  // Invalid number length
+    return false;
+  }
+  XMLElement* elem = GetPhoneNumberElement();
+  if (!elem) {
+    return false;
+  }
+  std::string record = elem->GetText();
+  int footerOffset = record.length() - kFooterSizeBytes * 2;
+  std::string bcd_number = PDUParser::StringToBCD(number);
+  int newLength = 0;
+  // Skip Type(91) and Country Code(68)
+  if (number.size() == 12 && number.compare("68") == 0) {
+    record.replace(footerOffset + 6, bcd_number.size(), bcd_number);
+    newLength = 8;
+  } else { // Skip Type(81)
+    record.replace(footerOffset + 4, bcd_number.size(), bcd_number);
+    newLength = (bcd_number.size() + 2) / 2;
+  }
+
+  record[footerOffset] = '0' + newLength / 16;
+  record[footerOffset + 1] = '0' + (newLength % 16);
+
+  elem->SetText(record.c_str());
+  sim_file_system_.doc.SaveFile(sim_file_system_.file_path.c_str());
+  return true;
+}
+
 SimService::SimStatus SimService::GetSimStatus() const {
   return sim_status_;
 }
 
 std::string SimService::GetSimOperator() {
-  XMLElement *root = sim_file_system_.GetRootElement();
-  if (!root) return "";
+  XMLElement* root = sim_file_system_.GetRootElement();
+  if (!root) {
+    return "";
+  }
 
   XMLElement* mf = SimFileSystem::FindAttribute(root, "path", MF_SIM);
-  if (!mf) return "";
+  if (!mf) {
+    return "";
+  }
 
   XMLElement* df = SimFileSystem::FindAttribute(mf, "path", DF_ADF);
-  if (!df) return "";
+  if (!df) {
+    return "";
+  }
 
   XMLElement* ef = SimFileSystem::FindAttribute(df, "id", "6F07");
-  if (!ef) return "";
+  if (!ef) {
+    return "";
+  }
 
-  XMLElement *cimi = ef->FirstChildElement("CIMI");
-  if (!cimi) return "";
+  XMLElement* cimi = ef->FirstChildElement("CIMI");
+  if (!cimi) {
+    return "";
+  }
+
   std::string imsi = cimi->GetText();
 
   ef = SimFileSystem::FindAttribute(df, "id", "6FAD");
-  if (!ef) return "";
+  if (!ef) {
+    return "";
+  }
 
   XMLElement *sim_io = ef->FirstChildElement("SIMIO");
   while (sim_io) {
@@ -799,7 +842,9 @@ std::string SimService::GetSimOperator() {
     sim_io = sim_io->NextSiblingElement("SIMIO");
   }
 
-  if (!sim_io) return "";
+  if (!sim_io) {
+    return "";
+  }
 
   std::string length = sim_io->GetText();
   int mnc_size = std::stoi(length.substr(length.size() -2));
@@ -993,6 +1038,34 @@ void SimService::OnSimStatusChanged() {
   }
 }
 
+XMLElement* SimService::GetPhoneNumberElement() {
+  XMLElement* root = sim_file_system_.GetRootElement();
+  if (!root) {
+    return nullptr;
+  }
+
+  auto path = SimFileSystem::GetUsimEFPath(SimFileSystem::EFId::EF_MSISDN);
+
+  size_t pos = 0;
+  auto parent = root;
+  while (pos < path.length()) {
+    std::string sub_path(path.substr(pos, 4));
+    auto app = SimFileSystem::FindAttribute(parent, "path", sub_path);
+    if (!app) {
+      return nullptr;
+    }
+    pos += 4;
+    parent = app;
+  }
+
+  XMLElement* ef = SimFileSystem::FindAttribute(parent, "id", "6F40");
+  if (!ef) {
+    return nullptr;
+  }
+
+  return SimFileSystem::FindAttribute(ef, "cmd", "B2");
+}
+
 bool SimService::checkPin1AndAdjustSimStatus(std::string_view pin) {
   if (pin1_status_.VerifyPIN(pin) == true) {
     sim_status_ = SIM_STATUS_READY;
@@ -1049,7 +1122,9 @@ void SimService::HandleCSIM_IO(const Client& client,
 
   std::vector<LogicalChannel>::iterator iter = logical_channels_.begin();
   for (; iter != logical_channels_.end(); ++iter) {
-    if (!iter->is_open) break;
+    if (!iter->is_open) {
+      break;
+    }
   }
 
   if (iter != logical_channels_.end() && iter->session_id ==stoi(id)) {
@@ -1385,7 +1460,9 @@ void SimService::HandleOpenLogicalChannel(const Client& client,
 
   std::vector<LogicalChannel>::iterator iter = logical_channels_.begin();
   for (; iter != logical_channels_.end(); ++iter) {
-    if (!iter->is_open) break;
+    if (!iter->is_open) {
+      break;
+    }
   }
 
   if (iter != logical_channels_.end()) {
@@ -1425,7 +1502,9 @@ void SimService::HandleCloseLogicalChannel(const Client& client,
   int session_id = cmd.GetNextInt();
   std::vector<LogicalChannel>::iterator iter = logical_channels_.begin();
   for (; iter != logical_channels_.end(); ++iter) {
-    if (iter->session_id == session_id) break;
+    if (iter->session_id == session_id) {
+      break;
+    }
   }
 
   if (iter != logical_channels_.end() && iter->is_open) {
@@ -1693,5 +1772,12 @@ void SimService::HandleSimAuthentication(const Client& client,
   client.SendCommandResponse(responses);
 }
 
+void SimService::HandlePhoneNumberUpdate(const Client& client,
+                                         const std::string& command) {
+  (void)client;
+  CommandParser cmd(command);
+  cmd.SkipWhiteSpace();
+  SetPhoneNumber(cmd.GetNextStr(' '));
+}
 
 }  // namespace cuttlefish

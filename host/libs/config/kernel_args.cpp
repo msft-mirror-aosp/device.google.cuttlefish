@@ -42,7 +42,7 @@ std::vector<std::string> VmManagerKernelCmdline(
     const CuttlefishConfig& config,
     const CuttlefishConfig::InstanceSpecific& instance) {
   std::vector<std::string> vm_manager_cmdline;
-  if (config.vm_manager() == QemuManager::name()) {
+  if (config.vm_manager() == VmmMode::kQemu) {
     Arch target_arch = instance.target_arch();
     if (target_arch == Arch::Arm64 || target_arch == Arch::Arm) {
       if (instance.enable_kernel_log()) {
@@ -63,6 +63,10 @@ std::vector<std::string> VmManagerKernelCmdline(
         // In the virt.dts file, look for a uart node
         // Only 'mmio' mode works; mmio32 does not
         vm_manager_cmdline.push_back("earlycon=uart8250,mmio,0x10000000");
+
+        // The kernel defaults to Sv57. Disable 5-level paging to set the mode
+        // to Sv48.
+        vm_manager_cmdline.push_back("no5lvl");
     } else {
       if (instance.enable_kernel_log()) {
         vm_manager_cmdline.push_back("console=hvc0");
@@ -81,7 +85,8 @@ std::vector<std::string> VmManagerKernelCmdline(
       // crosvm sets up the ramoops.xx= flags for us, but QEMU does not.
       // See external/crosvm/x86_64/src/lib.rs
       // this feature is not supported on aarch64
-      vm_manager_cmdline.push_back("ramoops.mem_address=0x100000000");
+      // check guest's /proc/iomem when you need to change mem_address or mem_size
+      vm_manager_cmdline.push_back("ramoops.mem_address=0x150000000");
       vm_manager_cmdline.push_back("ramoops.mem_size=0x200000");
       vm_manager_cmdline.push_back("ramoops.console_size=0x80000");
       vm_manager_cmdline.push_back("ramoops.record_size=0x80000");

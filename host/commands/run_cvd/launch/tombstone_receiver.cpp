@@ -15,57 +15,40 @@
 
 #include "host/commands/run_cvd/launch/launch.h"
 
+#include <string>
+
+#include <fruit/fruit.h>
+
 #include "common/libs/utils/files.h"
+#include "common/libs/utils/result.h"
+#include "host/libs/config/command_source.h"
 #include "host/libs/config/known_paths.h"
 
 namespace cuttlefish {
 
-class TombstoneReceiver : public CommandSource {
- public:
-  INJECT(TombstoneReceiver(const CuttlefishConfig::InstanceSpecific& instance))
-      : instance_(instance) {}
-
-  // CommandSource
-  Result<std::vector<Command>> Commands() override {
-    return single_element_emplace(
-        Command(TombstoneReceiverBinary())
-            .AddParameter("-server_fd=", socket_)
-            .AddParameter("-tombstone_dir=", tombstone_dir_));
+Result<MonitorCommand> TombstoneReceiver(
+    const CuttlefishConfig::InstanceSpecific& instance) {
+  auto tombstone_dir = instance.PerInstancePath("tombstones");
+  if (!DirectoryExists(tombstone_dir)) {
+    LOG(DEBUG) << "Setting up " << tombstone_dir;
+    CF_EXPECTF(mkdir(tombstone_dir.c_str(),
+                     S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) == 0,
+               "Failed to create tombstone directory: '{}'. error: '{}'",
+               tombstone_dir, strerror(errno));
   }
 
-  // SetupFeature
-  std::string Name() const override { return "TombstoneReceiver"; }
-  bool Enabled() const override { return true; }
+  auto port = instance.tombstone_receiver_port();
+  auto socket =
+      SharedFD::VsockServer(port, SOCK_STREAM,
+                            instance.vhost_user_vsock()
+                                ? std::make_optional(instance.vsock_guest_cid())
+                                : std::nullopt);
+  CF_EXPECTF(socket->IsOpen(), "Can't tombstone server socket: '{}'",
+             socket->StrError());
 
- private:
-  std::unordered_set<SetupFeature*> Dependencies() const override { return {}; }
-  Result<void> ResultSetup() override {
-    tombstone_dir_ = instance_.PerInstancePath("tombstones");
-    if (!DirectoryExists(tombstone_dir_)) {
-      LOG(DEBUG) << "Setting up " << tombstone_dir_;
-      CF_EXPECT(mkdir(tombstone_dir_.c_str(),
-                      S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) == 0,
-                "Failed to create tombstone directory: "
-                    << tombstone_dir_ << ". Error: " << strerror(errno));
-    }
-
-    auto port = instance_.tombstone_receiver_port();
-    socket_ = SharedFD::VsockServer(port, SOCK_STREAM);
-    CF_EXPECT(socket_->IsOpen(), "Unable to create tombstone server socket: "
-                                     << socket_->StrError());
-    return {};
-  }
-
-  const CuttlefishConfig::InstanceSpecific& instance_;
-  SharedFD socket_;
-  std::string tombstone_dir_;
-};
-
-fruit::Component<fruit::Required<const CuttlefishConfig::InstanceSpecific>>
-TombstoneReceiverComponent() {
-  return fruit::createComponent()
-      .addMultibinding<CommandSource, TombstoneReceiver>()
-      .addMultibinding<SetupFeature, TombstoneReceiver>();
+  return Command(TombstoneReceiverBinary())
+      .AddParameter("-server_fd=", socket)
+      .AddParameter("-tombstone_dir=", tombstone_dir);
 }
 
 }  // namespace cuttlefish

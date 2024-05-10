@@ -27,7 +27,22 @@ cc_test {
     ],
     shared_libs: [
         "libbase",
+        "libbinder",
         "libvintf",
+        "libutils",
+        "packagemanager_aidl-cpp",
     ],
-    test_suites: ["device-tests"],
+    product_variables: {
+        release_aidl_use_unfrozen: {
+            cflags: ["-DAIDL_USE_UNFROZEN"],
+        },
+    },
+    cflags: [
+        "-Wall",
+        "-Werror",
+    ],
+    test_suites: [
+        "device-tests",
+        "automotive-tests",
+    ],
 }

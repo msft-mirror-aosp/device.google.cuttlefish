@@ -46,6 +46,7 @@ int main(int argc, char** argv) {
   sigaction(SIGPIPE, &new_action, &old_action);
 
   cuttlefish::SharedFD pipe;
+
   if (FLAGS_log_pipe_fd < 0) {
     auto log_name = instance.logcat_pipe_name();
     pipe = cuttlefish::SharedFD::Open(log_name.c_str(), O_RDONLY);
@@ -72,9 +73,9 @@ int main(int argc, char** argv) {
       break;
     }
     auto written = cuttlefish::WriteAll(logcat_file, buff, read);
-    CHECK(written == read)
-        << "Error writing to log file: " << logcat_file->StrError()
-        << ". This is unrecoverable.";
+    CHECK(written == read) << "Error writing to log file: "
+                           << logcat_file->StrError()
+                           << ". This is unrecoverable.";
   }
 
   logcat_file->Close();

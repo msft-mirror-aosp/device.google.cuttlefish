@@ -18,9 +18,7 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 
-#include <android-base/logging.h>
-#include <android-base/strings.h>
-
+#include <atomic>
 #include <cstdio>
 #include <cstring>
 #include <functional>
@@ -30,12 +28,23 @@
 #include <sstream>
 #include <string>
 #include <type_traits>
+#include <unordered_map>
 #include <utility>
 #include <vector>
+
+#include <android-base/logging.h>
+#include <android-base/strings.h>
 
 #include "common/libs/fs/shared_fd.h"
 
 namespace cuttlefish {
+
+/*
+ * Does what ArgsToVec(int argc, char**) from flag_parser.h does
+ * without argc.
+ */
+std::vector<std::string> ArgsToVec(char** argv);
+std::unordered_map<std::string, std::string> EnvpToMap(char** envp);
 
 enum class StopperResult {
   kStopFailure, /* Failed to stop the subprocess. */
@@ -47,6 +56,10 @@ class Subprocess;
 using SubprocessStopper = std::function<StopperResult(Subprocess*)>;
 // Kills a process by sending it the SIGKILL signal.
 StopperResult KillSubprocess(Subprocess* subprocess);
+/* Creates a `SubprocessStopper` that first tries `nice_stopper` then falls back
+ * to `KillSubprocess` if that fails. */
+SubprocessStopper KillSubprocessFallback(std::function<StopperResult()>);
+SubprocessStopper KillSubprocessFallback(SubprocessStopper nice_stopper);
 
 // Keeps track of a running (sub)process. Allows to wait for its completion.
 // It's an error to wait twice for the same subprocess.
@@ -59,9 +72,7 @@ class Subprocess {
   };
 
   Subprocess(pid_t pid, SubprocessStopper stopper = KillSubprocess)
-      : pid_(pid),
-        started_(pid > 0),
-        stopper_(stopper) {}
+      : pid_(pid), started_(pid > 0), stopper_(stopper) {}
   // The default implementation won't do because we need to reset the pid of the
   // moved object.
   Subprocess(Subprocess&&);
@@ -79,13 +90,16 @@ class Subprocess {
   pid_t pid() const { return pid_; }
   StopperResult Stop() { return stopper_(this); }
 
+  Result<void> SendSignal(const int signal);
+  Result<void> SendSignalToGroup(const int signal);
+
  private:
   // Copy is disabled to avoid waiting twice for the same pid (the first wait
   // frees the pid, which allows the kernel to reuse it so we may end up waiting
   // for the wrong process)
   Subprocess(const Subprocess&) = delete;
   Subprocess& operator=(const Subprocess&) = delete;
-  pid_t pid_ = -1;
+  std::atomic<pid_t> pid_ = -1;
   bool started_ = false;
   SubprocessStopper stopper_;
 };
@@ -94,23 +108,33 @@ class SubprocessOptions {
  public:
   SubprocessOptions()
       : verbose_(true), exit_with_parent_(true), in_group_(false) {}
-
   SubprocessOptions& Verbose(bool verbose) &;
   SubprocessOptions Verbose(bool verbose) &&;
   SubprocessOptions& ExitWithParent(bool exit_with_parent) &;
   SubprocessOptions ExitWithParent(bool exit_with_parent) &&;
+  SubprocessOptions& SandboxArguments(std::vector<std::string>) &;
+  SubprocessOptions SandboxArguments(std::vector<std::string>) &&;
   // The subprocess runs as head of its own process group.
   SubprocessOptions& InGroup(bool in_group) &;
   SubprocessOptions InGroup(bool in_group) &&;
 
+  SubprocessOptions& Strace(std::string strace_output_path) &;
+  SubprocessOptions Strace(std::string strace_output_path) &&;
+
   bool Verbose() const { return verbose_; }
   bool ExitWithParent() const { return exit_with_parent_; }
+  const std::vector<std::string>& SandboxArguments() const {
+    return sandbox_arguments_;
+  }
   bool InGroup() const { return in_group_; }
+  const std::string& Strace() const { return strace_; }
 
  private:
   bool verbose_;
   bool exit_with_parent_;
+  std::vector<std::string> sandbox_arguments_;
   bool in_group_;
+  std::string strace_;
 };
 
 // An executable command. Multiple subprocesses can be started from the same
@@ -271,6 +295,9 @@ class Command {
   Command& SetWorkingDirectory(SharedFD dirfd) &;
   Command SetWorkingDirectory(SharedFD dirfd) &&;
 
+  Command& AddPrerequisite(const std::function<Result<void>()>& prerequisite) &;
+  Command AddPrerequisite(const std::function<Result<void>()>& prerequisite) &&;
+
   // Starts execution of the command. This method can be called multiple times,
   // effectively staring multiple (possibly concurrent) instances.
   Subprocess Start(SubprocessOptions options = SubprocessOptions()) const;
@@ -290,6 +317,7 @@ class Command {
  private:
   std::optional<std::string> executable_;  // When unset, use command_[0]
   std::vector<std::string> command_;
+  std::vector<std::function<Result<void>()>> prerequisites_;
   std::map<SharedFD, int> inherited_fds_{};
   std::map<Subprocess::StdIOChannel, int> redirects_{};
   std::vector<std::string> env_{};
@@ -313,12 +341,32 @@ int RunWithManagedStdio(Command&& command, const std::string* stdin,
                         std::string* stdout, std::string* stderr,
                         SubprocessOptions options = SubprocessOptions());
 
-// Convenience wrapper around Command and Subprocess class, allows to easily
-// execute a command and wait for it to complete. The version without the env
-// parameter starts the command with the same environment as the parent. Returns
-// zero if the command completed successfully, non zero otherwise.
-int execute(const std::vector<std::string>& command,
-            const std::vector<std::string>& env);
-int execute(const std::vector<std::string>& command);
+/**
+ * Returns the exit status on success, negative values on error
+ *
+ * If failed in fork() or exec(), returns -1.
+ * If the child exited from an unhandled signal, returns -1.
+ * Otherwise, returns the exit status.
+ *
+ * TODO: Changes return type to Result<int>
+ *
+ *   For now, too many callsites expects int, and needs quite a lot of changes
+ *   if we change the return type.
+ */
+int Execute(const std::vector<std::string>& commands);
+int Execute(const std::vector<std::string>& commands,
+            const std::vector<std::string>& envs);
+
+/**
+ * Similar as the two above but returns CF_ERR instead of -1, and siginfo_t
+ * instead of the exit status.
+ */
+Result<siginfo_t> Execute(const std::vector<std::string>& commands,
+                          SubprocessOptions subprocess_options,
+                          int wait_options);
+Result<siginfo_t> Execute(const std::vector<std::string>& commands,
+                          const std::vector<std::string>& envs,
+                          SubprocessOptions subprocess_options,
+                          int wait_options);
 
 }  // namespace cuttlefish

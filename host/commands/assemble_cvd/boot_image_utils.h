@@ -19,12 +19,15 @@
 #include <vector>
 
 #include "common/libs/utils/result.h"
+#include "host/libs/avb/avb.h"
 
 namespace cuttlefish {
-bool RepackBootImage(const std::string& new_kernel_path,
-                     const std::string& boot_image_path,
-                     const std::string& new_boot_image_path,
-                     const std::string& tmp_artifact_dir);
+
+Result<void> RepackBootImage(const Avb& avb,
+                             const std::string& new_kernel_path,
+                             const std::string& boot_image_path,
+                             const std::string& new_boot_image_path,
+                             const std::string& tmp_artifact_dir);
 bool RepackVendorBootImage(const std::string& new_ramdisk_path,
                            const std::string& vendor_boot_image_path,
                            const std::string& new_vendor_boot_image_path,
@@ -47,4 +50,6 @@ Result<std::string> ReadAndroidVersionFromBootImage(
 
 void UnpackRamdisk(const std::string& original_ramdisk_path,
                    const std::string& ramdisk_stage_dir);
+void PackRamdisk(const std::string& ramdisk_stage_dir,
+                 const std::string& output_ramdisk);
 }

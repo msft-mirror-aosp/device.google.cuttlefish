@@ -34,13 +34,16 @@ using ::gatekeeper::ERROR_RETRY;
 using ::gatekeeper::ERROR_UNKNOWN;
 using ::gatekeeper::SizedBuffer;
 
-RemoteGateKeeperDevice::RemoteGateKeeperDevice(cuttlefish::GatekeeperChannel* channel)
+RemoteGateKeeperDevice::RemoteGateKeeperDevice(
+    cuttlefish::SharedFdGatekeeperChannel* channel)
     : gatekeeper_channel_(channel), error_(0) {}
 
 RemoteGateKeeperDevice::~RemoteGateKeeperDevice() {}
 
 SizedBuffer vec2sized_buffer(const std::vector<uint8_t>& vec) {
-    if (vec.size() == 0 || vec.size() > std::numeric_limits<uint32_t>::max()) return {};
+    if (vec.size() == 0 || vec.size() > std::numeric_limits<uint32_t>::max()) {
+        return {};
+    }
     auto unused = new uint8_t[vec.size()];
     std::copy(vec.begin(), vec.end(), unused);
     return {unused, static_cast<uint32_t>(vec.size())};

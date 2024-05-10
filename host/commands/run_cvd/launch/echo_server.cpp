@@ -15,48 +15,18 @@
 
 #include "host/commands/run_cvd/launch/launch.h"
 
-#include <unordered_set>
-#include <vector>
+#include <string>
 
 #include "host/commands/run_cvd/launch/grpc_socket_creator.h"
+#include "host/libs/config/command_source.h"
 #include "host/libs/config/known_paths.h"
 
 namespace cuttlefish {
-namespace {
 
-class EchoServer : public CommandSource {
- public:
-  INJECT(EchoServer(GrpcSocketCreator& grpc_socket))
-      : grpc_socket_(grpc_socket) {}
-
-  // CommandSource
-  Result<std::vector<Command>> Commands() override {
-    if (!Enabled()) {
-      return {};
-    }
-    return single_element_emplace(
-        Command(EchoServerBinary())
-            .AddParameter("--grpc_uds_path=",
-                          grpc_socket_.CreateGrpcSocket(Name())));
-  }
-
-  // SetupFeature
-  std::string Name() const override { return "EchoServer"; }
-  bool Enabled() const override { return true; }
-
- private:
-  std::unordered_set<SetupFeature*> Dependencies() const override { return {}; }
-  bool Setup() override { return true; }
-
-  GrpcSocketCreator& grpc_socket_;
-};
-
-}  // namespace
-
-fruit::Component<fruit::Required<GrpcSocketCreator>> EchoServerComponent() {
-  return fruit::createComponent()
-      .addMultibinding<CommandSource, EchoServer>()
-      .addMultibinding<SetupFeature, EchoServer>();
+MonitorCommand EchoServer(GrpcSocketCreator& grpc_socket) {
+  return Command(EchoServerBinary())
+      .AddParameter("--grpc_uds_path=",
+                    grpc_socket.CreateGrpcSocket("EchoServer"));
 }
 
 }  // namespace cuttlefish
