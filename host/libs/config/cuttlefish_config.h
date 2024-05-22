@@ -52,6 +52,17 @@ enum class SecureHal {
   HostOemlockSecure,
 };
 
+enum class VmmMode {
+  kUnknown,
+  kCrosvm,
+  kGem5,
+  kQemu,
+};
+
+std::ostream& operator<<(std::ostream&, VmmMode);
+std::string ToString(VmmMode mode);
+Result<VmmMode> ParseVmm(std::string_view);
+
 enum class ExternalNetworkMode {
   kUnknown,
   kTap,
@@ -100,8 +111,8 @@ class CuttlefishConfig {
   std::string environments_uds_dir() const;
   std::string EnvironmentsUdsPath(const std::string&) const;
 
-  std::string vm_manager() const;
-  void set_vm_manager(const std::string& name);
+  VmmMode vm_manager() const;
+  void set_vm_manager(VmmMode vmm);
 
   std::string ap_vm_manager() const;
   void set_ap_vm_manager(const std::string& name);
@@ -571,6 +582,7 @@ class CuttlefishConfig {
     bool enable_kernel_log() const;
     bool vhost_net() const;
     bool vhost_user_vsock() const;
+    int openthread_node_id() const;
 
     // Mobile network info (RIL)
     std::string ril_dns() const;
@@ -801,6 +813,8 @@ class CuttlefishConfig {
     void set_vhost_net(bool vhost_net);
     void set_vhost_user_vsock(bool vhost_user_vsock);
 
+    void set_openthread_node_id(int node_id);
+
     // Mobile network (RIL)
     void set_ril_dns(const std::string& ril_dns);
     void set_ril_ipaddr(const std::string& ril_ipaddr);
@@ -1010,4 +1024,6 @@ extern const char* const kHwComposerNone;
 #if FMT_VERSION >= 90000
 template <>
 struct fmt::formatter<cuttlefish::ExternalNetworkMode> : ostream_formatter {};
+template <>
+struct fmt::formatter<cuttlefish::VmmMode> : ostream_formatter {};
 #endif

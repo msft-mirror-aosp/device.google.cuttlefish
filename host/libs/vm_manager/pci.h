@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 The Android Open Source Project
+ * Copyright (C) 2024 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,27 +13,29 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 #pragma once
 
-#include <fruit/fruit.h>
-
-#include "host/commands/run_cvd/launch/snapshot_control_files.h"
-#include "host/commands/run_cvd/launch/webrtc_recorder.h"
-#include "host/libs/config/cuttlefish_config.h"
+#include <fmt/core.h>
 
 namespace cuttlefish {
+namespace pci {
 
-class ServerLoop {
+class Address {
  public:
-  virtual ~ServerLoop();
-  virtual Result<void> Run() = 0;
+  Address(unsigned int bus, unsigned int device, unsigned int function);
+
+  unsigned int Bus() const { return bus_; };
+  unsigned int Device() const { return device_; }
+  unsigned int Function() const { return function_; }
+  std::string Id() const {
+    return fmt::format("{:02x}:{:02x}.{:01x}", bus_, device_, function_);
+  }
+
+ private:
+  unsigned int bus_;
+  unsigned int device_;
+  unsigned int function_;
 };
 
-fruit::Component<
-    fruit::Required<const CuttlefishConfig,
-                    const CuttlefishConfig::InstanceSpecific,
-                    AutoSnapshotControlFiles::Type, WebRtcRecorder>,
-    ServerLoop>
-serverLoopComponent();
-}
+}  // namespace pci
+}  // namespace cuttlefish

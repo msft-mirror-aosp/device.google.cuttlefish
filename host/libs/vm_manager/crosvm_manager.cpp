@@ -62,7 +62,7 @@ CrosvmManager::ConfigureGraphics(
     const CuttlefishConfig::InstanceSpecific& instance) {
   // Override the default HAL search paths in all cases. We do this because
   // the HAL search path allows for fallbacks, and fallbacks in conjunction
-  // with properities lead to non-deterministic behavior while loading the
+  // with properties lead to non-deterministic behavior while loading the
   // HALs.
 
   std::unordered_map<std::string, std::string> bootconfig_args;
@@ -582,10 +582,16 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
   // having to pass arguments to crosvm via a wrapper script.
 #ifdef __linux__
   if (!gpu_capture_enabled) {
-    // The ordering of tap devices is important. Make sure any change here
-    // is reflected in ethprime u-boot variable
-    crosvm_cmd.AddTap(instance.mobile_tap_name(), instance.mobile_mac());
-    crosvm_cmd.AddTap(instance.ethernet_tap_name(), instance.ethernet_mac());
+    // The PCI ordering of tap devices is important. Make sure any change here
+    // is reflected in ethprime u-boot variable.
+    // TODO(b/218364216, b/322862402): Crosvm occupies 32 PCI devices first and only then uses PCI
+    // functions which may break order. The final solution is going to be a PCI allocation strategy
+    // that will guarantee the ordering. For now, hardcode PCI network devices to unoccupied
+    // functions.
+    const pci::Address mobile_pci = pci::Address(0, VmManager::kNetPciDeviceNum, 1);
+    const pci::Address ethernet_pci = pci::Address(0, VmManager::kNetPciDeviceNum, 2);
+    crosvm_cmd.AddTap(instance.mobile_tap_name(), instance.mobile_mac(), mobile_pci);
+    crosvm_cmd.AddTap(instance.ethernet_tap_name(), instance.ethernet_mac(), ethernet_pci);
 
     if (!config.virtio_mac80211_hwsim() && environment.enable_wifi()) {
       wifi_tap = crosvm_cmd.AddTap(instance.wifi_tap_name());
@@ -813,9 +819,18 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
   // This needs to be the last parameter
   crosvm_cmd.Cmd().AddParameter("--bios=", instance.bootloader());
 
+  std::vector<MonitorCommand> commands;
+
+  if (vhost_user_gpu) {
+    // The vhost user gpu crosvm command should be added before the main
+    // crosvm command so that the main crosvm command can use a prerequisite
+    // to wait for the communication socket to be ready.
+    commands.emplace_back(std::move(vhost_user_gpu->device_cmd));
+    commands.emplace_back(std::move(vhost_user_gpu->device_logs_cmd));
+  }
+
   // log_tee must be added before crosvm_cmd to ensure all of crosvm's logs are
   // captured during shutdown. Processes are stopped in reverse order.
-  std::vector<MonitorCommand> commands;
   commands.emplace_back(std::move(crosvm_log_tee_cmd));
 
   if (gpu_capture_enabled) {
@@ -870,11 +885,6 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
     crosvm_cmd.Cmd().RedirectStdIO(Subprocess::StdIOChannel::kStdErr,
                                    crosvm_logs);
     commands.emplace_back(std::move(crosvm_cmd.Cmd()), true);
-  }
-
-  if (vhost_user_gpu) {
-    commands.emplace_back(std::move(vhost_user_gpu->device_cmd));
-    commands.emplace_back(std::move(vhost_user_gpu->device_logs_cmd));
   }
 
   return commands;
