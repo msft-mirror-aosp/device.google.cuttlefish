@@ -981,6 +981,17 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
   tmp_config_obj.set_vm_manager(vmm_mode);
   tmp_config_obj.set_ap_vm_manager(vm_manager_vec[0] + "_openwrt");
 
+  // TODO: schuffelen - fix behavior on riscv64
+  if (guest_configs[0].target_arch == Arch::RiscV64) {
+    static constexpr char kRiscv64Secure[] = "keymint,gatekeeper,oemlock";
+    SetCommandLineOptionWithMode("secure_hals", kRiscv64Secure,
+                                 google::FlagSettingMode::SET_FLAGS_DEFAULT);
+  } else {
+    static constexpr char kDefaultSecure[] =
+        "oemlock,guest_keymint_insecure,guest_gatekeeper_insecure";
+    SetCommandLineOptionWithMode("secure_hals", kDefaultSecure,
+                                 google::FlagSettingMode::SET_FLAGS_DEFAULT);
+  }
   auto secure_hals_strs =
       android::base::Tokenize(FLAGS_secure_hals, ",:;|/\\+");
   tmp_config_obj.set_secure_hals(
@@ -1364,11 +1375,12 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     instance.set_seccomp_policy_dir(seccomp_policy_dir_vec[instance_index]);
     instance.set_qemu_binary_dir(qemu_binary_dir_vec[instance_index]);
 
-    // wifi, bluetooth, connectivity setup
+    // wifi, bluetooth, Thread, connectivity setup
 
     instance.set_vhost_net(vhost_net_vec[instance_index]);
+    instance.set_openthread_node_id(num);
 
-    // end of wifi, bluetooth, connectivity setup
+    // end of wifi, bluetooth, Thread, connectivity setup
 
     if (vhost_user_vsock_vec[instance_index] == kVhostUserVsockModeAuto) {
       std::set<Arch> default_on_arch = {Arch::Arm64};

@@ -16,6 +16,8 @@
 
 #include "host/libs/confui/host_renderer.h"
 
+#include <drm/drm_fourcc.h>
+
 #include "host/libs/config/cuttlefish_config.h"
 
 namespace cuttlefish {
@@ -86,7 +88,7 @@ class ConfUiRendererImpl {
     auto box = e.bounds_;
     Boundary b;
     // (x,y) is left top. so floor() makes sense
-    // w, h are witdh and height in float. perhaps ceiling makes more
+    // w, h are width and height in float. perhaps ceiling makes more
     // sense
     b.x = static_cast<std::uint32_t>(box.x().floor().count());
     b.y = static_cast<std::uint32_t>(box.y().floor().count());
@@ -338,7 +340,7 @@ void ConfUiRendererImpl::UpdateColorScheme(const bool is_inverted) {
 }
 
 std::unique_ptr<TeeUiFrameWrapper>& ConfUiRendererImpl::RenderRawFrame() {
-  /* we repaint only if one or more of the followng meet:
+  /* we repaint only if one or more of the following meet:
    *
    *  1. raw_frame_ is empty
    *  2. the current_width_ and current_height_ is out of date
@@ -410,7 +412,8 @@ Result<void> ConfUiRenderer::RenderDialog(
   auto frame_stride_bytes = teeui_frame->ScreenStrideBytes();
   auto frame_bytes = reinterpret_cast<std::uint8_t*>(teeui_frame->data());
   CF_EXPECT(screen_connector_.RenderConfirmationUi(
-      display_num, frame_width, frame_height, frame_stride_bytes, frame_bytes));
+      display_num, frame_width, frame_height, DRM_FORMAT_ABGR8888,
+      frame_stride_bytes, frame_bytes));
   return {};
 }
 
