@@ -40,7 +40,7 @@ PRODUCT_SOONG_NAMESPACES += device/generic/goldfish # for audio, wifi and sensor
 PRODUCT_USE_DYNAMIC_PARTITIONS := true
 DISABLE_RILD_OEM_HOOK := true
 
-# TODO(b/205788876) remove this condition when openwrt has an image for arm.
+# TODO(b/294888357) Remove this condition when OpenWRT is supported for RISC-V.
 ifndef PRODUCT_ENFORCE_MAC80211_HWSIM
 PRODUCT_ENFORCE_MAC80211_HWSIM := true
 endif
@@ -58,6 +58,7 @@ TARGET_VULKAN_SUPPORT ?= true
 $(call inherit-product, $(SRC_TARGET_DIR)/product/virtual_ab_ota/vabc_features.mk)
 PRODUCT_VIRTUAL_AB_COMPRESSION_METHOD := lz4
 PRODUCT_VIRTUAL_AB_COW_VERSION := 3
+PRODUCT_VIRTUAL_AB_COMPRESSION_FACTOR := 65536
 
 PRODUCT_VENDOR_PROPERTIES += ro.virtual_ab.compression.threads=true
 PRODUCT_VENDOR_PROPERTIES += ro.virtual_ab.batch_writes=true
@@ -81,6 +82,16 @@ ifeq ($(TARGET_BUILD_VARIANT),user)
 PRODUCT_PRODUCT_PROPERTIES += \
     ro.adb.secure=0 \
     ro.debuggable=1
+
+PRODUCT_PACKAGES += \
+    logpersist.start
+
+PRODUCT_ARTIFACT_PATH_REQUIREMENT_ALLOWED_LIST += \
+    $(TARGET_COPY_OUT_SYSTEM)/bin/logcatd \
+    $(TARGET_COPY_OUT_SYSTEM)/bin/logpersist.cat \
+    $(TARGET_COPY_OUT_SYSTEM)/bin/logpersist.start \
+    $(TARGET_COPY_OUT_SYSTEM)/bin/logpersist.stop \
+    $(TARGET_COPY_OUT_SYSTEM)/etc/init/logcatd.rc
 endif
 
 # Use AIDL for media.c2 HAL
@@ -180,7 +191,12 @@ PRODUCT_PACKAGES += \
     aidl_lazy_cb_test_server \
 
 # Runtime Resource Overlays
-PRODUCT_PACKAGES += com.google.aosp_cf.rros
+PRODUCT_PACKAGES += \
+    cuttlefish_overlay_connectivity \
+    cuttlefish_overlay_frameworks_base_core \
+    cuttlefish_overlay_nfc \
+    cuttlefish_overlay_settings_provider \
+    cuttlefish_overlay_uwb \
 
 #
 # Satellite vendor service for CF
@@ -193,13 +209,8 @@ PRODUCT_PACKAGES += CFSatelliteService
 #
 # Common manifest for all targets
 #
-ifeq ($(RELEASE_AIDL_USE_UNFROZEN),true)
 PRODUCT_SHIPPING_API_LEVEL := 35
 LOCAL_DEVICE_FCM_MANIFEST_FILE ?= device/google/cuttlefish/shared/config/manifest.xml
-else
-PRODUCT_SHIPPING_API_LEVEL := 34
-LOCAL_DEVICE_FCM_MANIFEST_FILE ?= device/google/cuttlefish/shared/config/previous_manifest.xml
-endif
 DEVICE_MANIFEST_FILE += $(LOCAL_DEVICE_FCM_MANIFEST_FILE)
 
 #
@@ -242,7 +253,6 @@ PRODUCT_COPY_FILES += \
 # Install .kcm/.kl/.idc files via input.config apex
 #
 PRODUCT_PACKAGES += com.google.cf.input.config
-PRODUCT_VENDOR_PROPERTIES += input_device.config_file.apex=com.google.cf.input.config
 
 PRODUCT_PACKAGES += \
     fstab.cf.f2fs.hctr2 \
@@ -342,11 +352,9 @@ PRODUCT_PACKAGES += $(LOCAL_DUMPSTATE_PRODUCT_PACKAGE)
 #
 # Gatekeeper
 #
-ifeq ($(LOCAL_GATEKEEPER_PRODUCT_PACKAGE),)
-    LOCAL_GATEKEEPER_PRODUCT_PACKAGE := com.google.cf.gatekeeper
-endif
 PRODUCT_PACKAGES += \
-    $(LOCAL_GATEKEEPER_PRODUCT_PACKAGE)
+  com.android.hardware.gatekeeper.cf_remote \
+  com.android.hardware.gatekeeper.nonsecure \
 
 #
 # Oemlock
@@ -395,16 +403,16 @@ endif
 #
 # KeyMint HAL
 #
-ifeq ($(LOCAL_KEYMINT_PRODUCT_PACKAGE),)
-    LOCAL_KEYMINT_PRODUCT_PACKAGE := com.google.cf.keymint.rust
-endif
-
 PRODUCT_PACKAGES += \
-    $(LOCAL_KEYMINT_PRODUCT_PACKAGE) \
+	com.android.hardware.keymint.rust_cf_remote \
+	com.android.hardware.keymint.rust_nonsecure \
 
 # Indicate that KeyMint includes support for the ATTEST_KEY key purpose.
 PRODUCT_COPY_FILES += \
     frameworks/native/data/etc/android.hardware.keystore.app_attest_key.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.keystore.app_attest_key.xml
+# Indicate that KeyMint includes (emulated) support for device ID attestation.
+PRODUCT_COPY_FILES += \
+    frameworks/native/data/etc/android.software.device_id_attestation.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.device_id_attestation.xml
 
 #
 # Non-secure implementation of AuthGraph HAL for compliance.
@@ -481,7 +489,6 @@ PRODUCT_PACKAGES += linker.recovery shell_and_utilities_recovery
 endif
 
 # wifi
-ifeq ($(LOCAL_PREFER_VENDOR_APEX),true)
 # Add com.android.hardware.wifi for android.hardware.wifi-service
 PRODUCT_PACKAGES += com.android.hardware.wifi
 # Add com.google.cf.wifi for hostapd, wpa_supplicant, etc.
@@ -490,38 +497,11 @@ $(call add_soong_config_namespace, wpa_supplicant)
 $(call add_soong_config_var_value, wpa_supplicant, platform_version, $(PLATFORM_VERSION))
 $(call add_soong_config_var_value, wpa_supplicant, nl80211_driver, CONFIG_DRIVER_NL80211_QCA)
 
-else
-PRODUCT_PACKAGES += \
-    rename_netiface \
-    wpa_supplicant \
-    setup_wifi \
-    mac80211_create_radios \
-    hostapd \
-    android.hardware.wifi-service \
-    init.wifi
-PRODUCT_COPY_FILES += \
-    device/google/cuttlefish/shared/config/wpa_supplicant.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/wpa_supplicant.rc
-
 # VirtWifi interface configuration
 ifeq ($(DEVICE_VIRTWIFI_PORT),)
     DEVICE_VIRTWIFI_PORT := eth2
 endif
 PRODUCT_VENDOR_PROPERTIES += ro.vendor.virtwifi.port=${DEVICE_VIRTWIFI_PORT}
-
-# WLAN driver configuration files
-ifndef LOCAL_WPA_SUPPLICANT_OVERLAY
-LOCAL_WPA_SUPPLICANT_OVERLAY := $(LOCAL_PATH)/config/wpa_supplicant_overlay.conf
-endif
-
-ifndef LOCAL_P2P_SUPPLICANT
-LOCAL_P2P_SUPPLICANT := $(LOCAL_PATH)/config/p2p_supplicant.conf
-endif
-
-PRODUCT_COPY_FILES += \
-    external/wpa_supplicant_8/wpa_supplicant/wpa_supplicant_template.conf:$(TARGET_COPY_OUT_VENDOR)/etc/wifi/wpa_supplicant.conf \
-    $(LOCAL_WPA_SUPPLICANT_OVERLAY):$(TARGET_COPY_OUT_VENDOR)/etc/wifi/wpa_supplicant_overlay.conf \
-    $(LOCAL_P2P_SUPPLICANT):$(TARGET_COPY_OUT_VENDOR)/etc/wifi/p2p_supplicant.conf
-endif
 
 # Wifi Runtime Resource Overlay
 PRODUCT_PACKAGES += \
@@ -529,7 +509,7 @@ PRODUCT_PACKAGES += \
     CuttlefishWifiOverlay
 
 ifeq ($(PRODUCT_ENFORCE_MAC80211_HWSIM),true)
-PRODUCT_VENDOR_PROPERTIES += ro.vendor.wifi_impl=mac8011_hwsim_virtio
+PRODUCT_VENDOR_PROPERTIES += ro.vendor.wifi_impl=mac80211_hwsim_virtio
 $(call soong_config_append,cvdhost,enforce_mac80211_hwsim,true)
 else
 PRODUCT_VENDOR_PROPERTIES += ro.vendor.wifi_impl=virt_wifi

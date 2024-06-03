@@ -35,7 +35,6 @@
 #include <android-base/logging.h>
 #include <vulkan/vulkan.h>
 
-#include "common/libs/device_config/device_config.h"
 #include "common/libs/utils/files.h"
 #include "common/libs/utils/result.h"
 #include "common/libs/utils/subprocess.h"
@@ -51,7 +50,7 @@ std::string GetMonitorPath(const CuttlefishConfig& config) {
       "qemu_monitor.sock");
 }
 
-bool Stop() {
+StopperResult Stop() {
   auto config = CuttlefishConfig::Get();
   auto monitor_path = GetMonitorPath(*config);
   auto monitor_sock = SharedFD::SocketLocalClient(
@@ -59,7 +58,7 @@ bool Stop() {
 
   if (!monitor_sock->IsOpen()) {
     LOG(ERROR) << "The connection to qemu is closed, is it still running?";
-    return false;
+    return StopperResult::kStopFailure;
   }
   char msg[] = "{\"execute\":\"qmp_capabilities\"}{\"execute\":\"quit\"}";
   ssize_t len = sizeof(msg) - 1;
@@ -67,7 +66,7 @@ bool Stop() {
     int tmp = monitor_sock->Write(msg, len);
     if (tmp < 0) {
       LOG(ERROR) << "Error writing to socket: " << monitor_sock->StrError();
-      return false;
+      return StopperResult::kStopFailure;
     }
     len -= tmp;
   }
@@ -78,7 +77,7 @@ bool Stop() {
     LOG(INFO) << "From qemu monitor: " << buff;
   }
 
-  return true;
+  return StopperResult::kStopSuccess;
 }
 
 Result<std::pair<int, int>> GetQemuVersion(const std::string& qemu_binary) {
@@ -120,7 +119,7 @@ QemuManager::ConfigureGraphics(
     const CuttlefishConfig::InstanceSpecific& instance) {
   // Override the default HAL search paths in all cases. We do this because
   // the HAL search path allows for fallbacks, and fallbacks in conjunction
-  // with properities lead to non-deterministic behavior while loading the
+  // with properties lead to non-deterministic behavior while loading the
   // HALs.
 
   std::unordered_map<std::string, std::string> bootconfig_args;
@@ -216,18 +215,6 @@ QemuManager::ConfigureBootDevices(
 Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
     const CuttlefishConfig& config, std::vector<VmmDependencyCommand*>&) {
   auto instance = config.ForDefaultInstance();
-
-  auto stop = [](Subprocess* proc) {
-    auto stopped = Stop();
-    if (stopped) {
-      return StopperResult::kStopSuccess;
-    }
-    LOG(WARNING) << "Failed to stop VMM nicely, "
-                  << "attempting to KILL";
-    return KillSubprocess(proc) == StopperResult::kStopSuccess
-               ? StopperResult::kStopCrash
-               : StopperResult::kStopFailure;
-  };
   std::string qemu_binary = instance.qemu_binary_dir();
   switch (arch_) {
     case Arch::Arm:
@@ -248,7 +235,7 @@ Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
   }
 
   auto qemu_version = CF_EXPECT(GetQemuVersion(qemu_binary));
-  Command qemu_cmd(qemu_binary, stop);
+  Command qemu_cmd(qemu_binary, KillSubprocessFallback(Stop));
 
   int hvc_num = 0;
   int serial_num = 0;
@@ -741,18 +728,9 @@ Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
       }
       break;
     case cuttlefish::ExternalNetworkMode::kSlirp: {
-      // TODO(schuffelen): Deduplicate with modem_simulator/cf_device_config.cpp
-      // The configuration here needs to match the ip address reported by the
-      // modem simulator, which the guest uses to statically assign an IP
-      // address to its virtio-net ethernet device.
-      std::string net = "10.0.2.15/24";
-      std::string host = "10.0.2.2";
-      auto device_config_helper = DeviceConfigHelper::Get();
-      if (device_config_helper) {
-        const auto& cfg = device_config_helper->GetDeviceConfig().ril_config();
-        net = fmt::format("{}/{}", cfg.ipaddr(), cfg.prefixlen());
-        host = cfg.gateway();
-      }
+      const std::string net =
+          fmt::format("{}/{}", instance.ril_ipaddr(), instance.ril_prefixlen());
+      const std::string& host = instance.ril_gateway();
       qemu_cmd.AddParameter("-netdev");
       // TODO(schuffelen): `dns` needs to match the first `nameserver` in
       // `/etc/resolv.conf`. Implement something that generalizes beyond gLinux.
@@ -818,6 +796,9 @@ Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
 
   qemu_cmd.AddParameter("-device");
   qemu_cmd.AddParameter("qemu-xhci,id=xhci");
+
+  qemu_cmd.AddParameter("-L");
+  qemu_cmd.AddParameter(HostQemuBiosPath());
 
   if (is_riscv64) {
     qemu_cmd.AddParameter("-kernel");

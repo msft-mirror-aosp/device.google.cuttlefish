@@ -250,6 +250,7 @@ std::unordered_set<std::string> kBoolFlags = {
     "console",
     "enable_sandbox",
     "enable_virtiofs",
+    "enable_usb",
     "restart_subprocesses",
     "enable_gpu_udmabuf",
     "enable_gpu_vhost_user",
@@ -266,6 +267,7 @@ std::unordered_set<std::string> kBoolFlags = {
     "vhost_user_vsock",
     "chromeos_boot",
     "enable_host_sandbox",
+    "fail_fast",
 };
 
 struct BooleanFlag {
@@ -321,17 +323,17 @@ std::string FormatBoolString(const std::string& name_str, bool value) {
 }
 
 bool OverrideBoolArg(std::vector<std::string>& args) {
-  bool overrided = false;
+  bool overridden = false;
   for (int index = 0; index < args.size(); index++) {
     const std::string curr_arg = args[index];
     BooleanFlag value = IsBoolArg(curr_arg);
     if (value.is_bool_flag) {
       // Override the value
       args[index] = FormatBoolString(value.name, value.bool_flag_value);
-      overrided = true;
+      overridden = true;
     }
   }
-  return overrided;
+  return overridden;
 }
 
 } // namespace

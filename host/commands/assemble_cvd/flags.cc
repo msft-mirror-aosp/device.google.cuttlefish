@@ -52,6 +52,7 @@
 #include "host/commands/assemble_cvd/flags_defaults.h"
 #include "host/commands/assemble_cvd/graphics_flags.h"
 #include "host/commands/assemble_cvd/misc_info.h"
+#include "host/commands/assemble_cvd/network_flags.h"
 #include "host/commands/assemble_cvd/touchpad.h"
 #include "host/libs/config/config_flag.h"
 #include "host/libs/config/cuttlefish_config.h"
@@ -134,7 +135,7 @@ DEFINE_vec(use_random_serial, fmt::format("{}", CF_DEFAULTS_USE_RANDOM_SERIAL),
 DEFINE_vec(vm_manager, CF_DEFAULTS_VM_MANAGER,
               "What virtual machine manager to use, one of {qemu_cli, crosvm}");
 DEFINE_vec(gpu_mode, CF_DEFAULTS_GPU_MODE,
-           "What gpu configuration to use, one of {auto, drm_virgl, "
+           "What gpu configuration to use, one of {auto, custom, drm_virgl, "
            "gfxstream, gfxstream_guest_angle, "
            "gfxstream_guest_angle_host_swiftshader, guest_swiftshader}");
 DEFINE_vec(gpu_vhost_user_mode,
@@ -149,6 +150,27 @@ DEFINE_vec(gpu_capture_binary, CF_DEFAULTS_GPU_CAPTURE_BINARY,
 DEFINE_vec(enable_gpu_udmabuf,
            fmt::format("{}", CF_DEFAULTS_ENABLE_GPU_UDMABUF),
            "Use the udmabuf driver for zero-copy virtio-gpu");
+DEFINE_vec(
+    gpu_renderer_features, CF_DEFAULTS_GPU_RENDERER_FEATURES,
+    "Renderer specific features to enable. For Gfxstream, this should "
+    "be a semicolon separated list of \"<feature name>:[enabled|disabled]\""
+    "pairs.");
+
+DEFINE_vec(gpu_context_types, CF_DEFAULTS_GPU_CONTEXT_TYPES,
+           "A colon separated list of virtio-gpu context types.  Only valid "
+           "with --gpu_mode=custom."
+           " For example \"--gpu_context_types=cross_domain:gfxstream\"");
+
+DEFINE_vec(
+    guest_vulkan_driver, CF_DEFAULTS_GUEST_VULKAN_DRIVER,
+    "Vulkan driver to use with Cuttlefish.  Android VMs require specifying "
+    "this at boot time.  Only valid with --gpu_mode=custom. "
+    "For example \"--guest_vulkan_driver=ranchu\"");
+
+DEFINE_vec(
+    frames_socket_path, CF_DEFAULTS_FRAME_SOCKET_PATH,
+    "Frame socket path to use when launching a VM "
+    "For example, \"--frames_socket_path=${XDG_RUNTIME_DIR}/wayland-0\"");
 
 DEFINE_vec(use_allocd, CF_DEFAULTS_USE_ALLOCD?"true":"false",
             "Acquire static resources from the resource allocator daemon.");
@@ -198,6 +220,16 @@ DEFINE_string(netsim_args, CF_DEFAULTS_NETSIM_ARGS,
 
 DEFINE_bool(enable_automotive_proxy, CF_DEFAULTS_ENABLE_AUTOMOTIVE_PROXY,
             "Enable the automotive proxy service on the host.");
+
+DEFINE_bool(enable_vhal_proxy_server, CF_DEFAULTS_ENABLE_VHAL_PROXY_SERVER,
+            "Enable the vhal proxy service on the host.");
+DEFINE_int32(vhal_proxy_server_instance_num,
+             CF_DEFAULTS_VHAL_PROXY_SERVER_INSTANCE_NUM,
+             "If it is greater than 0, use an existing vhal proxy server "
+             "instance which is "
+             "launched from cuttlefish instance "
+             "with vhal_proxy_server_instance_num. Else, launch a new vhal "
+             "proxy server instance");
 
 /**
  * crosvm sandbox feature requires /var/empty and seccomp directory
@@ -409,6 +441,12 @@ DEFINE_vec(
     "sake."
     "Each vsock server port number is base + C - 3.");
 
+DEFINE_vec(
+    vsock_guest_group, CF_DEFAULTS_VSOCK_GUEST_GROUP,
+    "vsock_guest_group is used to determine the guest vsock isolation groups."
+    "vsock communications can only happen between VMs which are tagged with "
+    "the same group name, or between VMs which have no group assigned.");
+
 DEFINE_string(secure_hals, CF_DEFAULTS_SECURE_HALS,
               "Which HALs to use enable host security features for. Supports "
               "keymint and gatekeeper at the moment.");
@@ -423,6 +461,9 @@ DEFINE_vec(mte, fmt::format("{}", CF_DEFAULTS_MTE), "Enable MTE");
 
 DEFINE_vec(enable_audio, fmt::format("{}", CF_DEFAULTS_ENABLE_AUDIO),
            "Whether to play or capture audio");
+
+DEFINE_vec(enable_usb, fmt::format("{}", CF_DEFAULTS_ENABLE_USB),
+           "Whether to allow USB passthrough on the device");
 
 DEFINE_vec(camera_server_port, std::to_string(CF_DEFAULTS_CAMERA_SERVER_PORT),
               "camera vsock port");
@@ -473,6 +514,10 @@ DEFINE_string(straced_host_executables, CF_DEFAULTS_STRACED_HOST_EXECUTABLES,
 DEFINE_bool(enable_host_sandbox, CF_DEFAULTS_HOST_SANDBOX,
             "Lock down host processes with sandbox2");
 
+DEFINE_vec(
+    fail_fast, CF_DEFAULTS_FAIL_FAST ? "true" : "false",
+    "Whether to exit when a heuristic predicts the boot will not complete");
+
 DECLARE_string(assembly_dir);
 DECLARE_string(boot_image);
 DECLARE_string(system_image_dir);
@@ -509,7 +554,7 @@ Result<std::string> GetAndroidInfoConfig(
   CF_EXPECT(FileExists(android_info_file_path));
 
   std::string android_info_contents = ReadFile(android_info_file_path);
-  auto android_info_map = ParseMiscInfo(android_info_contents);
+  auto android_info_map = CF_EXPECT(ParseMiscInfo(android_info_contents));
   CF_EXPECT(android_info_map.find(key) != android_info_map.end());
   return android_info_map[key];
 }
@@ -870,6 +915,14 @@ Result<void> CheckSnapshotCompatible(
       "--enable_virtiofs=false");
 
   /*
+   * TODO(khei@): delete this block once usb is supported
+   */
+  CF_EXPECTF(gflags::GetCommandLineFlagInfoOrDie("enable_usb").current_value ==
+                 "false",
+             "--enable_usb should be false for snapshot, consider \"{}\"",
+             "--enable_usb=false");
+
+  /*
    * TODO(kwstephenkim@): delete this block once 3D gpu mode snapshots are
    * supported
    */
@@ -899,13 +952,6 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
         snapshot_path + "/assembly/cuttlefish_config.json";
     tmp_config_obj.LoadFromFile(snapshot_path_config.c_str());
     tmp_config_obj.set_snapshot_path(snapshot_path);
-    auto instance_nums =
-        CF_EXPECT(InstanceNumsCalculator().FromGlobalGflags().Calculate());
-
-    for (const auto& num : instance_nums) {
-      auto instance = tmp_config_obj.ForInstance(num);
-      instance.set_sock_vsock_proxy_wait_adbd_start(false);
-    }
     return tmp_config_obj;
   }
 
@@ -937,16 +983,39 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
   // TODO(weihsu), b/250988697: moved bootconfig_supported and hctr2_supported
   // into each instance, but target_arch is still in todo
   // target_arch should be in instance later
-  auto vmm = GetVmManager(vm_manager_vec[0], guest_configs[0].target_arch);
+  auto vmm_mode = CF_EXPECT(ParseVmm(vm_manager_vec[0]));
+  auto vmm = GetVmManager(vmm_mode, guest_configs[0].target_arch);
   if (!vmm) {
     LOG(FATAL) << "Invalid vm_manager: " << vm_manager_vec[0];
   }
-  tmp_config_obj.set_vm_manager(vm_manager_vec[0]);
+  tmp_config_obj.set_vm_manager(vmm_mode);
   tmp_config_obj.set_ap_vm_manager(vm_manager_vec[0] + "_openwrt");
 
-  auto secure_hals = android::base::Split(FLAGS_secure_hals, ",");
+  // TODO: schuffelen - fix behavior on riscv64
+  if (guest_configs[0].target_arch == Arch::RiscV64) {
+    static constexpr char kRiscv64Secure[] = "keymint,gatekeeper,oemlock";
+    SetCommandLineOptionWithMode("secure_hals", kRiscv64Secure,
+                                 google::FlagSettingMode::SET_FLAGS_DEFAULT);
+  } else {
+    static constexpr char kDefaultSecure[] =
+        "oemlock,guest_keymint_insecure,guest_gatekeeper_insecure";
+    SetCommandLineOptionWithMode("secure_hals", kDefaultSecure,
+                                 google::FlagSettingMode::SET_FLAGS_DEFAULT);
+  }
+  auto secure_hals_strs =
+      android::base::Tokenize(FLAGS_secure_hals, ",:;|/\\+");
   tmp_config_obj.set_secure_hals(
-      std::set<std::string>(secure_hals.begin(), secure_hals.end()));
+      std::set<std::string>(secure_hals_strs.begin(), secure_hals_strs.end()));
+  auto secure_hals = tmp_config_obj.secure_hals();
+  CF_EXPECT(!secure_hals.count(SecureHal::HostKeymintSecure) ||
+                !secure_hals.count(SecureHal::HostKeymintInsecure),
+            "Choose at most one host keymint implementation");
+  CF_EXPECT(!secure_hals.count(SecureHal::HostGatekeeperSecure) ||
+                !secure_hals.count(SecureHal::HostGatekeeperInsecure),
+            "Choose at most one host gatekeeper implementation");
+  CF_EXPECT(!secure_hals.count(SecureHal::HostOemlockSecure) ||
+                !secure_hals.count(SecureHal::HostOemlockInsecure),
+            "Choose at most one host oemlock implementation");
 
   tmp_config_obj.set_extra_kernel_cmdline(FLAGS_extra_kernel_cmdline);
 
@@ -1029,6 +1098,8 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
       camera_server_port));
   std::vector<int> vsock_guest_cid_vec = CF_EXPECT(GET_FLAG_INT_VALUE(
       vsock_guest_cid));
+  std::vector<std::string> vsock_guest_group_vec =
+      CF_EXPECT(GET_FLAG_STR_VALUE(vsock_guest_group));
   std::vector<int> cpus_vec = CF_EXPECT(GET_FLAG_INT_VALUE(cpus));
   std::vector<int> blank_data_image_mb_vec = CF_EXPECT(GET_FLAG_INT_VALUE(
       blank_data_image_mb));
@@ -1056,6 +1127,7 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
       modem_simulator_sim_type));
   std::vector<bool> console_vec = CF_EXPECT(GET_FLAG_BOOL_VALUE(console));
   std::vector<bool> enable_audio_vec = CF_EXPECT(GET_FLAG_BOOL_VALUE(enable_audio));
+  std::vector<bool> enable_usb_vec = CF_EXPECT(GET_FLAG_BOOL_VALUE(enable_usb));
   std::vector<bool> start_gnss_proxy_vec = CF_EXPECT(GET_FLAG_BOOL_VALUE(
       start_gnss_proxy));
   std::vector<bool> enable_bootanimation_vec =
@@ -1102,6 +1174,14 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
   std::map<int, std::string> calculated_gpu_mode_vec;
   std::vector<std::string> gpu_vhost_user_mode_vec =
       CF_EXPECT(GET_FLAG_STR_VALUE(gpu_vhost_user_mode));
+  std::vector<std::string> gpu_renderer_features_vec =
+      CF_EXPECT(GET_FLAG_STR_VALUE(gpu_renderer_features));
+  std::vector<std::string> gpu_context_types_vec =
+      CF_EXPECT(GET_FLAG_STR_VALUE(gpu_context_types));
+  std::vector<std::string> guest_vulkan_driver_vec =
+      CF_EXPECT(GET_FLAG_STR_VALUE(guest_vulkan_driver));
+  std::vector<std::string> frames_socket_path_vec =
+      CF_EXPECT(GET_FLAG_STR_VALUE(frames_socket_path));
 
   std::vector<std::string> gpu_capture_binary_vec =
       CF_EXPECT(GET_FLAG_STR_VALUE(gpu_capture_binary));
@@ -1139,10 +1219,10 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
       CF_EXPECT(GET_FLAG_BOOL_VALUE(crosvm_use_rng));
   std::vector<bool> use_pmem_vec = CF_EXPECT(GET_FLAG_BOOL_VALUE(use_pmem));
   const bool restore_from_snapshot = !std::string(FLAGS_snapshot_path).empty();
-  std::vector<bool> sock_vsock_proxy_wait_adbd_vec(instance_nums.size(),
-                                                   !restore_from_snapshot);
   std::vector<std::string> device_external_network_vec =
       CF_EXPECT(GET_FLAG_STR_VALUE(device_external_network));
+
+  std::vector<bool> fail_fast_vec = CF_EXPECT(GET_FLAG_BOOL_VALUE(fail_fast));
 
   std::vector<std::string> mcu_config_vec = CF_EXPECT(GET_FLAG_STR_VALUE(mcu_config_path));
 
@@ -1170,8 +1250,8 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
   if (FLAGS_casimir_instance_num > 0) {
     casimir_instance_num = FLAGS_casimir_instance_num - 1;
   }
-  tmp_config_obj.set_casimir_nci_port(7100 + casimir_instance_num);
-  tmp_config_obj.set_casimir_rf_port(8100 + casimir_instance_num);
+  tmp_config_obj.set_casimir_nci_port(7800 + casimir_instance_num);
+  tmp_config_obj.set_casimir_rf_port(7900 + casimir_instance_num);
   LOG(DEBUG) << "casimir_instance_num: " << casimir_instance_num;
   LOG(DEBUG) << "launch casimir: " << (FLAGS_casimir_instance_num <= 0);
 
@@ -1211,6 +1291,16 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
   tmp_config_obj.set_straced_host_executables(straced_set);
 
   tmp_config_obj.set_host_sandbox(FLAGS_enable_host_sandbox);
+
+  auto vhal_proxy_server_instance_num = *instance_nums.begin() - 1;
+  if (FLAGS_vhal_proxy_server_instance_num > 0) {
+    vhal_proxy_server_instance_num = FLAGS_vhal_proxy_server_instance_num - 1;
+  }
+  tmp_config_obj.set_vhal_proxy_server_port(9300 +
+                                            vhal_proxy_server_instance_num);
+  LOG(DEBUG) << "launch vhal proxy server: "
+             << (FLAGS_enable_vhal_proxy_server &&
+                 vhal_proxy_server_instance_num <= 0);
 
   // Environment specific configs
   // Currently just setting for the default environment
@@ -1274,13 +1364,12 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     instance.set_crosvm_use_balloon(use_balloon_vec[instance_index]);
     instance.set_crosvm_use_rng(use_rng_vec[instance_index]);
     instance.set_use_pmem(use_pmem_vec[instance_index]);
-    instance.set_sock_vsock_proxy_wait_adbd_start(
-        sock_vsock_proxy_wait_adbd_vec[instance_index]);
     instance.set_bootconfig_supported(guest_configs[instance_index].bootconfig_supported);
     instance.set_filename_encryption_mode(
       guest_configs[instance_index].hctr2_supported ? "hctr2" : "cts");
     instance.set_use_allocd(use_allocd_vec[instance_index]);
     instance.set_enable_audio(enable_audio_vec[instance_index]);
+    instance.set_enable_usb(enable_usb_vec[instance_index]);
     instance.set_enable_gnss_grpc_proxy(start_gnss_proxy_vec[instance_index]);
     instance.set_enable_bootanimation(enable_bootanimation_vec[instance_index]);
 
@@ -1306,18 +1395,18 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     instance.set_seccomp_policy_dir(seccomp_policy_dir_vec[instance_index]);
     instance.set_qemu_binary_dir(qemu_binary_dir_vec[instance_index]);
 
-    // wifi, bluetooth, connectivity setup
-    instance.set_ril_dns(ril_dns_vec[instance_index]);
+    // wifi, bluetooth, Thread, connectivity setup
 
     instance.set_vhost_net(vhost_net_vec[instance_index]);
+    instance.set_openthread_node_id(num);
 
-    // end of wifi, bluetooth, connectivity setup
+    // end of wifi, bluetooth, Thread, connectivity setup
 
     if (vhost_user_vsock_vec[instance_index] == kVhostUserVsockModeAuto) {
       std::set<Arch> default_on_arch = {Arch::Arm64};
       if (guest_configs[instance_index].vhost_user_vsock) {
         instance.set_vhost_user_vsock(true);
-      } else if (tmp_config_obj.vm_manager() == CrosvmManager::name() &&
+      } else if (tmp_config_obj.vm_manager() == VmmMode::kCrosvm &&
                  default_on_arch.find(
                      guest_configs[instance_index].target_arch) !=
                      default_on_arch.end()) {
@@ -1327,7 +1416,7 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
       }
     } else if (vhost_user_vsock_vec[instance_index] ==
                kVhostUserVsockModeTrue) {
-      CHECK(tmp_config_obj.vm_manager() == CrosvmManager::name())
+      CHECK(tmp_config_obj.vm_manager() == VmmMode::kCrosvm)
           << "For now, only crosvm supports vhost_user_vsock";
       instance.set_vhost_user_vsock(true);
     } else if (vhost_user_vsock_vec[instance_index] ==
@@ -1355,6 +1444,10 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
       // a base (vsock) port is like 9600 for modem_simulator, etc
       return cuttlefish::GetVsockServerPort(base_port, vsock_guest_cid);
     };
+
+    const auto vsock_guest_group = vsock_guest_group_vec[instance_index];
+    instance.set_vsock_guest_group(vsock_guest_group);
+
     instance.set_session_id(iface_config.mobile_tap.session_id);
 
     instance.set_cpus(cpus_vec[instance_index]);
@@ -1375,6 +1468,7 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     instance.set_kgdb(console_vec[instance_index] && kgdb_vec[instance_index]);
     instance.set_blank_data_image_mb(blank_data_image_mb_vec[instance_index]);
     instance.set_gdb_port(gdb_port_vec[instance_index]);
+    instance.set_fail_fast(fail_fast_vec[instance_index]);
 
     std::optional<std::vector<CuttlefishConfig::DisplayConfig>>
         binding_displays_configs;
@@ -1443,6 +1537,9 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     instance.set_ethernet_bridge_name("cvd-ebr");
     instance.set_mobile_tap_name(iface_config.mobile_tap.name);
 
+    CF_EXPECT(ConfigureNetworkSettings(ril_dns_vec[instance_index],
+                                       const_instance, instance));
+
     if (NetworkInterfaceExists(iface_config.non_bridged_wireless_tap.name) &&
         tmp_config_obj.virtio_mac80211_hwsim()) {
       instance.set_use_bridged_wifi_tap(false);
@@ -1480,15 +1577,16 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     instance.set_ethernet_ipv6(Ipv6ToString(ethernet_ipv6));
 
     instance.set_tombstone_receiver_port(calc_vsock_port(6600));
-    instance.set_audiocontrol_server_port(9410);  /* OK to use the same port number across instances */
-    instance.set_config_server_port(calc_vsock_port(6800));
+    instance.set_audiocontrol_server_port(
+        9410); /* OK to use the same port number across instances */
     instance.set_lights_server_port(calc_vsock_port(6900));
 
     // gpu related settings
     const std::string gpu_mode = CF_EXPECT(ConfigureGpuSettings(
         gpu_mode_vec[instance_index], gpu_vhost_user_mode_vec[instance_index],
-        vm_manager_vec[instance_index], guest_configs[instance_index],
-        instance));
+        gpu_renderer_features_vec[instance_index],
+        gpu_context_types_vec[instance_index], vmm_mode,
+        guest_configs[instance_index], instance));
     calculated_gpu_mode_vec[instance_index] = gpu_mode_vec[instance_index];
 
     instance.set_restart_subprocesses(restart_subprocesses_vec[instance_index]);
@@ -1524,6 +1622,16 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
 
     instance.set_enable_gpu_udmabuf(enable_gpu_udmabuf_vec[instance_index]);
 
+    instance.set_gpu_context_types(gpu_context_types_vec[instance_index]);
+    instance.set_guest_vulkan_driver(guest_vulkan_driver_vec[instance_index]);
+
+    if (!frames_socket_path_vec[instance_index].empty()) {
+      instance.set_frames_socket_path(frames_socket_path_vec[instance_index]);
+    } else {
+      instance.set_frames_socket_path(
+          const_instance.PerInstanceInternalUdsPath("frames.sock"));
+    }
+
     // 1. Keep original code order SetCommandLineOptionWithMode("enable_sandbox")
     // then set_enable_sandbox later.
     // 2. SetCommandLineOptionWithMode condition: if gpu_mode or console,
@@ -1558,7 +1666,7 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     bool os_overlay = true;
     os_overlay &= !protected_vm_vec[instance_index];
     // Gem5 already uses CoW wrappers around disk images
-    os_overlay &= vm_manager_vec[0] != Gem5Manager::name();
+    os_overlay &= vmm_mode != VmmMode::kGem5;
     os_overlay &= FLAGS_use_overlay;
     if (os_overlay) {
       auto path = const_instance.PerInstancePath("overlay.img");
@@ -1569,13 +1677,14 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
 
     bool persistent_disk = true;
     persistent_disk &= !protected_vm_vec[instance_index];
-    persistent_disk &= vm_manager_vec[0] != Gem5Manager::name();
+    persistent_disk &= vmm_mode != VmmMode::kGem5;
     if (persistent_disk) {
 #ifdef __APPLE__
       const std::string persistent_composite_img_base =
           "persistent_composite.img";
 #else
-      const bool is_vm_qemu_cli = (tmp_config_obj.vm_manager() == "qemu_cli");
+      const bool is_vm_qemu_cli =
+          (tmp_config_obj.vm_manager() == VmmMode::kQemu);
       const std::string persistent_composite_img_base =
           is_vm_qemu_cli ? "persistent_composite_overlay.img"
                          : "persistent_composite.img";
@@ -1591,7 +1700,7 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     sdcard &= use_sdcard_vec[instance_index];
     sdcard &= !protected_vm_vec[instance_index];
     if (sdcard) {
-      if (tmp_config_obj.vm_manager() == "qemu_cli") {
+      if (tmp_config_obj.vm_manager() == VmmMode::kQemu) {
         virtual_disk_paths.push_back(const_instance.sdcard_overlay_path());
       } else {
         virtual_disk_paths.push_back(const_instance.sdcard_path());
@@ -1650,6 +1759,9 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
 
     instance.set_start_pica(is_first_instance && !is_uwb_netsim &&
                             FLAGS_pica_instance_num <= 0);
+    instance.set_start_vhal_proxy_server(
+        is_first_instance && FLAGS_enable_vhal_proxy_server &&
+        FLAGS_vhal_proxy_server_instance_num <= 0);
 
     // TODO(b/288987294) Remove this when separating environment is done
     bool instance_start_wmediumd = is_first_instance && start_wmediumd;
@@ -1690,7 +1802,7 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     auto external_network_mode = CF_EXPECT(
         ParseExternalNetworkMode(device_external_network_vec[instance_index]));
     CF_EXPECT(external_network_mode == ExternalNetworkMode::kTap ||
-                  vm_manager_vec[instance_index] == QemuManager::name(),
+                  vmm_mode == VmmMode::kQemu,
               "TODO(b/286284441): slirp only works on QEMU");
     instance.set_external_network_mode(external_network_mode);
 
@@ -1749,7 +1861,8 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
           .ForEnvironment(environment_name);
   CF_EXPECT(CheckSnapshotCompatible(
                 FLAGS_snapshot_compatible &&
-                    (tmp_config_obj.vm_manager() == CrosvmManager::name()),
+                    (tmp_config_obj.vm_manager() == VmmMode::kCrosvm) &&
+                    instance_nums.size() == 1,
                 calculated_gpu_mode_vec),
             "The set of flags is incompatible with snapshot");
 
@@ -1981,23 +2094,27 @@ Result<std::vector<GuestConfig>> GetGuestConfigAndSetDefaults() {
   }
   if (FLAGS_vm_manager == "") {
     if (IsHostCompatible(guest_configs[0].target_arch)) {
-      FLAGS_vm_manager = CrosvmManager::name();
+      FLAGS_vm_manager = ToString(VmmMode::kCrosvm);
     } else {
-      FLAGS_vm_manager = QemuManager::name();
+      FLAGS_vm_manager = ToString(VmmMode::kQemu);
     }
   }
-  // TODO(weihsu), b/250988697:
-  // Currently, all instances should use same vmm
+
   std::vector<std::string> vm_manager_vec =
       android::base::Split(FLAGS_vm_manager, ",");
+
+  // TODO(weihsu), b/250988697:
+  // Currently, all instances should use same vmm
+  auto vmm = CF_EXPECT(ParseVmm(vm_manager_vec[0]));
+
   // get flag default values and store into map
   auto name_to_default_value = CurrentFlagsToDefaultValue();
 
-  if (vm_manager_vec[0] == QemuManager::name()) {
+  if (vmm == VmmMode::kQemu) {
     CF_EXPECT(SetDefaultFlagsForQemu(guest_configs[0].target_arch, name_to_default_value));
-  } else if (vm_manager_vec[0] == CrosvmManager::name()) {
+  } else if (vmm == VmmMode::kCrosvm) {
     CF_EXPECT(SetDefaultFlagsForCrosvm(guest_configs, name_to_default_value));
-  } else if (vm_manager_vec[0] == Gem5Manager::name()) {
+  } else if (vmm == VmmMode::kGem5) {
     // TODO: Get the other architectures working
     if (guest_configs[0].target_arch != Arch::Arm64) {
       return CF_ERR("Gem5 only supports ARM64");
@@ -2006,7 +2123,7 @@ Result<std::vector<GuestConfig>> GetGuestConfigAndSetDefaults() {
   } else {
     return CF_ERR("Unknown Virtual Machine Manager: " << FLAGS_vm_manager);
   }
-  if (vm_manager_vec[0] != Gem5Manager::name()) {
+  if (vmm != VmmMode::kGem5) {
     // After SetCommandLineOptionWithMode in SetDefaultFlagsForCrosvm/Qemu,
     // default flag values changed, need recalculate name_to_default_value
     name_to_default_value = CurrentFlagsToDefaultValue();

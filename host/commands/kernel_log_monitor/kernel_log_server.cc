@@ -43,6 +43,7 @@ constexpr struct {
 enum EventFormat {
   kBare,          // Just an event, no extra data
   kKeyValuePair,  // <stage> <key>=<value>
+  kPrefix,        // <stage> <more data>
 };
 
 constexpr struct {
@@ -51,11 +52,14 @@ constexpr struct {
   EventFormat format;      // how the log message is formatted
 } kStageTable[] = {
     {cuttlefish::kBootStartedMessage, Event::BootStarted, kBare},
+    {cuttlefish::kBootPendingMessage, Event::BootPending, kPrefix},
     {cuttlefish::kBootCompletedMessage, Event::BootCompleted, kBare},
-    {cuttlefish::kBootFailedMessage, Event::BootFailed, kKeyValuePair},
-    {cuttlefish::kMobileNetworkConnectedMessage, Event::MobileNetworkConnected, kBare},
+    {cuttlefish::kBootFailedMessage, Event::BootFailed, kPrefix},
+    {cuttlefish::kMobileNetworkConnectedMessage, Event::MobileNetworkConnected,
+     kBare},
     {cuttlefish::kWifiConnectedMessage, Event::WifiNetworkConnected, kBare},
-    {cuttlefish::kEthernetConnectedMessage, Event::EthernetNetworkConnected, kBare},
+    {cuttlefish::kEthernetConnectedMessage, Event::EthernetNetworkConnected,
+     kBare},
     {cuttlefish::kAdbdStartedMessage, Event::AdbdStarted, kBare},
     {cuttlefish::kFastbootdStartedMessage, Event::FastbootStarted, kBare},
     {cuttlefish::kFastbootStartedMessage, Event::FastbootStarted, kBare},
@@ -77,7 +81,7 @@ void ProcessSubscriptions(
     if (action == monitor::SubscriptionAction::ContinueSubscription) {
       ++idx;
     } else {
-      // Cancel the subscription by swaping it with the last active subscription
+      // Cancel the subscription by swapping it with the last active subscription
       // and decreasing the active subscription count
       --active_subscription_count;
       std::swap((*subscribers)[idx], (*subscribers)[active_subscription_count]);
@@ -117,7 +121,9 @@ bool KernelLogServer::HandleIncomingMessage() {
     LOG(ERROR) << "Could not read kernel logs: " << pipe_fd_->StrError();
     return false;
   }
-  if (ret == 0) return false;
+  if (ret == 0) {
+    return false;
+  }
   // Write the log to a file
   if (log_fd_->Write(buf, ret) < 0) {
     LOG(ERROR) << "Could not write kernel log to file: " << log_fd_->StrError();
@@ -137,7 +143,11 @@ bool KernelLogServer::HandleIncomingMessage() {
         auto pos = line_.find(stage);
         if (std::string::npos != pos) {
           // Log the stage
-          LOG(INFO) << stage;
+          if (format == kPrefix) {
+            LOG(INFO) << line_.substr(pos);
+          } else {
+            LOG(INFO) << stage;
+          }
 
           Json::Value message;
           message["event"] = event;

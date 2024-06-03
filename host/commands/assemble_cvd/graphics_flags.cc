@@ -24,9 +24,8 @@
 #include <google/protobuf/text_format.h>
 
 #include "common/libs/utils/contains.h"
+#include "common/libs/utils/subprocess.h"
 #include "host/libs/config/cuttlefish_config.h"
-#include "host/libs/vm_manager/crosvm_manager.h"
-#include "host/libs/vm_manager/qemu_manager.h"
 
 #ifdef __APPLE__
 #define CF_UNUSED_ON_MACOS [[maybe_unused]]
@@ -39,6 +38,7 @@ namespace {
 
 enum class RenderingMode {
   kNone,
+  kCustom,
   kGuestSwiftShader,
   kGfxstream,
   kGfxstreamGuestAngle,
@@ -62,6 +62,9 @@ Result<RenderingMode> GetRenderingMode(const std::string& mode) {
   }
   if (mode == std::string(kGpuModeGuestSwiftshader)) {
     return RenderingMode::kGuestSwiftShader;
+  }
+  if (mode == std::string(kGpuModeCustom)) {
+    return RenderingMode::kCustom;
   }
   if (mode == std::string(kGpuModeNone)) {
     return RenderingMode::kNone;
@@ -228,11 +231,11 @@ GetNeededVhostUserGpuHostRendererFeatures(
 
 #ifndef __APPLE__
 Result<std::string> SelectGpuMode(
-    const std::string& gpu_mode_arg, const std::string& vm_manager,
+    const std::string& gpu_mode_arg, VmmMode vmm,
     const GuestConfig& guest_config,
     const gfxstream::proto::GraphicsAvailability& graphics_availability) {
   if (gpu_mode_arg != kGpuModeAuto && gpu_mode_arg != kGpuModeDrmVirgl &&
-      gpu_mode_arg != kGpuModeGfxstream &&
+      gpu_mode_arg != kGpuModeCustom && gpu_mode_arg != kGpuModeGfxstream &&
       gpu_mode_arg != kGpuModeGfxstreamGuestAngle &&
       gpu_mode_arg != kGpuModeGfxstreamGuestAngleHostSwiftShader &&
       gpu_mode_arg != kGpuModeGuestSwiftshader &&
@@ -256,8 +259,8 @@ Result<std::string> SelectGpuMode(
       LOG(INFO) << "GPU auto mode: detected prerequisites for accelerated "
                 << "rendering support.";
 
-      if (vm_manager == vm_manager::QemuManager::name() && !UseQemu8()) {
-        LOG(INFO) << "Not using QEMU8: selecting guest swiftshader";
+      if (vmm == VmmMode::kQemu && !UseQemuPrebuilt()) {
+        LOG(INFO) << "Not using QEMU prebuilt (QEMU 8+): selecting guest swiftshader";
         return kGpuModeGuestSwiftshader;
       } else if (!guest_config.gfxstream_supported) {
         LOG(INFO) << "GPU auto mode: guest does not support gfxstream, "
@@ -286,8 +289,8 @@ Result<std::string> SelectGpuMode(
                     "--gpu_mode=auto or --gpu_mode=guest_swiftshader.";
     }
 
-    if (vm_manager == vm_manager::QemuManager::name() && !UseQemu8()) {
-      LOG(INFO) << "Not using QEMU8: selecting guest swiftshader";
+    if (vmm == VmmMode::kQemu && !UseQemuPrebuilt()) {
+      LOG(INFO) << "Not using QEMU prebuilt (QEMU 8+): selecting guest swiftshader";
       return kGpuModeGuestSwiftshader;
     }
   }
@@ -297,7 +300,7 @@ Result<std::string> SelectGpuMode(
 
 Result<bool> SelectGpuVhostUserMode(const std::string& gpu_mode,
                                     const std::string& gpu_vhost_user_mode_arg,
-                                    const std::string& vm_manager) {
+                                    VmmMode vmm) {
   CF_EXPECT(gpu_vhost_user_mode_arg == kGpuVhostUserModeAuto ||
             gpu_vhost_user_mode_arg == kGpuVhostUserModeOn ||
             gpu_vhost_user_mode_arg == kGpuVhostUserModeOff);
@@ -309,9 +312,9 @@ Result<bool> SelectGpuVhostUserMode(const std::string& gpu_mode,
       return false;
     }
 
-    if (vm_manager != vm_manager::CrosvmManager::name()) {
-      LOG(INFO) << "GPU vhost user auto mode: not yet supported with "
-                << vm_manager << ". Not enabling vhost user gpu.";
+    if (vmm != VmmMode::kCrosvm) {
+      LOG(INFO) << "GPU vhost user auto mode: not yet supported with " << vmm
+                << ". Not enabling vhost user gpu.";
       return false;
     }
 
@@ -389,8 +392,49 @@ const std::string kGfxstreamTransportAsg = "virtio-gpu-asg";
 const std::string kGfxstreamTransportPipe = "virtio-gpu-pipe";
 
 CF_UNUSED_ON_MACOS
+Result<std::unordered_map<std::string, bool>> ParseGfxstreamRendererFlag(
+    const std::string& gpu_renderer_features_arg) {
+  std::unordered_map<std::string, bool> features;
+
+  for (const std::string& feature :
+       android::base::Split(gpu_renderer_features_arg, ";")) {
+    if (feature.empty()) {
+      continue;
+    }
+
+    const std::vector<std::string> feature_parts =
+        android::base::Split(feature, ":");
+    CF_EXPECT(feature_parts.size() == 2,
+              "Failed to parse renderer features from --gpu_renderer_features="
+                  << gpu_renderer_features_arg);
+
+    const std::string& feature_name = feature_parts[0];
+    const std::string& feature_enabled = feature_parts[1];
+    CF_EXPECT(feature_enabled == "enabled" || feature_enabled == "disabled",
+              "Failed to parse renderer features from --gpu_renderer_features="
+                  << gpu_renderer_features_arg);
+
+    features[feature_name] = (feature_enabled == "enabled");
+  }
+
+  return features;
+}
+
+CF_UNUSED_ON_MACOS
+std::string GetGfxstreamRendererFeaturesString(
+    const std::unordered_map<std::string, bool>& features) {
+  std::vector<std::string> parts;
+  for (const auto& [feature_name, feature_enabled] : features) {
+    parts.push_back(feature_name + ":" +
+                    (feature_enabled ? "enabled" : "disabled"));
+  }
+  return android::base::Join(parts, ",");
+}
+
+CF_UNUSED_ON_MACOS
 Result<void> SetGfxstreamFlags(
-    const std::string& gpu_mode, const GuestConfig& guest_config,
+    const std::string& gpu_mode, const std::string& gpu_renderer_features_arg,
+    const GuestConfig& guest_config,
     const gfxstream::proto::GraphicsAvailability& availability,
     CuttlefishConfig::MutableInstanceSpecific& instance) {
   std::string gfxstream_transport = kGfxstreamTransportAsg;
@@ -412,19 +456,45 @@ Result<void> SetGfxstreamFlags(
               "--gpu_mode=gfxstream_guest_angle is broken on AMD GPUs.");
   }
 
+  std::unordered_map<std::string, bool> features;
+  // Apply features from host/mode requirements.
+  if (gpu_mode == kGpuModeGfxstreamGuestAngleHostSwiftShader) {
+    features["VulkanUseDedicatedAhbMemoryType"] = true;
+  }
+  // Apply feature overrides from --gpu_renderer_features.
+  const auto feature_overrides =
+      CF_EXPECT(ParseGfxstreamRendererFlag(gpu_renderer_features_arg));
+  for (const auto& [feature_name, feature_enabled] : feature_overrides) {
+    LOG(DEBUG) << "GPU renderer feature " << feature_name << " overridden to "
+               << (feature_enabled ? "enabled" : "disabled")
+               << " via command line argument.";
+    features[feature_name] = feature_enabled;
+  }
+  // Convert features back to a string for passing to the VMM.
+  const std::string features_string =
+      GetGfxstreamRendererFeaturesString(features);
+  if (!features_string.empty()) {
+    instance.set_gpu_renderer_features(features_string);
+  }
+
   instance.set_gpu_gfxstream_transport(gfxstream_transport);
   return {};
 }
 
 }  // namespace
 
+static std::unordered_set<std::string> kSupportedGpuContexts{
+    "gfxstream-vulkan", "gfxstream-composer", "cross-domain", "magma"};
+
 Result<std::string> ConfigureGpuSettings(
     const std::string& gpu_mode_arg, const std::string& gpu_vhost_user_mode_arg,
-    const std::string& vm_manager, const GuestConfig& guest_config,
+    const std::string& gpu_renderer_features_arg,
+    std::string& gpu_context_types_arg, VmmMode vmm,
+    const GuestConfig& guest_config,
     CuttlefishConfig::MutableInstanceSpecific& instance) {
 #ifdef __APPLE__
   (void)gpu_vhost_user_mode_arg;
-  (void)vm_manager;
+  (void)vmm;
   (void)guest_config;
   CF_EXPECT(gpu_mode_arg == kGpuModeAuto ||
             gpu_mode_arg == kGpuModeGuestSwiftshader ||
@@ -450,16 +520,24 @@ Result<std::string> ConfigureGpuSettings(
                << graphics_availability.DebugString();
   }
 
-  const std::string gpu_mode = CF_EXPECT(SelectGpuMode(
-      gpu_mode_arg, vm_manager, guest_config, graphics_availability));
-  const bool enable_gpu_vhost_user = CF_EXPECT(
-      SelectGpuVhostUserMode(gpu_mode, gpu_vhost_user_mode_arg, vm_manager));
+  const std::string gpu_mode = CF_EXPECT(
+      SelectGpuMode(gpu_mode_arg, vmm, guest_config, graphics_availability));
+  const bool enable_gpu_vhost_user =
+      CF_EXPECT(SelectGpuVhostUserMode(gpu_mode, gpu_vhost_user_mode_arg, vmm));
 
   if (gpu_mode == kGpuModeGfxstream ||
       gpu_mode == kGpuModeGfxstreamGuestAngle ||
       gpu_mode == kGpuModeGfxstreamGuestAngleHostSwiftShader) {
-    CF_EXPECT(SetGfxstreamFlags(gpu_mode, guest_config, graphics_availability,
-                                instance));
+    CF_EXPECT(SetGfxstreamFlags(gpu_mode, gpu_renderer_features_arg,
+                                guest_config, graphics_availability, instance));
+  }
+
+  if (gpu_mode == kGpuModeCustom) {
+    auto requested_types = android::base::Split(gpu_context_types_arg, ":");
+    for (const std::string& requested : requested_types) {
+      CF_EXPECT(kSupportedGpuContexts.count(requested) == 1,
+                "unsupported context type: " + requested);
+    }
   }
 
   const auto angle_features = CF_EXPECT(GetNeededAngleFeatures(

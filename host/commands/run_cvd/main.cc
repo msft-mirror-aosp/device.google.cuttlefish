@@ -127,7 +127,6 @@ fruit::Component<> runCvdComponent(
       .bindInstance(*environment)
 #ifdef __linux__
       .install(AutoCmd<AutomotiveProxyService>::Component)
-      .install(AutoCmd<ConfigServer>::Component)
       .install(AutoCmd<ModemSimulator>::Component)
       .install(AutoCmd<TombstoneReceiver>::Component)
       .install(McuComponent)
@@ -135,6 +134,7 @@ fruit::Component<> runCvdComponent(
       .install(VhostDeviceVsockComponent)
       .install(WmediumdServerComponent)
       .install(launchStreamerComponent)
+      .install(AutoCmd<VhalProxyServer>::Component)
 #endif
       .install(AdbConfigComponent)
       .install(AdbConfigFragmentComponent)
@@ -164,7 +164,7 @@ fruit::Component<> runCvdComponent(
       .install(RootCanalComponent)
       .install(AutoCmd<Casimir>::Component)
       .install(NetsimServerComponent)
-      .install(AutoSecureEnvFiles::Component)
+      .install(AutoSnapshotControlFiles::Component)
       .install(AutoCmd<SecureEnv>::Component)
       .install(serverLoopComponent)
       .install(WebRtcRecorderComponent)

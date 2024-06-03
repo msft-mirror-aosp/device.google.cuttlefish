@@ -1,4 +1,4 @@
-/*
+/*crosvm
  * Copyright (C) 2019 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,6 +16,7 @@
 
 #include "host/libs/vm_manager/crosvm_manager.h"
 
+#include <poll.h>
 #include <signal.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -62,7 +63,7 @@ CrosvmManager::ConfigureGraphics(
     const CuttlefishConfig::InstanceSpecific& instance) {
   // Override the default HAL search paths in all cases. We do this because
   // the HAL search path allows for fallbacks, and fallbacks in conjunction
-  // with properities lead to non-deterministic behavior while loading the
+  // with properties lead to non-deterministic behavior while loading the
   // HALs.
 
   std::unordered_map<std::string, std::string> bootconfig_args;
@@ -112,6 +113,17 @@ CrosvmManager::ConfigureGraphics(
         {"androidboot.hardware.egl", gles_impl},
         {"androidboot.hardware.vulkan", "ranchu"},
         {"androidboot.hardware.gltransport", gfxstream_transport},
+        {"androidboot.opengles.version", "196609"},  // OpenGL ES 3.1
+    };
+  } else if (instance.gpu_mode() == kGpuModeCustom) {
+    bootconfig_args = {
+        {"androidboot.cpuvulkan.version", "0"},
+        {"androidboot.hardware.gralloc", "minigbm"},
+        {"androidboot.hardware.hwcomposer", instance.hwcomposer()},
+        {"androidboot.hardware.hwcomposer.display_finder_mode", "drm"},
+        {"androidboot.hardware.egl", "angle"},
+        {"androidboot.hardware.vulkan", instance.guest_vulkan_driver()},
+        {"androidboot.hardware.gltransport", "virtio-gpu-asg"},
         {"androidboot.opengles.version", "196609"},  // OpenGL ES 3.1
     };
   } else if (instance.gpu_mode() == kGpuModeNone) {
@@ -201,12 +213,6 @@ Result<VhostUserDeviceCommands> BuildVhostUserGpu(
 
   auto gpu_device_socket_path =
       instance.PerInstanceInternalUdsPath("vhost-user-gpu-socket");
-  auto gpu_device_socket = SharedFD::SocketLocalServer(
-      gpu_device_socket_path.c_str(), false, SOCK_STREAM, 0777);
-  CF_EXPECT(gpu_device_socket->IsOpen(),
-            "Failed to create socket for crosvm vhost user gpu's control"
-                << gpu_device_socket->StrError());
-
   auto gpu_device_logs_path =
       instance.PerInstanceInternalPath("crosvm_vhost_user_gpu.fifo");
   auto gpu_device_logs = CF_EXPECT(SharedFD::Fifo(gpu_device_logs_path, 0666));
@@ -214,23 +220,26 @@ Result<VhostUserDeviceCommands> BuildVhostUserGpu(
   Command gpu_device_logs_cmd(HostBinaryPath("log_tee"));
   gpu_device_logs_cmd.AddParameter("--process_name=crosvm_gpu");
   gpu_device_logs_cmd.AddParameter("--log_fd_in=", gpu_device_logs);
-  gpu_device_logs_cmd.SetStopper([](Subprocess* proc) {
+  gpu_device_logs_cmd.SetStopper(KillSubprocessFallback([](Subprocess* proc) {
     // Ask nicely so that log_tee gets a chance to process all the logs.
-    int rval = kill(proc->pid(), SIGINT);
-    if (rval != 0) {
-      LOG(ERROR) << "Failed to stop log_tee nicely, attempting to KILL";
-      return KillSubprocess(proc) == StopperResult::kStopSuccess
-                 ? StopperResult::kStopCrash
-                 : StopperResult::kStopFailure;
-    }
-    return StopperResult::kStopSuccess;
-  });
+    // TODO: b/335934714 - Make sure the process actually exits
+    bool res = kill(proc->pid(), SIGINT) == 0;
+    return res ? StopperResult::kStopSuccess : StopperResult::kStopFailure;
+  }));
 
   const std::string crosvm_path = CF_EXPECT(CrosvmPathForVhostUserGpu(config));
 
-  Command gpu_device_cmd(crosvm_path);
-  gpu_device_cmd.AddParameter("device");
-  gpu_device_cmd.AddParameter("gpu");
+  CrosvmBuilder gpu_device_cmd;
+
+  // NOTE: The "main" crosvm process returns a kCrosvmVmResetExitCode when the
+  // guest exits but the "gpu" crosvm just exits cleanly with 0 after the "main"
+  // crosvm disconnects.
+  gpu_device_cmd.ApplyProcessRestarter(crosvm_path,
+                                       /*first_time_argument=*/"",
+                                       /*exit_code=*/0);
+
+  gpu_device_cmd.Cmd().AddParameter("device");
+  gpu_device_cmd.Cmd().AddParameter("gpu");
 
   const auto& gpu_mode = instance.gpu_mode();
   CF_EXPECT(
@@ -298,28 +307,37 @@ Result<VhostUserDeviceCommands> BuildVhostUserGpu(
     }
     gpu_params_json["displays"] = displays;
 
-    gpu_device_cmd.AddParameter("--wayland-sock=",
-                                instance.frames_socket_path());
+    gpu_device_cmd.Cmd().AddParameter("--wayland-sock=",
+                                      instance.frames_socket_path());
   }
 
   // Connect device to main crosvm:
-  gpu_device_cmd.AddParameter("--socket=", gpu_device_socket_path);
+  gpu_device_cmd.Cmd().AddParameter("--socket=", gpu_device_socket_path);
+
+  main_crosvm_cmd->AddPrerequisite([gpu_device_socket_path]() -> Result<void> {
+#ifdef __linux__
+    return WaitForUnixSocketListeningWithoutConnect(gpu_device_socket_path,
+                                                    /*timeoutSec=*/30);
+#else
+    return CF_ERR("Unhandled check if vhost user gpu ready.");
+#endif
+  });
   main_crosvm_cmd->AddParameter(
       "--vhost-user=gpu,pci-address=", gpu_pci_address,
       ",socket=", gpu_device_socket_path);
 
-  gpu_device_cmd.AddParameter("--params");
-  gpu_device_cmd.AddParameter(ToSingleLineString(gpu_params_json));
+  gpu_device_cmd.Cmd().AddParameter("--params");
+  gpu_device_cmd.Cmd().AddParameter(ToSingleLineString(gpu_params_json));
 
-  MaybeConfigureVulkanIcd(config, &gpu_device_cmd);
+  MaybeConfigureVulkanIcd(config, &gpu_device_cmd.Cmd());
 
-  gpu_device_cmd.RedirectStdIO(Subprocess::StdIOChannel::kStdOut,
-                               gpu_device_logs);
-  gpu_device_cmd.RedirectStdIO(Subprocess::StdIOChannel::kStdErr,
-                               gpu_device_logs);
+  gpu_device_cmd.Cmd().RedirectStdIO(Subprocess::StdIOChannel::kStdOut,
+                                     gpu_device_logs);
+  gpu_device_cmd.Cmd().RedirectStdIO(Subprocess::StdIOChannel::kStdErr,
+                                     gpu_device_logs);
 
   return VhostUserDeviceCommands{
-      .device_cmd = std::move(gpu_device_cmd),
+      .device_cmd = std::move(gpu_device_cmd.Cmd()),
       .device_logs_cmd = std::move(gpu_device_logs_cmd),
   };
 }
@@ -343,11 +361,18 @@ Result<void> ConfigureGpu(const CuttlefishConfig& config, Command* crosvm_cmd) {
   const std::string gpu_udmabuf_string =
       instance.enable_gpu_udmabuf() ? ",udmabuf=true" : "";
 
+  const std::string gpu_renderer_features = instance.gpu_renderer_features();
+  const std::string gpu_renderer_features_param =
+      !gpu_renderer_features.empty()
+          ? ",renderer-features=\"" + gpu_renderer_features + "\""
+          : "";
+
   const std::string gpu_common_string =
       fmt::format(",pci-address=00:{:0>2x}.0", VmManager::kGpuPciSlotNum) +
       gpu_udmabuf_string + gpu_pci_bar_size;
   const std::string gpu_common_3d_string =
-      gpu_common_string + ",egl=true,surfaceless=true,glx=false" + gles_string;
+      gpu_common_string + ",egl=true,surfaceless=true,glx=false" + gles_string +
+      gpu_renderer_features_param;
 
   if (gpu_mode == kGpuModeGuestSwiftshader) {
     crosvm_cmd->AddParameter("--gpu=backend=2D", gpu_common_string);
@@ -364,6 +389,10 @@ Result<void> ConfigureGpu(const CuttlefishConfig& config, Command* crosvm_cmd) {
     crosvm_cmd->AddParameter(
         "--gpu=context-types=gfxstream-vulkan:gfxstream-composer",
         gpu_common_3d_string);
+  } else if (gpu_mode == kGpuModeCustom) {
+    const std::string gpu_context_types =
+        "--gpu=context-types=" + instance.gpu_context_types();
+    crosvm_cmd->AddParameter(gpu_context_types, gpu_common_string);
   }
 
   MaybeConfigureVulkanIcd(config, crosvm_cmd);
@@ -441,7 +470,9 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
   // Disable USB passthrough. It isn't needed for any key use cases and it is
   // not compatible with crosvm suspend-resume support yet (b/266622743).
   // TODO: Allow it to be turned back on using a flag.
-  crosvm_cmd.Cmd().AddParameter("--no-usb");
+  if (!instance.enable_usb()) {
+    crosvm_cmd.Cmd().AddParameter("--no-usb");
+  }
 
   crosvm_cmd.Cmd().AddParameter("--core-scheduling=false");
 
@@ -516,7 +547,7 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
         instance.boot_flow() ==
             CuttlefishConfig::InstanceSpecific::BootFlow::ChromeOsDisk;
     auto touch_type_parameter =
-        is_chromeos ? "--single-touch=" : "--multi-touch=";
+        is_chromeos ? "single-touch" : "multi-touch";
 
     auto display_configs = instance.display_configs();
     CF_EXPECT(display_configs.size() >= 1);
@@ -524,27 +555,27 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
     int touch_idx = 0;
     for (auto& display_config : display_configs) {
       crosvm_cmd.Cmd().AddParameter(
-          touch_type_parameter,
-          "path=", instance.touch_socket_path(touch_idx++),
+          "--input=", touch_type_parameter, "[path=",
+          instance.touch_socket_path(touch_idx++),
           ",width=", display_config.width,
-          ",height=", display_config.height);
+          ",height=", display_config.height, "]");
     }
     auto touchpad_configs = instance.touchpad_configs();
     for (int i = 0; i < touchpad_configs.size(); ++i) {
       auto touchpad_config = touchpad_configs[i];
       crosvm_cmd.Cmd().AddParameter(
-          touch_type_parameter,
-          "path=", instance.touch_socket_path(touch_idx++),
+          "--input=", touch_type_parameter, "[path=",
+          instance.touch_socket_path(touch_idx++),
           ",width=", touchpad_config.width,
           ",height=", touchpad_config.height,
-          ",name=", kTouchpadDefaultPrefix, i);
+          ",name=", kTouchpadDefaultPrefix, i, "]");
     }
-    crosvm_cmd.Cmd().AddParameter("--rotary=",
-                                  instance.rotary_socket_path());
-    crosvm_cmd.Cmd().AddParameter("--keyboard=",
-                                  instance.keyboard_socket_path());
-    crosvm_cmd.Cmd().AddParameter("--switches=",
-                                  instance.switches_socket_path());
+    crosvm_cmd.Cmd().AddParameter("--input=rotary[path=",
+                                  instance.rotary_socket_path(), "]");
+    crosvm_cmd.Cmd().AddParameter("--input=keyboard[path=",
+                                  instance.keyboard_socket_path(), "]");
+    crosvm_cmd.Cmd().AddParameter("--input=switches[path=",
+                                  instance.switches_socket_path(), "]");
   }
 
   SharedFD wifi_tap;
@@ -552,10 +583,16 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
   // having to pass arguments to crosvm via a wrapper script.
 #ifdef __linux__
   if (!gpu_capture_enabled) {
-    // The ordering of tap devices is important. Make sure any change here
-    // is reflected in ethprime u-boot variable
-    crosvm_cmd.AddTap(instance.mobile_tap_name(), instance.mobile_mac());
-    crosvm_cmd.AddTap(instance.ethernet_tap_name(), instance.ethernet_mac());
+    // The PCI ordering of tap devices is important. Make sure any change here
+    // is reflected in ethprime u-boot variable.
+    // TODO(b/218364216, b/322862402): Crosvm occupies 32 PCI devices first and only then uses PCI
+    // functions which may break order. The final solution is going to be a PCI allocation strategy
+    // that will guarantee the ordering. For now, hardcode PCI network devices to unoccupied
+    // functions.
+    const pci::Address mobile_pci = pci::Address(0, VmManager::kNetPciDeviceNum, 1);
+    const pci::Address ethernet_pci = pci::Address(0, VmManager::kNetPciDeviceNum, 2);
+    crosvm_cmd.AddTap(instance.mobile_tap_name(), instance.mobile_mac(), mobile_pci);
+    crosvm_cmd.AddTap(instance.ethernet_tap_name(), instance.ethernet_mac(), ethernet_pci);
 
     if (!config.virtio_mac80211_hwsim() && environment.enable_wifi()) {
       wifi_tap = crosvm_cmd.AddTap(instance.wifi_tap_name());
@@ -654,17 +691,12 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
   Command crosvm_log_tee_cmd(HostBinaryPath("log_tee"));
   crosvm_log_tee_cmd.AddParameter("--process_name=crosvm");
   crosvm_log_tee_cmd.AddParameter("--log_fd_in=", crosvm_logs);
-  crosvm_log_tee_cmd.SetStopper([](Subprocess* proc) {
+  crosvm_log_tee_cmd.SetStopper(KillSubprocessFallback([](Subprocess* proc) {
     // Ask nicely so that log_tee gets a chance to process all the logs.
-    int rval = kill(proc->pid(), SIGINT);
-    if (rval != 0) {
-      LOG(ERROR) << "Failed to stop log_tee nicely, attempting to KILL";
-      return KillSubprocess(proc) == StopperResult::kStopSuccess
-                 ? StopperResult::kStopCrash
-                 : StopperResult::kStopFailure;
-    }
-    return StopperResult::kStopSuccess;
-  });
+    bool res = kill(proc->pid(), SIGINT) == 0;
+    // TODO: b/335934714 - Make sure the process actually exits
+    return res ? StopperResult::kStopSuccess : StopperResult::kStopFailure;
+  }));
 
   // /dev/hvc2 = serial logging
   // Serial port for logcat, redirected to a pipe
@@ -788,9 +820,18 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
   // This needs to be the last parameter
   crosvm_cmd.Cmd().AddParameter("--bios=", instance.bootloader());
 
+  std::vector<MonitorCommand> commands;
+
+  if (vhost_user_gpu) {
+    // The vhost user gpu crosvm command should be added before the main
+    // crosvm command so that the main crosvm command can use a prerequisite
+    // to wait for the communication socket to be ready.
+    commands.emplace_back(std::move(vhost_user_gpu->device_cmd));
+    commands.emplace_back(std::move(vhost_user_gpu->device_logs_cmd));
+  }
+
   // log_tee must be added before crosvm_cmd to ensure all of crosvm's logs are
   // captured during shutdown. Processes are stopped in reverse order.
-  std::vector<MonitorCommand> commands;
   commands.emplace_back(std::move(crosvm_log_tee_cmd));
 
   if (gpu_capture_enabled) {
@@ -847,12 +888,41 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
     commands.emplace_back(std::move(crosvm_cmd.Cmd()), true);
   }
 
-  if (vhost_user_gpu) {
-    commands.emplace_back(std::move(vhost_user_gpu->device_cmd));
-    commands.emplace_back(std::move(vhost_user_gpu->device_logs_cmd));
+  return commands;
+}
+
+Result<bool> CrosvmManager::WaitForRestoreComplete(SharedFD stop_fd) const {
+  auto instance = CF_EXPECT(CuttlefishConfig::Get())->ForDefaultInstance();
+
+  // Wait for the control socket to exist. It is created early in crosvm's
+  // startup sequence, but the process may not even have been exec'd by CF at
+  // this point.
+  while (!FileExists(instance.CrosvmSocketPath())) {
+    std::vector<PollSharedFd> poll = {{.fd = stop_fd, .events = POLLIN}};
+    const int result = SharedFD::Poll(poll, 50 /* ms */);
+    // Check for errors.
+    CF_EXPECT(result >= 0, "failed to wait on stop_fd: " << strerror(errno));
+    // Check if pipe became readable or closed.
+    if (result > 0) {
+      return false;
+    }
   }
 
-  return commands;
+  // Ask crosvm to resume the VM. crosvm promises to not complete this command
+  // until the vCPUs are started (even if it was never suspended to begin
+  // with).
+  auto infop = CF_EXPECT(Execute(
+      std::vector<std::string>{
+          instance.crosvm_binary(),
+          "resume",
+          instance.CrosvmSocketPath(),
+          "--full",
+      },
+      SubprocessOptions(), WEXITED));
+  CF_EXPECT_EQ(infop.si_code, CLD_EXITED);
+  CF_EXPECTF(infop.si_status == 0, "crosvm resume returns non zero code {}",
+             infop.si_status);
+  return true;
 }
 
 }  // namespace vm_manager
