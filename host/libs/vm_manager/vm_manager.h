@@ -29,6 +29,10 @@
 namespace cuttlefish {
 namespace vm_manager {
 
+// Class for tagging that the CommandSource is a dependency command for the
+// VmManager.
+class VmmDependencyCommand : public virtual StatusCheckCommandSource {};
+
 // Superclass of every guest VM manager.
 class VmManager {
  public:
@@ -54,7 +58,11 @@ class VmManager {
   // - /dev/hvc9 = uwb
   // - /dev/hvc10 = oemlock
   // - /dev/hvc11 = keymint
-  static const int kDefaultNumHvcs = 12;
+  // - /dev/hvc12 = NFC
+  // - /dev/hvc13 = sensors
+  // - /dev/hvc14 = MCU control
+  // - /dev/hvc15 = MCU UART
+  static const int kDefaultNumHvcs = 16;
 
   // This is the number of virtual disks (block devices) that should be
   // configured by the VmManager. Related to the description above regarding
@@ -72,6 +80,12 @@ class VmManager {
   // the persistent disk
   static const int kDefaultNumBootDevices = 2;
 
+  static constexpr const int kNetPciDeviceNum = 1;
+
+  // LINT.IfChange(virtio_gpu_pci_address)
+  static constexpr const int kGpuPciSlotNum = 2;
+  // LINT.ThenChange(../../../shared/sepolicy/vendor/genfs_contexts:virtio_gpu_pci_address)
+
   virtual ~VmManager() = default;
 
   virtual bool IsSupported() = 0;
@@ -80,14 +94,25 @@ class VmManager {
   ConfigureGraphics(const CuttlefishConfig::InstanceSpecific& instance) = 0;
 
   virtual Result<std::unordered_map<std::string, std::string>>
-  ConfigureBootDevices(int num_disks, bool have_gpu) = 0;
+  ConfigureBootDevices(const CuttlefishConfig::InstanceSpecific& instance) = 0;
 
   // Starts the VMM. It will usually build a command and pass it to the
   // command_starter function, although it may start more than one. The
   // command_starter function allows to customize the way vmm commands are
   // started/tracked/etc.
   virtual Result<std::vector<MonitorCommand>> StartCommands(
-      const CuttlefishConfig& config) = 0;
+      const CuttlefishConfig& config,
+      std::vector<VmmDependencyCommand*>& dependencyCommands) = 0;
+
+  // Block until the restore work is finished and the guest is running. Only
+  // called if a snapshot is being restored.
+  //
+  // If FD becomes readable or closed, gives up and returns false.
+  //
+  // Must be thread safe.
+  virtual Result<bool> WaitForRestoreComplete(SharedFD) const {
+    return CF_ERR("not implemented");
+  }
 };
 
 fruit::Component<fruit::Required<const CuttlefishConfig,
@@ -95,7 +120,7 @@ fruit::Component<fruit::Required<const CuttlefishConfig,
                  VmManager>
 VmManagerComponent();
 
-std::unique_ptr<VmManager> GetVmManager(const std::string&, Arch arch);
+std::unique_ptr<VmManager> GetVmManager(VmmMode vmm, Arch arch);
 
 Result<std::unordered_map<std::string, std::string>>
 ConfigureMultipleBootDevices(const std::string& pci_path, int pci_offset,

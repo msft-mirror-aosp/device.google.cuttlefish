@@ -20,26 +20,23 @@
 
 #include <fstream>
 #include <mutex>
-#include <sstream>
 
 #include "common/libs/utils/files.h"
 #include "host/commands/modem_simulator/device_config.h"
 
 namespace cuttlefish {
 
-const char* kInstances            = "instances";
-const char* kNetworkSelectionMode = "network_selection_mode";
-const char* kOperatorNumeric      = "operator_numeric";
-const char* kModemTechnoloy       = "modem_technoloy";
-const char* kPreferredNetworkMode = "preferred_network_mode";
-const char* kEmergencyMode        = "emergency_mode";
-const char* kSimType              = "sim_type";
+static constexpr char kInstances[] = "instances";
+static constexpr char kNetworkSelectionMode[] = "network_selection_mode";
+static constexpr char kOperatorNumeric[] = "operator_numeric";
+static constexpr char kModemTechnoloy[] = "modem_technoloy";
+static constexpr char kPreferredNetworkMode[] = "preferred_network_mode";
+static constexpr char kEmergencyMode[] = "emergency_mode";
 
-const int   kDefaultNetworkSelectionMode  = 0;     // AUTOMATIC
-const std::string kDefaultOperatorNumeric = "";
-const int   kDefaultModemTechnoloy        = 0x10;  // LTE
-const int   kDefaultPreferredNetworkMode  = 0x13;  // LTE | WCDMA | GSM
-const bool  kDefaultEmergencyMode         = false;
+static constexpr int kDefaultNetworkSelectionMode = 0;     // AUTOMATIC
+static constexpr int kDefaultModemTechnoloy = 0x10;        // LTE
+static constexpr int kDefaultPreferredNetworkMode = 0x13;  // LTE | WCDMA | GSM
+static constexpr bool kDefaultEmergencyMode = false;
 
 /**
  * Creates the (initially empty) config object and populates it with values from
@@ -48,19 +45,19 @@ const bool  kDefaultEmergencyMode         = false;
  * Returns nullptr if there was an error loading from file
  */
 NvramConfig* NvramConfig::BuildConfigImpl(size_t num_instances, int sim_type) {
-  auto nvram_config_path =
-      cuttlefish::modem::DeviceConfig::PerInstancePath("modem_nvram.json");
-
   auto ret = new NvramConfig(num_instances, sim_type);
   if (ret) {
+    const auto nvram_config_path = ConfigFileLocation();
     if (!cuttlefish::FileExists(nvram_config_path) ||
         !cuttlefish::FileHasContent(nvram_config_path.c_str())) {
       ret->InitDefaultNvramConfig();
     } else {
       auto loaded = ret->LoadFromFile(nvram_config_path.c_str());
       if (!loaded) {
-        delete ret;
-        return nullptr;
+        /** Bug: (b/315167296)
+         * Fall back to default nvram config if LoadFromFile fails.
+         */
+        ret->InitDefaultNvramConfig();
       }
     }
   }
@@ -83,7 +80,7 @@ void NvramConfig::InitNvramConfigService(size_t num_instances, int sim_type) {
 
 void NvramConfig::SaveToFile() {
   auto nvram_config = Get();
-  auto nvram_config_file = nvram_config->ConfigFileLocation();
+  const auto nvram_config_file = ConfigFileLocation();
   nvram_config->SaveToFile(nvram_config_file);
 }
 
@@ -102,7 +99,7 @@ NvramConfig::InstanceSpecific NvramConfig::ForInstance(int num) const {
   return InstanceSpecific(this, std::to_string(num));
 }
 
-std::string NvramConfig::ConfigFileLocation() const {
+/* static */ std::string NvramConfig::ConfigFileLocation() {
   return cuttlefish::AbsolutePath(
       cuttlefish::modem::DeviceConfig::PerInstancePath("modem_nvram.json"));
 }

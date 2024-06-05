@@ -17,13 +17,14 @@ package {
     default_applicable_licenses: ["Android-Apache-2.0"],
 }
 
-cc_library_static {
+cc_library {
     name: "libcuttlefish_vm_manager",
     srcs: [
         "crosvm_builder.cpp",
         "crosvm_manager.cpp",
         "gem5_manager.cpp",
         "host_configuration.cpp",
+        "pci.cpp",
         "qemu_manager.cpp",
         "vm_manager.cpp",
     ],
@@ -31,17 +32,20 @@ cc_library_static {
         "vulkan_headers",
     ],
     shared_libs: [
+        "libbase",
+        "libcuttlefish_command_util",
         "libcuttlefish_fs",
         "libcuttlefish_utils",
-        "libbase",
         "libfruit",
         "libjsoncpp",
     ],
     static_libs: [
         "libcuttlefish_host_config",
     ],
-    defaults: [
-        "cuttlefish_host",
-        "cuttlefish_libicuuc"
-    ],
+    defaults: ["cuttlefish_host"],
+    target: {
+        darwin: {
+            enabled: true,
+        },
+    },
 }

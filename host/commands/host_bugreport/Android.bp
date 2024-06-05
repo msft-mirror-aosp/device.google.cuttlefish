@@ -24,8 +24,8 @@ cc_binary {
         "main.cc",
     ],
     shared_libs: [
-        "libext2_blkid",
         "libbase",
+	    "libcuttlefish_command_util",
         "libcuttlefish_fs",
         "libcuttlefish_utils",
         "libfruit",
@@ -37,5 +37,5 @@ cc_binary {
         "libcuttlefish_vm_manager",
         "libgflags",
     ],
-    defaults: ["cuttlefish_host", "cuttlefish_libicuuc"],
+    defaults: ["cuttlefish_host"],
 }

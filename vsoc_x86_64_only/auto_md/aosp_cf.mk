@@ -44,12 +44,22 @@ PRODUCT_SYSTEM_DEFAULT_PROPERTIES += \
 # TODO(b/233370174): add audio multi-zone
 #   ro.vendor.simulateMultiZoneAudio=true \
 
+# Enable per-display power management
+PRODUCT_COPY_FILES += \
+    device/google/cuttlefish/vsoc_x86_64_only/auto_md/display_layout_configuration.xml:$(TARGET_COPY_OUT_VENDOR)/etc/displayconfig/display_layout_configuration.xml
 
 # This will disable dynamic displays and enable hardcoded displays on hwservicemanager.
 $(call inherit-product, device/generic/car/emulator/cluster/cluster-hwservicemanager.mk)
+
+# Disable shared system image checking
+PRODUCT_ENFORCE_ARTIFACT_PATH_REQUIREMENTS := false
 
 # Add the regular stuff.
 $(call inherit-product, device/google/cuttlefish/vsoc_x86_64_only/auto/aosp_cf.mk)
 
 PRODUCT_NAME := aosp_cf_x86_64_auto_md
 PRODUCT_MODEL := Cuttlefish x86_64 auto 64-bit only multi-displays
+
+ifeq ($(PRODUCT_NAME),$(TARGET_PRODUCT))  # Show warning only when this is the final target product.
+$(warning ${PRODUCT_NAME} is for development purposes only.)
+endif

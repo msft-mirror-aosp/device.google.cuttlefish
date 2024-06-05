@@ -87,7 +87,7 @@ class ModemServiceTest : public ::testing::Test {
 
     cuttlefish::SharedFD server;
     auto channel_monitor =
-        std::make_unique<ChannelMonitor>(modem_simulator_, server);
+        std::make_unique<ChannelMonitor>(*modem_simulator_, server);
     modem_simulator_->Initialize(std::move(channel_monitor));
   }
 
@@ -106,11 +106,13 @@ class ModemServiceTest : public ::testing::Test {
   void ReadCommandResponse(std::vector<std::string>& response) {
     do {
       std::vector<char> buffer(4096);  // kMaxCommandLength
-      auto bytes_read = ril_side_->client_fd->Read(buffer.data(), buffer.size());
+      auto bytes_read =
+          ril_side_->client_read_fd_->Read(buffer.data(), buffer.size());
       if (bytes_read <= 0) {
         // Close here to ensure the other side gets reset if it's still
         // connected
-        ril_side_->client_fd->Close();
+        ril_side_->client_read_fd_->Close();
+        ril_side_->client_write_fd_->Close();
         LOG(WARNING) << "Detected close from the other side";
         break;
       }
@@ -589,7 +591,7 @@ TEST_F(ModemServiceTest, SendSMS) {
   //command += '\032';
   SendCommand(command);
   ReadCommandResponse(response);
-  // TODO (bohu) for some reason the follwoing asserts fail, fix them
+  // TODO (bohu) for some reason the following asserts fail, fix them
   // ASSERT_EQ(response.size(), 3);
   // ASSERT_STREQ(response[response.size() - 1].c_str(),
   // kFinalResponseSuccess[0].c_str());

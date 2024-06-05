@@ -20,16 +20,23 @@
 #include <functional>
 #include <memory>
 
+#include <drm/drm_fourcc.h>
 #include <libyuv.h>
 
 #include "host/frontend/webrtc/libdevice/streamer.h"
 
 namespace cuttlefish {
+
 DisplayHandler::DisplayHandler(webrtc_streaming::Streamer& streamer,
-                               ScreenConnector& screen_connector)
-    : streamer_(streamer), screen_connector_(screen_connector) {
-  screen_connector_.SetCallback(std::move(GetScreenConnectorCallback()));
-  screen_connector_.SetDisplayEventCallback([this](const DisplayEvent& event) {
+                               int wayland_socket_fd,
+                               bool wayland_frames_are_rgba)
+    : streamer_(streamer) {
+  int wayland_fd = fcntl(wayland_socket_fd, F_DUPFD_CLOEXEC, 3);
+  CHECK(wayland_fd != -1) << "Unable to dup server, errno " << errno;
+  close(wayland_socket_fd);
+  wayland_server_ = std::make_unique<wayland::WaylandServer>(
+      wayland_fd, wayland_frames_are_rgba);
+  wayland_server_->SetDisplayEventCallback([this](const DisplayEvent& event) {
     std::visit(
         [this](auto&& e) {
           using T = std::decay_t<decltype(e)>;
@@ -63,54 +70,63 @@ DisplayHandler::DisplayHandler(webrtc_streaming::Streamer& streamer,
         },
         event);
   });
-}
+  wayland_server_->SetFrameCallback([this](
+                                        std::uint32_t display_number,       //
+                                        std::uint32_t frame_width,          //
+                                        std::uint32_t frame_height,         //
+                                        std::uint32_t frame_fourcc_format,  //
+                                        std::uint32_t frame_stride_bytes,   //
+                                        std::uint8_t* frame_pixels) {
+    auto buf = std::make_shared<CvdVideoFrameBuffer>(frame_width, frame_height);
+    if (frame_fourcc_format == DRM_FORMAT_ARGB8888 ||
+        frame_fourcc_format == DRM_FORMAT_XRGB8888) {
+      libyuv::ARGBToI420(frame_pixels, frame_stride_bytes, buf->DataY(),
+                         buf->StrideY(), buf->DataU(), buf->StrideU(),
+                         buf->DataV(), buf->StrideV(), frame_width,
+                         frame_height);
+    } else if (frame_fourcc_format == DRM_FORMAT_ABGR8888 ||
+               frame_fourcc_format == DRM_FORMAT_XBGR8888) {
+      libyuv::ABGRToI420(frame_pixels, frame_stride_bytes, buf->DataY(),
+                         buf->StrideY(), buf->DataU(), buf->StrideU(),
+                         buf->DataV(), buf->StrideV(), frame_width,
+                         frame_height);
+    } else {
+      LOG(ERROR) << "Unhandled frame format: " << frame_fourcc_format;
+      return;
+    }
 
-DisplayHandler::GenerateProcessedFrameCallback DisplayHandler::GetScreenConnectorCallback() {
-    // only to tell the producer how to create a ProcessedFrame to cache into the queue
-    DisplayHandler::GenerateProcessedFrameCallback callback =
-        [](std::uint32_t display_number, std::uint32_t frame_width,
-           std::uint32_t frame_height, std::uint32_t frame_stride_bytes,
-           std::uint8_t* frame_pixels,
-           WebRtcScProcessedFrame& processed_frame) {
-          processed_frame.display_number_ = display_number;
-          processed_frame.buf_ =
-              std::make_unique<CvdVideoFrameBuffer>(frame_width, frame_height);
-          libyuv::ABGRToI420(
-              frame_pixels, frame_stride_bytes, processed_frame.buf_->DataY(),
-              processed_frame.buf_->StrideY(), processed_frame.buf_->DataU(),
-              processed_frame.buf_->StrideU(), processed_frame.buf_->DataV(),
-              processed_frame.buf_->StrideV(), frame_width, frame_height);
-          processed_frame.is_success_ = true;
-        };
-    return callback;
-}
-
-[[noreturn]] void DisplayHandler::Loop() {
-  for (;;) {
-    auto processed_frame = screen_connector_.OnNextFrame();
-    // processed_frame has display number from the guest
     {
       std::lock_guard<std::mutex> lock(last_buffer_mutex_);
-      std::shared_ptr<CvdVideoFrameBuffer> buffer = std::move(processed_frame.buf_);
-      last_buffer_display_ = processed_frame.display_number_;
-      last_buffer_ =
-          std::static_pointer_cast<webrtc_streaming::VideoFrameBuffer>(buffer);
+      display_last_buffers_[display_number] =
+          std::static_pointer_cast<webrtc_streaming::VideoFrameBuffer>(buf);
     }
-    if (processed_frame.is_success_) {
-      SendLastFrame();
-    }
-  }
+
+    SendLastFrame(display_number);
+  });
 }
 
-void DisplayHandler::SendLastFrame() {
-  std::shared_ptr<webrtc_streaming::VideoFrameBuffer> buffer;
-  std::uint32_t buffer_display;
+void DisplayHandler::SendLastFrame(std::optional<uint32_t> display_number) {
+  std::map<uint32_t, std::shared_ptr<webrtc_streaming::VideoFrameBuffer>>
+      buffers;
   {
     std::lock_guard<std::mutex> lock(last_buffer_mutex_);
-    buffer = last_buffer_;
-    buffer_display = last_buffer_display_;
+    if (display_number) {
+      // Resend the last buffer for a single display.
+      auto last_buffer_it = display_last_buffers_.find(*display_number);
+      if (last_buffer_it == display_last_buffers_.end()) {
+        return;
+      }
+      auto& last_buffer = last_buffer_it->second;
+      if (!last_buffer) {
+        return;
+      }
+      buffers[*display_number] = last_buffer;
+    } else {
+      // Resend the last buffer for all displays.
+      buffers = display_last_buffers_;
+    }
   }
-  if (!buffer) {
+  if (buffers.empty()) {
     // If a connection request arrives before the first frame is available don't
     // send any frame.
     return;
@@ -124,10 +140,13 @@ void DisplayHandler::SendLastFrame() {
             std::chrono::system_clock::now().time_since_epoch())
             .count();
 
-    auto it = display_sinks_.find(buffer_display);
-    if (it != display_sinks_.end()) {
-      it->second->OnFrame(buffer, time_stamp);
+    for (const auto& [display_number, buffer] : buffers) {
+      auto it = display_sinks_.find(display_number);
+      if (it != display_sinks_.end()) {
+        it->second->OnFrame(buffer, time_stamp);
+      }
     }
   }
 }
+
 }  // namespace cuttlefish

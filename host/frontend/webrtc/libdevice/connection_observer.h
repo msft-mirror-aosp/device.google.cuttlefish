@@ -20,6 +20,8 @@
 
 #include <json/json.h>
 
+#include "common/libs/utils/result.h"
+
 namespace cuttlefish {
 namespace webrtc_streaming {
 
@@ -42,13 +44,16 @@ class ConnectionObserver {
 
   virtual void OnConnected() = 0;
 
-  virtual void OnTouchEvent(const std::string& display_label, int x, int y,
-                            bool down) = 0;
-  virtual void OnMultiTouchEvent(const std::string& label, Json::Value id,
-                                 Json::Value slot, Json::Value x, Json::Value y,
-                                 bool down, int size) = 0;
+  virtual Result<void> OnTouchEvent(const std::string& device_label, int x,
+                                    int y, bool down) = 0;
+  virtual Result<void> OnMultiTouchEvent(const std::string& label,
+                                         Json::Value id, Json::Value slot,
+                                         Json::Value x, Json::Value y,
+                                         bool down, int size) = 0;
 
-  virtual void OnKeyboardEvent(uint16_t keycode, bool down) = 0;
+  virtual Result<void> OnKeyboardEvent(uint16_t keycode, bool down) = 0;
+
+  virtual Result<void> OnWheelEvent(int pixels) = 0;
 
   virtual void OnAdbChannelOpen(
       std::function<bool(const uint8_t*, size_t)> adb_message_sender) = 0;
@@ -56,22 +61,30 @@ class ConnectionObserver {
 
   virtual void OnControlChannelOpen(
       std::function<bool(const Json::Value)> control_message_sender) = 0;
-  virtual void OnLidStateChange(bool lid_open) = 0;
+  virtual Result<void> OnLidStateChange(bool lid_open) = 0;
   virtual void OnHingeAngleChange(int hinge_angle) = 0;
-  virtual void OnPowerButton(bool button_down) = 0;
-  virtual void OnBackButton(bool button_down) = 0;
-  virtual void OnHomeButton(bool button_down) = 0;
-  virtual void OnMenuButton(bool button_down) = 0;
-  virtual void OnVolumeDownButton(bool button_down) = 0;
-  virtual void OnVolumeUpButton(bool button_down) = 0;
+  virtual Result<void> OnPowerButton(bool button_down) = 0;
+  virtual Result<void> OnBackButton(bool button_down) = 0;
+  virtual Result<void> OnHomeButton(bool button_down) = 0;
+  virtual Result<void> OnMenuButton(bool button_down) = 0;
+  virtual Result<void> OnVolumeDownButton(bool button_down) = 0;
+  virtual Result<void> OnVolumeUpButton(bool button_down) = 0;
   virtual void OnCustomActionButton(const std::string& command,
                                     const std::string& button_state) = 0;
 
   virtual void OnCameraControlMsg(const Json::Value& msg) = 0;
+  virtual void OnDisplayControlMsg(const Json::Value& msg) = 0;
 
   virtual void OnBluetoothChannelOpen(
       std::function<bool(const uint8_t*, size_t)> bluetooth_message_sender) = 0;
   virtual void OnBluetoothMessage(const uint8_t* msg, size_t size) = 0;
+  virtual void OnSensorsChannelOpen(
+      std::function<bool(const uint8_t*, size_t)> sensors_message_sender) = 0;
+  virtual void OnSensorsMessage(const uint8_t* msg, size_t size) = 0;
+  virtual void OnSensorsChannelClosed() = 0;
+  virtual void OnLightsChannelOpen(
+      std::function<bool(const Json::Value&)> lights_message_sender) = 0;
+  virtual void OnLightsChannelClosed() = 0;
   virtual void OnLocationChannelOpen(
       std::function<bool(const uint8_t*, size_t)> location_message_sender) = 0;
   virtual void OnLocationMessage(const uint8_t* msg, size_t size) = 0;

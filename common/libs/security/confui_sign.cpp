@@ -16,6 +16,10 @@
 
 #include "common/libs/security/confui_sign.h"
 
+#include <cstdint>
+#include <optional>
+#include <vector>
+
 #include <android-base/logging.h>
 
 #include "common/libs/fs/shared_buf.h"
@@ -28,7 +32,7 @@ bool ConfUiSignerImpl::Send(SharedFD output,
   sign_status_ |= kIoError;      \
   return false
 
-  // this looks redudant but makes sure that the byte-length of
+  // this looks redundant but makes sure that the byte-length of
   // the error is guaranteed to be the same when it is received
   confui::SignRawMessage msg;
   msg.error_ = error;

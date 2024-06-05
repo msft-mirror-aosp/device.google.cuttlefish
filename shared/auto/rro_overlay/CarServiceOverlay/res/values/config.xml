@@ -27,12 +27,18 @@
           false, muting of individual volume groups is disabled, instead muting will toggle master
           mute. If this is set to true, car volume group muting is enabled and each individual
           volume group can be muted separately. -->
-    <bool name="audioUseCarVolumeGroupMuting">false</bool>
+    <bool name="audioUseCarVolumeGroupMuting">true</bool>
     <!--  Configuration to enable IAudioControl#onDevicesToDuckChange API to inform HAL when to
       duck. If this is set to true, the API will receive signals indicating which output devices
       to duck as well as what usages are currently holding focus. If set to false, the API will
       not be called. -->
     <bool name="audioUseHalDuckingSignals">false</bool>
+     <!--  Configuration to enable min/max activation volume. If this is set to true, the volume of
+          the volume group with min/max activation volume setting will be set to min activation
+          volume or max activation volume if volume during activation is lower than min activation
+          volume or higher than max activation volume respectively. If this is set to false, no
+          volume level will be changed during activation.-->
+    <bool name="audioUseMinMaxActivationVolume">true</bool>
 
     <!--
     Lists all occupant (= driver + passenger) zones available in the car.
@@ -62,15 +68,15 @@
 
         Some examples are:
         <item>displayPort=0,displayType=MAIN,occupantZoneId=0,inputTypes=DPAD_KEYS|
-            NAVIGATE_KEYS|ROTARY_NAVIGATION</item>
+            NAVIGATE_KEYS|ROTARY_NAVIGATION|TOUCH_SCREEN</item>
         <item>displayPort=1,displayType=INSTRUMENT_CLUSTER,occupantZoneId=0,
             inputTypes=DPAD_KEYS</item>
         <item>displayPort=2,displayType=MAIN,occupantZoneId=1,
-            inputTypes=NAVIGATE_KEYS</item>
+            inputTypes=TOUCH_SCREEN</item>
         <item>displayPort=3,displayType=MAIN,occupantZoneId=2,
-            inputTypes=NAVIGATE_KEYS</item>
+            inputTypes=TOUCH_SCREEN</item>
         <item>displayUniqueId=virtual:com.example:MainD,displayType=MAIN,occupantZoneId=3,
-            inputTypes=NAVIGATE_KEYS</item>
+            inputTypes=TOUCH_SCREEN</item>
 
         displayPort: Unique port id for the display.
         displayType: Display type for the display. Use * part from

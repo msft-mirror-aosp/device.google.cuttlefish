@@ -41,7 +41,7 @@ class DataChannelHandler : public webrtc::DataChannelObserver {
   virtual std::shared_ptr<ConnectionObserver> observer() = 0;
 
   // Subclasses must override this to process messages.
-  virtual void OnMessageInner(const webrtc::DataBuffer &msg) = 0;
+  virtual Result<void> OnMessageInner(const webrtc::DataBuffer &msg) = 0;
   // Some subclasses may override this to defer some work until the channel is
   // actually used.
   virtual void OnFirstMessage() {}
@@ -65,6 +65,8 @@ static constexpr auto kInputChannelLabel = "input-channel";
 static constexpr auto kAdbChannelLabel = "adb-channel";
 static constexpr auto kBluetoothChannelLabel = "bluetooth-channel";
 static constexpr auto kCameraDataChannelLabel = "camera-data-channel";
+static constexpr auto kSensorsDataChannelLabel = "sensors-channel";
+static constexpr auto kLightsChannelLabel = "lights-channel";
 static constexpr auto kLocationDataChannelLabel = "location-channel";
 static constexpr auto kKmlLocationsDataChannelLabel = "kml-locations-channel";
 static constexpr auto kGpxLocationsDataChannelLabel = "gpx-locations-channel";
@@ -75,63 +77,49 @@ static constexpr auto kCameraDataEof = "EOF";
 
 class InputChannelHandler : public DataChannelHandler {
  public:
-  void OnMessageInner(const webrtc::DataBuffer &msg) override {
-    if (msg.binary) {
-      // TODO (jemoreira) consider binary protocol to avoid JSON parsing
-      // overhead
-      LOG(ERROR) << "Received invalid (binary) data on input channel";
-      return;
-    }
+  Result<void> OnMessageInner(const webrtc::DataBuffer &msg) override {
+    // TODO: jemoreira - consider binary protocol to avoid JSON parsing
+    // overhead
+    CF_EXPECT(!msg.binary, "Received invalid (binary) data on input channel");
     auto size = msg.size();
 
     Json::Value evt;
     Json::CharReaderBuilder builder;
     std::unique_ptr<Json::CharReader> json_reader(builder.newCharReader());
-    std::string errorMessage;
+    std::string error_message;
     auto str = msg.data.cdata<char>();
-    if (!json_reader->parse(str, str + size, &evt, &errorMessage) < 0) {
-      LOG(ERROR) << "Received invalid JSON object over input channel: "
-                 << errorMessage;
-      return;
-    }
-    if (!evt.isMember("type") || !evt["type"].isString()) {
-      LOG(ERROR) << "Input event doesn't have a valid 'type' field: "
-                 << evt.toStyledString();
-      return;
-    }
+    CF_EXPECTF(json_reader->parse(str, str + size, &evt, &error_message),
+               "Received invalid JSON object over control channel: '{}'",
+               error_message);
+
+    CF_EXPECTF(evt.isMember("type") && evt["type"].isString(),
+               "Input event doesn't have a valid 'type' field: ",
+               evt.toStyledString());
     auto event_type = evt["type"].asString();
+
     if (event_type == "mouse") {
-      auto result =
-          ValidateJsonObject(evt, "mouse",
-                             {{"down", Json::ValueType::intValue},
-                              {"x", Json::ValueType::intValue},
-                              {"y", Json::ValueType::intValue},
-                              {"display_label", Json::ValueType::stringValue}});
-      if (!result.ok()) {
-        LOG(ERROR) << result.error().Trace();
-        return;
-      }
-      auto label = evt["display_label"].asString();
+      CF_EXPECT(ValidateJsonObject(
+          evt, "mouse",
+          {{"down", Json::ValueType::intValue},
+           {"x", Json::ValueType::intValue},
+           {"y", Json::ValueType::intValue},
+           {"display_label", Json::ValueType::stringValue}}));
+      auto label = evt["device_label"].asString();
       int32_t down = evt["down"].asInt();
       int32_t x = evt["x"].asInt();
       int32_t y = evt["y"].asInt();
 
-      observer()->OnTouchEvent(label, x, y, down);
+      CF_EXPECT(observer()->OnTouchEvent(label, x, y, down));
     } else if (event_type == "multi-touch") {
-      auto result =
+      CF_EXPECT(
           ValidateJsonObject(evt, "multi-touch",
                              {{"id", Json::ValueType::arrayValue},
                               {"down", Json::ValueType::intValue},
                               {"x", Json::ValueType::arrayValue},
                               {"y", Json::ValueType::arrayValue},
-                              {"slot", Json::ValueType::arrayValue},
-                              {"display_label", Json::ValueType::stringValue}});
-      if (!result.ok()) {
-        LOG(ERROR) << result.error().Trace();
-        return;
-      }
+                              {"device_label", Json::ValueType::stringValue}}));
 
-      auto label = evt["display_label"].asString();
+      auto label = evt["device_label"].asString();
       auto idArr = evt["id"];
       int32_t down = evt["down"].asInt();
       auto xArr = evt["x"];
@@ -139,24 +127,25 @@ class InputChannelHandler : public DataChannelHandler {
       auto slotArr = evt["slot"];
       int size = evt["id"].size();
 
-      observer()->OnMultiTouchEvent(label, idArr, slotArr, xArr, yArr, down,
-                                    size);
+      CF_EXPECT(observer()->OnMultiTouchEvent(label, idArr, slotArr, xArr, yArr,
+                                              down, size));
     } else if (event_type == "keyboard") {
-      auto result =
+      CF_EXPECT(
           ValidateJsonObject(evt, "keyboard",
                              {{"event_type", Json::ValueType::stringValue},
-                              {"keycode", Json::ValueType::stringValue}});
-      if (!result.ok()) {
-        LOG(ERROR) << result.error().Trace();
-        return;
-      }
+                              {"keycode", Json::ValueType::stringValue}}));
       auto down = evt["event_type"].asString() == std::string("keydown");
       auto code = DomKeyCodeToLinux(evt["keycode"].asString());
-      observer()->OnKeyboardEvent(code, down);
+      CF_EXPECT(observer()->OnKeyboardEvent(code, down));
+    } else if (event_type == "wheel") {
+      CF_EXPECT(ValidateJsonObject(evt, "wheel",
+                                   {{"pixels", Json::ValueType::intValue}}));
+      auto pixels = evt["pixels"].asInt();
+      CF_EXPECT(observer()->OnWheelEvent(pixels));
     } else {
-      LOG(ERROR) << "Unrecognized event type: " << event_type;
-      return;
+      return CF_ERRF("Unrecognized event type: '{}'", event_type);
     }
+    return {};
   }
 };
 
@@ -168,20 +157,19 @@ class ControlChannelHandler : public DataChannelHandler {
       observer()->OnControlChannelOpen(GetJSONSender());
     }
   }
-  void OnMessageInner(const webrtc::DataBuffer &msg) override {
+  Result<void> OnMessageInner(const webrtc::DataBuffer &msg) override {
     auto msg_str = msg.data.cdata<char>();
     auto size = msg.size();
     Json::Value evt;
     Json::CharReaderBuilder builder;
     std::unique_ptr<Json::CharReader> json_reader(builder.newCharReader());
-    std::string errorMessage;
-    if (!json_reader->parse(msg_str, msg_str + size, &evt, &errorMessage)) {
-      LOG(ERROR) << "Received invalid JSON object over control channel: "
-                 << errorMessage;
-      return;
-    }
+    std::string error_message;
+    CF_EXPECTF(
+        json_reader->parse(msg_str, msg_str + size, &evt, &error_message),
+        "Received invalid JSON object over control channel: '{}'",
+        error_message);
 
-    auto result = ValidateJsonObject(
+    CF_EXPECT(ValidateJsonObject(
         evt, "command",
         /*required_fields=*/{{"command", Json::ValueType::stringValue}},
         /*optional_fields=*/
@@ -189,51 +177,53 @@ class ControlChannelHandler : public DataChannelHandler {
             {"button_state", Json::ValueType::stringValue},
             {"lid_switch_open", Json::ValueType::booleanValue},
             {"hinge_angle_value", Json::ValueType::intValue},
-        });
-    if (!result.ok()) {
-      LOG(ERROR) << result.error().Trace();
-      return;
-    }
+        }));
     auto command = evt["command"].asString();
 
     if (command == "device_state") {
       if (evt.isMember("lid_switch_open")) {
-        observer()->OnLidStateChange(evt["lid_switch_open"].asBool());
+        CF_EXPECT(
+            observer()->OnLidStateChange(evt["lid_switch_open"].asBool()));
       }
       if (evt.isMember("hinge_angle_value")) {
         observer()->OnHingeAngleChange(evt["hinge_angle_value"].asInt());
       }
-      return;
+      return {};
     } else if (command.rfind("camera_", 0) == 0) {
       observer()->OnCameraControlMsg(evt);
-      return;
+      return {};
+    } else if (command == "display") {
+      observer()->OnDisplayControlMsg(evt);
+      return {};
     }
 
     auto button_state = evt["button_state"].asString();
     LOG(VERBOSE) << "Control command: " << command << " (" << button_state
                  << ")";
     if (command == "power") {
-      observer()->OnPowerButton(button_state == "down");
+      CF_EXPECT(observer()->OnPowerButton(button_state == "down"));
     } else if (command == "back") {
-      observer()->OnBackButton(button_state == "down");
+      CF_EXPECT(observer()->OnBackButton(button_state == "down"));
     } else if (command == "home") {
-      observer()->OnHomeButton(button_state == "down");
+      CF_EXPECT(observer()->OnHomeButton(button_state == "down"));
     } else if (command == "menu") {
-      observer()->OnMenuButton(button_state == "down");
+      CF_EXPECT(observer()->OnMenuButton(button_state == "down"));
     } else if (command == "volumedown") {
-      observer()->OnVolumeDownButton(button_state == "down");
+      CF_EXPECT(observer()->OnVolumeDownButton(button_state == "down"));
     } else if (command == "volumeup") {
-      observer()->OnVolumeUpButton(button_state == "down");
+      CF_EXPECT(observer()->OnVolumeUpButton(button_state == "down"));
     } else {
       observer()->OnCustomActionButton(command, button_state);
     }
+    return {};
   }
 };
 
 class AdbChannelHandler : public DataChannelHandler {
  public:
-  void OnMessageInner(const webrtc::DataBuffer &msg) override {
+  Result<void> OnMessageInner(const webrtc::DataBuffer &msg) override {
     observer()->OnAdbMessage(msg.data.cdata(), msg.size());
+    return {};
   }
   void OnFirstMessage() override {
     // Report the adb channel as open on the first message received instead of
@@ -245,8 +235,9 @@ class AdbChannelHandler : public DataChannelHandler {
 
 class BluetoothChannelHandler : public DataChannelHandler {
  public:
-  void OnMessageInner(const webrtc::DataBuffer &msg) override {
+  Result<void> OnMessageInner(const webrtc::DataBuffer &msg) override {
     observer()->OnBluetoothMessage(msg.data.cdata(), msg.size());
+    return {};
   }
   void OnFirstMessage() override {
     // Notify bluetooth channel opening when actually using the channel,
@@ -258,28 +249,70 @@ class BluetoothChannelHandler : public DataChannelHandler {
 
 class CameraChannelHandler : public DataChannelHandler {
  public:
-  void OnMessageInner(const webrtc::DataBuffer &msg) override {
+  Result<void> OnMessageInner(const webrtc::DataBuffer &msg) override {
     auto msg_data = msg.data.cdata<char>();
     if (msg.size() == strlen(kCameraDataEof) &&
         !strncmp(msg_data, kCameraDataEof, msg.size())) {
       // Send complete buffer to observer on EOF marker
       observer()->OnCameraData(receive_buffer_);
       receive_buffer_.clear();
-      return;
+      return {};
     }
     // Otherwise buffer up data
     receive_buffer_.insert(receive_buffer_.end(), msg_data,
                            msg_data + msg.size());
+    return {};
   }
 
  private:
   std::vector<char> receive_buffer_;
 };
 
+// TODO(b/297361564)
+class SensorsChannelHandler : public DataChannelHandler {
+ public:
+  void OnFirstMessage() override { observer()->OnSensorsChannelOpen(GetBinarySender()); }
+  Result<void> OnMessageInner(const webrtc::DataBuffer &msg) override {
+    if (!first_msg_received_) {
+      first_msg_received_ = true;
+      return {};
+    }
+    observer()->OnSensorsMessage(msg.data.cdata(), msg.size());
+    return {};
+  }
+
+  void OnStateChangeInner(webrtc::DataChannelInterface::DataState state) override {
+    if (state == webrtc::DataChannelInterface::kClosed) {
+      observer()->OnSensorsChannelClosed();
+    }
+  }
+
+ private:
+  bool first_msg_received_ = false;
+};
+
+class LightsChannelHandler : public DataChannelHandler {
+ public:
+  // We do not expect any messages from the frontend.
+  Result<void> OnMessageInner(const webrtc::DataBuffer &msg) override {
+    return {};
+  }
+
+  void OnStateChangeInner(
+      webrtc::DataChannelInterface::DataState state) override {
+    if (state == webrtc::DataChannelInterface::kOpen) {
+      observer()->OnLightsChannelOpen(GetJSONSender());
+    } else if (state == webrtc::DataChannelInterface::kClosed) {
+      observer()->OnLightsChannelClosed();
+    }
+  }
+};
+
 class LocationChannelHandler : public DataChannelHandler {
  public:
-  void OnMessageInner(const webrtc::DataBuffer &msg) override {
+  Result<void> OnMessageInner(const webrtc::DataBuffer &msg) override {
     observer()->OnLocationMessage(msg.data.cdata(), msg.size());
+    return {};
   }
   void OnFirstMessage() override {
     // Notify location channel opening when actually using the channel,
@@ -291,8 +324,9 @@ class LocationChannelHandler : public DataChannelHandler {
 
 class KmlLocationChannelHandler : public DataChannelHandler {
  public:
-  void OnMessageInner(const webrtc::DataBuffer &msg) override {
+  Result<void> OnMessageInner(const webrtc::DataBuffer &msg) override {
     observer()->OnKmlLocationsMessage(msg.data.cdata(), msg.size());
+    return {};
   }
   void OnFirstMessage() override {
     // Notify location channel opening when actually using the channel,
@@ -304,8 +338,9 @@ class KmlLocationChannelHandler : public DataChannelHandler {
 
 class GpxLocationChannelHandler : public DataChannelHandler {
  public:
-  void OnMessageInner(const webrtc::DataBuffer &msg) override {
+  Result<void> OnMessageInner(const webrtc::DataBuffer &msg) override {
     observer()->OnGpxLocationsMessage(msg.data.cdata(), msg.size());
+    return {};
   }
   void OnFirstMessage() override {
     // Notify location channel opening when actually using the channel,
@@ -317,9 +352,10 @@ class GpxLocationChannelHandler : public DataChannelHandler {
 
 class UnknownChannelHandler : public DataChannelHandler {
  public:
-  void OnMessageInner(const webrtc::DataBuffer &) override {
+  Result<void> OnMessageInner(const webrtc::DataBuffer &) override {
     LOG(WARNING) << "Message received on unknown channel: "
                  << channel()->label();
+    return {};
   }
 };
 
@@ -376,7 +412,10 @@ void DataChannelHandler::OnMessage(const webrtc::DataBuffer &msg) {
     first_msg_received_ = true;
     OnFirstMessage();
   }
-  OnMessageInner(msg);
+  auto res = OnMessageInner(msg);
+  if (!res.ok()) {
+    LOG(ERROR) << res.error().FormatForEnv();
+  }
 }
 
 DataChannelHandlers::DataChannelHandlers(
@@ -404,6 +443,9 @@ void DataChannelHandlers::OnDataChannelOpen(
   } else if (label == kCameraDataChannelLabel) {
     camera_.reset(
         new DataChannelHandlerImpl<CameraChannelHandler>(channel, observer_));
+  } else if (label == kLightsChannelLabel) {
+    lights_.reset(
+        new DataChannelHandlerImpl<LightsChannelHandler>(channel, observer_));
   } else if (label == kLocationDataChannelLabel) {
     location_.reset(
         new DataChannelHandlerImpl<LocationChannelHandler>(channel, observer_));
@@ -412,6 +454,9 @@ void DataChannelHandlers::OnDataChannelOpen(
         channel, observer_));
   } else if (label == kGpxLocationsDataChannelLabel) {
     gpx_location_.reset(new DataChannelHandlerImpl<GpxLocationChannelHandler>(
+        channel, observer_));
+  } else if (label == kSensorsDataChannelLabel) {
+    sensors_.reset(new DataChannelHandlerImpl<SensorsChannelHandler>(
         channel, observer_));
   } else {
     unknown_channels_.emplace_back(

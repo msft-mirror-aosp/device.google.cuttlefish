@@ -17,19 +17,31 @@ package {
     default_applicable_licenses: ["Android-Apache-2.0"],
 }
 
-cc_library_static {
+cc_library {
     name: "libcuttlefish_command_util",
     srcs: [
+        "snapshot_utils.cc",
         "util.cc",
     ],
     shared_libs: [
+        "liblog",
         "libcuttlefish_fs",
         "libcuttlefish_utils",
+        "libcuttlefish_run_cvd_proto",
         "libjsoncpp",
+        "libprotobuf-cpp-full",
+    ],
+    export_shared_lib_headers: [
+        "libcuttlefish_run_cvd_proto",
     ],
     static_libs: [
         "libbase",
         "libcuttlefish_host_config",
     ],
+    target: {
+        darwin: {
+            enabled: true,
+        },
+    },
     defaults: ["cuttlefish_host"],
 }

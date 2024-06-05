@@ -21,6 +21,7 @@
 #include <vector>
 
 #include <fruit/fruit.h>
+#include <gflags/gflags.h>
 
 #include "common/libs/utils/result.h"
 #include "host/commands/kernel_log_monitor/utils.h"
@@ -112,7 +113,7 @@ class AdbConnector : public CommandSource {
 
  private:
   std::unordered_set<SetupFeature*> Dependencies() const override { return {}; }
-  bool Setup() override { return true; }
+  Result<void> ResultSetup() override { return {}; }
 
   const AdbHelper& helper_;
 };
@@ -120,17 +121,42 @@ class AdbConnector : public CommandSource {
 class SocketVsockProxy : public CommandSource, public KernelLogPipeConsumer {
  public:
   INJECT(SocketVsockProxy(const AdbHelper& helper,
+                          const CuttlefishConfig& cuttlefish_config,
                           const CuttlefishConfig::InstanceSpecific& instance,
                           KernelLogPipeProvider& log_pipe_provider))
       : helper_(helper),
+        cuttlefish_config_(cuttlefish_config),
         instance_(instance),
         log_pipe_provider_(log_pipe_provider) {}
 
   // CommandSource
   Result<std::vector<MonitorCommand>> Commands() override {
     std::vector<MonitorCommand> commands;
-    if (helper_.VsockTunnelEnabled()) {
-      Command adb_tunnel(SocketVsockProxyBinary());
+    const auto vsock_tunnel_enabled = helper_.VsockTunnelEnabled();
+    const auto vsock_half_tunnel_enabled = helper_.VsockHalfTunnelEnabled();
+    CF_EXPECT(!vsock_half_tunnel_enabled || !vsock_tunnel_enabled,
+              "Up to one of vsock_tunnel or vsock_half_tunnel is allowed.");
+    if (!vsock_half_tunnel_enabled && !vsock_tunnel_enabled) {
+      return commands;
+    }
+
+    Command adb_tunnel(SocketVsockProxyBinary());
+    adb_tunnel.AddParameter("--vhost_user_vsock=",
+                            instance_.vhost_user_vsock());
+    adb_tunnel.AddParameter("--events_fd=", kernel_log_pipe_);
+    adb_tunnel.AddParameter("--start_event_id=", monitor::Event::AdbdStarted);
+    adb_tunnel.AddParameter("--stop_event_id=",
+                            monitor::Event::FastbootStarted);
+    // We assume that snapshots are always taken after ADBD has started. That
+    // means the start event will never come for a restored device, so we pass
+    // a flag to the proxy to allow it to alter its behavior.
+    if (IsRestoring(cuttlefish_config_)) {
+      adb_tunnel.AddParameter("--restore=true");
+    }
+    adb_tunnel.AddParameter("--server_type=tcp");
+    adb_tunnel.AddParameter("--server_tcp_port=", instance_.adb_host_port());
+
+    if (vsock_tunnel_enabled) {
       /**
        * This socket_vsock_proxy (a.k.a. sv proxy) runs on the host. It assumes
        * that another sv proxy runs inside the guest. see:
@@ -145,17 +171,9 @@ class SocketVsockProxy : public CommandSource, public KernelLogPipeConsumer {
        * instance.adb_host_port()
        *
        */
-      adb_tunnel.AddParameter("--events_fd=", kernel_log_pipe_);
-      adb_tunnel.AddParameter("--start_event_id=", monitor::Event::AdbdStarted);
-      adb_tunnel.AddParameter("--server_type=tcp");
-      adb_tunnel.AddParameter("--server_fd=", tcp_server_);
       adb_tunnel.AddParameter("--client_type=vsock");
       adb_tunnel.AddParameter("--client_vsock_port=6520");
-      adb_tunnel.AddParameter("--client_vsock_id=", instance_.vsock_guest_cid());
-      commands.emplace_back(std::move(adb_tunnel));
-    }
-    if (helper_.VsockHalfTunnelEnabled()) {
-      Command adb_tunnel(SocketVsockProxyBinary());
+    } else {
       /*
        * This socket_vsock_proxy (a.k.a. sv proxy) runs on the host, and
        * cooperates with the adbd inside the guest. See this file:
@@ -166,16 +184,13 @@ class SocketVsockProxy : public CommandSource, public KernelLogPipeConsumer {
        * should be therefore tcp, and the port should differ from instance to
        * instance and be equal to instance.adb_host_port()
        */
-      adb_tunnel.AddParameter("--events_fd=", kernel_log_pipe_);
-      adb_tunnel.AddParameter("--start_event_id=", monitor::Event::AdbdStarted);
-      adb_tunnel.AddParameter("--server_type=tcp");
-      adb_tunnel.AddParameter("--server_fd=", tcp_server_);
       adb_tunnel.AddParameter("--client_type=vsock");
       adb_tunnel.AddParameter("--client_vsock_port=", 5555);
-      adb_tunnel.AddParameter("--client_vsock_id=", instance_.vsock_guest_cid());
-      adb_tunnel.AddParameter("--label=", "adb");
-      commands.emplace_back(std::move(adb_tunnel));
     }
+
+    adb_tunnel.AddParameter("--client_vsock_id=", instance_.vsock_guest_cid());
+    adb_tunnel.AddParameter("--label=", "adb");
+    commands.emplace_back(std::move(adb_tunnel));
     return commands;
   }
 
@@ -189,28 +204,23 @@ class SocketVsockProxy : public CommandSource, public KernelLogPipeConsumer {
   std::unordered_set<SetupFeature*> Dependencies() const override {
     return {static_cast<SetupFeature*>(&log_pipe_provider_)};
   }
-  bool Setup() override {
-    tcp_server_ =
-        SharedFD::SocketLocalServer(instance_.adb_host_port(), SOCK_STREAM);
-    if (!tcp_server_->IsOpen()) {
-      LOG(ERROR) << "Unable to create socket_vsock_proxy server socket: "
-                 << tcp_server_->StrError();
-      return false;
-    }
+
+  Result<void> ResultSetup() override {
     kernel_log_pipe_ = log_pipe_provider_.KernelLogPipe();
-    return true;
+    return {};
   }
 
   const AdbHelper& helper_;
+  const CuttlefishConfig& cuttlefish_config_;
   const CuttlefishConfig::InstanceSpecific& instance_;
   KernelLogPipeProvider& log_pipe_provider_;
   SharedFD kernel_log_pipe_;
-  SharedFD tcp_server_;
 };
 
 }  // namespace
 
 fruit::Component<fruit::Required<KernelLogPipeProvider, const AdbConfig,
+                                 const CuttlefishConfig,
                                  const CuttlefishConfig::InstanceSpecific>>
 LaunchAdbComponent() {
   return fruit::createComponent()

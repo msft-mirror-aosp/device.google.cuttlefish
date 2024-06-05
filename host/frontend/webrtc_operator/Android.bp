@@ -38,7 +38,6 @@ cc_binary_host {
         "webrtc_signaling_headers",
     ],
     shared_libs: [
-        "libext2_blkid",
         "libbase",
         "liblog",
         "libcrypto",
@@ -52,6 +51,7 @@ cc_binary_host {
         "libcuttlefish_utils",
         "libcuttlefish_host_config",
         "libcuttlefish_host_websocket",
+        "libprotobuf-cpp-full",
         "libwebsockets",
     ],
     defaults: ["cuttlefish_buildhost_only"],

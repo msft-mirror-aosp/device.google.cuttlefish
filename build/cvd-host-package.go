@@ -68,6 +68,13 @@ func (c *cvdHostPackage) DepsMutator(ctx android.BottomUpMutatorContext) {
 		}
 	}
 
+	for _, dep := range strings.Split(
+		ctx.Config().VendorConfig("cvd").String("binary"), " ") {
+		if ctx.OtherModuleExists(dep) {
+			ctx.AddVariationDependencies(ctx.Target().Variations(), cvdHostPackageDependencyTag, dep)
+		}
+	}
+
 	// If cvd_custom_action_config is set, include custom action servers in the
 	// host package as specified by cvd_custom_action_servers.
 	customActionConfig := ctx.Config().VendorConfig("cvd").String("custom_action_config")
@@ -81,6 +88,13 @@ func (c *cvdHostPackage) DepsMutator(ctx android.BottomUpMutatorContext) {
 			}
 		}
 	}
+
+	// Include custom CSS file in host package if custom_style is set
+	custom_style := ctx.Config().VendorConfig("cvd").String("custom_style")
+	if custom_style == "" || !ctx.OtherModuleExists(custom_style) {
+		custom_style = "webrtc_custom_blank.css"
+	}
+	ctx.AddVariationDependencies(variations, cvdHostPackageDependencyTag, custom_style)
 }
 
 var pctx = android.NewPackageContext("android/soong/cuttlefish")

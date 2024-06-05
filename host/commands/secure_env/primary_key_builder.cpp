@@ -58,7 +58,7 @@ void PrimaryKeyBuilder::UniqueData(const std::string& data) {
   /* The unique field normally has a precise size to go with the type of the
    * object. During primary key creation the unique field accepts any short byte
    * string to let the user introduce variability into the primary key creation
-   * process which is otherwise determinstic relative to secret TPM state. */
+   * process which is otherwise deterministic relative to secret TPM state. */
   public_area_.unique.sym.size = data.size();
   memcpy(&public_area_.unique.sym.buffer, data.data(), data.size());
 }
@@ -67,7 +67,7 @@ TpmObjectSlot PrimaryKeyBuilder::CreateKey(
     TpmResourceManager& resource_manager) {
   TPM2B_AUTH authValue = {};
   auto rc =
-      Esys_TR_SetAuth(resource_manager.Esys(), ESYS_TR_RH_OWNER, &authValue);
+      Esys_TR_SetAuth(*resource_manager.Esys(), ESYS_TR_RH_OWNER, &authValue);
   if (rc != TSS2_RC_SUCCESS) {
     LOG(ERROR) << "Esys_TR_SetAuth failed with return code " << rc
                << " (" << Tss2_RC_Decode(rc) << ")";
@@ -97,16 +97,16 @@ TpmObjectSlot PrimaryKeyBuilder::CreateKey(
   // Since this is a primary key, it's generated deterministically. It would
   // also be possible to generate this once and hold it in storage.
   rc = Esys_CreateLoaded(
-    /* esysContext */ resource_manager.Esys(),
-    /* primaryHandle */ ESYS_TR_RH_OWNER,
-    /* shandle1 */ ESYS_TR_PASSWORD,
-    /* shandle2 */ ESYS_TR_NONE,
-    /* shandle3 */ ESYS_TR_NONE,
-    /* inSensitive */ &in_sensitive,
-    /* inPublic */ &public_template,
-    /* objectHandle */ &raw_handle,
-    /* outPrivate */ nullptr,
-    /* outPublic */ nullptr);
+      /* esysContext */ *resource_manager.Esys(),
+      /* primaryHandle */ ESYS_TR_RH_OWNER,
+      /* shandle1 */ ESYS_TR_PASSWORD,
+      /* shandle2 */ ESYS_TR_NONE,
+      /* shandle3 */ ESYS_TR_NONE,
+      /* inSensitive */ &in_sensitive,
+      /* inPublic */ &public_template,
+      /* objectHandle */ &raw_handle,
+      /* outPrivate */ nullptr,
+      /* outPublic */ nullptr);
   if (rc != TSS2_RC_SUCCESS) {
     LOG(ERROR) << "Esys_CreateLoaded failed with return code " << rc
                << " (" << Tss2_RC_Decode(rc) << ")";

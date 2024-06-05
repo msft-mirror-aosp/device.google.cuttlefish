@@ -39,8 +39,12 @@ using keymaster::VerifyAuthorizationResponse;
 
 namespace {
 inline bool operator==(const keymaster_blob_t& a, const keymaster_blob_t& b) {
-  if (!a.data_length && !b.data_length) return true;
-  if (!(a.data && b.data)) return a.data == b.data;
+  if (!a.data_length && !b.data_length) {
+    return true;
+  }
+  if (!(a.data && b.data)) {
+    return a.data == b.data;
+  }
   return (a.data_length == b.data_length &&
           !memcmp(a.data, b.data, a.data_length));
 }
@@ -117,7 +121,11 @@ uint64_t TpmKeymasterEnforcement::get_current_time_ms() const {
   return GetTickCount64();
 #else
   struct timespec tp;
+#ifdef __linux__
   int err = clock_gettime(CLOCK_BOOTTIME, &tp);
+#else
+  int err = clock_gettime(CLOCK_MONOTONIC, &tp);
+#endif
   if (err) {
     return 0;
   }
@@ -168,7 +176,7 @@ keymaster_error_t TpmKeymasterEnforcement::GetHmacSharingParameters(
     HmacSharingParameters* params) {
   if (!have_saved_params_) {
     saved_params_.seed = {};
-    TpmRandomSource random_source{resource_manager_.Esys()};
+    TpmRandomSource random_source{resource_manager_};
     auto rc = random_source.GenerateRandom(saved_params_.nonce,
                                            sizeof(saved_params_.nonce));
     if (rc != KM_ERROR_OK) {
@@ -196,7 +204,9 @@ keymaster_error_t TpmKeymasterEnforcement::ComputeSharedHmac(
     sorted_hmac_inputs.emplace(std::move(sharing_params));
   }
 
-  if (!found_mine) return KM_ERROR_INVALID_ARGUMENT;
+  if (!found_mine) {
+    return KM_ERROR_INVALID_ARGUMENT;
+  }
 
   // unique data has a low maximum size, so combine the hmac parameters
   char unique_data[] = "\0\0\0\0\0\0\0\0\0\0";

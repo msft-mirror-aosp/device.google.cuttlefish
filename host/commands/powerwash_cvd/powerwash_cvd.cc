@@ -22,7 +22,7 @@
 
 #include "common/libs/fs/shared_fd.h"
 #include "common/libs/utils/result.h"
-#include "host/commands/run_cvd/runner_defs.h"
+#include "host/libs/command_util/runner/defs.h"
 #include "host/libs/command_util/util.h"
 #include "host/libs/config/cuttlefish_config.h"
 
@@ -48,14 +48,8 @@ Result<void> PowerwashCvdMain() {
       GetLauncherMonitor(*config, FLAGS_instance_num, FLAGS_wait_for_launcher));
 
   LOG(INFO) << "Requesting powerwash";
-  CF_EXPECT(WriteLauncherAction(monitor_socket, LauncherAction::kPowerwash));
-  CF_EXPECT(WaitForRead(monitor_socket, FLAGS_wait_for_launcher));
-  LauncherResponse powerwash_response =
-      CF_EXPECT(ReadLauncherResponse(monitor_socket));
-  CF_EXPECT(
-      powerwash_response == LauncherResponse::kSuccess,
-      "Received `" << static_cast<char>(powerwash_response)
-                   << "` response from launcher monitor for powerwash request");
+  CF_EXPECT(RunLauncherAction(monitor_socket, LauncherAction::kPowerwash,
+                              FLAGS_wait_for_launcher));
 
   LOG(INFO) << "Waiting for device to boot up again";
   CF_EXPECT(WaitForRead(monitor_socket, FLAGS_boot_timeout));
@@ -78,8 +72,7 @@ int main(int argc, char** argv) {
 
   cuttlefish::Result<void> result = cuttlefish::PowerwashCvdMain();
   if (!result.ok()) {
-    LOG(ERROR) << result.error().Message();
-    LOG(DEBUG) << result.error().Trace();
+    LOG(ERROR) << result.error().FormatForEnv();
     return EXIT_FAILURE;
   }
   return EXIT_SUCCESS;

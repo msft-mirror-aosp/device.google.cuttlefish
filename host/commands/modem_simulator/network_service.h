@@ -225,7 +225,7 @@ class NetworkService : public ModemService, public std::enable_shared_from_this<
           nr_csi_sinr(INT_MAX) {}
   };
 
-  // There's no such thing as a percentange for signal strength in the real
+  // There's no such thing as a percentage for signal strength in the real
   // world, as for example for battery usage, this percent value is used to pick
   // a value within the corresponding signal strength values range for emulation
   // purposes only.
@@ -307,6 +307,9 @@ class NetworkService : public ModemService, public std::enable_shared_from_this<
   };
 
   KeepSignalStrengthChangingLoop keep_signal_strength_changing_loop_;
+
+  void HandleIdentifierDisclosure(const std::string& command);
+  void HandleSecurityAlgorithmUpdate(const std::string& command);
 };
 
 }  // namespace cuttlefish

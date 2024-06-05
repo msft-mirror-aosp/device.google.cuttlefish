@@ -40,14 +40,14 @@ namespace {
 std::vector<gid_t> GetSuplementaryGroups() {
   int num_groups = getgroups(0, nullptr);
   if (num_groups < 0) {
-    LOG(ERROR) << "Unable to get number of suplementary groups: "
+    LOG(ERROR) << "Unable to get number of supplementary groups: "
                << std::strerror(errno);
     return {};
   }
   std::vector<gid_t> groups(num_groups + 1);
   int retval = getgroups(groups.size(), groups.data());
   if (retval < 0) {
-    LOG(ERROR) << "Error obtaining list of suplementary groups (list size: "
+    LOG(ERROR) << "Error obtaining list of supplementary groups (list size: "
                << groups.size() << "): " << std::strerror(errno);
     return {};
   }
@@ -96,7 +96,8 @@ bool InGroup(const std::string& group) {
   return Contains(groups, gid);
 }
 
-Result<std::string> SystemWideUserHome(const uid_t uid) {
+Result<std::string> SystemWideUserHome() {
+  auto uid = getuid();
   // getpwuid() is not thread-safe, so we need a lock across all calls
   static std::mutex getpwuid_mutex;
   std::string home_dir;
@@ -116,10 +117,6 @@ Result<std::string> SystemWideUserHome(const uid_t uid) {
     return CF_ERRNO("Failed to convert " << home_dir << " to its Realpath");
   }
   return home_realpath;
-}
-
-Result<std::string> SystemWideUserHome() {
-  return SystemWideUserHome(getuid());
 }
 
 } // namespace cuttlefish

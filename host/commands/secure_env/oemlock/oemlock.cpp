@@ -27,13 +27,17 @@ constexpr int kAllowedByDeviceBit = 1;
 constexpr int kOemLockedBit = 2;
 
 // Default state is allowed_by_carrier = true
-//                  allowed_by_device = false
-//                  locked = true
-constexpr uint8_t kDefaultState = 0 | (1 << kAllowedByCarrierBit) | (1 << kOemLockedBit);
+//                  allowed_by_device = true
+//                  locked = false
+constexpr uint8_t kDefaultState =
+    0 | (1 << kAllowedByCarrierBit) | (1 << kAllowedByDeviceBit);
 
 Result<void> InitializeDefaultState(secure_env::Storage& storage) {
-  if (storage.Exists()) { return {}; };
-  auto data = CF_EXPECT(secure_env::CreateStorageData(&kDefaultState, sizeof(kDefaultState)));
+  if (storage.Exists()) {
+    return {};
+  };
+  auto data = CF_EXPECT(
+      secure_env::CreateStorageData(&kDefaultState, sizeof(kDefaultState)));
   CF_EXPECT(storage.Write(kStateKey, *data));
   return {};
 }
@@ -48,18 +52,19 @@ Result<void> WriteFlag(secure_env::Storage& storage, int bit, bool value) {
   auto data = CF_EXPECT(storage.Read(kStateKey));
   auto state = CF_EXPECT(data->asUint8());
   value ? state |= (1 << bit) : state &= ~(1 << bit);
-  auto data_to_write = CF_EXPECT(secure_env::CreateStorageData(&state, sizeof(state)));
+  auto data_to_write =
+      CF_EXPECT(secure_env::CreateStorageData(&state, sizeof(state)));
   CF_EXPECT(storage.Write(kStateKey, *data_to_write));
   return {};
 }
 
-} // namespace
+}  // namespace
 
 OemLock::OemLock(secure_env::Storage& storage) : storage_(storage) {
   auto result = InitializeDefaultState(storage_);
   if (!result.ok()) {
     LOG(FATAL) << "Failed to initialize default state for OemLock TEE storage: "
-               << result.error().Message();
+               << result.error().FormatForEnv();
   }
 }
 
@@ -98,5 +103,5 @@ Result<void> OemLock::SetOemLocked(bool locked) {
   return {};
 }
 
-} // namespace oemlock
-} // namespace cuttlefish
+}  // namespace oemlock
+}  // namespace cuttlefish

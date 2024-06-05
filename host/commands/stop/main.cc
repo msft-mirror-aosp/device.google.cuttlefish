@@ -20,8 +20,10 @@
 #include <csignal>
 #include <cstdio>
 #include <cstdlib>
+#include <future>
 #include <iostream>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include <android-base/strings.h>
@@ -31,11 +33,12 @@
 #include "common/libs/utils/files.h"
 #include "common/libs/utils/flag_parser.h"
 #include "common/libs/utils/result.h"
-#include "host/commands/run_cvd/runner_defs.h"
 #include "host/libs/allocd/request.h"
 #include "host/libs/allocd/utils.h"
+#include "host/libs/command_util/runner/defs.h"
 #include "host/libs/command_util/util.h"
 #include "host/libs/config/cuttlefish_config.h"
+#include "host/libs/metrics/metrics_receiver.h"
 
 namespace cuttlefish {
 namespace {
@@ -119,14 +122,8 @@ Result<void> CleanStopInstance(
       GetLauncherMonitorFromInstance(instance_config, wait_for_launcher));
 
   LOG(INFO) << "Requesting stop";
-  CF_EXPECT(WriteLauncherAction(monitor_socket, LauncherAction::kStop));
-  CF_EXPECT(WaitForRead(monitor_socket, wait_for_launcher));
-  LauncherResponse stop_response =
-      CF_EXPECT(ReadLauncherResponse(monitor_socket));
-  CF_EXPECT(
-      stop_response == LauncherResponse::kSuccess,
-      "Received `" << static_cast<char>(stop_response)
-                   << "` response from launcher monitor for status request");
+  CF_EXPECT(RunLauncherAction(monitor_socket, LauncherAction::kStop,
+                              wait_for_launcher));
 
   LOG(INFO) << "Successfully stopped device " << instance_config.instance_name()
             << ": " << instance_config.adb_ip_and_port();
@@ -138,10 +135,10 @@ int StopInstance(const CuttlefishConfig& config,
                  const std::int32_t wait_for_launcher) {
   auto result = CleanStopInstance(instance, wait_for_launcher);
   if (!result.ok()) {
-    LOG(ERROR) << "Clean stop failed: " << result.error().Message();
-    LOG(DEBUG) << "Clean stop failed: " << result.error().Trace();
+    LOG(ERROR) << "Clean stop failed: " << result.error().FormatForEnv();
     return FallBackStop(DirsForInstance(config, instance));
   }
+
   return 0;
 }
 
@@ -192,8 +189,8 @@ FlagVaules GetFlagValues(int argc, char** argv) {
   flags.emplace_back(UnexpectedArgumentGuard());
   std::vector<std::string> args =
       ArgsToVec(argc - 1, argv + 1);  // Skip argv[0]
-  auto parse_result = ParseFlags(flags, args);
-  CHECK(parse_result || helpxml) << "Could not process command line flags.";
+  auto parse_res = ConsumeFlags(flags, args);
+  CHECK(parse_res.ok() || helpxml) << "Could not process command line flags.";
 
   return {wait_for_launcher, clear_instance_dirs, helpxml};
 }
@@ -207,28 +204,42 @@ int StopCvdMain(const std::int32_t wait_for_launcher,
   }
 
   int exit_code = 0;
-  for (const auto& instance : config->Instances()) {
-    auto session_id = instance.session_id();
-    int exit_status = StopInstance(*config, instance, wait_for_launcher);
-    if (exit_status == 0 && instance.use_allocd()) {
-      // only release session resources if the instance was stopped
-      SharedFD allocd_sock =
-          SharedFD::SocketLocalClient(kDefaultLocation, false, SOCK_STREAM);
-      if (!allocd_sock->IsOpen()) {
-        LOG(ERROR) << "Unable to connect to allocd on "
-                   << kDefaultLocation << ": "
-                   << allocd_sock->StrError();
-      }
-      ReleaseAllocdResources(allocd_sock, session_id);
-    }
+  auto instances = config->Instances();
+  std::vector<std::future<int>> exit_state_futures;
+  exit_state_futures.reserve(instances.size());
+  for (const auto& instance : instances) {
+    std::future<int> exit_code_from_thread = std::async(
+        std::launch::async,
+        [&instance, &config, &wait_for_launcher,
+         &clear_instance_dirs]() -> int {
+          int exit_status = StopInstance(*config, instance, wait_for_launcher);
+          {
+            auto session_id = instance.session_id();
+            if (exit_status == 0 && instance.use_allocd()) {
+              // only release session resources if the instance was stopped
+              SharedFD allocd_sock = SharedFD::SocketLocalClient(
+                  kDefaultLocation, false, SOCK_STREAM);
+              if (!allocd_sock->IsOpen()) {
+                LOG(ERROR) << "Unable to connect to allocd on "
+                           << kDefaultLocation << ": "
+                           << allocd_sock->StrError();
+              }
+              ReleaseAllocdResources(allocd_sock, session_id);
+            }
+          }
 
-    if (clear_instance_dirs && DirectoryExists(instance.instance_dir())) {
-      LOG(INFO) << "Deleting instance dir " << instance.instance_dir();
-      if (!RecursivelyRemoveDirectory(instance.instance_dir())) {
-        LOG(ERROR) << "Unable to rmdir " << instance.instance_dir();
-      }
-    }
-    exit_code |= exit_status;
+          if (clear_instance_dirs && DirectoryExists(instance.instance_dir())) {
+            LOG(INFO) << "Deleting instance dir " << instance.instance_dir();
+            if (!RecursivelyRemoveDirectory(instance.instance_dir()).ok()) {
+              LOG(ERROR) << "Unable to rmdir " << instance.instance_dir();
+            }
+          }
+          return exit_status;
+        });
+    exit_state_futures.push_back(std::move(exit_code_from_thread));
+  }
+  for (auto& exit_status : exit_state_futures) {
+    exit_code |= exit_status.get();
   }
   return exit_code;
 }
@@ -252,5 +263,11 @@ int main(int argc, char** argv) {
      */
     return 134;
   }
+
+  if (cuttlefish::CuttlefishConfig::Get()->enable_metrics() ==
+      cuttlefish::CuttlefishConfig::Answer::kYes) {
+    cuttlefish::MetricsReceiver::LogMetricsVMStop();
+  }
+
   return cuttlefish::StopCvdMain(wait_for_launcher, clear_instance_dirs);
 }

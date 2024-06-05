@@ -29,16 +29,33 @@ done
 
 sudo apt-get update
 
-# Stuff we need to get build support
+sudo apt install -y debconf-utils
 
+# Avoids blocking "Default mirror not found" popup prompt when pbuilder is installed.
+echo "pbuilder        pbuilder/mirrorsite     string  https://deb.debian.org/debian" | sudo debconf-set-selections
+
+# Stuff we need to get build support
 sudo apt install -y debhelper ubuntu-dev-tools equivs "${extra_packages[@]}"
+
+function install_bazel() {
+  # From https://bazel.build/install/ubuntu
+  echo "Installing bazel"
+  sudo apt install apt-transport-https curl gnupg -y
+  curl -fsSL https://bazel.build/bazel-release.pub.gpg | gpg --dearmor >bazel-archive-keyring.gpg
+  sudo mv bazel-archive-keyring.gpg /usr/share/keyrings
+  echo "deb [arch=amd64 signed-by=/usr/share/keyrings/bazel-archive-keyring.gpg] https://storage.googleapis.com/bazel-apt stable jdk1.8" | sudo tee /etc/apt/sources.list.d/bazel.list
+  # bazel needs the zip command to gather test outputs but doesn't depend on it
+  sudo apt-get update && sudo apt-get install -y bazel zip unzip
+}
+
+install_bazel
 
 # Resize
 sudo apt install -y cloud-utils
 sudo apt install -y cloud-guest-utils
 sudo apt install -y fdisk
-sudo growpart /dev/sdb 1
-sudo e2fsck -f -y /dev/sdb1
+sudo growpart /dev/sdb 1 || /bin/true
+sudo e2fsck -f -y /dev/sdb1 || /bin/true
 sudo resize2fs /dev/sdb1
 
 # Install the cuttlefish build deps
@@ -63,11 +80,9 @@ for dsc in *.dsc; do
 done
 
 # Now gather all of the relevant .deb files to copy them into the image
-debs=()
+debs=(!(cuttlefish-orchestration*).deb)
 if [[ "${host_orchestration_flag}" == "true" ]]; then
-  debs=(!(cuttlefish-@(common|user)*).deb)
-else
-  debs=(!(cuttlefish-orchestration*).deb)
+  debs+=( cuttlefish-orchestration*.deb )
 fi
 
 tmp_debs=()
@@ -86,11 +101,13 @@ sudo mount --bind /dev/ /mnt/image/dev
 sudo mount --bind /dev/pts /mnt/image/dev/pts
 sudo mount --bind /run /mnt/image/run
 # resolv.conf is needed on Debian but not Ubuntu
-sudo cp /etc/resolv.conf /mnt/image/etc/
+if [ ! -f /mnt/image/etc/resolv.conf ]; then
+  sudo cp /etc/resolv.conf /mnt/image/etc/
+fi
 sudo chroot /mnt/image /usr/bin/apt update
 sudo chroot /mnt/image /usr/bin/apt install -y "${tmp_debs[@]}"
 # install tools dependencies
-sudo chroot /mnt/image /usr/bin/apt install -y openjdk-17-jre
+sudo chroot /mnt/image /usr/bin/apt install -y openjdk-21-jre
 sudo chroot /mnt/image /usr/bin/apt install -y unzip bzip2 lzop
 sudo chroot /mnt/image /usr/bin/apt install -y aapt
 sudo chroot /mnt/image /usr/bin/apt install -y screen # needed by tradefed
@@ -101,31 +118,17 @@ sudo chroot /mnt/image /usr/bin/apt install -t bullseye-backports -y linux-image
 # update QEMU version to most recent backport
 sudo chroot /mnt/image /usr/bin/apt install -y --only-upgrade qemu-system-x86 -t bullseye-backports
 sudo chroot /mnt/image /usr/bin/apt install -y --only-upgrade qemu-system-arm -t bullseye-backports
+sudo chroot /mnt/image /usr/bin/apt install -y --only-upgrade qemu-system-misc -t bullseye-backports
 
 # Install GPU driver dependencies
 sudo cp install_nvidia.sh /mnt/image/
 sudo chroot /mnt/image /usr/bin/bash install_nvidia.sh
 sudo rm /mnt/image/install_nvidia.sh
 
-# Verify
-query_nvidia() {
-  sudo chroot /mnt/image nvidia-smi --format=csv,noheader --query-gpu="$@"
-}
-
-if [[ $(query_nvidia "count") != "1" ]]; then
-  echo "Failed to detect GPU."
-  exit 1
-fi
-
-if [[ $(query_nvidia "driver_version") == "" ]]; then
-  echo "Failed to detect GPU driver."
-  exit 1
-fi
-
 # Vulkan loader
 sudo chroot /mnt/image /usr/bin/apt install -y libvulkan1 -t bullseye-backports
 
-# Wayland-server needed to have Nvidia driver fail gracefully when attemping to
+# Wayland-server needed to have Nvidia driver fail gracefully when attempting to
 # use the EGL API on GCE instances without a GPU.
 sudo chroot /mnt/image /usr/bin/apt install -y libwayland-server0 -t bullseye-backports
 

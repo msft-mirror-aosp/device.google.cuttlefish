@@ -14,11 +14,6 @@
 # limitations under the License.
 #
 
-# TODO(b/275113769): The 'wear' targets currently enforce that APEX files are flattened.
-# As riscv64 targets currently do not support this, this is a lazy-default-init that can
-# be overridden in target files. Once support is enabled, require the override.
-OVERRIDE_TARGET_FLATTEN_APEX ?= true
-
 $(call inherit-product, $(SRC_TARGET_DIR)/product/base_system.mk)
 $(call inherit-product, $(SRC_TARGET_DIR)/product/languages_default.mk)
 $(call inherit-product-if-exists, external/hyphenation-patterns/patterns.mk)
@@ -41,12 +36,14 @@ PRODUCT_PACKAGES += \
     librs_jni \
     ManagedProvisioning \
     MmsService \
+    $(RELEASE_PACKAGE_NFC_STACK) \
     netutils-wrapper-1.0 \
     screenrecord \
     StatementService \
     TelephonyProvider \
     TeleService \
     UserDictionaryProvider \
+    init.zygote32.rc \
 
 PRODUCT_HOST_PACKAGES += \
     fsck.f2fs \
@@ -62,7 +59,6 @@ PRODUCT_SYSTEM_SERVER_JARS += \
 
 PRODUCT_COPY_FILES += \
     system/core/rootdir/etc/public.libraries.wear.txt:system/etc/public.libraries.txt \
-    system/core/rootdir/init.zygote32.rc:system/etc/init/hw/init.zygote32.rc \
 
 PRODUCT_USE_DYNAMIC_PARTITION_SIZE := true
 

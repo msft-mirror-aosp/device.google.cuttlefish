@@ -17,7 +17,7 @@ package {
     default_applicable_licenses: ["Android-Apache-2.0"],
 }
 
-cc_library_static {
+cc_library {
     name: "libcuttlefish_wayland_server",
     srcs: [
         "wayland_compositor.cpp",
@@ -29,6 +29,9 @@ cc_library_static {
         "wayland_surface.cpp",
         "wayland_surfaces.cpp",
         "wayland_virtio_gpu_metadata.cpp",
+    ],
+    header_libs: [
+        "libdrm_headers",
     ],
     shared_libs: [
         "libbase",

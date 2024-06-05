@@ -22,11 +22,14 @@ extern "C" {
 // Main function for Rust implementation of KeyMint.
 // - fd_in: file descriptor for incoming serialized request messages
 // - fd_out: file descriptor for outgoing serialized response messages
-// - security_level: security level to advertize; should be one of the integer
+// - security_level: security level to advertise; should be one of the integer
 //   values from SecurityLevel.aidl.
 // - trm: pointer to a valid `TpmResourceManager`, which must remain valid
 //   for the entire duration of the function execution.
-void kmr_ta_main(int fd_in, int fd_out, int security_level, void* trm);
+// - snapshot_socket_fd: file descriptor for a socket used to communicate with
+//   the secure_env suspend-resume handler thread.
+void kmr_ta_main(int fd_in, int fd_out, int security_level, void* trm,
+                 int snapshot_socket_fd);
 
 #ifdef __cplusplus
 }

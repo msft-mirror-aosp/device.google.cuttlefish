@@ -16,7 +16,6 @@
 
 #include "host/libs/vm_manager/gem5_manager.h"
 
-#include <string.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -24,11 +23,8 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-#include <cstdlib>
 #include <fstream>
-#include <sstream>
 #include <string>
-#include <thread>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -37,14 +33,10 @@
 #include <android-base/logging.h>
 #include <vulkan/vulkan.h>
 
-#include "common/libs/fs/shared_select.h"
-#include "common/libs/utils/files.h"
 #include "common/libs/utils/result.h"
 #include "common/libs/utils/subprocess.h"
-#include "common/libs/utils/users.h"
 #include "host/libs/config/command_source.h"
 #include "host/libs/config/cuttlefish_config.h"
-#include "host/libs/config/known_paths.h"
 
 using cuttlefish::StringFromEnv;
 
@@ -52,14 +44,104 @@ namespace cuttlefish {
 namespace vm_manager {
 namespace {
 
-void LogAndSetEnv(const char* key, const std::string& value) {
-  setenv(key, value.c_str(), 1);
-  LOG(INFO) << key << "=" << value;
-}
+static constexpr char kFsHeader[] = R"CPP_STR_END(import argparse
+import devices
+import os
+import shutil
+import m5
+from m5.util import addToPath
+from m5.objects import *
+from m5.options import *
+from m5.objects.Ethernet import NSGigE, IGbE_igb, IGbE_e1000, EtherTap
+from common import SysPaths
+from common import ObjectList
+from common import MemConfig
+from common.cores.arm import HPI
+m5.util.addToPath('../..')
+)CPP_STR_END";
+
+static constexpr char kFsMemPci[] = R"CPP_STR_END(
+  MemConfig.config_mem(args, root.system)
+
+  pci_devices = []
+  pci_devices.append(PciVirtIO(vio=VirtIOConsole(device=Terminal(number=0))))
+  pci_devices.append(PciVirtIO(vio=VirtIOConsole(device=Terminal(number=1, outfile="none"))))
+  pci_devices.append(PciVirtIO(vio=VirtIOConsole(device=Terminal(number=2))))
+  pci_devices.append(PciVirtIO(vio=VirtIOConsole(device=Terminal(number=3, outfile="none"))))
+  pci_devices.append(PciVirtIO(vio=VirtIOConsole(device=Terminal(number=4, outfile="none"))))
+  pci_devices.append(PciVirtIO(vio=VirtIOConsole(device=Terminal(number=5, outfile="none"))))
+  pci_devices.append(PciVirtIO(vio=VirtIOConsole(device=Terminal(number=6, outfile="none"))))
+  pci_devices.append(PciVirtIO(vio=VirtIOConsole(device=Terminal(number=7, outfile="none"))))
+  pci_devices.append(PciVirtIO(vio=VirtIOConsole(device=Terminal(number=8, outfile="none"))))
+  pci_devices.append(PciVirtIO(vio=VirtIOConsole(device=Terminal(number=9, outfile="none"))))
+
+  for each_item in args.disk_image:
+    disk_image = CowDiskImage()
+    disk_image.child.image_file = SysPaths.disk(each_item)
+    pci_devices.append(PciVirtIO(vio=VirtIOBlock(image=disk_image)))
+
+  nic = IGbE_e1000(pci_bus=0, pci_dev=0, pci_func=0, InterruptLine=1, InterruptPin=1)
+  pci_devices.append(nic)
+  root.system.pci_devices = pci_devices
+  for pci_device in root.system.pci_devices:
+    root.system.attach_pci(pci_device)
+
+  root.tap = EtherTap(tun_clone_device='/dev/net/tun', tap_device_name='cvd-mtap-01')
+  root.tap.tap = nic.interface
+  root.system.connect()
+)CPP_STR_END";
+
+static constexpr char kFsKernelCmd[] = R"CPP_STR_END(
+  kernel_cmd = [
+    "lpj=19988480",
+    "norandmaps",
+    "mem=%s" % args.mem_size,
+    "console=hvc0",
+    "panic=-1",
+    "earlycon=pl011,mmio32,0x1c090000",
+    "audit=1",
+    "printk.devkmsg=on",
+    "firmware_class.path=/vendor/etc/",
+    "kfence.sample_interval=500",
+    "loop.max_part=7",
+    "bootconfig",
+    "androidboot.force_normal_boot=1",
+  ]
+  root.system.workload.command_line = " ".join(kernel_cmd)
+  if args.restore is not None:
+    m5.instantiate(args.restore)
+  else:
+    m5.instantiate()
+
+  while True:
+    event = m5.simulate()
+    msg = event.getCause()
+    cur_tick = m5.curTick()
+    if msg == "checkpoint":
+      backup_path = backup_path = os.path.join(root_dir, "gem5_checkpoint")
+      if not os.path.isdir(backup_path):
+        os.mkdir(backup_path)
+
+      print("Checkpoint @", cur_tick)
+      src_dir = os.path.join(m5.options.outdir, "cpt.%d" % cur_tick)
+      backup_path = os.path.join(backup_path, "cpt.%d" % cur_tick)
+      m5.checkpoint(src_dir)
+      shutil.copytree(src_dir, backup_path)
+      print("Checkpoint done.")
+    else:
+      print("Exit msg: " + msg + " @", cur_tick)
+      break
+  sys.exit(event.getCode())
+)CPP_STR_END";
+
+static constexpr char kFsExeMain[] = R"CPP_STR_END(
+if __name__ == "__m5_main__":
+  main()
+)CPP_STR_END";
 
 void GenerateGem5File(const CuttlefishConfig& config,
                       const CuttlefishConfig::InstanceSpecific& instance) {
-  // Gem5 specific config, currently users have to change these config locally (without throug launch_cvd input flag) to meet their design
+  // Gem5 specific config, currently users have to change these config locally (without through launch_cvd input flag) to meet their design
   // TODO: Add these config into launch_cvd input flag or parse from one json file
   std::string cpu_class = "AtomicSimpleCPU";
   std::string l1_icache_class = "None";
@@ -76,7 +158,7 @@ void GenerateGem5File(const CuttlefishConfig& config,
   std::string fs_path = instance.gem5_binary_dir() +
                         "/configs/example/arm/starter_fs.py";
   std::ofstream starter_fs_ofstream(fs_path.c_str());
-  starter_fs_ofstream << fs_header << "\n";
+  starter_fs_ofstream << kFsHeader << "\n";
 
   // global vars in python
   starter_fs_ofstream << "default_disk = 'linaro-minimal-aarch64.img'\n";
@@ -101,7 +183,7 @@ void GenerateGem5File(const CuttlefishConfig& config,
   starter_fs_ofstream << "  root.system = devices.SimpleSystem(has_caches, args.mem_size, mem_mode=mem_mode, workload=ArmFsLinux(object_file=SysPaths.binary(\"" << config.assembly_dir() << "/kernel\")))\n";
 
   // mem config and pci instantiate
-  starter_fs_ofstream << fs_mem_pci;
+  starter_fs_ofstream << kFsMemPci;
 
   // system settings
   starter_fs_ofstream << "  root.system.cpu_cluster = [devices.CpuCluster(root.system, " << num_cores << ", \"" << cpu_freq << "\", \"1.0V\", " << cpu_class << ", " << l1_icache_class << ", " << l1_dcache_class << ", " << walk_cache_class << ", " << l2_Cache_class << ")]\n";
@@ -113,10 +195,10 @@ void GenerateGem5File(const CuttlefishConfig& config,
   starter_fs_ofstream << "  root_dir = \"" << StringFromEnv("HOME", ".") << "\"\n";
 
   //kernel cmd
-  starter_fs_ofstream << fs_kernel_cmd << "\n";
+  starter_fs_ofstream << kFsKernelCmd << "\n";
 
   // execute main
-  starter_fs_ofstream << fs_exe_main << "\n";
+  starter_fs_ofstream << kFsExeMain << "\n";
 }
 
 }  // namespace
@@ -134,7 +216,7 @@ Gem5Manager::ConfigureGraphics(
 
   // Override the default HAL search paths in all cases. We do this because
   // the HAL search path allows for fallbacks, and fallbacks in conjunction
-  // with properities lead to non-deterministic behavior while loading the
+  // with properties lead to non-deterministic behavior while loading the
   // HALs.
 
   std::unordered_map<std::string, std::string> bootconfig_args;
@@ -182,7 +264,8 @@ Gem5Manager::ConfigureGraphics(
 }
 
 Result<std::unordered_map<std::string, std::string>>
-Gem5Manager::ConfigureBootDevices(int /*num_disks*/, bool /*have_gpu*/) {
+Gem5Manager::ConfigureBootDevices(
+    const CuttlefishConfig::InstanceSpecific& /*instance*/) {
   switch (arch_) {
     case Arch::Arm:
     case Arch::Arm64:
@@ -194,14 +277,9 @@ Gem5Manager::ConfigureBootDevices(int /*num_disks*/, bool /*have_gpu*/) {
 }
 
 Result<std::vector<MonitorCommand>> Gem5Manager::StartCommands(
-    const CuttlefishConfig& config) {
+    const CuttlefishConfig& config, std::vector<VmmDependencyCommand*>&) {
   auto instance = config.ForDefaultInstance();
 
-  auto stop = [](Subprocess* proc) {
-    return KillSubprocess(proc) == StopperResult::kStopSuccess
-               ? StopperResult::kStopCrash
-               : StopperResult::kStopFailure;
-  };
   std::string gem5_binary = instance.gem5_binary_dir();
   switch (arch_) {
     case Arch::Arm:
@@ -219,7 +297,7 @@ Result<std::vector<MonitorCommand>> Gem5Manager::StartCommands(
   // generate Gem5 starter_fs.py before we execute it
   GenerateGem5File(config, instance);
 
-  Command gem5_cmd(gem5_binary, stop);
+  Command gem5_cmd(gem5_binary);
 
   // Always enable listeners, because auto mode will disable once it detects
   // gem5 is not run interactively
@@ -248,7 +326,7 @@ Result<std::vector<MonitorCommand>> Gem5Manager::StartCommands(
     gem5_cmd.AddParameter("--disk-image=", disk);
   }
 
-  LogAndSetEnv("M5_PATH", config.assembly_dir());
+  gem5_cmd.AddEnvironmentVariable("M5_PATH", config.assembly_dir());
 
   std::vector<MonitorCommand> commands;
   commands.emplace_back(std::move(gem5_cmd), true);
