@@ -21,12 +21,14 @@
 #include <array>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <unordered_set>
+#include <utility>
+#include <vector>
 
 #include <android-base/strings.h>
 #include <android-base/logging.h>
 
-#include "common/libs/fs/shared_buf.h"
 #include "common/libs/utils/archive.h"
 #include "common/libs/utils/contains.h"
 #include "common/libs/utils/files.h"
@@ -41,22 +43,16 @@ namespace cuttlefish {
 namespace {
 
 constexpr char kMiscInfoPath[] = "META/misc_info.txt";
+constexpr char kDynamicPartitionsPath[] = "META/dynamic_partitions_info.txt";
 constexpr std::array kVendorTargetImages = {
-    "IMAGES/boot.img",
-    "IMAGES/dtbo.img",
-    "IMAGES/init_boot.img",
-    "IMAGES/odm.img",
-    "IMAGES/odm_dlkm.img",
-    "IMAGES/recovery.img",
-    "IMAGES/system_dlkm.img",
-    "IMAGES/userdata.img",
-    "IMAGES/vbmeta.img",
-    "IMAGES/vbmeta_system_dlkm.img",
-    "IMAGES/vbmeta_vendor.img",
-    "IMAGES/vbmeta_vendor_dlkm.img",
-    "IMAGES/vendor.img",
-    "IMAGES/vendor_dlkm.img",
-    "IMAGES/vendor_kernel_boot.img",
+    "IMAGES/boot.img",          "IMAGES/dtbo.img",
+    "IMAGES/init_boot.img",     "IMAGES/odm.img",
+    "IMAGES/odm_dlkm.img",      "IMAGES/recovery.img",
+    "IMAGES/system_dlkm.img",   "IMAGES/userdata.img",
+    "IMAGES/vbmeta.img",        "IMAGES/vbmeta_system_dlkm.img",
+    "IMAGES/vbmeta_vendor.img", "IMAGES/vbmeta_vendor_dlkm.img",
+    "IMAGES/vendor.img",        "IMAGES/vendor_boot.img",
+    "IMAGES/vendor_dlkm.img",   "IMAGES/vendor_kernel_boot.img",
 };
 constexpr std::array kVendorTargetBuildProps = {
     "ODM/build.prop",
@@ -70,6 +66,11 @@ struct TargetFiles {
   Archive system_zip;
   std::vector<std::string> vendor_contents;
   std::vector<std::string> system_contents;
+};
+
+struct Extracted {
+  std::set<std::string> images;
+  std::vector<std::string> system_partitions;
 };
 
 void FindImports(Archive* archive, const std::string& build_prop_file) {
@@ -92,6 +93,17 @@ bool IsTargetFilesBuildProp(const std::string& filename) {
   return android::base::EndsWith(filename, "build.prop");
 }
 
+Result<std::string> GetPartitionNameFromPath(const std::string& path) {
+  std::string_view result(path);
+  CF_EXPECTF(
+      android::base::ConsumePrefix(&result, "IMAGES/"),
+      "target_files filepath {} expected to be in the \"IMAGES\" directory",
+      path);
+  CF_EXPECTF(android::base::ConsumeSuffix(&result, ".img"),
+             "target_files filepath {} expected to be a \".img\" file", path);
+  return std::string(result);
+}
+
 Result<TargetFiles> GetTargetFiles(const std::string& vendor_zip_path,
                                    const std::string& system_zip_path) {
   auto result = TargetFiles{
@@ -107,42 +119,50 @@ Result<TargetFiles> GetTargetFiles(const std::string& vendor_zip_path,
   return result;
 }
 
-Result<void> CombineMiscInfo(TargetFiles& target_files,
-                             const std::string& misc_output_path) {
+Result<MiscInfo> CombineDynamicPartitionsInfo(
+    TargetFiles& target_files, const std::set<std::string>& extracted_images) {
+  CF_EXPECTF(Contains(target_files.vendor_contents, kDynamicPartitionsPath),
+             "Vendor target files zip does not contain {}",
+             kDynamicPartitionsPath);
+  CF_EXPECTF(Contains(target_files.system_contents, kDynamicPartitionsPath),
+             "System target files zip does not contain {}",
+             kDynamicPartitionsPath);
+
+  const MiscInfo vendor_dp_info = CF_EXPECT(ParseMiscInfo(
+      target_files.vendor_zip.ExtractToMemory(kDynamicPartitionsPath)));
+  const MiscInfo system_dp_info = CF_EXPECT(ParseMiscInfo(
+      target_files.system_zip.ExtractToMemory(kDynamicPartitionsPath)));
+
+  return CF_EXPECT(GetCombinedDynamicPartitions(vendor_dp_info, system_dp_info,
+                                                extracted_images));
+}
+
+Result<void> CombineMiscInfo(
+    TargetFiles& target_files, const std::string& misc_output_path,
+    const std::set<std::string>& extracted_images,
+    const std::vector<std::string>& system_partitions) {
   CF_EXPECTF(Contains(target_files.vendor_contents, kMiscInfoPath),
-             "Default target files zip does not contain {}", kMiscInfoPath);
+             "Vendor target files zip does not contain {}", kMiscInfoPath);
   CF_EXPECTF(Contains(target_files.system_contents, kMiscInfoPath),
              "System target files zip does not contain {}", kMiscInfoPath);
 
-  const MiscInfo default_misc = CF_EXPECT(
+  const MiscInfo vendor_misc = CF_EXPECT(
       ParseMiscInfo(target_files.vendor_zip.ExtractToMemory(kMiscInfoPath)));
   const MiscInfo system_misc = CF_EXPECT(
       ParseMiscInfo(target_files.system_zip.ExtractToMemory(kMiscInfoPath)));
 
-  auto output_misc = default_misc;
-  auto system_super_partitions = SuperPartitionComponents(system_misc);
-  // Ensure specific skipped partitions end up in the misc_info.txt
-  for (auto partition :
-       {"odm", "odm_dlkm", "vendor", "vendor_dlkm", "system_dlkm"}) {
-    if (!Contains(system_super_partitions, partition)) {
-      system_super_partitions.push_back(partition);
-    }
-  }
-  CF_EXPECT(SetSuperPartitionComponents(system_super_partitions, &output_misc),
-            "Failed to update super partitions components for misc_info");
+  const auto combined_dp_info =
+      CF_EXPECT(CombineDynamicPartitionsInfo(target_files, extracted_images));
+  const auto output_misc = CF_EXPECT(MergeMiscInfos(
+      vendor_misc, system_misc, combined_dp_info, system_partitions));
 
-  SharedFD misc_output_file = SharedFD::Creat(misc_output_path.c_str(), 0644);
-  CF_EXPECT(misc_output_file->IsOpen(), "Failed to open output misc file: "
-                                            << misc_output_file->StrError());
-
-  CF_EXPECT(WriteAll(misc_output_file, WriteMiscInfo(output_misc)) >= 0,
-            "Failed to write output misc file contents: "
-                << misc_output_file->StrError());
+  CF_EXPECT(WriteMiscInfo(output_misc, misc_output_path));
   return {};
 }
 
-Result<void> ExtractTargetFiles(TargetFiles& target_files,
-                                const std::string& combined_output_path) {
+Result<Extracted> ExtractTargetFiles(TargetFiles& target_files,
+                                     const std::string& combined_output_path) {
+  Extracted extracted;
   for (const auto& name : target_files.vendor_contents) {
     if (!IsTargetFilesImage(name)) {
       continue;
@@ -153,6 +173,7 @@ Result<void> ExtractTargetFiles(TargetFiles& target_files,
     CF_EXPECT(
         target_files.vendor_zip.ExtractFiles({name}, combined_output_path),
         "Failed to extract " << name << " from the vendor target zip");
+    extracted.images.emplace(CF_EXPECT(GetPartitionNameFromPath(name)));
   }
   for (const auto& name : target_files.vendor_contents) {
     if (!IsTargetFilesBuildProp(name)) {
@@ -177,6 +198,9 @@ Result<void> ExtractTargetFiles(TargetFiles& target_files,
     CF_EXPECT(
         target_files.system_zip.ExtractFiles({name}, combined_output_path),
         "Failed to extract " << name << " from the system target zip");
+    const auto partition = CF_EXPECT(GetPartitionNameFromPath(name));
+    extracted.images.emplace(partition);
+    extracted.system_partitions.emplace_back(partition);
   }
   for (const auto& name : target_files.system_contents) {
     if (!IsTargetFilesBuildProp(name)) {
@@ -190,7 +214,7 @@ Result<void> ExtractTargetFiles(TargetFiles& target_files,
         target_files.system_zip.ExtractFiles({name}, combined_output_path),
         "Failed to extract " << name << " from the system target zip");
   }
-  return {};
+  return extracted;
 }
 
 Result<void> CombineTargetZipFiles(const std::string& vendor_zip_path,
@@ -200,9 +224,11 @@ Result<void> CombineTargetZipFiles(const std::string& vendor_zip_path,
   CF_EXPECT(EnsureDirectoryExists(output_path + "/META"));
   auto target_files =
       CF_EXPECT(GetTargetFiles(vendor_zip_path, system_zip_path));
-  CF_EXPECT(ExtractTargetFiles(target_files, output_path));
+  const auto extracted =
+      CF_EXPECT(ExtractTargetFiles(target_files, output_path));
   const auto misc_output_path = output_path + "/" + kMiscInfoPath;
-  CF_EXPECT(CombineMiscInfo(target_files, misc_output_path));
+  CF_EXPECT(CombineMiscInfo(target_files, misc_output_path, extracted.images,
+                            extracted.system_partitions));
   return {};
 }
 
