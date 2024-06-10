@@ -16,25 +16,52 @@
 #include "misc_info.h"
 
 #include <algorithm>
+#include <array>
+#include <memory>
 #include <set>
 #include <string>
+#include <string_view>
+#include <unordered_set>
 #include <vector>
 
 #include <android-base/logging.h>
+#include <android-base/parseint.h>
 #include <android-base/strings.h>
 #include <fmt/format.h>
 
+#include "common/libs/fs/shared_buf.h"
+#include "common/libs/fs/shared_fd.h"
 #include "common/libs/utils/contains.h"
 #include "common/libs/utils/result.h"
+#include "host/libs/avb/avb.h"
+#include "host/libs/config/known_paths.h"
 
 namespace cuttlefish {
 namespace {
 
+constexpr char kAvbVbmetaAlgorithm[] = "avb_vbmeta_algorithm";
+constexpr char kAvbVbmetaArgs[] = "avb_vbmeta_args";
+constexpr char kAvbVbmetaKeyPath[] = "avb_vbmeta_key_path";
 constexpr char kDynamicPartitions[] = "dynamic_partition_list";
 constexpr char kGoogleDynamicPartitions[] = "google_dynamic_partitions";
+constexpr char kRollbackIndexSuffix[] = "_rollback_index_location";
 constexpr char kSuperBlockDevices[] = "super_block_devices";
 constexpr char kSuperPartitionGroups[] = "super_partition_groups";
 constexpr char kUseDynamicPartitions[] = "use_dynamic_partitions";
+constexpr char kRsa2048Algorithm[] = "SHA256_RSA2048";
+constexpr char kRsa4096Algorithm[] = "SHA256_RSA4096";
+constexpr std::array kNonPartitionKeysToMerge = {
+    "ab_update", "default_system_dev_certificate"};
+// based on build/make/tools/releasetools/common.py:AVB_PARTITIONS
+constexpr std::array kVbmetaPartitions = {"boot",
+                                          "init_boot",
+                                          "odm",
+                                          "odm_dlkm",
+                                          "vbmeta_system",
+                                          "vbmeta_system_dlkm",
+                                          "vbmeta_vendor_dlkm",
+                                          "vendor",
+                                          "vendor_boot"};
 
 Result<std::string> GetExpected(const MiscInfo& misc_info,
                                 const std::string& key) {
@@ -68,6 +95,58 @@ std::string GetPartitionList(const MiscInfo& vendor_info,
   return MergePartitionLists(vendor_list, system_list, extracted_images);
 }
 
+std::vector<std::string> GeneratePartitionKeys(const std::string& name) {
+  std::vector<std::string> result;
+  result.emplace_back("avb_" + name);
+  result.emplace_back("avb_" + name + "_algorithm");
+  result.emplace_back("avb_" + name + "_key_path");
+  result.emplace_back("avb_" + name + kRollbackIndexSuffix);
+  result.emplace_back("avb_" + name + "_hashtree_enable");
+  result.emplace_back("avb_" + name + "_add_hashtree_footer_args");
+  result.emplace_back(name + "_disable_sparse");
+  result.emplace_back("building_" + name + "_image");
+  auto fs_type_key = name + "_fs_type";
+  if (name == "system") {
+    fs_type_key = "fs_type";
+  }
+  result.emplace_back(fs_type_key);
+  return result;
+}
+
+Result<int> ResolveRollbackIndexConflicts(
+    const std::string& index_string,
+    const std::unordered_set<int> used_indices) {
+  int index;
+  CF_EXPECTF(android::base::ParseInt(index_string, &index),
+             "Unable to parse value {} to string.  Maybe a wrong or bad value "
+             "read for the rollback index?",
+             index_string);
+  while (Contains(used_indices, index)) {
+    ++index;
+  }
+  return index;
+}
+
+Result<std::string> GetKeyPath(const std::string_view algorithm) {
+  if (algorithm == kRsa4096Algorithm) {
+    return TestKeyRsa4096();
+  } else if (algorithm == kRsa2048Algorithm) {
+    return TestKeyRsa2048();
+  } else {
+    return CF_ERR("Unexpected algorithm.  No key available.");
+  }
+}
+
+Result<std::string> GetPubKeyPath(const std::string_view algorithm) {
+  if (algorithm == kRsa4096Algorithm) {
+    return TestPubKeyRsa4096();
+  } else if (algorithm == kRsa2048Algorithm) {
+    return TestPubKeyRsa2048();
+  } else {
+    return CF_ERR("Unexpected algorithm.  No key available.");
+  }
+}
+
 }  // namespace
 
 Result<MiscInfo> ParseMiscInfo(const std::string& misc_info_contents) {
@@ -96,12 +175,21 @@ Result<MiscInfo> ParseMiscInfo(const std::string& misc_info_contents) {
   return misc_info;
 }
 
-std::string WriteMiscInfo(const MiscInfo& misc_info) {
-  std::stringstream out;
+Result<void> WriteMiscInfo(const MiscInfo& misc_info,
+                           const std::string& output_path) {
+  std::stringstream file_content;
   for (const auto& entry : misc_info) {
-    out << entry.first << "=" << entry.second << "\n";
+    file_content << entry.first << "=" << entry.second << "\n";
   }
-  return out.str();
+
+  SharedFD output_file = SharedFD::Creat(output_path.c_str(), 0644);
+  CF_EXPECT(output_file->IsOpen(),
+            "Failed to open output misc file: " << output_file->StrError());
+
+  CF_EXPECT(
+      WriteAll(output_file, file_content.str()) >= 0,
+      "Failed to write output misc file contents: " << output_file->StrError());
+  return {};
 }
 
 // based on build/make/tools/releasetools/merge/merge_target_files.py
@@ -165,10 +253,80 @@ Result<MiscInfo> GetCombinedDynamicPartitions(
   return std::move(result);
 }
 
-void MergeInKeys(const MiscInfo& source, MiscInfo& target) {
-  for (const auto& key_val : source) {
-    target[key_val.first] = key_val.second;
+Result<MiscInfo> MergeMiscInfos(
+    const MiscInfo& vendor_info, const MiscInfo& system_info,
+    const MiscInfo& combined_dp_info,
+    const std::vector<std::string>& system_partitions) {
+  // the combined misc info uses the vendor values as defaults
+  MiscInfo result = vendor_info;
+  std::unordered_set<int> used_indices;
+  for (const auto& partition : system_partitions) {
+    for (const auto& key : GeneratePartitionKeys(partition)) {
+      if (!Contains(system_info, key)) {
+        continue;
+      }
+      auto system_value = system_info.find(key)->second;
+      // avb_<partition>_rollback_index_location values can conflict across
+      // different builds
+      if (android::base::EndsWith(key, kRollbackIndexSuffix)) {
+        const auto index = CF_EXPECT(
+            ResolveRollbackIndexConflicts(system_value, used_indices));
+        used_indices.insert(index);
+        system_value = std::to_string(index);
+      }
+      result[key] = system_value;
+    }
   }
+  for (const auto& key : kNonPartitionKeysToMerge) {
+    const auto value_result = GetExpected(system_info, key);
+    if (value_result.ok()) {
+      result[key] = *value_result;
+    }
+  }
+  for (const auto& key_val : combined_dp_info) {
+    result[key_val.first] = key_val.second;
+  }
+  return std::move(result);
+}
+
+Result<VbmetaArgs> GetVbmetaArgs(const MiscInfo& misc_info,
+                                 const std::string& image_path) {
+  // The key_path value should exist, but it is a build system path
+  // We use a host artifacts relative path instead
+  CF_EXPECT(Contains(misc_info, kAvbVbmetaKeyPath));
+  const auto algorithm = CF_EXPECT(GetExpected(misc_info, kAvbVbmetaAlgorithm));
+  auto result = VbmetaArgs{
+      .algorithm = algorithm,
+      .key_path = CF_EXPECT(GetKeyPath(algorithm)),
+  };
+  // must split and add --<flag> <arg> arguments(non-equals format) separately
+  // due to how Command.AddParameter handles each argument
+  const auto extra_args_result = GetExpected(misc_info, kAvbVbmetaArgs);
+  if (extra_args_result.ok()) {
+    for (const auto& arg : android::base::Tokenize(*extra_args_result, " ")) {
+      result.extra_arguments.emplace_back(arg);
+    }
+  }
+
+  for (const auto& partition : kVbmetaPartitions) {
+    // The key_path value should exist, but it is a build system path
+    // We use a host artifacts relative path instead
+    if (Contains(misc_info, fmt::format("avb_{}_key_path", partition))) {
+      const auto partition_algorithm = CF_EXPECT(
+          GetExpected(misc_info, fmt::format("avb_{}_algorithm", partition)));
+      result.chained_partitions.emplace_back(ChainPartition{
+          .name = partition,
+          .rollback_index = CF_EXPECT(GetExpected(
+              misc_info,
+              fmt::format("avb_{}_rollback_index_location", partition))),
+          .key_path = CF_EXPECT(GetPubKeyPath(partition_algorithm)),
+      });
+    } else {
+      result.included_partitions.emplace_back(
+          fmt::format("{}/IMAGES/{}.img", image_path, partition));
+    }
+  }
+  return result;
 }
 
 } // namespace cuttlefish
