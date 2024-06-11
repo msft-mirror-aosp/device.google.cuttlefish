@@ -443,6 +443,7 @@ android_system_image {
         "printflags", // base_system
         "privapp-permissions-platform.xml", // base_system
         "prng_seeder", // base_system
+        "public.libraries.android.txt",
         "recovery-persist", // base_system
         "recovery-refresh", // generic_system
         "requestsync", // media_system
@@ -550,6 +551,7 @@ android_system_image {
                 "BlockedNumberProvider", // handheld_system
                 "BluetoothMidiService", // handheld_system
                 "BookmarkProvider", // handheld_system
+                "build_flag_system", // base_system
                 "BuiltInPrintService", // handheld_system
                 "CalendarProvider", // handheld_system
                 "CallLogBackup", // telephony_system
