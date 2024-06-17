@@ -29,8 +29,6 @@ cc_binary_host {
         "Host_Prebuilt_VehicleHalVendorClusterTestProperties_JSON",
     ],
     static_libs: [
-        "libc++fs",
-        "android.hardware.automotive.utils.vsockinfo",
         "android.hardware.automotive.vehicle@default-grpc-server-lib",
         "FakeVehicleHardware",
     ],
@@ -44,4 +42,11 @@ cc_binary_host {
     cflags: [
         "-Wno-unused-parameter",
     ],
+}
+
+cc_library_headers {
+    name: "vhal_vsockinfo",
+    host_supported: true,
+    export_include_dirs: ["."],
+    vendor_available: true,
 }

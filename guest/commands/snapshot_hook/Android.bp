@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023 The Android Open Source Project
+// Copyright (C) 2024 The Android Open Source Project
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,30 +17,14 @@ package {
     default_applicable_licenses: ["Android-Apache-2.0"],
 }
 
-cc_library {
-    name: "libcuttlefish_control_env",
-    srcs: [
-        "grpc_service_handler.cc",
-    ],
-    shared_libs: [
-        "libbase",
-        "libcuttlefish_utils",
-        "libprotobuf-cpp-full",
-        "libgrpc++",
-        "libjsoncpp",
-    ],
-    static_libs: [
-        "grpc_cli_libs",
-        "libabsl_host",
-        "libgflags",
-    ],
-    cflags: [
-        "-Wno-unused-parameter",
-    ],
-    defaults: ["cuttlefish_buildhost_only"],
-    target: {
-        darwin: {
-            enabled: true,
-        },
-    },
+sh_binary {
+    name: "snapshot_hook_pre_suspend",
+    src: "snapshot_hook_pre_suspend.sh",
+    vendor: true,
+}
+
+sh_binary {
+    name: "snapshot_hook_post_resume",
+    src: "snapshot_hook_post_resume.sh",
+    vendor: true,
 }

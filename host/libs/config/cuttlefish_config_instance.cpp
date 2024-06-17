@@ -797,6 +797,16 @@ void CuttlefishConfig::MutableInstanceSpecific::set_guest_vulkan_driver(
   (*Dictionary())[kVulkanDriver] = driver;
 }
 
+static constexpr char kGuestUsesBgraFramebuffers[] =
+    "guest_uses_bgra_framebuffers";
+bool CuttlefishConfig::InstanceSpecific::guest_uses_bgra_framebuffers() const {
+  return (*Dictionary())[kGuestUsesBgraFramebuffers].asBool();
+}
+void CuttlefishConfig::MutableInstanceSpecific::
+    set_guest_uses_bgra_framebuffers(bool uses_bgra) {
+  (*Dictionary())[kGuestUsesBgraFramebuffers] = uses_bgra;
+}
+
 static constexpr char kRestartSubprocesses[] = "restart_subprocesses";
 bool CuttlefishConfig::InstanceSpecific::restart_subprocesses() const {
   return (*Dictionary())[kRestartSubprocesses].asBool();
@@ -1275,6 +1285,10 @@ std::string CuttlefishConfig::InstanceSpecific::hwcomposer_pmem_path() const {
 
 std::string CuttlefishConfig::InstanceSpecific::pstore_path() const {
   return AbsolutePath(PerInstancePath("pstore"));
+}
+
+std::string CuttlefishConfig::InstanceSpecific::pflash_path() const {
+  return AbsolutePath(PerInstancePath("pflash.img"));
 }
 
 std::string CuttlefishConfig::InstanceSpecific::console_path() const {
