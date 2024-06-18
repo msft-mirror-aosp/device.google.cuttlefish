@@ -154,6 +154,10 @@ class CuttlefishConfig {
   void set_enable_automotive_proxy(bool enable_automotive_proxy);
   bool enable_automotive_proxy() const;
 
+  // The vsock port used by vhal_proxy_server
+  void set_vhal_proxy_server_port(int port);
+  int vhal_proxy_server_port() const;
+
   // Bluetooth is enabled by bt_connector and rootcanal
   void set_enable_host_bluetooth_connector(bool enable_host_bluetooth);
   bool enable_host_bluetooth_connector() const;
@@ -394,6 +398,8 @@ class CuttlefishConfig {
 
     std::string pstore_path() const;
 
+    std::string pflash_path() const;
+
     std::string console_path() const;
 
     std::string logcat_path() const;
@@ -577,6 +583,7 @@ class CuttlefishConfig {
     bool mte() const;
     std::string boot_slot() const;
     bool fail_fast() const;
+    bool vhost_user_block() const;
 
     // Kernel and bootloader logging
     bool enable_kernel_log() const;
@@ -619,6 +626,7 @@ class CuttlefishConfig {
     std::string gpu_renderer_features() const;
     std::string gpu_context_types() const;
     std::string guest_vulkan_driver() const;
+    bool guest_uses_bgra_framebuffers() const;
     std::string frames_socket_path() const;
 
     std::string gpu_vhost_user_mode() const;
@@ -686,6 +694,8 @@ class CuttlefishConfig {
     bool bootconfig_supported() const;
     std::string filename_encryption_mode() const;
     ExternalNetworkMode external_network_mode() const;
+
+    bool start_vhal_proxy_server() const;
   };
 
   // A view into an existing CuttlefishConfig object for a particular instance.
@@ -792,6 +802,7 @@ class CuttlefishConfig {
     void set_boot_slot(const std::string& boot_slot);
     void set_grpc_socket_path(const std::string& sockets);
     void set_fail_fast(bool fail_fast);
+    void set_vhost_user_block(bool qemu_vhost_user_block);
 
     // Kernel and bootloader logging
     void set_enable_kernel_log(bool enable_kernel_log);
@@ -836,6 +847,7 @@ class CuttlefishConfig {
     void set_gpu_renderer_features(const std::string& features);
     void set_gpu_context_types(const std::string& context_types);
     void set_guest_vulkan_driver(const std::string& driver);
+    void set_guest_uses_bgra_framebuffers(bool uses_bgra);
     void set_frames_socket_path(const std::string& driver);
 
     void set_enable_gpu_udmabuf(const bool enable_gpu_udmabuf);
@@ -892,6 +904,10 @@ class CuttlefishConfig {
     void set_bootconfig_supported(bool bootconfig_supported);
     void set_filename_encryption_mode(const std::string& userdata_format);
     void set_external_network_mode(ExternalNetworkMode network_mode);
+
+    // Whether we should start vhal_proxy_server for the guest-side VHAL to
+    // connect to.
+    void set_start_vhal_proxy_server(bool enable_vhal_proxy_server);
 
    private:
     void SetPath(const std::string& key, const std::string& path);
