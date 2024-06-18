@@ -221,6 +221,16 @@ DEFINE_string(netsim_args, CF_DEFAULTS_NETSIM_ARGS,
 DEFINE_bool(enable_automotive_proxy, CF_DEFAULTS_ENABLE_AUTOMOTIVE_PROXY,
             "Enable the automotive proxy service on the host.");
 
+DEFINE_bool(enable_vhal_proxy_server, CF_DEFAULTS_ENABLE_VHAL_PROXY_SERVER,
+            "Enable the vhal proxy service on the host.");
+DEFINE_int32(vhal_proxy_server_instance_num,
+             CF_DEFAULTS_VHAL_PROXY_SERVER_INSTANCE_NUM,
+             "If it is greater than 0, use an existing vhal proxy server "
+             "instance which is "
+             "launched from cuttlefish instance "
+             "with vhal_proxy_server_instance_num. Else, launch a new vhal "
+             "proxy server instance");
+
 /**
  * crosvm sandbox feature requires /var/empty and seccomp directory
  *
@@ -508,6 +518,9 @@ DEFINE_vec(
     fail_fast, CF_DEFAULTS_FAIL_FAST ? "true" : "false",
     "Whether to exit when a heuristic predicts the boot will not complete");
 
+DEFINE_vec(vhost_user_block, CF_DEFAULTS_VHOST_USER_BLOCK ? "true" : "false",
+           "(experimental) use crosvm vhost-user block device implementation ");
+
 DECLARE_string(assembly_dir);
 DECLARE_string(boot_image);
 DECLARE_string(system_image_dir);
@@ -668,6 +681,11 @@ Result<std::vector<GuestConfig>> ReadGuestConfig() {
     auto res = GetAndroidInfoConfig(instance_android_info_txt, "gfxstream");
     guest_config.gfxstream_supported =
         res.ok() && res.value() == "supported";
+
+    auto res_bgra_support = GetAndroidInfoConfig(instance_android_info_txt,
+                                                 "supports_bgra_framebuffers");
+    guest_config.supports_bgra_framebuffers =
+        res_bgra_support.value_or("") == "true";
 
     auto res_vhost_user_vsock =
         GetAndroidInfoConfig(instance_android_info_txt, "vhost_user_vsock");
@@ -1214,6 +1232,9 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
 
   std::vector<bool> fail_fast_vec = CF_EXPECT(GET_FLAG_BOOL_VALUE(fail_fast));
 
+  std::vector<bool> vhost_user_block_vec =
+      CF_EXPECT(GET_FLAG_BOOL_VALUE(vhost_user_block));
+
   std::vector<std::string> mcu_config_vec = CF_EXPECT(GET_FLAG_STR_VALUE(mcu_config_path));
 
   std::string default_enable_sandbox = "";
@@ -1281,6 +1302,16 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
   tmp_config_obj.set_straced_host_executables(straced_set);
 
   tmp_config_obj.set_host_sandbox(FLAGS_enable_host_sandbox);
+
+  auto vhal_proxy_server_instance_num = *instance_nums.begin() - 1;
+  if (FLAGS_vhal_proxy_server_instance_num > 0) {
+    vhal_proxy_server_instance_num = FLAGS_vhal_proxy_server_instance_num - 1;
+  }
+  tmp_config_obj.set_vhal_proxy_server_port(9300 +
+                                            vhal_proxy_server_instance_num);
+  LOG(DEBUG) << "launch vhal proxy server: "
+             << (FLAGS_enable_vhal_proxy_server &&
+                 vhal_proxy_server_instance_num <= 0);
 
   // Environment specific configs
   // Currently just setting for the default environment
@@ -1449,6 +1480,11 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     instance.set_blank_data_image_mb(blank_data_image_mb_vec[instance_index]);
     instance.set_gdb_port(gdb_port_vec[instance_index]);
     instance.set_fail_fast(fail_fast_vec[instance_index]);
+    if (vhost_user_block_vec[instance_index]) {
+      CF_EXPECT_EQ(tmp_config_obj.vm_manager(), VmmMode::kCrosvm,
+                   "vhost-user block only supported on crosvm");
+    }
+    instance.set_vhost_user_block(vhost_user_block_vec[instance_index]);
 
     std::optional<std::vector<CuttlefishConfig::DisplayConfig>>
         binding_displays_configs;
@@ -1605,6 +1641,9 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     instance.set_gpu_context_types(gpu_context_types_vec[instance_index]);
     instance.set_guest_vulkan_driver(guest_vulkan_driver_vec[instance_index]);
 
+    instance.set_guest_uses_bgra_framebuffers(
+        guest_configs[instance_index].supports_bgra_framebuffers);
+
     if (!frames_socket_path_vec[instance_index].empty()) {
       instance.set_frames_socket_path(frames_socket_path_vec[instance_index]);
     } else {
@@ -1739,6 +1778,9 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
 
     instance.set_start_pica(is_first_instance && !is_uwb_netsim &&
                             FLAGS_pica_instance_num <= 0);
+    instance.set_start_vhal_proxy_server(
+        is_first_instance && FLAGS_enable_vhal_proxy_server &&
+        FLAGS_vhal_proxy_server_instance_num <= 0);
 
     // TODO(b/288987294) Remove this when separating environment is done
     bool instance_start_wmediumd = is_first_instance && start_wmediumd;
