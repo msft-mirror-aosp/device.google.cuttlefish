@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2023 The Android Open Source Project
+ * Copyright (C) 2024 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,25 +16,22 @@
 #pragma once
 
 #include <string>
+#include <string_view>
 
-#include <GraphicsDetector.pb.h>
-
-#include "common/libs/utils/result.h"
-#include "host/commands/assemble_cvd/flags.h"
-#include "host/libs/config/config_utils.h"
+#include "common/libs/utils/subprocess.h"
 #include "host/libs/config/cuttlefish_config.h"
 
 namespace cuttlefish {
+namespace vm_manager {
 
-gfxstream::proto::GraphicsAvailability
-GetGraphicsAvailabilityWithSubprocessCheck();
+struct VhostUserDeviceCommands {
+  Command device_cmd;
+  Command device_logs_cmd;
+  std::string socket_path;
+};
 
-Result<std::string> ConfigureGpuSettings(
-    const gfxstream::proto::GraphicsAvailability& graphics_availability,
-    const std::string& gpu_mode_arg, const std::string& gpu_vhost_user_mode_arg,
-    const std::string& gpu_renderer_features_arg,
-    std::string& gpu_context_types_arg, VmmMode vmm,
-    const GuestConfig& guest_config,
-    CuttlefishConfig::MutableInstanceSpecific& instance);
+Result<VhostUserDeviceCommands> VhostUserBlockDevice(
+    const CuttlefishConfig& config, int num, std::string_view disk_path);
 
+}  // namespace vm_manager
 }  // namespace cuttlefish
