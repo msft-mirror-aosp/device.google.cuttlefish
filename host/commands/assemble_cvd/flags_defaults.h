@@ -182,6 +182,10 @@
 // Automotive Proxy default parameter
 #define CF_DEFAULTS_ENABLE_AUTOMOTIVE_PROXY false
 
+// Vhal Proxy Server default parameter
+#define CF_DEFAULTS_ENABLE_VHAL_PROXY_SERVER false
+#define CF_DEFAULTS_VHAL_PROXY_SERVER_INSTANCE_NUM 0
+
 // Bluetooth default parameters
 #define CF_DEFAULTS_ENABLE_HOST_BLUETOOTH true
 #define CF_DEFAULTS_ROOTCANAL_INSTANCE_NUM 0
@@ -245,3 +249,7 @@
 
 // Whether to exit when heuristics predict the boot will not complete
 #define CF_DEFAULTS_FAIL_FAST true
+
+// Whether to use the crosvm vhost-user block device implementation with QEMU
+// TODO: b/346855591 - default to `true`
+#define CF_DEFAULTS_VHOST_USER_BLOCK false
