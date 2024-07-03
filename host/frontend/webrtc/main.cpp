@@ -179,6 +179,7 @@ int main(int argc, char** argv) {
       cvd_config->Instances()[0].webrtc_device_id();
   streamer_config.openwrt_addr = OpenwrtArgsFromConfig(
       cvd_config->Instances()[0])[kOpewnrtWanIpAddressName];
+  streamer_config.adb_port = instance.adb_host_port();
   streamer_config.control_env_proxy_server_path =
       instance.grpc_socket_path() + "/ControlEnvProxyServer.sock";
   streamer_config.operator_server.addr = cvd_config->sig_server_address();
@@ -215,7 +216,7 @@ int main(int argc, char** argv) {
   CHECK(streamer) << "Could not create streamer";
 
   int frames_fd = FLAGS_frame_server_fd;
-  bool frames_are_rgba = true;
+  bool frames_are_rgba = !instance.guest_uses_bgra_framebuffers();
   auto display_handler =
       std::make_shared<DisplayHandler>(*streamer, frames_fd, frames_are_rgba);
 

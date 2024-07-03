@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2022 The Android Open Source Project
+ * Copyright (C) 2024 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,6 +13,21 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#pragma once
 
-#define PRODUCT_SHIPPING_API_LEVEL 35
+#include "host/commands/process_sandboxer/policies.h"
+
+#include "sandboxed_api/sandbox2/policybuilder.h"
+#include "sandboxed_api/util/path.h"
+
+using sapi::file::JoinPath;
+
+namespace cuttlefish {
+
+sandbox2::PolicyBuilder HelloWorldPolicy(const HostInfo& host) {
+  auto exe =
+      JoinPath(host.artifacts_path, "testcases", "process_sandboxer_test",
+               "x86_64", "process_sandboxer_test_hello_world");
+  return BaselinePolicy(host, exe);
+}
+
+}  // namespace cuttlefish
