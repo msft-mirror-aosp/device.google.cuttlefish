@@ -56,6 +56,22 @@ android_symlinks = [
         target: "/system_dlkm/lib/modules",
         name: "system/lib/modules",
     },
+    {
+        target: "/data/user_de/0/com.android.shell/files/bugreports",
+        name: "bugreports",
+    },
+    {
+        target: "/data/cache",
+        name: "cache",
+    },
+    {
+        target: "/sys/kernel/debug",
+        name: "d",
+    },
+    {
+        target: "/storage/self/primary",
+        name: "sdcard",
+    },
 ]
 
 phony {
@@ -69,7 +85,6 @@ phony {
         "DroidSansMono.ttf",
         "NotoColorEmoji.ttf",
         "NotoColorEmojiFlags.ttf",
-        "NotoColorEmojiLegacy.ttf",
         "NotoNaskhArabic-Bold.ttf",
         "NotoNaskhArabic-Regular.ttf",
         "NotoNaskhArabicUI-Bold.ttf",
@@ -242,6 +257,7 @@ phony {
         "NotoSerifGurmukhi-VF.ttf",
         "NotoSerifHebrew-Bold.ttf",
         "NotoSerifHebrew-Regular.ttf",
+        "NotoSerifHentaigana.ttf",
         "NotoSerifKannada-VF.ttf",
         "NotoSerifKhmer-Bold.otf",
         "NotoSerifKhmer-Regular.otf",
@@ -304,6 +320,12 @@ android_system_image {
     avb_hash_algorithm: "sha256",
 
     deps: [
+        "abx",
+        "aconfigd",
+        "aflags",
+        "am",
+        "android_vintf_manifest",
+        "android_vintf_compatibility_matrix_device",
         "android.hardware.biometrics.fingerprint@2.1", // generic_system
         "android.hardware.radio@1.0", // generic_system
         "android.hardware.radio@1.1", // generic_system
@@ -313,15 +335,11 @@ android_system_image {
         "android.hardware.radio.config@1.0", // generic_system
         "android.hardware.radio.deprecated@1.0", // generic_system
         "android.hardware.secure_element@1.0", // generic_system
-        "abx",
-        "aconfigd",
-        "aflags",
-        "am",
-        "android_build_prop",
-        "android_vintf_manifest",
+        "android.software.credentials.prebuilt.xml", // generic_system
+        "android.software.webview.prebuilt.xml", // media_system
+        "android.software.window_magnification.prebuilt.xml", // handheld_system
         "android.system.suspend-service",
         "apexd",
-        "app_process",
         "appops",
         "appwidget",
         "atrace",
@@ -332,7 +350,6 @@ android_system_image {
         "bmgr",
         "bootanimation",
         "bootstat",
-        "boringssl_self_test",
         "bpfloader",
         "bu",
         "bugreport",
@@ -354,6 +371,7 @@ android_system_image {
         "dumpstate",
         "dumpsys",
         "e2fsck",
+        "enhanced-confirmation.xml", // base_system
         "etc_hosts",
         "flags_health_check",
         "framework-audio_effects.xml", // for handheld // handheld_system
@@ -402,7 +420,6 @@ android_system_image {
         "libaaudio",
         "libalarm_jni",
         "libamidi",
-        "linker", // ok
         "llkd", // base_system
         "lmkd", // base_system
         "local_time.default", // handheld_vendo
@@ -427,6 +444,7 @@ android_system_image {
         "netutils-wrapper-1.0", // full_base
         "odsign", // base_system
         "otapreopt_script", // generic_system
+        "package-shareduid-allowlist.xml", // base_system
         "passwd_system", // base_system
         "perfetto", // base_system
         "ping", // base_system
@@ -463,8 +481,8 @@ android_system_image {
         "sgdisk", // base_system
         "sm", // base_system
         "snapshotctl", // base_system
-        "snapuserd_ramdisk", // ramdisk
         "snapuserd", // base_system
+        "snapuserd_ramdisk", // ramdisk
         "storaged", // base_system
         "surfaceflinger", // base_system
         "svc", // base_system
@@ -490,7 +508,17 @@ android_system_image {
         "wifi.rc", // base_system
         "wificond", // base_system
         "wm", // base_system
-    ] + select(product_variable("debuggable"), {
+    ] + select(release_flag("RELEASE_PLATFORM_VERSION_CODENAME"), {
+        "REL": [],
+        default: [
+            "android.software.preview_sdk.prebuilt.xml", // media_system
+        ],
+    }) + select(soong_config_variable("ANDROID", "release_package_profiling_module"), {
+        "true": [
+            "trace_redactor", // base_system (RELEASE_PACKAGE_PROFILING_MODULE)
+        ],
+        default: [],
+    }) + select(product_variable("debuggable"), {
         true: [
             "adevice_fingerprint",
             "arping",
@@ -545,6 +573,7 @@ android_system_image {
                 "android.test.base", // from runtime_libart
                 "android.test.mock", // base_system
                 "android.test.runner", // base_system
+                "aosp_cf_x86_64_system-build.prop",
                 "aosp_mainline_modules", // ok
                 "BackupRestoreConfirmation", // base_system
                 "BasicDreams", // handheld_system
@@ -569,15 +598,18 @@ android_system_image {
                 "com.android.media.remotedisplay", // media_system
                 "com.android.mediadrm.signer", // media_system
                 "com.android.nfc_extras", // ok
+                "com.android.nfcservices", // base_system (RELEASE_PACKAGE_NFC_STACK != NfcNci)
                 "com.android.runtime", // ok
                 "CompanionDeviceManager", // media_system
                 "ContactsProvider", // base_system
                 "CredentialManager", // handheld_system
                 "DeviceAsWebcam", // handheld_system
+                "dex_bootjars",
                 "DocumentsUI", // handheld_system
                 "DownloadProvider", // base_system
                 "DownloadProviderUi", // handheld_system
                 "DynamicSystemInstallationService", // base_system
+                "E2eeContactKeysProvider", // base_system
                 "EasterEgg", // handheld_system
                 "ext", // from runtime_libart
                 "ExternalStorageProvider", // handheld_system
@@ -586,7 +618,6 @@ android_system_image {
                 "framework-graphics", // base_system
                 "framework-location", // base_system
                 "framework-minus-apex-install-dependencies", // base_system
-                "framework-nfc", // base_system
                 "FusedLocation", // handheld_system
                 "HTMLViewer", // media_system
                 "hwservicemanager_compat_symlink_module", // base_system
@@ -606,7 +637,6 @@ android_system_image {
                 "MtpService", // handheld_system
                 "MusicFX", // handheld_system
                 "NetworkStack", // base_system
-                "NfcNci", // base_system
                 "ONS", // telephony_system
                 "org.apache.http.legacy", // base_system
                 "perfetto-extras", // system
@@ -618,16 +648,18 @@ android_system_image {
                 "PrintSpooler", // handheld_system
                 "ProxyHandler", // handheld_system
                 "SecureElement", // handheld_system
-                "selinux_policy_system_soong", // ok
-                "services", // base_system
                 "SettingsProvider", // base_system
                 "SharedStorageBackup", // handheld_system
-                "shell_and_utilities_system", // ok
                 "Shell", // base_system
                 "SimAppDialog", // handheld_system
                 "SoundPicker", // not installed by anyone
                 "StatementService", // media_system
                 "Stk", // generic_system
+                "sanitizer.libraries.txt", // base_system
+                "selinux_policy_system_soong", // ok
+                "services", // base_system
+                "shell_and_utilities_system", // ok
+                "system_compatibility_matrix.xml", //base_system
                 "Tag", // generic_system
                 "Telecom", // handheld_system
                 "telephony-common", // libs from TeleService
@@ -638,7 +670,22 @@ android_system_image {
                 "voip-common", // base_system
                 "VpnDialogs", // handheld_system
                 "WallpaperBackup", // base_system
-            ],
+            ] + select(soong_config_variable("ANDROID", "release_crashrecovery_module"), {
+                "true": [
+                    "com.android.crashrecovery", // base_system (RELEASE_CRASHRECOVERY_MODULE)
+                ],
+                default: [],
+            }) + select(soong_config_variable("ANDROID", "release_package_profiling_module"), {
+                "true": [
+                    "com.android.profiling", // base_system (RELEASE_PACKAGE_PROFILING_MODULE)
+                ],
+                default: [],
+            }) + select(release_flag("RELEASE_AVATAR_PICKER_APP"), {
+                true: [
+                    "AvatarPicker", // generic_system (RELEASE_AVATAR_PICKER_APP)
+                ],
+                default: [],
+            }),
         },
         prefer32: {
             deps: [
@@ -648,13 +695,14 @@ android_system_image {
         },
         lib64: {
             deps: [
-                "boringssl_self_test",
                 "libgsi",
                 "servicemanager",
             ],
         },
         both: {
             deps: [
+                "app_process", // base_system
+                "boringssl_self_test", // base_system
                 "libandroid_runtime",
                 "libandroid_servers",
                 "libandroid",
@@ -743,6 +791,7 @@ android_system_image {
                 "libwebviewchromium_loader", // media_system
                 "libwebviewchromium_plat_support", // media_system
                 "libwilhelm", // base_system
+                "linker", // base_system
             ] + select(soong_config_variable("ANDROID", "TARGET_DYNAMIC_64_32_DRMSERVER"), {
                 "true": ["drmserver"],
                 default: [],
@@ -755,16 +804,24 @@ android_system_image {
 }
 
 prebuilt_etc {
+    name: "android_vintf_compatibility_matrix_device",
+    src: "compatibility_matrix.device.xml",
+    filename: "compatibility_matrix.device.xml",
+    relative_install_path: "vintf",
+    no_full_install: true,
+}
+
+prebuilt_etc {
     name: "android_vintf_manifest",
     src: "manifest.xml",
     filename: "manifest.xml",
     relative_install_path: "vintf",
-    installable: false,
+    no_full_install: true,
 }
 
-prebuilt_root {
-    name: "android_build_prop",
-    filename: "build.prop",
-    src: "build.prop",
-    installable: false,
+build_prop {
+    name: "aosp_cf_x86_64_system-build.prop",
+    stem: "build.prop",
+    product_config: ":product_config",
+    no_full_install: true,
 }
