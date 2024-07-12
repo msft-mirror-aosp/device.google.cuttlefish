@@ -17,7 +17,11 @@
 
 #include <unistd.h>
 
+#include <memory>
+#include <sstream>
+
 #include <absl/log/log.h>
+#include <absl/log/vlog_is_on.h>
 #include <absl/status/status.h>
 #include <absl/status/statusor.h>
 #include <absl/strings/str_format.h>
@@ -63,8 +67,24 @@ Status SandboxManager::RunProcess(const std::vector<std::string>& argv,
     }
     return Status(StatusCode::kInvalidArgument, "Not enough arguments");
   }
+
+  if (VLOG_IS_ON(1)) {
+    std::stringstream process_stream;
+    process_stream << "Launching executable with argv: [\n";
+    for (const auto& arg : argv) {
+      process_stream << "\t\"" << arg << "\",\n";
+    }
+    process_stream << "] with FD mapping: [\n";
+    for (const auto& [fd_in, fd_out] : fds) {
+      process_stream << '\t' << fd_in << " -> " << fd_out << ",\n";
+    }
+    process_stream << "]\n";
+    VLOG(1) << process_stream.str();
+  }
+
   auto exe = CleanPath(argv[0]);
   auto executor = std::make_unique<Executor>(exe, argv);
+  executor->set_cwd(host_info_.runtime_dir);
 
   // https://cs.android.com/android/platform/superproject/main/+/main:external/sandboxed-api/sandboxed_api/sandbox2/limits.h;l=116;drc=d451478e26c0352ecd6912461e867a1ae64b17f5
   // Default is 120 seconds
