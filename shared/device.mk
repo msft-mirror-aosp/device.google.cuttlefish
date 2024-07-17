@@ -39,6 +39,8 @@ PRODUCT_SOONG_NAMESPACES += device/generic/goldfish # for audio, wifi and sensor
 
 PRODUCT_USE_DYNAMIC_PARTITIONS := true
 DISABLE_RILD_OEM_HOOK := true
+# For customize cflags for libril share library building by soong.
+$(call soong_config_set,ril,disable_rild_oem_hook,true)
 
 # TODO(b/294888357) Remove this condition when OpenWRT is supported for RISC-V.
 ifndef PRODUCT_ENFORCE_MAC80211_HWSIM
@@ -157,6 +159,8 @@ PRODUCT_PACKAGES += \
     tombstone_producer \
     suspend_blocker \
     metrics_helper \
+    snapshot_hook_post_resume \
+    snapshot_hook_pre_suspend
 
 $(call soong_config_append,cvd,launch_configs,cvd_config_auto.json cvd_config_auto_portrait.json cvd_config_auto_md.json cvd_config_foldable.json cvd_config_go.json cvd_config_phone.json cvd_config_slim.json cvd_config_tablet.json cvd_config_tv.json cvd_config_wear.json)
 $(call soong_config_append,cvd,grub_config,grub.cfg)
