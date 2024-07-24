@@ -527,8 +527,8 @@ DECLARE_string(boot_image);
 DECLARE_string(system_image_dir);
 DECLARE_string(snapshot_path);
 
-DEFINE_string(vcpu_config_path, CF_DEFAULTS_VCPU_CONFIG_PATH,
-              "configuration file for Virtual Cpufreq");
+DEFINE_vec(vcpu_config_path, CF_DEFAULTS_VCPU_CONFIG_PATH,
+           "configuration file for Virtual Cpufreq");
 
 namespace cuttlefish {
 using vm_manager::QemuManager;
@@ -953,6 +953,24 @@ Result<void> CheckSnapshotCompatible(
   return {};
 }
 
+std::optional<std::string> EnvironmentUdsDir() {
+  auto environments_uds_dir = "/tmp/cf_env_" + std::to_string(getuid());
+  if (DirectoryExists(environments_uds_dir) &&
+      !CanAccess(environments_uds_dir, R_OK | W_OK | X_OK)) {
+    return std::nullopt;
+  }
+  return environments_uds_dir;
+}
+
+std::optional<std::string> InstancesUdsDir() {
+  auto instances_uds_dir = "/tmp/cf_avd_" + std::to_string(getuid());
+  if (DirectoryExists(instances_uds_dir) &&
+      !CanAccess(instances_uds_dir, R_OK | W_OK | X_OK)) {
+    return std::nullopt;
+  }
+  return instances_uds_dir;
+}
+
 } // namespace
 
 Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
@@ -979,6 +997,11 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
   }
 
   tmp_config_obj.set_root_dir(root_dir);
+
+  tmp_config_obj.set_environments_uds_dir(
+      EnvironmentUdsDir().value_or(tmp_config_obj.environments_dir()));
+  tmp_config_obj.set_instances_uds_dir(
+      InstancesUdsDir().value_or(tmp_config_obj.instances_dir()));
 
   auto instance_nums =
       CF_EXPECT(InstanceNumsCalculator().FromGlobalGflags().Calculate());
@@ -1235,6 +1258,9 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
       CF_EXPECT(GET_FLAG_BOOL_VALUE(vhost_user_block));
 
   std::vector<std::string> mcu_config_vec = CF_EXPECT(GET_FLAG_STR_VALUE(mcu_config_path));
+
+  std::vector<std::string> vcpu_config_vec =
+      CF_EXPECT(GET_FLAG_STR_VALUE(vcpu_config_path));
 
   std::string default_enable_sandbox = "";
   std::string default_enable_virtiofs = "";
@@ -1654,8 +1680,6 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
           const_instance.PerInstanceInternalUdsPath("frames.sock"));
     }
 
-    instance.set_vcpu_config(FLAGS_vcpu_config_path);
-
     // 1. Keep original code order SetCommandLineOptionWithMode("enable_sandbox")
     // then set_enable_sandbox later.
     // 2. SetCommandLineOptionWithMode condition: if gpu_mode or console,
@@ -1839,6 +1863,12 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
                                  /* follow_symlinks */ true),
                 "Failed to read mcu config file");
       instance.set_mcu(CF_EXPECT(ParseJson(file_content), "Failed parsing JSON file"));
+    }
+
+    if (!vcpu_config_vec[instance_index].empty()) {
+      auto vcpu_cfg_path = vcpu_config_vec[instance_index];
+      CF_EXPECT(FileExists(vcpu_cfg_path), "vCPU config file does not exist");
+      instance.set_vcpu_config_path(AbsolutePath(vcpu_cfg_path));
     }
 
     instance_index++;
