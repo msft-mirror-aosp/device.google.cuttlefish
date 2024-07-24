@@ -20,32 +20,339 @@
 #include <algorithm>
 #include <array>
 #include <memory>
+#include <string>
+#include <string_view>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
 #include <android-base/strings.h>
 #include <android-base/logging.h>
 
-#include "common/libs/fs/shared_buf.h"
 #include "common/libs/utils/archive.h"
 #include "common/libs/utils/contains.h"
 #include "common/libs/utils/files.h"
+#include "common/libs/utils/result.h"
 #include "common/libs/utils/subprocess.h"
 #include "host/commands/assemble_cvd/misc_info.h"
+#include "host/libs/avb/avb.h"
+#include "host/libs/config/config_utils.h"
 #include "host/libs/config/cuttlefish_config.h"
 #include "host/libs/config/fetcher_config.h"
+#include "host/libs/config/known_paths.h"
 
 namespace cuttlefish {
+namespace {
+
+constexpr char kMiscInfoPath[] = "META/misc_info.txt";
+constexpr char kDynamicPartitionsPath[] = "META/dynamic_partitions_info.txt";
+constexpr std::array kVendorTargetImages = {
+    "IMAGES/boot.img",          "IMAGES/dtbo.img",
+    "IMAGES/init_boot.img",     "IMAGES/odm.img",
+    "IMAGES/odm_dlkm.img",      "IMAGES/recovery.img",
+    "IMAGES/system_dlkm.img",   "IMAGES/userdata.img",
+    "IMAGES/vbmeta.img",        "IMAGES/vbmeta_system_dlkm.img",
+    "IMAGES/vbmeta_vendor.img", "IMAGES/vbmeta_vendor_dlkm.img",
+    "IMAGES/vendor.img",        "IMAGES/vendor_boot.img",
+    "IMAGES/vendor_dlkm.img",   "IMAGES/vendor_kernel_boot.img",
+};
+constexpr std::array kVendorTargetBuildProps = {
+    "ODM/build.prop",
+    "ODM/etc/build.prop",
+    "VENDOR/build.prop",
+    "VENDOR/etc/build.prop",
+};
+
+struct TargetFiles {
+  Archive vendor_zip;
+  Archive system_zip;
+  std::vector<std::string> vendor_contents;
+  std::vector<std::string> system_contents;
+};
+
+struct Extracted {
+  std::set<std::string> images;
+  std::vector<std::string> system_partitions;
+};
+
+void FindImports(Archive* archive, const std::string& build_prop_file) {
+  auto contents = archive->ExtractToMemory(build_prop_file);
+  auto lines = android::base::Split(contents, "\n");
+  for (const auto& line : lines) {
+    auto parts = android::base::Split(line, " ");
+    if (parts.size() >= 2 && parts[0] == "import") {
+      LOG(INFO) << build_prop_file << ": " << line;
+    }
+  }
+}
+
+bool IsTargetFilesImage(const std::string& filename) {
+  return android::base::StartsWith(filename, "IMAGES/") &&
+         android::base::EndsWith(filename, ".img");
+}
+
+bool IsTargetFilesBuildProp(const std::string& filename) {
+  return android::base::EndsWith(filename, "build.prop");
+}
+
+Result<std::string> GetPartitionNameFromPath(const std::string& path) {
+  std::string_view result(path);
+  CF_EXPECTF(
+      android::base::ConsumePrefix(&result, "IMAGES/"),
+      "target_files filepath {} expected to be in the \"IMAGES\" directory",
+      path);
+  CF_EXPECTF(android::base::ConsumeSuffix(&result, ".img"),
+             "target_files filepath {} expected to be a \".img\" file", path);
+  return std::string(result);
+}
+
+Result<TargetFiles> GetTargetFiles(const std::string& vendor_zip_path,
+                                   const std::string& system_zip_path) {
+  auto result = TargetFiles{
+      .vendor_zip = Archive(vendor_zip_path),
+      .system_zip = Archive(system_zip_path),
+  };
+  result.vendor_contents = result.vendor_zip.Contents();
+  result.system_contents = result.system_zip.Contents();
+  CF_EXPECTF(!result.vendor_contents.empty(), "Could not open {}",
+             vendor_zip_path);
+  CF_EXPECTF(!result.system_contents.empty(), "Could not open {}",
+             system_zip_path);
+  return result;
+}
+
+Result<MiscInfo> CombineDynamicPartitionsInfo(
+    TargetFiles& target_files, const std::set<std::string>& extracted_images) {
+  CF_EXPECTF(Contains(target_files.vendor_contents, kDynamicPartitionsPath),
+             "Vendor target files zip does not contain {}",
+             kDynamicPartitionsPath);
+  CF_EXPECTF(Contains(target_files.system_contents, kDynamicPartitionsPath),
+             "System target files zip does not contain {}",
+             kDynamicPartitionsPath);
+
+  const MiscInfo vendor_dp_info = CF_EXPECT(ParseMiscInfo(
+      target_files.vendor_zip.ExtractToMemory(kDynamicPartitionsPath)));
+  const MiscInfo system_dp_info = CF_EXPECT(ParseMiscInfo(
+      target_files.system_zip.ExtractToMemory(kDynamicPartitionsPath)));
+
+  return CF_EXPECT(GetCombinedDynamicPartitions(vendor_dp_info, system_dp_info,
+                                                extracted_images));
+}
+
+Result<MiscInfo> CombineMiscInfo(
+    TargetFiles& target_files, const std::string& misc_output_path,
+    const std::set<std::string>& extracted_images,
+    const std::vector<std::string>& system_partitions) {
+  CF_EXPECTF(Contains(target_files.vendor_contents, kMiscInfoPath),
+             "Vendor target files zip does not contain {}", kMiscInfoPath);
+  CF_EXPECTF(Contains(target_files.system_contents, kMiscInfoPath),
+             "System target files zip does not contain {}", kMiscInfoPath);
+
+  const MiscInfo vendor_misc = CF_EXPECT(
+      ParseMiscInfo(target_files.vendor_zip.ExtractToMemory(kMiscInfoPath)));
+  const MiscInfo system_misc = CF_EXPECT(
+      ParseMiscInfo(target_files.system_zip.ExtractToMemory(kMiscInfoPath)));
+
+  const auto combined_dp_info =
+      CF_EXPECT(CombineDynamicPartitionsInfo(target_files, extracted_images));
+  const auto output_misc = CF_EXPECT(MergeMiscInfos(
+      vendor_misc, system_misc, combined_dp_info, system_partitions));
+
+  CF_EXPECT(WriteMiscInfo(output_misc, misc_output_path));
+  return std::move(output_misc);
+}
+
+Result<Extracted> ExtractTargetFiles(TargetFiles& target_files,
+                                     const std::string& combined_output_path) {
+  Extracted extracted;
+  for (const auto& name : target_files.vendor_contents) {
+    if (!IsTargetFilesImage(name)) {
+      continue;
+    } else if (!Contains(kVendorTargetImages, name)) {
+      continue;
+    }
+    LOG(INFO) << "Writing " << name << " from vendor target";
+    CF_EXPECT(
+        target_files.vendor_zip.ExtractFiles({name}, combined_output_path),
+        "Failed to extract " << name << " from the vendor target zip");
+    extracted.images.emplace(CF_EXPECT(GetPartitionNameFromPath(name)));
+  }
+  for (const auto& name : target_files.vendor_contents) {
+    if (!IsTargetFilesBuildProp(name)) {
+      continue;
+    } else if (!Contains(kVendorTargetBuildProps, name)) {
+      continue;
+    }
+    FindImports(&target_files.vendor_zip, name);
+    LOG(INFO) << "Writing " << name << " from vendor target";
+    CF_EXPECT(
+        target_files.vendor_zip.ExtractFiles({name}, combined_output_path),
+        "Failed to extract " << name << " from the vendor target zip");
+  }
+
+  for (const auto& name : target_files.system_contents) {
+    if (!IsTargetFilesImage(name)) {
+      continue;
+    } else if (Contains(kVendorTargetImages, name)) {
+      continue;
+    }
+    LOG(INFO) << "Writing " << name << " from system target";
+    CF_EXPECT(
+        target_files.system_zip.ExtractFiles({name}, combined_output_path),
+        "Failed to extract " << name << " from the system target zip");
+    const auto partition = CF_EXPECT(GetPartitionNameFromPath(name));
+    extracted.images.emplace(partition);
+    extracted.system_partitions.emplace_back(partition);
+  }
+  for (const auto& name : target_files.system_contents) {
+    if (!IsTargetFilesBuildProp(name)) {
+      continue;
+    } else if (Contains(kVendorTargetBuildProps, name)) {
+      continue;
+    }
+    FindImports(&target_files.system_zip, name);
+    LOG(INFO) << "Writing " << name << " from system target";
+    CF_EXPECT(
+        target_files.system_zip.ExtractFiles({name}, combined_output_path),
+        "Failed to extract " << name << " from the system target zip");
+  }
+  return extracted;
+}
+
+Result<void> RegenerateVbmeta(const MiscInfo& misc_info,
+                              const std::string& output_path,
+                              const std::string& image_path) {
+  const VbmetaArgs args = CF_EXPECT(GetVbmetaArgs(misc_info, image_path));
+  auto avbtool = Avb(AvbToolBinary(), args.algorithm, args.key_path);
+  CF_EXPECT(avbtool.MakeVbMetaImage(output_path, args.chained_partitions,
+                                    args.included_partitions,
+                                    args.extra_arguments));
+  return {};
+}
+
+Result<void> CombineTargetZipFiles(const std::string& vendor_zip_path,
+                                   const std::string& system_zip_path,
+                                   const std::string& combined_target_path,
+                                   const std::string& vbmeta_output_path) {
+  CF_EXPECT(EnsureDirectoryExists(combined_target_path));
+  CF_EXPECT(EnsureDirectoryExists(combined_target_path + "/META"));
+  auto target_files =
+      CF_EXPECT(GetTargetFiles(vendor_zip_path, system_zip_path));
+  const auto extracted =
+      CF_EXPECT(ExtractTargetFiles(target_files, combined_target_path));
+  const auto misc_output_path = combined_target_path + "/" + kMiscInfoPath;
+  const auto combined_info =
+      CF_EXPECT(CombineMiscInfo(target_files, misc_output_path,
+                                extracted.images, extracted.system_partitions));
+  CF_EXPECT(RegenerateVbmeta(combined_info, vbmeta_output_path,
+                             combined_target_path));
+  return {};
+}
+
+bool BuildSuperImage(const std::string& combined_target_zip,
+                     const std::string& output_path) {
+  std::string otatools_path = DefaultHostArtifactsPath("");
+  std::string build_super_image_binary = HostBinaryPath("build_super_image");
+  if (!FileExists(build_super_image_binary)) {
+    LOG(ERROR) << "Could not find build_super_image";
+    return false;
+  }
+  return Execute({
+             build_super_image_binary,
+             "--path=" + otatools_path,
+             combined_target_zip,
+             output_path,
+         }) == 0;
+}
+
+std::string TargetFilesZip(const FetcherConfig& fetcher_config,
+                           FileSource source) {
+  for (const auto& file_iter : fetcher_config.get_cvd_files()) {
+    const auto& file_path = file_iter.first;
+    const auto& file_info = file_iter.second;
+    if (file_info.source != source) {
+      continue;
+    }
+    std::string expected_filename = "target_files-" + file_iter.second.build_id;
+    if (file_path.find(expected_filename) != std::string::npos) {
+      return file_path;
+    }
+  }
+  return "";
+}
+
+Result<void> RebuildSuperImage(const FetcherConfig& fetcher_config,
+                               const CuttlefishConfig& config,
+                               const std::string& super_image_output,
+                               const std::string& vbmeta_image_output) {
+  auto instance = config.ForDefaultInstance();
+  // In SuperImageNeedsRebuilding, it already checked both
+  // has_default_target_zip and has_system_target_zip are the same.
+  // Here, we only check if there is an input path
+  std::string default_target_zip = instance.default_target_zip();
+  std::string system_target_zip = instance.system_target_zip();
+  if (default_target_zip == "" || default_target_zip == "unset") {
+    default_target_zip =
+        TargetFilesZip(fetcher_config, FileSource::DEFAULT_BUILD);
+    CF_EXPECT(default_target_zip != "",
+              "Unable to find default target zip file.");
+
+    system_target_zip =
+        TargetFilesZip(fetcher_config, FileSource::SYSTEM_BUILD);
+    CF_EXPECT(system_target_zip != "", "Unable to find system target zip file.");
+  }
+
+  // TODO(schuffelen): Use cuttlefish_assembly
+  std::string combined_target_path = instance.PerInstanceInternalPath("target_combined");
+  // TODO(schuffelen): Use otatools/bin/merge_target_files
+  CF_EXPECT(CombineTargetZipFiles(default_target_zip, system_target_zip,
+                                  combined_target_path, vbmeta_image_output),
+            "Could not combine target zip files.");
+
+  CF_EXPECT(BuildSuperImage(combined_target_path, super_image_output),
+            "Could not write the final output super image.");
+  return {};
+}
+
+class SuperImageRebuilderImpl : public SuperImageRebuilder {
+ public:
+  INJECT(SuperImageRebuilderImpl(
+      const FetcherConfig& fetcher_config, const CuttlefishConfig& config,
+      const CuttlefishConfig::InstanceSpecific& instance))
+      : fetcher_config_(fetcher_config), config_(config), instance_(instance) {}
+
+  std::string Name() const override { return "SuperImageRebuilderImpl"; }
+  bool Enabled() const override { return true; }
+
+ private:
+  std::unordered_set<SetupFeature*> Dependencies() const override { return {}; }
+  Result<void> ResultSetup() override {
+    if (CF_EXPECT(SuperImageNeedsRebuilding(fetcher_config_,
+                                            instance_.default_target_zip(),
+                                            instance_.system_target_zip()))) {
+      CF_EXPECT(RebuildSuperImage(fetcher_config_, config_,
+                                  instance_.new_super_image(),
+                                  instance_.new_vbmeta_image()));
+    }
+    return {};
+  }
+
+  const FetcherConfig& fetcher_config_;
+  const CuttlefishConfig& config_;
+  const CuttlefishConfig::InstanceSpecific& instance_;
+};
+
+}  // namespace
 
 Result<bool> SuperImageNeedsRebuilding(const FetcherConfig& fetcher_config,
                                        const std::string& default_target_zip,
                                        const std::string& system_target_zip) {
   bool has_default_target_zip = false;
   bool has_system_target_zip = false;
-  if (default_target_zip != "" &&
-      default_target_zip != "unset") {
+  if (default_target_zip != "" && default_target_zip != "unset") {
     has_default_target_zip = true;
   }
-  if (system_target_zip != "" &&
-      system_target_zip != "unset") {
+  if (system_target_zip != "" && system_target_zip != "unset") {
     has_system_target_zip = true;
   }
   CF_EXPECT(has_default_target_zip == has_system_target_zip,
@@ -69,256 +376,6 @@ Result<bool> SuperImageNeedsRebuilding(const FetcherConfig& fetcher_config,
   return has_default_build && has_system_build;
 }
 
-namespace {
-
-std::string TargetFilesZip(const FetcherConfig& fetcher_config,
-                           FileSource source) {
-  for (const auto& file_iter : fetcher_config.get_cvd_files()) {
-    const auto& file_path = file_iter.first;
-    const auto& file_info = file_iter.second;
-    if (file_info.source != source) {
-      continue;
-    }
-    std::string expected_filename = "target_files-" + file_iter.second.build_id;
-    if (file_path.find(expected_filename) != std::string::npos) {
-      return file_path;
-    }
-  }
-  return "";
-}
-
-constexpr char kMiscInfoPath[] = "META/misc_info.txt";
-constexpr std::array kDefaultTargetImages = {
-    "IMAGES/boot.img",
-    "IMAGES/odm.img",
-    "IMAGES/odm_dlkm.img",
-    "IMAGES/recovery.img",
-    "IMAGES/userdata.img",
-    "IMAGES/vbmeta.img",
-    "IMAGES/vendor.img",
-    "IMAGES/vendor_dlkm.img",
-    "IMAGES/vbmeta_vendor_dlkm.img",
-    "IMAGES/system_dlkm.img",
-};
-constexpr std::array kDefaultTargetBuildProp = {
-    "ODM/build.prop",
-    "ODM/etc/build.prop",
-    "VENDOR/build.prop",
-    "VENDOR/etc/build.prop",
-};
-
-void FindImports(Archive* archive, const std::string& build_prop_file) {
-  auto contents = archive->ExtractToMemory(build_prop_file);
-  auto lines = android::base::Split(contents, "\n");
-  for (const auto& line : lines) {
-    auto parts = android::base::Split(line, " ");
-    if (parts.size() >= 2 && parts[0] == "import") {
-      LOG(INFO) << build_prop_file << ": " << line;
-    }
-  }
-}
-
-Result<void> CombineTargetZipFiles(const std::string& default_target_zip,
-                                   const std::string& system_target_zip,
-                                   const std::string& output_path) {
-  Archive default_target_archive(default_target_zip);
-  auto default_target_contents = default_target_archive.Contents();
-  CF_EXPECT(default_target_contents.size() != 0,
-            "Could not open " << default_target_zip);
-
-  Archive system_target_archive(system_target_zip);
-  auto system_target_contents = system_target_archive.Contents();
-  CF_EXPECT(system_target_contents.size() != 0,
-            "Could not open " << system_target_zip);
-
-  CF_EXPECT(
-      mkdir(output_path.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) >= 0,
-      "Could not create directory " << output_path);
-
-  std::string output_meta = output_path + "/META";
-  CF_EXPECT(
-      mkdir(output_meta.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) >= 0,
-      "Could not create directory " << output_meta);
-
-  CF_EXPECT(
-      std::find(default_target_contents.begin(), default_target_contents.end(),
-                kMiscInfoPath) != default_target_contents.end(),
-      "Default target files zip does not have " << kMiscInfoPath);
-
-  CF_EXPECT(
-      std::find(system_target_contents.begin(), system_target_contents.end(),
-                kMiscInfoPath) != system_target_contents.end(),
-      "System target files zip does not have " << kMiscInfoPath);
-
-  const auto default_misc =
-      ParseMiscInfo(default_target_archive.ExtractToMemory(kMiscInfoPath));
-  CF_EXPECT(default_misc.size() != 0,
-            "Could not read the default misc_info.txt file.");
-
-  const auto system_misc =
-      ParseMiscInfo(system_target_archive.ExtractToMemory(kMiscInfoPath));
-  CF_EXPECT(system_misc.size() != 0,
-            "Could not read the system misc_info.txt file.");
-
-  auto output_misc = default_misc;
-  auto system_super_partitions = SuperPartitionComponents(system_misc);
-  // Ensure specific skipped partitions end up in the misc_info.txt
-  for (auto partition :
-       {"odm", "odm_dlkm", "vendor", "vendor_dlkm", "system_dlkm"}) {
-    if (std::find(system_super_partitions.begin(), system_super_partitions.end(),
-                  partition) == system_super_partitions.end()) {
-      system_super_partitions.push_back(partition);
-    }
-  }
-  CF_EXPECT(SetSuperPartitionComponents(system_super_partitions, &output_misc),
-            "Failed to update super partitions components for misc_info");
-
-  auto misc_output_path = output_path + "/" + kMiscInfoPath;
-  SharedFD misc_output_file =
-      SharedFD::Creat(misc_output_path.c_str(), 0644);
-  CF_EXPECT(misc_output_file->IsOpen(), "Failed to open output misc file: "
-                                            << misc_output_file->StrError());
-
-  CF_EXPECT(WriteAll(misc_output_file, WriteMiscInfo(output_misc)) >= 0,
-            "Failed to write output misc file contents: "
-                << misc_output_file->StrError());
-
-  for (const auto& name : default_target_contents) {
-    if (!android::base::StartsWith(name, "IMAGES/")) {
-      continue;
-    } else if (!android::base::EndsWith(name, ".img")) {
-      continue;
-    } else if (!Contains(kDefaultTargetImages, name)) {
-      continue;
-    }
-    LOG(INFO) << "Writing " << name;
-    CF_EXPECT(default_target_archive.ExtractFiles({name}, output_path),
-              "Failed to extract " << name << " from the default target zip");
-  }
-  for (const auto& name : default_target_contents) {
-    if (!android::base::EndsWith(name, "build.prop")) {
-      continue;
-    } else if (!Contains(kDefaultTargetBuildProp, name)) {
-      continue;
-    }
-    FindImports(&default_target_archive, name);
-    LOG(INFO) << "Writing " << name;
-    CF_EXPECT(default_target_archive.ExtractFiles({name}, output_path),
-              "Failed to extract " << name << " from the default target zip");
-  }
-
-  for (const auto& name : system_target_contents) {
-    if (!android::base::StartsWith(name, "IMAGES/")) {
-      continue;
-    } else if (!android::base::EndsWith(name, ".img")) {
-      continue;
-    } else if (Contains(kDefaultTargetImages, name)) {
-      continue;
-    }
-    LOG(INFO) << "Writing " << name;
-    CF_EXPECT(system_target_archive.ExtractFiles({name}, output_path),
-              "Failed to extract " << name << " from the system target zip");
-  }
-  for (const auto& name : system_target_contents) {
-    if (!android::base::EndsWith(name, "build.prop")) {
-      continue;
-    } else if (Contains(kDefaultTargetBuildProp, name)) {
-      continue;
-    }
-    FindImports(&system_target_archive, name);
-    LOG(INFO) << "Writing " << name;
-    CF_EXPECT(system_target_archive.ExtractFiles({name}, output_path),
-              "Failed to extract " << name << " from the default target zip");
-  }
-
-  return {};
-}
-
-bool BuildSuperImage(const std::string& combined_target_zip,
-                     const std::string& output_path) {
-  std::string build_super_image_binary;
-  std::string otatools_path;
-  if (FileExists(DefaultHostArtifactsPath("otatools/bin/build_super_image"))) {
-    build_super_image_binary =
-        DefaultHostArtifactsPath("otatools/bin/build_super_image");
-    otatools_path = DefaultHostArtifactsPath("otatools");
-  } else if (FileExists(HostBinaryPath("build_super_image"))) {
-    build_super_image_binary =
-        HostBinaryPath("build_super_image");
-    otatools_path = DefaultHostArtifactsPath("");
-  } else {
-    LOG(ERROR) << "Could not find otatools";
-    return false;
-  }
-  return Execute({
-             build_super_image_binary,
-             "--path=" + otatools_path,
-             combined_target_zip,
-             output_path,
-         }) == 0;
-}
-
-Result<void> RebuildSuperImage(const FetcherConfig& fetcher_config,
-                               const CuttlefishConfig& config,
-                               const std::string& output_path) {
-  auto instance = config.ForDefaultInstance();
-  // In SuperImageNeedsRebuilding, it already checked both
-  // has_default_target_zip and has_system_target_zip are the same.
-  // Here, we only check if there is an input path
-  std::string default_target_zip = instance.default_target_zip();
-  std::string system_target_zip = instance.system_target_zip();
-  if (default_target_zip == "" || default_target_zip == "unset") {
-    default_target_zip =
-        TargetFilesZip(fetcher_config, FileSource::DEFAULT_BUILD);
-    CF_EXPECT(default_target_zip != "",
-              "Unable to find default target zip file.");
-
-    system_target_zip =
-        TargetFilesZip(fetcher_config, FileSource::SYSTEM_BUILD);
-    CF_EXPECT(system_target_zip != "", "Unable to find system target zip file.");
-  }
-
-  // TODO(schuffelen): Use cuttlefish_assembly
-  std::string combined_target_path = instance.PerInstanceInternalPath("target_combined");
-  // TODO(schuffelen): Use otatools/bin/merge_target_files
-  CF_EXPECT(CombineTargetZipFiles(default_target_zip, system_target_zip,
-                                  combined_target_path),
-            "Could not combine target zip files.");
-
-  CF_EXPECT(BuildSuperImage(combined_target_path, output_path),
-            "Could not write the final output super image.");
-  return {};
-}
-
-class SuperImageRebuilderImpl : public SuperImageRebuilder {
- public:
-  INJECT(SuperImageRebuilderImpl(
-      const FetcherConfig& fetcher_config, const CuttlefishConfig& config,
-      const CuttlefishConfig::InstanceSpecific& instance))
-      : fetcher_config_(fetcher_config), config_(config), instance_(instance) {}
-
-  std::string Name() const override { return "SuperImageRebuilderImpl"; }
-  bool Enabled() const override { return true; }
-
- private:
-  std::unordered_set<SetupFeature*> Dependencies() const override { return {}; }
-  Result<void> ResultSetup() override {
-    if (CF_EXPECT(SuperImageNeedsRebuilding(fetcher_config_,
-                                            instance_.default_target_zip(),
-                                            instance_.system_target_zip()))) {
-      CF_EXPECT(RebuildSuperImage(fetcher_config_, config_,
-                                  instance_.new_super_image()));
-    }
-    return {};
-  }
-
-  const FetcherConfig& fetcher_config_;
-  const CuttlefishConfig& config_;
-  const CuttlefishConfig::InstanceSpecific& instance_;
-};
-
-}  // namespace
-
 fruit::Component<fruit::Required<const FetcherConfig, const CuttlefishConfig,
                                  const CuttlefishConfig::InstanceSpecific>,
                  SuperImageRebuilder>
@@ -328,4 +385,4 @@ SuperImageRebuilderComponent() {
       .addMultibinding<SetupFeature, SuperImageRebuilder>();
 }
 
-} // namespace cuttlefish
+}  // namespace cuttlefish

@@ -17,15 +17,24 @@
 
 #include <string>
 
+#include <GraphicsDetector.pb.h>
+
 #include "common/libs/utils/result.h"
 #include "host/commands/assemble_cvd/flags.h"
+#include "host/libs/config/config_utils.h"
 #include "host/libs/config/cuttlefish_config.h"
 
 namespace cuttlefish {
 
+gfxstream::proto::GraphicsAvailability
+GetGraphicsAvailabilityWithSubprocessCheck();
+
 Result<std::string> ConfigureGpuSettings(
+    const gfxstream::proto::GraphicsAvailability& graphics_availability,
     const std::string& gpu_mode_arg, const std::string& gpu_vhost_user_mode_arg,
-    const std::string& vm_manager, const GuestConfig& guest_config,
+    const std::string& gpu_renderer_features_arg,
+    std::string& gpu_context_types_arg, VmmMode vmm,
+    const GuestConfig& guest_config,
     CuttlefishConfig::MutableInstanceSpecific& instance);
 
 }  // namespace cuttlefish

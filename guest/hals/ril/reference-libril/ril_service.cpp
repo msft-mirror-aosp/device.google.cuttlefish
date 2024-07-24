@@ -73,6 +73,8 @@ using PhysicalChannelConfigV1_4 =
     android::hardware::radio::V1_4::PhysicalChannelConfig;
 using RadioTechnologyV1_4 = android::hardware::radio::V1_4::RadioTechnology;
 
+namespace aidl_radio = ::aidl::android::hardware::radio;
+
 #define BOOL_TO_INT(x) (x ? 1 : 0)
 #define ATOI_NULL_HANDLED(x) (x ? atoi(x) : -1)
 #define ATOI_NULL_HANDLED_DEF(x, defaultVal) (x ? atoi(x) : defaultVal)
@@ -202,6 +204,7 @@ struct RadioImpl_1_6 : public V1_6::IRadio {
     sp<V1_5::IRadioIndication> mRadioIndicationV1_5;
     sp<V1_6::IRadioResponse> mRadioResponseV1_6;
     sp<V1_6::IRadioIndication> mRadioIndicationV1_6;
+    std::shared_ptr<compat::CallbackManager> mCallbackManager;
 
     Return<void> setResponseFunctions(
             const ::android::sp<IRadioResponse>& radioResponse,
@@ -3715,7 +3718,7 @@ Return<void> RadioImpl_1_6::setAllowedCarriers_1_4(int32_t  serial,
         return Void();
     }
 
-    // Prepare legacy structure (defined in IRadio 1.0) to re-use existing code.
+    // Prepare legacy structure (defined in IRadio 1.0) to reuse existing code.
     RIL_CarrierRestrictions cr = {};
     if (prepareCarrierRestrictions(cr, false, carriers.allowedCarriers, carriers.excludedCarriers,
             pRI) < 0) {
@@ -5901,7 +5904,7 @@ int convertResponseHexStringEntryToInt(char **response, int index, int numString
 }
 
 /* Fill Cell Identity info from Voice Registration State Response.
- * This fucntion is applicable only for RIL Version < 15.
+ * This function is applicable only for RIL Version < 15.
  * Response is a  "char **".
  * First and Second entries are in hex string format
  * and rest are integers represented in ascii format. */
@@ -6126,7 +6129,7 @@ void fillCellIdentityFromVoiceRegStateResponseString_1_2(V1_2::CellIdentity &cel
 }
 
 /* Fill Cell Identity info from Data Registration State Response.
- * This fucntion is applicable only for RIL Version < 15.
+ * This function is applicable only for RIL Version < 15.
  * Response is a  "char **".
  * First and Second entries are in hex string format
  * and rest are integers represented in ascii format. */
@@ -9738,7 +9741,7 @@ int radio_1_6::getAllowedCarriersResponse(int slotId,
             RIL_CarrierRestrictionsWithPriority *pCrExt =
                     (RIL_CarrierRestrictionsWithPriority *)response;
 
-            // Convert into the structure used in IRadio 1.0 to re-use existing code
+            // Convert into the structure used in IRadio 1.0 to reuse existing code
             RIL_CarrierRestrictions cr = {};
             cr.len_allowed_carriers = pCrExt->len_allowed_carriers;
             cr.len_excluded_carriers = pCrExt->len_excluded_carriers;
@@ -10655,6 +10658,63 @@ int radio_1_6::networkStateChangedInd(int slotId,
         RLOGE("networkStateChangedInd: radioService[%d]->mRadioIndication == NULL",
                 slotId);
     }
+
+    return 0;
+}
+
+int radio_aidl::cellularIdentifierDisclosedInd(int slotId, int indicationType, int token,
+                                               RIL_Errno e, void* response, size_t responselen) {
+    if (radioService[slotId] == NULL || radioService[slotId]->mCallbackManager == NULL) {
+        RLOGE("cellularIdentifierDisclosedInd: radioService[%d]->mCallbackManager == NULL", slotId);
+        return 0;
+    }
+    auto networkCb = radioService[slotId]->mCallbackManager->indication().networkCb();
+
+    if (!networkCb) {
+        RLOGE("networkCB is null");
+        return 0;
+    }
+
+    RIL_CellularIdentifierDisclosure* rawDisclosure =
+            static_cast<RIL_CellularIdentifierDisclosure*>(response);
+
+    aidl_radio::network::CellularIdentifierDisclosure disclosure;
+    disclosure.identifier =
+            static_cast<aidl_radio::network::CellularIdentifier>(rawDisclosure->identifierType);
+    disclosure.protocolMessage =
+            static_cast<aidl_radio::network::NasProtocolMessage>(rawDisclosure->protocolMessage);
+    disclosure.plmn = rawDisclosure->plmn;
+    disclosure.isEmergency = rawDisclosure->isEmergency;
+
+    networkCb->cellularIdentifierDisclosed(aidl_radio::RadioIndicationType(indicationType),
+                                           disclosure);
+
+    return 0;
+}
+
+int radio_aidl::securityAlgorithmUpdatedInd(int slotId, int indicationType, int token, RIL_Errno e,
+                                            void* response, size_t responselen) {
+    if (radioService[slotId] == NULL || radioService[slotId]->mCallbackManager == NULL) {
+        RLOGE("securityAlgorithmUpdatedInd: radioService[%d]->mCallbackManager == NULL", slotId);
+        return 0;
+    }
+    auto networkCb = radioService[slotId]->mCallbackManager->indication().networkCb();
+
+    if (!networkCb) {
+        RLOGE("networkCB is null");
+        return 0;
+    }
+
+    RIL_SecurityAlgorithmUpdate* rawUpdate = static_cast<RIL_SecurityAlgorithmUpdate*>(response);
+
+    aidl_radio::network::SecurityAlgorithmUpdate update;
+    update.connectionEvent =
+            static_cast<aidl_radio::network::ConnectionEvent>(rawUpdate->connectionEvent);
+    update.encryption = static_cast<aidl_radio::network::SecurityAlgorithm>(rawUpdate->encryption);
+    update.integrity = static_cast<aidl_radio::network::SecurityAlgorithm>(rawUpdate->integrity);
+    update.isUnprotectedEmergency = rawUpdate->isUnprotectedEmergency;
+
+    networkCb->securityAlgorithmsUpdated(aidl_radio::RadioIndicationType(indicationType), update);
 
     return 0;
 }
@@ -13439,6 +13499,7 @@ void radio_1_6::registerService(RIL_RadioFunctions *callbacks, CommandInfo *comm
         const auto slot = serviceNames[i];
         auto context = std::make_shared<compat::DriverContext>();
         auto callbackMgr = std::make_shared<compat::CallbackManager>(context, radioHidl);
+        radioService[i]->mCallbackManager = callbackMgr;
         publishRadioHal<compat::RadioData>(context, radioHidl, callbackMgr, slot);
         publishRadioHal<compat::RadioMessaging>(context, radioHidl, callbackMgr, slot);
         publishRadioHal<compat::RadioModem>(context, radioHidl, callbackMgr, slot);

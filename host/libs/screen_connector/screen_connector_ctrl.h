@@ -37,10 +37,7 @@ namespace cuttlefish {
  */
 class ScreenConnectorCtrl {
  public:
-  enum class ModeType {
-    kAndroidMode,
-    kConfUI_Mode
-  };
+  enum class ModeType { kAndroidMode, kConfUI_Mode };
 
   ScreenConnectorCtrl() : atomic_mode_(ModeType::kAndroidMode) {}
 
@@ -66,9 +63,11 @@ class ScreenConnectorCtrl {
    */
   void WaitAndroidMode() {
     if (atomic_mode_ == ModeType::kAndroidMode) {
-      return ;
+      return;
     }
-    auto check = [this]() -> bool { return atomic_mode_ == ModeType::kAndroidMode; };
+    auto check = [this]() -> bool {
+      return atomic_mode_ == ModeType::kAndroidMode;
+    };
     std::unique_lock<std::mutex> lock(mode_mtx_);
     and_mode_cv_.wait(lock, check);
   }
@@ -101,4 +100,4 @@ class ScreenConnectorCtrl {
   Semaphore sem_;
 };
 
-} // namespace cuttlefish
+}  // namespace cuttlefish

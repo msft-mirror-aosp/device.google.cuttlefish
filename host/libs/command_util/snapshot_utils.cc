@@ -70,10 +70,6 @@ Result<void> CopyDirectoryImpl(
     if (!predicate(src_dir_path + "/" + src_base_path)) {
       continue;
     }
-    if (src_base_path == "." || src_base_path == "..") {
-      LOG(DEBUG) << "Skipping \"" << src_base_path << "\"";
-      continue;
-    }
     std::string src_path = src_dir_path + "/" + src_base_path;
     std::string dest_path = dest_dir_path + "/" + src_base_path;
 
@@ -170,7 +166,7 @@ Result<void> CopyDirectoryRecursively(
              src_dir_path);
   if (verify_dest_dir_empty) {
     CF_EXPECTF(!FileExists(dest_dir_path, /* follow symlink */ false),
-               "Delete the destination directiory \"{}\" first", dest_dir_path);
+               "Delete the destination directory \"{}\" first", dest_dir_path);
   }
 
   std::string dest_final_target = RealpathOrSelf(dest_dir_path);

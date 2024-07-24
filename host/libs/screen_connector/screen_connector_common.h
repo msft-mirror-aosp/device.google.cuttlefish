@@ -26,19 +26,20 @@
 
 namespace cuttlefish {
 
-template<typename T>
+template <typename T>
 struct is_movable {
   static constexpr const bool value =
-      std::is_move_constructible<T>::value &&
-      std::is_move_assignable<T>::value;
+      std::is_move_constructible<T>::value && std::is_move_assignable<T>::value;
 };
 
-// this callback type is going directly to socket-based or wayland ScreenConnector
+// this callback type is going directly to socket-based or wayland
+// ScreenConnector
 using GenerateProcessedFrameCallbackImpl =
-    std::function<void(std::uint32_t /*display_number*/,      //
-                       std::uint32_t /*frame_width*/,         //
-                       std::uint32_t /*frame_height*/,        //
-                       std::uint32_t /*frame_stride_bytes*/,  //
+    std::function<void(std::uint32_t /*display_number*/,       //
+                       std::uint32_t /*frame_width*/,          //
+                       std::uint32_t /*frame_height*/,         //
+                       std::uint32_t /*frame_fourcc_format*/,  //
+                       std::uint32_t /*frame_stride_bytes*/,   //
                        std::uint8_t* /*frame_pixels*/)>;
 
 struct ScreenConnectorInfo {
@@ -80,7 +81,8 @@ struct ScreenConnectorInfo {
   }
 
  private:
-  static auto ChkAndGetConfig() -> decltype(cuttlefish::CuttlefishConfig::Get()) {
+  static auto ChkAndGetConfig()
+      -> decltype(cuttlefish::CuttlefishConfig::Get()) {
     auto config = cuttlefish::CuttlefishConfig::Get();
     CHECK(config) << "Config is Missing";
     return config;
@@ -91,6 +93,7 @@ struct ScreenConnectorFrameRenderer {
   virtual bool RenderConfirmationUi(std::uint32_t display_number,
                                     std::uint32_t frame_width,
                                     std::uint32_t frame_height,
+                                    std::uint32_t frame_fourcc_format,
                                     std::uint32_t frame_stride_bytes,
                                     std::uint8_t* frame_bytes) = 0;
   virtual bool IsCallbackSet() const = 0;

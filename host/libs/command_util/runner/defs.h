@@ -55,6 +55,7 @@ enum RunnerExitCodes : int {
 // Actions supported by the launcher server
 enum class LauncherAction : char {
   kExtended = 'A',  ///< expect additional information to follow
+  kFail = 'F',
   kPowerwash = 'P',
   kRestart = 'R',
   kStatus = 'I',
@@ -66,16 +67,6 @@ enum class LauncherResponse : char {
   kSuccess = 'S',
   kError = 'E',
   kUnknownAction = 'U',
-};
-
-enum class ExtendedActionType : std::uint32_t {
-  kUnused = 4,
-  kSuspend = 5,
-  kResume = 6,
-  kStartScreenRecording = 7,
-  kStopScreenRecording = 8,
-  // TODO(kwstephenkim): extend the list of operations to cover snapshot
-  kSnapshotTake = 9,
 };
 
 }  // namespace cuttlefish

@@ -43,9 +43,9 @@ ServerLoopImpl::InitializeVmToControlSockPath(
     const CuttlefishConfig::InstanceSpecific& instance) {
   return std::unordered_map<std::string, std::string>{
       // TODO(kwstephenkim): add the following two lines to support QEMU
-      // {QemuManager::name(),
+      // {ToString(VmmMode::kQemu),
       // instance.PerInstanceInternalUdsPath("qemu_monitor.sock")},
-      {vm_manager::CrosvmManager::name(), instance.CrosvmSocketPath()},
+      {ToString(VmmMode::kCrosvm), instance.CrosvmSocketPath()},
       {cuttlefish::kApName, instance.OpenwrtCrosvmSocketPath()},
   };
 }
@@ -105,15 +105,16 @@ Result<void> ServerLoopImpl::SuspendGuest() {
     CF_EXPECT(SuspendCrosvm(openwrt_sock),
               "failed to suspend openwrt crosvm instance.");
   }
-  const auto vm_name = config_.vm_manager();
-  if (vm_name == vm_manager::CrosvmManager::name()) {
-    const auto& vm_sock = GetSocketPath(vm_name, vm_name_to_control_sock_);
+  const auto main_vmm = config_.vm_manager();
+  if (main_vmm == VmmMode::kCrosvm) {
+    const auto& vm_sock =
+        GetSocketPath(ToString(main_vmm), vm_name_to_control_sock_);
     if (vm_sock == "") {
-      return CF_ERR("The vm_manager " + vm_name + " is not supported yet");
+      return CF_ERR("The vm_manager " << main_vmm << " is not supported yet");
     }
     return SuspendCrosvm(vm_sock);
   } else {
-    return CF_ERR("The vm_manager " + vm_name + " is not supported yet");
+    return CF_ERR("The vm_manager " << main_vmm << " is not supported yet");
   }
 }
 
@@ -130,27 +131,42 @@ Result<void> ServerLoopImpl::ResumeGuest() {
     CF_EXPECT(ResumeCrosvm(openwrt_sock),
               "failed to resume openwrt crosvm instance.");
   }
-  const auto vm_name = config_.vm_manager();
-  if (vm_name == vm_manager::CrosvmManager::name()) {
-    const auto& vm_sock = GetSocketPath(vm_name, vm_name_to_control_sock_);
+  const auto main_vmm = config_.vm_manager();
+  if (main_vmm == VmmMode::kCrosvm) {
+    const auto& vm_sock =
+        GetSocketPath(ToString(main_vmm), vm_name_to_control_sock_);
     if (vm_sock == "") {
-      return CF_ERR("The vm_manager " + vm_name + " is not supported yet");
+      return CF_ERR("The vm_manager " << main_vmm << " is not supported yet");
     }
     return ResumeCrosvm(vm_sock);
   } else {
-    return CF_ERR("The vm_manager " + vm_name + " is not supported yet");
+    return CF_ERR("The vm_manager " << main_vmm << " is not supported yet");
   }
 }
 
-Result<void> ServerLoopImpl::HandleSuspend(const std::string& serialized_data,
-                                           ProcessMonitor& process_monitor) {
-  run_cvd::ExtendedLauncherAction extended_action;
-  CF_EXPECT(extended_action.ParseFromString(serialized_data),
-            "Failed to load ExtendedLauncherAction proto.");
-  CF_EXPECT_EQ(extended_action.actions_case(),
-               run_cvd::ExtendedLauncherAction::ActionsCase::kSuspend);
+static Result<void> RunAdbShellCommand(
+    const CuttlefishConfig::InstanceSpecific& ins,
+    const std::vector<std::string>& command_args) {
+  Command adb_command(SubtoolPath("adb"));
+  // Avoid the adb server being started in the runtime directory and looking
+  // like a process that is still using the directory.
+  adb_command.SetWorkingDirectory("/");
+  adb_command.AddParameter("-s").AddParameter(ins.adb_ip_and_port());
+  adb_command.AddParameter("wait-for-device");
+
+  adb_command.AddParameter("shell");
+  for (const auto& argument : command_args) {
+    adb_command.AddParameter(argument);
+  }
+  CF_EXPECT_EQ(adb_command.Start().Wait(), 0);
+  return {};
+}
+
+Result<void> ServerLoopImpl::HandleSuspend(ProcessMonitor& process_monitor) {
   // right order: guest -> host
   LOG(DEBUG) << "Suspending the guest..";
+  CF_EXPECT(
+      RunAdbShellCommand(instance_, {"/vendor/bin/snapshot_hook_pre_suspend"}));
   CF_EXPECT(SuspendGuest());
   LOG(DEBUG) << "The guest is suspended.";
   CF_EXPECT(process_monitor.SuspendMonitoredProcesses(),
@@ -159,19 +175,15 @@ Result<void> ServerLoopImpl::HandleSuspend(const std::string& serialized_data,
   return {};
 }
 
-Result<void> ServerLoopImpl::HandleResume(const std::string& serialized_data,
-                                          ProcessMonitor& process_monitor) {
-  run_cvd::ExtendedLauncherAction extended_action;
-  CF_EXPECT(extended_action.ParseFromString(serialized_data),
-            "Failed to load ExtendedLauncherAction proto.");
-  CF_EXPECT_EQ(extended_action.actions_case(),
-               run_cvd::ExtendedLauncherAction::ActionsCase::kResume);
+Result<void> ServerLoopImpl::HandleResume(ProcessMonitor& process_monitor) {
   // right order: host -> guest
   CF_EXPECT(process_monitor.ResumeMonitoredProcesses(),
             "Failed to resume host processes.");
   LOG(DEBUG) << "The host processes are resumed.";
   LOG(DEBUG) << "Resuming the guest..";
   CF_EXPECT(ResumeGuest());
+  CF_EXPECT(
+      RunAdbShellCommand(instance_, {"/vendor/bin/snapshot_hook_post_resume"}));
   LOG(DEBUG) << "The guest resumed.";
   return {};
 }
@@ -227,7 +239,7 @@ Result<void> ServerLoopImpl::TakeCrosvmGuestSnapshot(
 /*
  * Parse json file at json_path, and take guest snapshot
  */
-Result<void> ServerLoopImpl::TakeGuestSnapshot(const std::string& vm_manager,
+Result<void> ServerLoopImpl::TakeGuestSnapshot(VmmMode vm_manager,
                                                const std::string& json_path) {
   // common code across vm_manager
   CF_EXPECTF(FileExists(json_path), "{} must exist but does not.", json_path);
@@ -238,7 +250,7 @@ Result<void> ServerLoopImpl::TakeGuestSnapshot(const std::string& vm_manager,
                std::string("Failed to read from ") + json_path);
   Json::Value meta_json = CF_EXPECTF(
       ParseJson(json_contents), "Failed to parse json: \n{}", json_contents);
-  CF_EXPECTF(vm_manager == "crosvm",
+  CF_EXPECTF(vm_manager == VmmMode::kCrosvm,
              "{}, which is not crosvm, is not yet supported.", vm_manager);
   CF_EXPECT(TakeCrosvmGuestSnapshot(meta_json),
             "TakeCrosvmGuestSnapshot() failed.");
@@ -246,21 +258,12 @@ Result<void> ServerLoopImpl::TakeGuestSnapshot(const std::string& vm_manager,
 }
 
 Result<void> ServerLoopImpl::HandleSnapshotTake(
-    const std::string& serialized_data) {
-  run_cvd::ExtendedLauncherAction extended_action;
-  CF_EXPECT(extended_action.ParseFromString(serialized_data),
-            "Failed to load ExtendedLauncherAction proto.");
-  CF_EXPECT_EQ(extended_action.actions_case(),
-               run_cvd::ExtendedLauncherAction::ActionsCase::kSnapshotTake);
-  // implement snapshot take
-  std::vector<std::string> path_to_snapshots;
-  for (const auto& path : extended_action.snapshot_take().snapshot_path()) {
-    path_to_snapshots.push_back(path);
-  }
-  CF_EXPECT_EQ(path_to_snapshots.size(), 1);
-  const auto& path_to_snapshot = path_to_snapshots.front();
-  CF_EXPECT(TakeGuestSnapshot(config_.vm_manager(), path_to_snapshot),
-            "Failed to take guest snapshot");
+    const run_cvd::SnapshotTake& snapshot_take) {
+  CF_EXPECT(!snapshot_take.snapshot_path().empty(),
+            "snapshot_path must be non-empty");
+  CF_EXPECT(
+      TakeGuestSnapshot(config_.vm_manager(), snapshot_take.snapshot_path()),
+      "Failed to take guest snapshot");
   return {};
 }
 

@@ -43,9 +43,7 @@ void AppendMapWithReplacement(T* destination, const T& source) {
   }
 }
 
-// TODO(schuffelen): Move more of this into host/libs/vm_manager, as a
-// substitute for the vm_manager comparisons.
-Result<std::unordered_map<std::string, std::string>> VmManagerBootconfig(
+Result<std::unordered_map<std::string, std::string>> ConsoleBootconfig(
     const CuttlefishConfig::InstanceSpecific& instance) {
   std::unordered_map<std::string, std::string> bootconfig_args;
   if (instance.console()) {
@@ -76,7 +74,7 @@ Result<std::unordered_map<std::string, std::string>> BootconfigArgsFromConfig(
   std::unordered_map<std::string, std::string> bootconfig_args;
 
   AppendMapWithReplacement(&bootconfig_args,
-                           CF_EXPECT(VmManagerBootconfig(instance)));
+                           CF_EXPECT(ConsoleBootconfig(instance)));
 
   auto vmm =
       vm_manager::GetVmManager(config.vm_manager(), instance.target_arch());
@@ -111,15 +109,14 @@ Result<std::unordered_map<std::string, std::string>> BootconfigArgsFromConfig(
         std::to_string(instance.tombstone_receiver_port());
   }
 
-  const auto enable_confui =
-      (config.vm_manager() == QemuManager::name() ? 0 : 1);
+  if (instance.openthread_node_id()) {
+    bootconfig_args["androidboot.openthread_node_id"] =
+        std::to_string(instance.openthread_node_id());
+  }
+
+  const auto enable_confui = (config.vm_manager() == VmmMode::kQemu ? 0 : 1);
   bootconfig_args["androidboot.enable_confirmationui"] =
       std::to_string(enable_confui);
-
-  if (instance.config_server_port()) {
-    bootconfig_args["androidboot.cuttlefish_config_server_port"] =
-        std::to_string(instance.config_server_port());
-  }
 
   if (instance.audiocontrol_server_port()) {
     bootconfig_args["androidboot.vendor.audiocontrol.server.cid"] =
@@ -178,7 +175,7 @@ Result<std::unordered_map<std::string, std::string>> BootconfigArgsFromConfig(
   if (instance.target_arch() == Arch::X86 ||
       instance.target_arch() == Arch::X86_64) {
     bootconfig_args["androidboot.hypervisor.version"] =
-        "cf-" + config.vm_manager();
+        "cf-" + ToString(config.vm_manager());
     bootconfig_args["androidboot.hypervisor.vm.supported"] = "1";
   } else {
     bootconfig_args["androidboot.hypervisor.vm.supported"] = "0";
@@ -189,6 +186,23 @@ Result<std::unordered_map<std::string, std::string>> BootconfigArgsFromConfig(
   }
   if (!instance.initramfs_path().empty()) {
     bootconfig_args["androidboot.ramdisk_hotswapped"] = "1";
+  }
+
+  const auto& secure_hals = CF_EXPECT(config.secure_hals());
+  bootconfig_args["androidboot.vendor.apex.com.android.hardware.keymint"] =
+      secure_hals.count(SecureHal::kGuestKeymintInsecure)
+          ? "com.android.hardware.keymint.rust_nonsecure"
+          : "com.android.hardware.keymint.rust_cf_remote";
+
+  // Preemptive for when we set up the HAL to be runtime selectable
+  bootconfig_args["androidboot.vendor.apex.com.android.hardware.gatekeeper"] =
+      secure_hals.count(SecureHal::kGuestGatekeeperInsecure)
+          ? "com.android.hardware.gatekeeper.nonsecure"
+          : "com.android.hardware.gatekeeper.cf_remote";
+
+  if (config.vhal_proxy_server_port()) {
+    bootconfig_args["androidboot.vhal_proxy_server_port"] =
+        std::to_string(config.vhal_proxy_server_port());
   }
 
   std::vector<std::string> args = instance.extra_bootconfig_args();

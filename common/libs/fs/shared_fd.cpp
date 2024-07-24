@@ -397,7 +397,11 @@ SharedFD SharedFD::Dup(int unmanaged_fd) {
 
 bool SharedFD::Pipe(SharedFD* fd0, SharedFD* fd1) {
   int fds[2];
+#ifdef __linux__
+  int rval = pipe2(fds, O_CLOEXEC);
+#else
   int rval = pipe(fds);
+#endif
   if (rval != -1) {
     (*fd0) = std::shared_ptr<FileInstance>(new FileInstance(fds[0], errno));
     (*fd1) = std::shared_ptr<FileInstance>(new FileInstance(fds[1], errno));
@@ -465,6 +469,12 @@ SharedFD SharedFD::Open(const char* path, int flags, mode_t mode) {
   } else {
     return SharedFD(std::shared_ptr<FileInstance>(new FileInstance(fd, 0)));
   }
+}
+
+SharedFD SharedFD::InotifyFd(void) {
+  errno = 0;
+  int fd = TEMP_FAILURE_RETRY(inotify_init1(IN_CLOEXEC));
+  return SharedFD(std::shared_ptr<FileInstance>(new FileInstance(fd, errno)));
 }
 
 SharedFD SharedFD::Creat(const std::string& path, mode_t mode) {
@@ -642,7 +652,9 @@ SharedFD SharedFD::SocketLocalServer(const std::string& name, bool abstract,
                                      int in_type, mode_t mode) {
   // DO NOT UNLINK addr.sun_path. It does NOT have to be null-terminated.
   // See man 7 unix for more details.
-  if (!abstract) (void)unlink(name.c_str());
+  if (!abstract) {
+    (void)unlink(name.c_str());
+  }
 
   struct sockaddr_un addr;
   socklen_t addrlen;
@@ -1064,6 +1076,15 @@ Result<std::string> FileInstance::ProcFdLinkTarget() const {
   return mem_fd_target;
 }
 #endif
+
+// inotify related functions
+int FileInstance::InotifyAddWatch(const std::string& pathname, uint32_t mask) {
+  return inotify_add_watch(fd_, pathname.c_str(), mask);
+}
+
+void FileInstance::InotifyRmWatch(int watch) {
+  inotify_rm_watch(fd_, watch);
+}
 
 FileInstance::FileInstance(int fd, int in_errno)
     : fd_(fd), errno_(in_errno), is_regular_file_(IsRegularFile(fd_)) {

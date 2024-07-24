@@ -37,6 +37,19 @@ echo "pbuilder        pbuilder/mirrorsite     string  https://deb.debian.org/deb
 # Stuff we need to get build support
 sudo apt install -y debhelper ubuntu-dev-tools equivs "${extra_packages[@]}"
 
+function install_bazel() {
+  # From https://bazel.build/install/ubuntu
+  echo "Installing bazel"
+  sudo apt install apt-transport-https curl gnupg -y
+  curl -fsSL https://bazel.build/bazel-release.pub.gpg | gpg --dearmor >bazel-archive-keyring.gpg
+  sudo mv bazel-archive-keyring.gpg /usr/share/keyrings
+  echo "deb [arch=amd64 signed-by=/usr/share/keyrings/bazel-archive-keyring.gpg] https://storage.googleapis.com/bazel-apt stable jdk1.8" | sudo tee /etc/apt/sources.list.d/bazel.list
+  # bazel needs the zip command to gather test outputs but doesn't depend on it
+  sudo apt-get update && sudo apt-get install -y bazel zip unzip
+}
+
+install_bazel
+
 # Resize
 sudo apt install -y cloud-utils
 sudo apt install -y cloud-guest-utils
@@ -115,7 +128,7 @@ sudo rm /mnt/image/install_nvidia.sh
 # Vulkan loader
 sudo chroot /mnt/image /usr/bin/apt install -y libvulkan1 -t bullseye-backports
 
-# Wayland-server needed to have Nvidia driver fail gracefully when attemping to
+# Wayland-server needed to have Nvidia driver fail gracefully when attempting to
 # use the EGL API on GCE instances without a GPU.
 sudo chroot /mnt/image /usr/bin/apt install -y libwayland-server0 -t bullseye-backports
 

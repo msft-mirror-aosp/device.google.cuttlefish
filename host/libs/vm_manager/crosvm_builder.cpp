@@ -28,6 +28,17 @@
 #include "host/libs/config/known_paths.h"
 
 namespace cuttlefish {
+namespace {
+
+std::string MacCrosvmArgument(std::optional<std::string_view> mac) {
+  return mac.has_value() ? fmt::format(",mac={}", mac.value()) : "";
+}
+
+std::string PciCrosvmArgument(std::optional<pci::Address> pci) {
+  return pci.has_value() ? fmt::format(",pci-address={}", pci.value().Id()) : "";
+}
+
+}
 
 CrosvmBuilder::CrosvmBuilder() : command_("crosvm") {}
 
@@ -48,42 +59,40 @@ void CrosvmBuilder::ApplyProcessRestarter(
 
 void CrosvmBuilder::AddControlSocket(const std::string& control_socket,
                                      const std::string& executable_path) {
-  command_.SetStopper([executable_path, control_socket](Subprocess* proc) {
+  auto stopper = [executable_path, control_socket]() {
     Command stop_cmd(executable_path);
     stop_cmd.AddParameter("stop");
     stop_cmd.AddParameter(control_socket);
-    if (stop_cmd.Start().Wait() == 0) {
-      return StopperResult::kStopSuccess;
-    }
-    LOG(WARNING) << "Failed to stop VMM nicely, attempting to KILL";
-    return KillSubprocess(proc) == StopperResult::kStopSuccess
-               ? StopperResult::kStopCrash
-               : StopperResult::kStopFailure;
-  });
+    return stop_cmd.Start().Wait() == 0 ? StopperResult::kStopSuccess
+                                        : StopperResult::kStopFailure;
+  };
+  command_.SetStopper(KillSubprocessFallback(stopper));
   command_.AddParameter("--socket=", control_socket);
 }
 
+// TODO: b/243198718 - switch to virtio-console
 void CrosvmBuilder::AddHvcSink() {
-  command_.AddParameter("--serial=hardware=virtio-console,num=", ++hvc_num_,
-                        ",type=sink");
+  command_.AddParameter(
+      "--serial=hardware=legacy-virtio-console,num=", ++hvc_num_, ",type=sink");
 }
 void CrosvmBuilder::AddHvcReadOnly(const std::string& output, bool console) {
-  command_.AddParameter("--serial=hardware=virtio-console,num=", ++hvc_num_,
-                        ",type=file,path=", output,
-                        console ? ",console=true" : "");
+  command_.AddParameter(
+      "--serial=hardware=legacy-virtio-console,num=", ++hvc_num_,
+      ",type=file,path=", output, console ? ",console=true" : "");
 }
 void CrosvmBuilder::AddHvcReadWrite(const std::string& output,
                                     const std::string& input) {
-  command_.AddParameter("--serial=hardware=virtio-console,num=", ++hvc_num_,
-                        ",type=file,path=", output, ",input=", input);
+  command_.AddParameter(
+      "--serial=hardware=legacy-virtio-console,num=", ++hvc_num_,
+      ",type=file,path=", output, ",input=", input);
 }
 
 void CrosvmBuilder::AddReadOnlyDisk(const std::string& path) {
-  command_.AddParameter("--disk=", path);
+  command_.AddParameter("--block=path=", path, ",ro=true");
 }
 
 void CrosvmBuilder::AddReadWriteDisk(const std::string& path) {
-  command_.AddParameter("--rwdisk=", path);
+  command_.AddParameter("--block=path=", path);
 }
 
 void CrosvmBuilder::AddSerialSink() {
@@ -108,10 +117,12 @@ void CrosvmBuilder::AddSerial(const std::string& output,
 }
 
 #ifdef __linux__
-SharedFD CrosvmBuilder::AddTap(const std::string& tap_name) {
+SharedFD CrosvmBuilder::AddTap(const std::string& tap_name,
+                               std::optional<std::string_view> mac,
+                               const std::optional<pci::Address>& pci) {
   auto tap_fd = OpenTapInterface(tap_name);
   if (tap_fd->IsOpen()) {
-    command_.AddParameter("--net=tap-fd=", tap_fd);
+    command_.AddParameter("--net=tap-fd=", tap_fd, MacCrosvmArgument(mac), PciCrosvmArgument(pci));
   } else {
     LOG(ERROR) << "Unable to connect to \"" << tap_name
                << "\": " << tap_fd->StrError();
@@ -119,36 +130,9 @@ SharedFD CrosvmBuilder::AddTap(const std::string& tap_name) {
   return tap_fd;
 }
 
-SharedFD CrosvmBuilder::AddTap(const std::string& tap_name, const std::string& mac) {
-  auto tap_fd = OpenTapInterface(tap_name);
-  if (tap_fd->IsOpen()) {
-    command_.AddParameter("--net=tap-fd=", tap_fd, ",mac=\"", mac, "\"");
-  } else {
-    LOG(ERROR) << "Unable to connect to \"" << tap_name
-               << "\": " << tap_fd->StrError();
-  }
-  return tap_fd;
-}
 #endif
 
 int CrosvmBuilder::HvcNum() { return hvc_num_; }
-
-Result<void> CrosvmBuilder::SetToRestoreFromSnapshot(
-    const std::string& snapshot_dir_path, const std::string& instance_id_in_str,
-    const std::string& snapshot_name) {
-  auto meta_info_json = CF_EXPECT(LoadMetaJson(snapshot_dir_path));
-  const std::vector<std::string> selectors{kGuestSnapshotField,
-                                           instance_id_in_str};
-  const auto guest_snapshot_dir_suffix =
-      CF_EXPECT(GetValue<std::string>(meta_info_json, selectors));
-  // guest_snapshot_dir_suffix is a relative to
-  // the snapshot_path
-  const auto restore_path = snapshot_dir_path + "/" +
-                            guest_snapshot_dir_suffix + "/" +
-                            kGuestSnapshotBase + snapshot_name;
-  command_.AddParameter("--restore=", restore_path);
-  return {};
-}
 
 Command& CrosvmBuilder::Cmd() { return command_; }
 

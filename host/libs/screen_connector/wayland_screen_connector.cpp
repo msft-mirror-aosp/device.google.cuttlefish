@@ -16,8 +16,8 @@
 
 #include "host/libs/screen_connector/wayland_screen_connector.h"
 
-#include <unistd.h>
 #include <fcntl.h>
+#include <unistd.h>
 
 #include <android-base/logging.h>
 
@@ -26,12 +26,15 @@
 namespace cuttlefish {
 
 WaylandScreenConnector::WaylandScreenConnector(ANNOTATED(FramesFd, int)
-                                                   frames_fd) {
+                                                   frames_fd,
+                                               ANNOTATED(FramesAreRgba, bool)
+                                                   wayland_frames_are_rgba) {
   int wayland_fd = fcntl(frames_fd, F_DUPFD_CLOEXEC, 3);
   CHECK(wayland_fd != -1) << "Unable to dup server, errno " << errno;
   close(frames_fd);
 
-  server_.reset(new wayland::WaylandServer(wayland_fd));
+  server_.reset(
+      new wayland::WaylandServer(wayland_fd, wayland_frames_are_rgba));
 }
 
 void WaylandScreenConnector::SetFrameCallback(

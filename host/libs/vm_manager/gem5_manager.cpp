@@ -141,7 +141,7 @@ if __name__ == "__m5_main__":
 
 void GenerateGem5File(const CuttlefishConfig& config,
                       const CuttlefishConfig::InstanceSpecific& instance) {
-  // Gem5 specific config, currently users have to change these config locally (without throug launch_cvd input flag) to meet their design
+  // Gem5 specific config, currently users have to change these config locally (without through launch_cvd input flag) to meet their design
   // TODO: Add these config into launch_cvd input flag or parse from one json file
   std::string cpu_class = "AtomicSimpleCPU";
   std::string l1_icache_class = "None";
@@ -216,7 +216,7 @@ Gem5Manager::ConfigureGraphics(
 
   // Override the default HAL search paths in all cases. We do this because
   // the HAL search path allows for fallbacks, and fallbacks in conjunction
-  // with properities lead to non-deterministic behavior while loading the
+  // with properties lead to non-deterministic behavior while loading the
   // HALs.
 
   std::unordered_map<std::string, std::string> bootconfig_args;
@@ -229,6 +229,8 @@ Gem5Manager::ConfigureGraphics(
         {"androidboot.hardware.hwcomposer", "ranchu"},
         {"androidboot.hardware.hwcomposer.mode", "noop"},
         {"androidboot.hardware.hwcomposer.display_finder_mode", "gem5"},
+        {"androidboot.hardware.hwcomposer.display_framebuffer_format",
+         instance.guest_uses_bgra_framebuffers() ? "bgra" : "rgba"},
         {"androidboot.hardware.egl", "angle"},
         {"androidboot.hardware.vulkan", "pastel"},
         {"androidboot.opengles.version", "196609"},  // OpenGL ES 3.1
@@ -240,6 +242,8 @@ Gem5Manager::ConfigureGraphics(
         {"androidboot.hardware.gralloc", "minigbm"},
         {"androidboot.hardware.hwcomposer", "ranchu"},
         {"androidboot.hardware.hwcomposer.display_finder_mode", "gem5"},
+        {"androidboot.hardware.hwcomposer.display_framebuffer_format",
+         instance.guest_uses_bgra_framebuffers() ? "bgra" : "rgba"},
         {"androidboot.hardware.egl", "emulation"},
         {"androidboot.hardware.vulkan", "ranchu"},
         {"androidboot.hardware.gltransport", "virtio-gpu-pipe"},
@@ -280,11 +284,6 @@ Result<std::vector<MonitorCommand>> Gem5Manager::StartCommands(
     const CuttlefishConfig& config, std::vector<VmmDependencyCommand*>&) {
   auto instance = config.ForDefaultInstance();
 
-  auto stop = [](Subprocess* proc) {
-    return KillSubprocess(proc) == StopperResult::kStopSuccess
-               ? StopperResult::kStopCrash
-               : StopperResult::kStopFailure;
-  };
   std::string gem5_binary = instance.gem5_binary_dir();
   switch (arch_) {
     case Arch::Arm:
@@ -302,7 +301,7 @@ Result<std::vector<MonitorCommand>> Gem5Manager::StartCommands(
   // generate Gem5 starter_fs.py before we execute it
   GenerateGem5File(config, instance);
 
-  Command gem5_cmd(gem5_binary, stop);
+  Command gem5_cmd(gem5_binary);
 
   // Always enable listeners, because auto mode will disable once it detects
   // gem5 is not run interactively

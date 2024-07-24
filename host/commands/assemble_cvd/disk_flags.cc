@@ -16,15 +16,18 @@
 
 #include "host/commands/assemble_cvd/disk_flags.h"
 
+#include <sys/statvfs.h>
+
+#include <fstream>
+#include <string>
+#include <vector>
+
 #include <android-base/logging.h>
 #include <android-base/parsebool.h>
 #include <android-base/parseint.h>
 #include <android-base/strings.h>
 #include <fruit/fruit.h>
 #include <gflags/gflags.h>
-#include <sys/statvfs.h>
-
-#include <fstream>
 
 #include "common/libs/fs/shared_buf.h"
 #include "common/libs/utils/files.h"
@@ -40,6 +43,7 @@
 #include "host/commands/assemble_cvd/flags_defaults.h"
 #include "host/commands/assemble_cvd/super_image_mixer.h"
 #include "host/commands/assemble_cvd/vendor_dlkm_utils.h"
+#include "host/libs/avb/avb.h"
 #include "host/libs/config/cuttlefish_config.h"
 #include "host/libs/config/data_image.h"
 #include "host/libs/config/inject.h"
@@ -356,14 +360,18 @@ std::vector<ImagePartition> android_composite_disk_config(
       .image_file_path = AbsolutePath(instance.new_vendor_boot_image()),
       .read_only = FLAGS_use_overlay,
   });
+  auto vbmeta_image = instance.new_vbmeta_image();
+  if (!FileExists(vbmeta_image)) {
+    vbmeta_image = instance.vbmeta_image();
+  }
   partitions.push_back(ImagePartition{
       .label = "vbmeta_a",
-      .image_file_path = AbsolutePath(instance.vbmeta_image()),
+      .image_file_path = AbsolutePath(vbmeta_image),
       .read_only = FLAGS_use_overlay,
   });
   partitions.push_back(ImagePartition{
       .label = "vbmeta_b",
-      .image_file_path = AbsolutePath(instance.vbmeta_image()),
+      .image_file_path = AbsolutePath(vbmeta_image),
       .read_only = FLAGS_use_overlay,
   });
   partitions.push_back(ImagePartition{
@@ -605,6 +613,20 @@ Result<void> InitializePstore(
   return {};
 }
 
+Result<void> InitializePflash(
+    const CuttlefishConfig::InstanceSpecific& instance) {
+  if (FileExists(instance.pflash_path())) {
+    return {};
+  }
+
+  auto boot_size_mb = FileSize(instance.bootloader()) / (1 << 20);
+
+  // Pad out bootloader space to 4MB
+  CF_EXPECTF(CreateBlankImage(instance.pflash_path(), 4 - boot_size_mb, "none"),
+             "Failed to create '{}'", instance.pflash_path());
+  return {};
+}
+
 Result<void> InitializeSdCard(
     const CuttlefishConfig& config,
     const CuttlefishConfig::InstanceSpecific& instance) {
@@ -617,7 +639,7 @@ Result<void> InitializeSdCard(
   CF_EXPECT(CreateBlankImage(instance.sdcard_path(),
                              instance.blank_sdcard_image_mb(), "sdcard"),
             "Failed to create \"" << instance.sdcard_path() << "\"");
-  if (config.vm_manager() == "qemu_cli") {
+  if (config.vm_manager() == VmmMode::kQemu) {
     const std::string crosvm_path = instance.crosvm_binary();
     CreateQcowOverlay(crosvm_path, instance.sdcard_path(),
                       instance.sdcard_overlay_path());
@@ -630,20 +652,13 @@ Result<void> VbmetaEnforceMinimumSize(
   // libavb expects to be able to read the maximum vbmeta size, so we must
   // provide a partition which matches this or the read will fail
   for (const auto& vbmeta_image :
-       {instance.vbmeta_image(), instance.vbmeta_system_image(),
-        instance.vbmeta_vendor_dlkm_image(),
+       {instance.vbmeta_image(), instance.new_vbmeta_image(),
+        instance.vbmeta_system_image(), instance.vbmeta_vendor_dlkm_image(),
         instance.vbmeta_system_dlkm_image()}) {
     // In some configurations of cuttlefish, the vendor dlkm vbmeta image does
     // not exist
-    if (FileExists(vbmeta_image) && FileSize(vbmeta_image) != VBMETA_MAX_SIZE) {
-      auto fd = SharedFD::Open(vbmeta_image, O_RDWR);
-      CF_EXPECTF(fd->IsOpen(), "Could not open \"{}\": {}", vbmeta_image,
-                 fd->StrError());
-      CF_EXPECTF(fd->Truncate(VBMETA_MAX_SIZE) == 0,
-                 "`truncate --size={} {}` failed: {}", VBMETA_MAX_SIZE,
-                 vbmeta_image, fd->StrError());
-      CF_EXPECTF(fd->Fsync() == 0, "fsync on `{}` failed: {}", vbmeta_image,
-                 fd->StrError());
+    if (FileExists(vbmeta_image)) {
+      CF_EXPECT(EnforceVbMetaSize(vbmeta_image));
     }
   }
   return {};
@@ -669,8 +684,8 @@ static fruit::Component<> DiskChangesComponent(
       .install(KernelRamdiskRepackerComponent)
       .install(AutoSetup<VbmetaEnforceMinimumSize>::Component)
       .install(AutoSetup<BootloaderPresentCheck>::Component)
-      .install(Gem5ImageUnpackerComponent)
-      .install(InitializeMiscImageComponent)
+      .install(AutoSetup<Gem5ImageUnpacker>::Component)
+      .install(AutoSetup<InitializeMiscImage>::Component)
       // Create esp if necessary
       .install(InitializeEspImageComponent)
       .install(SuperImageRebuilderComponent);
@@ -684,15 +699,16 @@ static fruit::Component<> DiskChangesPerInstanceComponent(
       .bindInstance(*config)
       .bindInstance(*instance)
       .install(AutoSetup<InitializeAccessKregistryImage>::Component)
+      .install(AutoSetup<InitBootloaderEnvPartition>::Component)
+      .install(AutoSetup<InitializeFactoryResetProtected>::Component)
       .install(AutoSetup<InitializeHwcomposerPmemImage>::Component)
       .install(AutoSetup<InitializePstore>::Component)
       .install(AutoSetup<InitializeSdCard>::Component)
-      .install(InitializeFactoryResetProtectedComponent)
-      .install(GeneratePersistentBootconfigComponent)
-      .install(GeneratePersistentVbmetaComponent)
+      .install(AutoSetup<GeneratePersistentBootconfig>::Component)
+      .install(AutoSetup<GeneratePersistentVbmeta>::Component)
       .install(AutoSetup<InitializeInstanceCompositeDisk>::Component)
-      .install(InitializeDataImageComponent)
-      .install(InitBootloaderEnvPartitionComponent);
+      .install(AutoSetup<InitializeDataImage>::Component)
+      .install(AutoSetup<InitializePflash>::Component);
 }
 
 Result<void> DiskImageFlagsVectorization(CuttlefishConfig& config, const FetcherConfig& fetcher_config) {
@@ -926,8 +942,7 @@ Result<void> DiskImageFlagsVectorization(CuttlefishConfig& config, const Fetcher
     // Repacking a boot.img changes boot_image and vendor_boot_image paths
     const CuttlefishConfig& const_config = const_cast<const CuttlefishConfig&>(config);
     const CuttlefishConfig::InstanceSpecific const_instance = const_config.ForInstance(num);
-    if (cur_kernel_path.size() &&
-        config.vm_manager() != Gem5Manager::name()) {
+    if (cur_kernel_path.size() && config.vm_manager() != VmmMode::kGem5) {
       const std::string new_boot_image_path =
           const_instance.PerInstancePath("boot_repacked.img");
       // change the new flag value to corresponding instance
@@ -971,6 +986,9 @@ Result<void> DiskImageFlagsVectorization(CuttlefishConfig& config, const Fetcher
       const std::string new_super_image_path =
           const_instance.PerInstancePath("super.img");
       instance.set_new_super_image(new_super_image_path);
+      const std::string new_vbmeta_image_path =
+          const_instance.PerInstancePath("os_vbmeta.img");
+      instance.set_new_vbmeta_image(new_vbmeta_image_path);
     }
 
     instance.set_new_vbmeta_vendor_dlkm_image(
@@ -1074,7 +1092,7 @@ Result<void> CreateDynamicDiskFiles(const FetcherConfig& fetcher_config,
     }
     // Gem5 Simulate per-instance what the bootloader would usually do
     // Since on other devices this runs every time, just do it here every time
-    if (config.vm_manager() == Gem5Manager::name()) {
+    if (config.vm_manager() == VmmMode::kGem5) {
       RepackGem5BootImage(instance.PerInstancePath("initrd.img"),
                           instance.persistent_bootconfig_path(),
                           config.assembly_dir(), instance.initramfs_path());

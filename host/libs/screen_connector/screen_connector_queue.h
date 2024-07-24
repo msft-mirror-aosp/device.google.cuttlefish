@@ -26,12 +26,11 @@
 
 namespace cuttlefish {
 // move-based concurrent queue
-template<typename T>
+template <typename T>
 class ScreenConnectorQueue {
-
  public:
-  static_assert( is_movable<T>::value,
-                 "Items in ScreenConnectorQueue should be std::mov-able");
+  static_assert(is_movable<T>::value,
+                "Items in ScreenConnectorQueue should be std::mov-able");
 
   ScreenConnectorQueue(const int q_max_size = 2)
       : q_mutex_(std::make_unique<std::mutex>()), q_max_size_{q_max_size} {}
@@ -70,14 +69,13 @@ class ScreenConnectorQueue {
    * much faster than the consumer, WebRTC consumes.
    * Therefore, when the small buffer is full -- which means
    * WebRTC would not call OnNextFrame --, the producer
-   * should stop adding itmes to the queue.
+   * should stop adding items to the queue.
    *
    */
   void Push(T&& item) {
     std::unique_lock<std::mutex> lock(*q_mutex_);
     if (Full()) {
-      auto is_empty =
-          [this](void){ return buffer_.empty(); };
+      auto is_empty = [this](void) { return buffer_.empty(); };
       q_empty_.wait(lock, is_empty);
     }
     buffer_.push_back(std::move(item));
@@ -107,4 +105,4 @@ class ScreenConnectorQueue {
   const int q_max_size_;
 };
 
-} // namespace cuttlefish
+}  // namespace cuttlefish

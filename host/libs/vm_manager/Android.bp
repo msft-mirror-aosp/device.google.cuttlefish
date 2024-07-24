@@ -24,7 +24,9 @@ cc_library {
         "crosvm_manager.cpp",
         "gem5_manager.cpp",
         "host_configuration.cpp",
+        "pci.cpp",
         "qemu_manager.cpp",
+        "vhost_user_block.cpp",
         "vm_manager.cpp",
     ],
     header_libs: [
@@ -33,8 +35,6 @@ cc_library {
     shared_libs: [
         "libbase",
         "libcuttlefish_command_util",
-        "libcuttlefish_device_config",
-        "libcuttlefish_device_config_proto",
         "libcuttlefish_fs",
         "libcuttlefish_utils",
         "libfruit",

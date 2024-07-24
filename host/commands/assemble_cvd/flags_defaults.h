@@ -42,6 +42,7 @@
 #define CF_DEFAULTS_DAEMON false
 #define CF_DEFAULTS_VM_MANAGER CF_DEFAULTS_DYNAMIC_STRING
 #define CF_DEFAULTS_VSOCK_GUEST_CID cuttlefish::GetDefaultVsockCid()
+#define CF_DEFAULTS_VSOCK_GUEST_GROUP ""
 #define CF_DEFAULTS_VHOST_USER_VSOCK cuttlefish::kVhostUserVsockModeAuto
 #define CF_DEFAULTS_ENABLE_MINIMAL_MODE false
 #define CF_DEFAULTS_RESTART_SUBPROCESSES false
@@ -53,7 +54,6 @@
   cuttlefish::ForCurrentInstance(cuttlefish::kDefaultUuidPrefix)
 #define CF_DEFAULTS_FILE_VERBOSITY "DEBUG"
 #define CF_DEFAULTS_VERBOSITY "INFO"
-#define CF_DEFAULTS_RUN_FILE_DISCOVERY true
 #define CF_DEFAULTS_MEMORY_MB CF_DEFAULTS_DYNAMIC_INT
 #define CF_DEFAULTS_SHARE_SCHED_CORE false
 #define CF_DEFAULTS_TRACK_HOST_TOOLS_CRC false
@@ -89,7 +89,7 @@
 #define CF_DEFAULTS_USE_RANDOM_SERIAL false
 #define CF_DEFAULTS_SERIAL_NUMBER \
   cuttlefish::ForCurrentInstance("CUTTLEFISHCVD")
-#define CF_DEFAULTS_SECURE_HALS "keymint,gatekeeper,oemlock"
+#define CF_DEFAULTS_SECURE_HALS CF_DEFAULTS_DYNAMIC_STRING
 #define CF_DEFAULTS_PROTECTED_VM false
 #define CF_DEFAULTS_MTE false
 
@@ -139,6 +139,11 @@
 #define CF_DEFAULTS_GPU_VHOST_USER_MODE cuttlefish::kGpuVhostUserModeAuto
 #define CF_DEFAULTS_RECORD_SCREEN false
 #define CF_DEFAULTS_GPU_CAPTURE_BINARY CF_DEFAULTS_DYNAMIC_STRING
+#define CF_DEFAULTS_GPU_RENDERER_FEATURES ""
+#define CF_DEFAULTS_GPU_CONTEXT_TYPES \
+  "gfxstream-vulkan:cross-domain:gfxstream-composer"
+#define CF_DEFAULTS_GUEST_VULKAN_DRIVER "ranchu"
+#define CF_DEFAULTS_FRAME_SOCKET_PATH ""
 #define CF_DEFAULTS_ENABLE_GPU_UDMABUF false
 #define CF_DEFAULTS_ENABLE_GPU_VHOST_USER false
 #define CF_DEFAULTS_DISPLAY0 CF_DEFAULTS_DYNAMIC_STRING
@@ -157,7 +162,7 @@
 // Default network handler
 #define CF_DEFAULTS_NETSIM false
 #define CF_DEFAULTS_NETSIM_BT true
-#define CF_DEFAULTS_NETSIM_UWB false
+#define CF_DEFAULTS_NETSIM_UWB true
 
 // Netsim default parameters
 #define CF_DEFAULTS_NETSIM_ARGS ""
@@ -175,6 +180,10 @@
 
 // Automotive Proxy default parameter
 #define CF_DEFAULTS_ENABLE_AUTOMOTIVE_PROXY false
+
+// Vhal Proxy Server default parameter
+#define CF_DEFAULTS_ENABLE_VHAL_PROXY_SERVER false
+#define CF_DEFAULTS_VHAL_PROXY_SERVER_INSTANCE_NUM 0
 
 // Bluetooth default parameters
 #define CF_DEFAULTS_ENABLE_HOST_BLUETOOTH true
@@ -194,6 +203,9 @@
 // Audio default parameters
 #define CF_DEFAULTS_ENABLE_AUDIO true
 
+// USB Passhtrough default parameters
+#define CF_DEFAULTS_ENABLE_USB false
+
 // Streaming default parameters
 #define CF_DEFAULTS_START_WEBRTC false
 #define CF_DEFAULTS_START_WEBRTC_SIG_SERVER true
@@ -211,7 +223,7 @@
 #define CF_DEFAULTS_UDP_PORT_RANGE "15550:15599"
 
 // Adb default parameters
-// TODO : Replaceconstants with these flags, they're currently defined throug
+// TODO : Replaceconstants with these flags, they're currently defined through
 // GflagsCompatFlag
 #define CF_DEFAULTS_RUN_ADB_CONNECTOR true
 #define CF_DEFAULTS_ADB_MODE "vsock_half_tunnel"
@@ -233,3 +245,13 @@
 
 // Whether to use sandbox2 to lock down host processes where policies exist
 #define CF_DEFAULTS_HOST_SANDBOX false
+
+// Whether to exit when heuristics predict the boot will not complete
+#define CF_DEFAULTS_FAIL_FAST true
+
+// Whether to use the crosvm vhost-user block device implementation with QEMU
+// TODO: b/346855591 - default to `true`
+#define CF_DEFAULTS_VHOST_USER_BLOCK false
+
+// Virtual Cpufreq default configuration path
+#define CF_DEFAULTS_VCPU_CONFIG_PATH ""

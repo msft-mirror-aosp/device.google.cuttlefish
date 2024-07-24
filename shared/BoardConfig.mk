@@ -18,7 +18,18 @@
 # Common BoardConfig for all supported architectures.
 #
 
+# Some targets still require 32 bit, and 6.6 kernels don't support
+# 32 bit devices (Wear, Go, Auto)
+ifneq (,$(findstring gwear_x86,$(PRODUCT_NAME)))
 TARGET_KERNEL_USE ?= 6.1
+else ifneq (,$(findstring x86_phone,$(PRODUCT_NAME)))
+TARGET_KERNEL_USE ?= 6.1
+else ifneq (,$(findstring x86_tv,$(PRODUCT_NAME)))
+TARGET_KERNEL_USE ?= 6.1
+else
+TARGET_KERNEL_USE ?= 6.6
+endif
+
 TARGET_KERNEL_ARCH ?= $(TARGET_ARCH)
 SYSTEM_DLKM_SRC ?= kernel/prebuilts/$(TARGET_KERNEL_USE)/$(TARGET_KERNEL_ARCH)
 TARGET_KERNEL_PATH ?= $(SYSTEM_DLKM_SRC)/kernel-$(TARGET_KERNEL_USE)
@@ -31,7 +42,7 @@ BOARD_KERNEL_VERSION := $(word 1,$(subst vermagic=,,$(shell egrep -h -ao -m 1 'v
 # The list of modules strictly/only required either to reach second stage
 # init, OR for recovery. Do not use this list to workaround second stage
 # issues.
-RAMDISK_KERNEL_MODULES := \
+RAMDISK_KERNEL_MODULES ?= \
     failover.ko \
     nd_virtio.ko \
     net_failover.ko \
@@ -64,7 +75,7 @@ BOARD_VENDOR_RAMDISK_KERNEL_MODULES += \
 	$(wildcard $(KERNEL_MODULES_PATH)/vsock.ko)
 
 
-# TODO(b/176860479) once virt_wifi is deprecated we can stop loading mac80211 in
+# TODO(b/294888357) once virt_wifi is deprecated we can stop loading mac80211 in
 # first stage init. To minimize scope of modules options to first stage init,
 # mac80211_hwsim.radios=0 has to be specified in the modules options file (which we
 # only read in first stage) and mac80211_hwsim has to be loaded in first stage consequently..
@@ -259,12 +270,12 @@ USE_OPENGL_RENDERER := true
 
 # Wifi.
 BOARD_WLAN_DEVICE           := emulator
-BOARD_HOSTAPD_PRIVATE_LIB   := lib_driver_cmd_simulated_cf
+BOARD_HOSTAPD_PRIVATE_LIB   := lib_driver_cmd_simulated_cf_bp
 WIFI_HIDL_FEATURE_DUAL_INTERFACE := true
 WIFI_HAL_INTERFACE_COMBINATIONS := {{{STA}, 1}, {{AP}, 1}, {{P2P}, 1}}
 BOARD_HOSTAPD_DRIVER        := NL80211
 BOARD_WPA_SUPPLICANT_DRIVER := NL80211
-BOARD_WPA_SUPPLICANT_PRIVATE_LIB := lib_driver_cmd_simulated_cf
+BOARD_WPA_SUPPLICANT_PRIVATE_LIB := lib_driver_cmd_simulated_cf_bp
 WPA_SUPPLICANT_VERSION      := VER_0_8_X
 WIFI_DRIVER_FW_PATH_PARAM   := "/dev/null"
 WIFI_DRIVER_FW_PATH_STA     := "/dev/null"

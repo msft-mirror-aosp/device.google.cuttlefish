@@ -39,8 +39,10 @@ PRODUCT_SOONG_NAMESPACES += device/generic/goldfish # for audio, wifi and sensor
 
 PRODUCT_USE_DYNAMIC_PARTITIONS := true
 DISABLE_RILD_OEM_HOOK := true
+# For customize cflags for libril share library building by soong.
+$(call soong_config_set,ril,disable_rild_oem_hook,true)
 
-# TODO(b/205788876) remove this condition when openwrt has an image for arm.
+# TODO(b/294888357) Remove this condition when OpenWRT is supported for RISC-V.
 ifndef PRODUCT_ENFORCE_MAC80211_HWSIM
 PRODUCT_ENFORCE_MAC80211_HWSIM := true
 endif
@@ -55,9 +57,10 @@ TARGET_USERDATAIMAGE_PARTITION_SIZE ?= 8589934592
 TARGET_VULKAN_SUPPORT ?= true
 
 # Enable Virtual A/B
-$(call inherit-product, $(SRC_TARGET_DIR)/product/virtual_ab_ota/android_t_baseline.mk)
+$(call inherit-product, $(SRC_TARGET_DIR)/product/virtual_ab_ota/vabc_features.mk)
 PRODUCT_VIRTUAL_AB_COMPRESSION_METHOD := lz4
 PRODUCT_VIRTUAL_AB_COW_VERSION := 3
+PRODUCT_VIRTUAL_AB_COMPRESSION_FACTOR := 65536
 
 PRODUCT_VENDOR_PROPERTIES += ro.virtual_ab.compression.threads=true
 PRODUCT_VENDOR_PROPERTIES += ro.virtual_ab.batch_writes=true
@@ -81,6 +84,16 @@ ifeq ($(TARGET_BUILD_VARIANT),user)
 PRODUCT_PRODUCT_PROPERTIES += \
     ro.adb.secure=0 \
     ro.debuggable=1
+
+PRODUCT_PACKAGES += \
+    logpersist.start
+
+PRODUCT_ARTIFACT_PATH_REQUIREMENT_ALLOWED_LIST += \
+    $(TARGET_COPY_OUT_SYSTEM)/bin/logcatd \
+    $(TARGET_COPY_OUT_SYSTEM)/bin/logpersist.cat \
+    $(TARGET_COPY_OUT_SYSTEM)/bin/logpersist.start \
+    $(TARGET_COPY_OUT_SYSTEM)/bin/logpersist.stop \
+    $(TARGET_COPY_OUT_SYSTEM)/etc/init/logcatd.rc
 endif
 
 # Use AIDL for media.c2 HAL
@@ -146,6 +159,8 @@ PRODUCT_PACKAGES += \
     tombstone_producer \
     suspend_blocker \
     metrics_helper \
+    snapshot_hook_post_resume \
+    snapshot_hook_pre_suspend
 
 $(call soong_config_append,cvd,launch_configs,cvd_config_auto.json cvd_config_auto_portrait.json cvd_config_auto_md.json cvd_config_foldable.json cvd_config_go.json cvd_config_phone.json cvd_config_slim.json cvd_config_tablet.json cvd_config_tv.json cvd_config_wear.json)
 $(call soong_config_append,cvd,grub_config,grub.cfg)
@@ -180,7 +195,12 @@ PRODUCT_PACKAGES += \
     aidl_lazy_cb_test_server \
 
 # Runtime Resource Overlays
-PRODUCT_PACKAGES += com.google.aosp_cf.rros
+PRODUCT_PACKAGES += \
+    cuttlefish_overlay_connectivity \
+    cuttlefish_overlay_frameworks_base_core \
+    cuttlefish_overlay_nfc \
+    cuttlefish_overlay_settings_provider \
+    cuttlefish_overlay_uwb \
 
 #
 # Satellite vendor service for CF
@@ -201,6 +221,8 @@ PRODUCT_SHIPPING_API_LEVEL := 34
 LOCAL_DEVICE_FCM_MANIFEST_FILE ?= device/google/cuttlefish/shared/config/previous_manifest.xml
 endif
 DEVICE_MANIFEST_FILE += $(LOCAL_DEVICE_FCM_MANIFEST_FILE)
+
+PRODUCT_CHECK_PREBUILT_MAX_PAGE_SIZE := true
 
 #
 # General files
@@ -242,7 +264,6 @@ PRODUCT_COPY_FILES += \
 # Install .kcm/.kl/.idc files via input.config apex
 #
 PRODUCT_PACKAGES += com.google.cf.input.config
-PRODUCT_VENDOR_PROPERTIES += input_device.config_file.apex=com.google.cf.input.config
 
 PRODUCT_PACKAGES += \
     fstab.cf.f2fs.hctr2 \
@@ -278,20 +299,11 @@ ifndef LOCAL_AUDIO_PRODUCT_PACKAGE
 #
 # Still use HIDL Audio HAL on 'next'
 #
-ifeq ($(RELEASE_AIDL_USE_UNFROZEN),true)
 LOCAL_AUDIO_PRODUCT_PACKAGE += \
     android.hardware.audio.parameter_parser.example_service \
     com.android.hardware.audio
 PRODUCT_SYSTEM_EXT_PROPERTIES += \
     ro.audio.ihaladaptervendorextension_enabled=true
-else
-LOCAL_AUDIO_PRODUCT_PACKAGE += \
-    android.hardware.audio.service \
-    android.hardware.audio@7.1-impl.ranchu \
-    android.hardware.audio.effect@7.0-impl
-DEVICE_MANIFEST_FILE += \
-    device/google/cuttlefish/guest/hals/audio/effects/manifest.xml
-endif
 endif
 
 ifndef LOCAL_AUDIO_PRODUCT_COPY_FILES
@@ -301,24 +313,13 @@ LOCAL_AUDIO_PRODUCT_COPY_FILES := \
     frameworks/av/services/audiopolicy/config/r_submix_audio_policy_configuration.xml:$(TARGET_COPY_OUT_VENDOR)/etc/r_submix_audio_policy_configuration.xml \
     frameworks/av/services/audiopolicy/config/audio_policy_volumes.xml:$(TARGET_COPY_OUT_VENDOR)/etc/audio_policy_volumes.xml \
     frameworks/av/services/audiopolicy/config/default_volume_tables.xml:$(TARGET_COPY_OUT_VENDOR)/etc/default_volume_tables.xml
-ifeq ($(RELEASE_AIDL_USE_UNFROZEN),true)
 LOCAL_AUDIO_PRODUCT_COPY_FILES += \
     hardware/interfaces/audio/aidl/default/audio_effects_config.xml:$(TARGET_COPY_OUT_VENDOR)/etc/audio_effects_config.xml
-else
-LOCAL_AUDIO_PRODUCT_COPY_FILES += \
-    frameworks/av/media/libeffects/data/audio_effects.xml:$(TARGET_COPY_OUT_VENDOR)/etc/audio_effects.xml
-endif
 endif
 
 PRODUCT_PACKAGES += $(LOCAL_AUDIO_PRODUCT_PACKAGE)
 PRODUCT_COPY_FILES += $(LOCAL_AUDIO_PRODUCT_COPY_FILES)
 DEVICE_PACKAGE_OVERLAYS += $(LOCAL_AUDIO_DEVICE_PACKAGE_OVERLAYS)
-
-#
-# BiometricsFingerprint HAL (AIDL)
-#
-PRODUCT_PACKAGES += \
-    com.android.hardware.biometrics.fingerprint.virtual
 
 #
 # Contexthub HAL
@@ -332,7 +333,7 @@ PRODUCT_PACKAGES += $(LOCAL_CONTEXTHUB_PRODUCT_PACKAGE)
 #
 ifeq ($(TARGET_USE_LAZY_CLEARKEY),true)
 PRODUCT_PACKAGES += \
-    android.hardware.drm-service-lazy.clearkey
+    com.android.hardware.drm.clearkey.lazy
 else
 PRODUCT_PACKAGES += \
     android.hardware.drm@latest-service.clearkey
@@ -362,11 +363,9 @@ PRODUCT_PACKAGES += $(LOCAL_DUMPSTATE_PRODUCT_PACKAGE)
 #
 # Gatekeeper
 #
-ifeq ($(LOCAL_GATEKEEPER_PRODUCT_PACKAGE),)
-    LOCAL_GATEKEEPER_PRODUCT_PACKAGE := com.google.cf.gatekeeper
-endif
 PRODUCT_PACKAGES += \
-    $(LOCAL_GATEKEEPER_PRODUCT_PACKAGE)
+  com.android.hardware.gatekeeper.cf_remote \
+  com.android.hardware.gatekeeper.nonsecure \
 
 #
 # Oemlock
@@ -415,32 +414,28 @@ endif
 #
 # KeyMint HAL
 #
-ifeq ($(LOCAL_KEYMINT_PRODUCT_PACKAGE),)
-    LOCAL_KEYMINT_PRODUCT_PACKAGE := com.google.cf.keymint.rust
-endif
-
 PRODUCT_PACKAGES += \
-    $(LOCAL_KEYMINT_PRODUCT_PACKAGE) \
+	com.android.hardware.keymint.rust_cf_remote \
+	com.android.hardware.keymint.rust_nonsecure \
 
 # Indicate that KeyMint includes support for the ATTEST_KEY key purpose.
 PRODUCT_COPY_FILES += \
     frameworks/native/data/etc/android.hardware.keystore.app_attest_key.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.keystore.app_attest_key.xml
+# Indicate that KeyMint includes (emulated) support for device ID attestation.
+PRODUCT_COPY_FILES += \
+    frameworks/native/data/etc/android.software.device_id_attestation.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.device_id_attestation.xml
 
 #
 # Non-secure implementation of AuthGraph HAL for compliance.
 #
-ifeq ($(RELEASE_AIDL_USE_UNFROZEN),true)
 PRODUCT_PACKAGES += \
     com.android.hardware.security.authgraph
-endif
 
 #
 # Non-secure implementation of Secretkeeper HAL for compliance.
 #
-ifeq ($(RELEASE_AIDL_USE_UNFROZEN),true)
 PRODUCT_PACKAGES += \
     com.android.hardware.security.secretkeeper
-endif
 
 #
 # Power and PowerStats HALs
@@ -505,7 +500,6 @@ PRODUCT_PACKAGES += linker.recovery shell_and_utilities_recovery
 endif
 
 # wifi
-ifeq ($(LOCAL_PREFER_VENDOR_APEX),true)
 # Add com.android.hardware.wifi for android.hardware.wifi-service
 PRODUCT_PACKAGES += com.android.hardware.wifi
 # Add com.google.cf.wifi for hostapd, wpa_supplicant, etc.
@@ -514,38 +508,11 @@ $(call add_soong_config_namespace, wpa_supplicant)
 $(call add_soong_config_var_value, wpa_supplicant, platform_version, $(PLATFORM_VERSION))
 $(call add_soong_config_var_value, wpa_supplicant, nl80211_driver, CONFIG_DRIVER_NL80211_QCA)
 
-else
-PRODUCT_PACKAGES += \
-    rename_netiface \
-    wpa_supplicant \
-    setup_wifi \
-    mac80211_create_radios \
-    hostapd \
-    android.hardware.wifi-service \
-    init.wifi
-PRODUCT_COPY_FILES += \
-    device/google/cuttlefish/shared/config/wpa_supplicant.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/wpa_supplicant.rc
-
 # VirtWifi interface configuration
 ifeq ($(DEVICE_VIRTWIFI_PORT),)
     DEVICE_VIRTWIFI_PORT := eth2
 endif
 PRODUCT_VENDOR_PROPERTIES += ro.vendor.virtwifi.port=${DEVICE_VIRTWIFI_PORT}
-
-# WLAN driver configuration files
-ifndef LOCAL_WPA_SUPPLICANT_OVERLAY
-LOCAL_WPA_SUPPLICANT_OVERLAY := $(LOCAL_PATH)/config/wpa_supplicant_overlay.conf
-endif
-
-ifndef LOCAL_P2P_SUPPLICANT
-LOCAL_P2P_SUPPLICANT := $(LOCAL_PATH)/config/p2p_supplicant.conf
-endif
-
-PRODUCT_COPY_FILES += \
-    external/wpa_supplicant_8/wpa_supplicant/wpa_supplicant_template.conf:$(TARGET_COPY_OUT_VENDOR)/etc/wifi/wpa_supplicant.conf \
-    $(LOCAL_WPA_SUPPLICANT_OVERLAY):$(TARGET_COPY_OUT_VENDOR)/etc/wifi/wpa_supplicant_overlay.conf \
-    $(LOCAL_P2P_SUPPLICANT):$(TARGET_COPY_OUT_VENDOR)/etc/wifi/p2p_supplicant.conf
-endif
 
 # Wifi Runtime Resource Overlay
 PRODUCT_PACKAGES += \
@@ -553,7 +520,7 @@ PRODUCT_PACKAGES += \
     CuttlefishWifiOverlay
 
 ifeq ($(PRODUCT_ENFORCE_MAC80211_HWSIM),true)
-PRODUCT_VENDOR_PROPERTIES += ro.vendor.wifi_impl=mac8011_hwsim_virtio
+PRODUCT_VENDOR_PROPERTIES += ro.vendor.wifi_impl=mac80211_hwsim_virtio
 $(call soong_config_append,cvdhost,enforce_mac80211_hwsim,true)
 else
 PRODUCT_VENDOR_PROPERTIES += ro.vendor.wifi_impl=virt_wifi
@@ -578,6 +545,11 @@ PRODUCT_VENDOR_PROPERTIES += \
 PRODUCT_VENDOR_PROPERTIES += \
     ro.surface_flinger.supports_background_blur=1
 
+# Set Game Default Frame Rate
+# See b/286084594
+PRODUCT_DEFAULT_PROPERTY_OVERRIDES += \
+    ro.surface_flinger.game_default_frame_rate_override=60
+
 # Disable GPU-intensive background blur for widget picker
 PRODUCT_SYSTEM_PROPERTIES += \
     ro.launcher.depth.widget=0
@@ -596,13 +568,10 @@ PRODUCT_PACKAGES += \
 PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/config/pci.ids:$(TARGET_COPY_OUT_VENDOR)/pci.ids
 
-# New in-development HAL services using unfrozen interfaces. Do not include if
-# RELEASE_AIDL_USE_UNFROZEN is true (in the 'next' release configuration).
-ifeq ($(RELEASE_AIDL_USE_UNFROZEN),true)
-# Thread Network AIDL HAL, simulation CLI and OT daemon controller
+# Thread Network AIDL HAL and Demo App
 PRODUCT_PACKAGES += \
-    com.android.hardware.threadnetwork
-endif # RELEASE_AIDL_USE_UNFROZEN
+    com.android.hardware.threadnetwork \
+    ThreadNetworkDemoApp
 
 PRODUCT_CHECK_VENDOR_SEAPP_VIOLATIONS := true
 

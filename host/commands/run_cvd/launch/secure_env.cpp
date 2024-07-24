@@ -24,7 +24,7 @@
 #include <fruit/fruit.h>
 
 #include "common/libs/utils/result.h"
-#include "host/commands/run_cvd/launch/secure_env_files.h"
+#include "host/commands/run_cvd/launch/snapshot_control_files.h"
 #include "host/libs/config/command_source.h"
 #include "host/libs/config/known_paths.h"
 
@@ -33,13 +33,13 @@ namespace cuttlefish {
 Result<MonitorCommand> SecureEnv(
     const CuttlefishConfig& config,
     const CuttlefishConfig::InstanceSpecific& instance,
-    AutoSecureEnvFiles::Type& secure_env_files,
+    AutoSnapshotControlFiles::Type& snapshot_control_files,
     KernelLogPipeProvider& kernel_log_pipe_provider) {
   Command command(SecureEnvBinary());
   command.AddParameter("-confui_server_fd=",
-                       secure_env_files->confui_server_fd);
+                       snapshot_control_files->confui_server_fd);
   command.AddParameter("-snapshot_control_fd=",
-                       secure_env_files->snapshot_control_fd);
+                       snapshot_control_files->secure_env_snapshot_control_fd);
 
   std::vector<std::string> fifo_paths = {
       instance.PerInstanceInternalPath("keymaster_fifo_vm.in"),
@@ -64,21 +64,24 @@ Result<MonitorCommand> SecureEnv(
   command.AddParameter("-keymint_fd_out=", fifos[6]);
   command.AddParameter("-keymint_fd_in=", fifos[7]);
 
-  const auto& secure_hals = config.secure_hals();
-  bool secure_keymint = secure_hals.count(SecureHal::Keymint) > 0;
+  const auto& secure_hals = CF_EXPECT(config.secure_hals());
+  bool secure_keymint = secure_hals.count(SecureHal::kHostKeymintSecure) > 0;
   command.AddParameter("-keymint_impl=", secure_keymint ? "tpm" : "software");
-  bool secure_gatekeeper = secure_hals.count(SecureHal::Gatekeeper) > 0;
+  bool secure_gatekeeper =
+      secure_hals.count(SecureHal::kHostGatekeeperSecure) > 0;
   auto gatekeeper_impl = secure_gatekeeper ? "tpm" : "software";
   command.AddParameter("-gatekeeper_impl=", gatekeeper_impl);
 
-  bool secure_oemlock = secure_hals.count(SecureHal::Oemlock) > 0;
+  bool secure_oemlock = secure_hals.count(SecureHal::kHostOemlockSecure) > 0;
   auto oemlock_impl = secure_oemlock ? "tpm" : "software";
   command.AddParameter("-oemlock_impl=", oemlock_impl);
 
   command.AddParameter("-kernel_events_fd=",
                        kernel_log_pipe_provider.KernelLogPipe());
 
-  return std::move(command);
+  MonitorCommand monitor(std::move(command));
+  monitor.can_sandbox = true;
+  return monitor;
 }
 
 }  // namespace cuttlefish

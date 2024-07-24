@@ -22,6 +22,7 @@
 #include <android-base/logging.h>
 #include <android-base/scopeguard.h>
 #include <fmt/core.h>
+#include <google/protobuf/text_format.h>
 
 #include "common/libs/fs/shared_fd.h"
 #include "common/libs/utils/files.h"
@@ -29,43 +30,12 @@
 #include "common/libs/utils/result.h"
 #include "host/commands/snapshot_util_cvd/parse.h"
 #include "host/commands/snapshot_util_cvd/snapshot_taker.h"
-#include "host/libs/command_util/runner/proto_utils.h"
 #include "host/libs/command_util/util.h"
 #include "host/libs/config/cuttlefish_config.h"
 #include "run_cvd.pb.h"
 
 namespace cuttlefish {
 namespace {
-
-Result<RequestInfo> SerializeRequest(const SnapshotCmd subcmd,
-                                     const std::string& meta_json_path) {
-  switch (subcmd) {
-    case SnapshotCmd::kSuspend: {
-      return RequestInfo{
-          .serialized_data = CF_EXPECT(SerializeSuspendRequest()),
-          .extended_action_type = ExtendedActionType::kSuspend,
-      };
-      break;
-    }
-    case SnapshotCmd::kResume: {
-      return RequestInfo{
-          .serialized_data = CF_EXPECT(SerializeResumeRequest()),
-          .extended_action_type = ExtendedActionType::kResume,
-      };
-      break;
-    }
-    case SnapshotCmd::kSnapshotTake: {
-      return RequestInfo{
-          .serialized_data =
-              CF_EXPECT(SerializeSnapshotTakeRequest(meta_json_path)),
-          .extended_action_type = ExtendedActionType::kSnapshotTake,
-      };
-      break;
-    }
-    default:
-      return CF_ERR("Operation not supported.");
-  }
-}
 
 Result<std::string> ToAbsolutePath(const std::string& snapshot_path) {
   const InputPathForm default_path_form{
@@ -80,12 +50,18 @@ Result<std::string> ToAbsolutePath(const std::string& snapshot_path) {
       snapshot_path);
 }
 
-static void OnSnapshotTakeFailure(const std::string& snapshot_path) {
-  if (snapshot_path.empty()) {
-    return;
+// Send a `LauncherAction` RPC to every instance specified in `parsed`.
+Result<void> BroadcastLauncherAction(
+    const CuttlefishConfig& config, const Parsed& parsed,
+    run_cvd::ExtendedLauncherAction extended_action) {
+  for (const auto instance_num : parsed.instance_nums) {
+    LOG(INFO) << "Instance #" << instance_num
+              << ": Sending request: " << extended_action.ShortDebugString();
+    auto socket = CF_EXPECT(
+        GetLauncherMonitor(config, instance_num, parsed.wait_for_launcher));
+    CF_EXPECT(RunLauncherAction(socket, extended_action, std::nullopt));
   }
-  LOG(DEBUG) << "Deleting " << snapshot_path << "....";
-  RecursivelyRemoveDirectory(snapshot_path);
+  return {};
 }
 
 Result<void> SnapshotCvdMain(std::vector<std::string> args) {
@@ -93,69 +69,86 @@ Result<void> SnapshotCvdMain(std::vector<std::string> args) {
   const auto prog_path = args.front();
   args.erase(args.begin());
   auto parsed = CF_EXPECT(Parse(args));
-  if (!parsed.snapshot_path.empty()) {
-    parsed.snapshot_path = CF_EXPECT(ToAbsolutePath(parsed.snapshot_path));
-  }
-  // make sure the snapshot directory exists
-  std::string meta_json_path;
-  if (parsed.cmd == SnapshotCmd::kSnapshotTake) {
-    CF_EXPECT(!parsed.snapshot_path.empty(),
-              "Snapshot operation requires snapshot path.");
-    CF_EXPECTF(!FileExists(parsed.snapshot_path, /* follow symlink */ false),
-               "Delete the destination directiory \"{}\" first",
-               parsed.snapshot_path);
-    android::base::ScopeGuard delete_snapshot_on_fail([&parsed]() {
-      if (!parsed.cleanup_snapshot_path) {
-        return;
-      }
-      LOG(ERROR) << "Snapshot take failed, so running clean-up.";
-      OnSnapshotTakeFailure(parsed.snapshot_path);
-    });
-    if (!parsed.cleanup_snapshot_path) {
-      delete_snapshot_on_fail.Disable();
-    }
-    meta_json_path =
-        CF_EXPECT(HandleHostGroupSnapshot(parsed.snapshot_path),
-                  "Failed to back up the group-level host runtime files.");
-    delete_snapshot_on_fail.Disable();
-  }
 
   const CuttlefishConfig* config =
       CF_EXPECT(CuttlefishConfig::Get(), "Failed to obtain config object");
-  // TODO(kwstephenkim): copy host files that are shared by the instance group
-  for (const auto instance_num : parsed.instance_nums) {
-    SharedFD monitor_socket = CF_EXPECT(
-        GetLauncherMonitor(*config, instance_num, parsed.wait_for_launcher));
 
-    LOG(INFO) << "Requesting " << parsed.cmd << " for instance #"
-              << instance_num;
-
-    android::base::ScopeGuard delete_snapshot_on_fail([&parsed]() {
-      LOG(ERROR) << "Snapshot take failed, so running clean-up.";
-      OnSnapshotTakeFailure(parsed.snapshot_path);
-    });
-    if (parsed.cmd != SnapshotCmd::kSnapshotTake) {
-      delete_snapshot_on_fail.Disable();
+  switch (parsed.cmd) {
+    case SnapshotCmd::kSuspend: {
+      run_cvd::ExtendedLauncherAction extended_action;
+      extended_action.mutable_suspend();
+      CF_EXPECT(BroadcastLauncherAction(*config, parsed, extended_action));
+      return {};
     }
+    case SnapshotCmd::kResume: {
+      run_cvd::ExtendedLauncherAction extended_action;
+      extended_action.mutable_resume();
+      CF_EXPECT(BroadcastLauncherAction(*config, parsed, extended_action));
+      return {};
+    }
+    case SnapshotCmd::kSnapshotTake: {
+      CF_EXPECT(!parsed.snapshot_path.empty(), "--snapshot_path is required");
+      parsed.snapshot_path = CF_EXPECT(ToAbsolutePath(parsed.snapshot_path));
+      if (parsed.force &&
+          FileExists(parsed.snapshot_path, /* follow symlink */ false)) {
+        CF_EXPECT(RecursivelyRemoveDirectory(parsed.snapshot_path),
+                  "Failed to delete preexisting snapshot dir");
+      }
+      CF_EXPECTF(!FileExists(parsed.snapshot_path, /* follow symlink */ false),
+                 "Delete the destination directory \"{}\" first",
+                 parsed.snapshot_path);
 
-    auto [serialized_data, extended_type] =
-        CF_EXPECT(SerializeRequest(parsed.cmd, meta_json_path));
-    CF_EXPECT(
-        WriteLauncherActionWithData(monitor_socket, LauncherAction::kExtended,
-                                    extended_type, std::move(serialized_data)));
-    LOG(INFO) << "Wrote the extended serialized data and reading response";
-    LauncherResponse response = CF_EXPECT(ReadLauncherResponse(monitor_socket));
-    LOG(INFO) << "Read the response:  " << (int)LauncherResponse::kSuccess;
-    CF_EXPECTF(response == LauncherResponse::kSuccess,
-               "Received \"{}\" response from launcher monitor for \""
-               "{}\" request.",
-               static_cast<char>(response), static_cast<int>(parsed.cmd));
-    LOG(INFO) << parsed.cmd << " was successful for instance #" << instance_num;
-    if (parsed.cmd == SnapshotCmd::kSnapshotTake) {
+      // Automatically suspend and resume if requested.
+      if (parsed.auto_suspend) {
+        run_cvd::ExtendedLauncherAction extended_action;
+        extended_action.mutable_suspend();
+        CF_EXPECT(BroadcastLauncherAction(*config, parsed, extended_action));
+      }
+      auto maybe_resume_on_exit =
+          android::base::ScopeGuard([&parsed, &config]() {
+            if (!parsed.auto_suspend) {
+              return;
+            }
+            run_cvd::ExtendedLauncherAction extended_action;
+            extended_action.mutable_resume();
+            Result<void> result =
+                BroadcastLauncherAction(*config, parsed, extended_action);
+            if (!result.ok()) {
+              LOG(FATAL) << "RunLauncherAction failed: "
+                         << result.error().FormatForEnv();
+            }
+          });
+
+      // Delete incomplete snapshot if we fail partway.
+      android::base::ScopeGuard delete_snapshot_on_fail([&parsed]() {
+        if (!parsed.cleanup_snapshot_path) {
+          return;
+        }
+        LOG(ERROR) << "Snapshot take failed, so running clean-up.";
+        Result<void> result = RecursivelyRemoveDirectory(parsed.snapshot_path);
+        if (!result.ok()) {
+          LOG(ERROR) << "Failed to delete incomplete snapshot: "
+                     << result.error().FormatForEnv();
+        }
+      });
+
+      // Snapshot group-level host runtime files and generate snapshot metadata
+      // file.
+      const std::string meta_json_path =
+          CF_EXPECT(HandleHostGroupSnapshot(parsed.snapshot_path),
+                    "Failed to back up the group-level host runtime files.");
+      // Snapshot each instance.
+      run_cvd::ExtendedLauncherAction extended_action;
+      extended_action.mutable_snapshot_take()->set_snapshot_path(
+          meta_json_path);
+      CF_EXPECT(BroadcastLauncherAction(*config, parsed, extended_action));
       delete_snapshot_on_fail.Disable();
+      return {};
+    }
+    default: {
+      return CF_ERRF("unknown cmd: {}", (int)parsed.cmd);
     }
   }
-  return {};
 }
 
 }  // namespace

@@ -15,4 +15,4 @@
 #
 
 PRODUCT_PACKAGES += \
-    com.android.hardware.biometrics.face
+    com.android.hardware.biometrics.face.virtual

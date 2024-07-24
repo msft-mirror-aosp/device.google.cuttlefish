@@ -35,12 +35,12 @@
 #include <android-base/logging.h>
 #include <vulkan/vulkan.h>
 
-#include "common/libs/device_config/device_config.h"
 #include "common/libs/utils/files.h"
 #include "common/libs/utils/result.h"
 #include "common/libs/utils/subprocess.h"
 #include "host/libs/config/command_source.h"
 #include "host/libs/config/cuttlefish_config.h"
+#include "host/libs/vm_manager/vhost_user.h"
 
 namespace cuttlefish {
 namespace vm_manager {
@@ -51,7 +51,7 @@ std::string GetMonitorPath(const CuttlefishConfig& config) {
       "qemu_monitor.sock");
 }
 
-bool Stop() {
+StopperResult Stop() {
   auto config = CuttlefishConfig::Get();
   auto monitor_path = GetMonitorPath(*config);
   auto monitor_sock = SharedFD::SocketLocalClient(
@@ -59,7 +59,7 @@ bool Stop() {
 
   if (!monitor_sock->IsOpen()) {
     LOG(ERROR) << "The connection to qemu is closed, is it still running?";
-    return false;
+    return StopperResult::kStopFailure;
   }
   char msg[] = "{\"execute\":\"qmp_capabilities\"}{\"execute\":\"quit\"}";
   ssize_t len = sizeof(msg) - 1;
@@ -67,7 +67,7 @@ bool Stop() {
     int tmp = monitor_sock->Write(msg, len);
     if (tmp < 0) {
       LOG(ERROR) << "Error writing to socket: " << monitor_sock->StrError();
-      return false;
+      return StopperResult::kStopFailure;
     }
     len -= tmp;
   }
@@ -78,7 +78,7 @@ bool Stop() {
     LOG(INFO) << "From qemu monitor: " << buff;
   }
 
-  return true;
+  return StopperResult::kStopSuccess;
 }
 
 Result<std::pair<int, int>> GetQemuVersion(const std::string& qemu_binary) {
@@ -120,7 +120,7 @@ QemuManager::ConfigureGraphics(
     const CuttlefishConfig::InstanceSpecific& instance) {
   // Override the default HAL search paths in all cases. We do this because
   // the HAL search path allows for fallbacks, and fallbacks in conjunction
-  // with properities lead to non-deterministic behavior while loading the
+  // with properties lead to non-deterministic behavior while loading the
   // HALs.
 
   std::unordered_map<std::string, std::string> bootconfig_args;
@@ -131,6 +131,8 @@ QemuManager::ConfigureGraphics(
         {"androidboot.hardware.gralloc", "minigbm"},
         {"androidboot.hardware.hwcomposer", instance.hwcomposer()},
         {"androidboot.hardware.hwcomposer.display_finder_mode", "drm"},
+        {"androidboot.hardware.hwcomposer.display_framebuffer_format",
+         instance.guest_uses_bgra_framebuffers() ? "bgra" : "rgba"},
         {"androidboot.hardware.egl", "angle"},
         {"androidboot.hardware.vulkan", "pastel"},
         // OpenGL ES 3.1
@@ -143,6 +145,8 @@ QemuManager::ConfigureGraphics(
         {"androidboot.hardware.hwcomposer", "ranchu"},
         {"androidboot.hardware.hwcomposer.mode", "client"},
         {"androidboot.hardware.hwcomposer.display_finder_mode", "drm"},
+        {"androidboot.hardware.hwcomposer.display_framebuffer_format",
+         instance.guest_uses_bgra_framebuffers() ? "bgra" : "rgba"},
         {"androidboot.hardware.egl", "mesa"},
         // No "hardware" Vulkan support, yet
         // OpenGL ES 3.0
@@ -163,6 +167,8 @@ QemuManager::ConfigureGraphics(
         {"androidboot.hardware.gralloc", "minigbm"},
         {"androidboot.hardware.hwcomposer", instance.hwcomposer()},
         {"androidboot.hardware.hwcomposer.display_finder_mode", "drm"},
+        {"androidboot.hardware.hwcomposer.display_framebuffer_format",
+         instance.guest_uses_bgra_framebuffers() ? "bgra" : "rgba"},
         {"androidboot.hardware.egl", gles_impl},
         {"androidboot.hardware.vulkan", "ranchu"},
         {"androidboot.hardware.gltransport", gltransport},
@@ -206,7 +212,8 @@ QemuManager::ConfigureBootDevices(
     case Arch::X86_64: {
       // QEMU has additional PCI devices for an ISA bridge and PIIX4
       // virtio_gpu precedes the first console or disk
-      int pci_offset = 2 + num_gpu - VmManager::kDefaultNumHvcs;
+      // TODO(schuffelen): Simplify this logic when crosvm uses multiport
+      int pci_offset = 3 + num_gpu - VmManager::kDefaultNumHvcs;
       return ConfigureMultipleBootDevices("pci0000:00/0000:00:", pci_offset,
                                           num_disks);
     }
@@ -214,20 +221,10 @@ QemuManager::ConfigureBootDevices(
 }
 
 Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
-    const CuttlefishConfig& config, std::vector<VmmDependencyCommand*>&) {
+    const CuttlefishConfig& config,
+    std::vector<VmmDependencyCommand*>& dependency_commands) {
+  std::vector<MonitorCommand> commands;
   auto instance = config.ForDefaultInstance();
-
-  auto stop = [](Subprocess* proc) {
-    auto stopped = Stop();
-    if (stopped) {
-      return StopperResult::kStopSuccess;
-    }
-    LOG(WARNING) << "Failed to stop VMM nicely, "
-                  << "attempting to KILL";
-    return KillSubprocess(proc) == StopperResult::kStopSuccess
-               ? StopperResult::kStopCrash
-               : StopperResult::kStopFailure;
-  };
   std::string qemu_binary = instance.qemu_binary_dir();
   switch (arch_) {
     case Arch::Arm:
@@ -248,7 +245,15 @@ Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
   }
 
   auto qemu_version = CF_EXPECT(GetQemuVersion(qemu_binary));
-  Command qemu_cmd(qemu_binary, stop);
+  Command qemu_cmd(qemu_binary, KillSubprocessFallback(Stop));
+
+  qemu_cmd.AddPrerequisite([&dependency_commands]() -> Result<void> {
+    for (auto dependencyCommand : dependency_commands) {
+      CF_EXPECT(dependencyCommand->WaitForAvailability());
+    }
+
+    return {};
+  });
 
   int hvc_num = 0;
   int serial_num = 0;
@@ -256,12 +261,8 @@ Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
     qemu_cmd.AddParameter("-chardev");
     qemu_cmd.AddParameter("null,id=hvc", hvc_num);
     qemu_cmd.AddParameter("-device");
-    qemu_cmd.AddParameter(
-        "virtio-serial-pci-non-transitional,max_ports=1,id=virtio-serial",
-        hvc_num, ",bus=hvc-bridge,addr=", fmt::format("{:0>2x}", hvc_num + 1));
-    qemu_cmd.AddParameter("-device");
-    qemu_cmd.AddParameter("virtconsole,bus=virtio-serial", hvc_num,
-                          ".0,chardev=hvc", hvc_num);
+    qemu_cmd.AddParameter("virtconsole,bus=virtio-serial.0,chardev=hvc",
+                          hvc_num);
     hvc_num++;
   };
   auto add_serial_sink = [&qemu_cmd, &serial_num]() {
@@ -293,36 +294,24 @@ Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
     qemu_cmd.AddParameter("file,id=hvc", hvc_num, ",path=", output,
                           ",append=on");
     qemu_cmd.AddParameter("-device");
-    qemu_cmd.AddParameter(
-        "virtio-serial-pci-non-transitional,max_ports=1,id=virtio-serial",
-        hvc_num, ",bus=hvc-bridge,addr=", fmt::format("{:0>2x}", hvc_num + 1));
-    qemu_cmd.AddParameter("-device");
-    qemu_cmd.AddParameter("virtconsole,bus=virtio-serial", hvc_num,
-                          ".0,chardev=hvc", hvc_num);
+    qemu_cmd.AddParameter("virtconsole,bus=virtio-serial.0,chardev=hvc",
+                          hvc_num);
     hvc_num++;
   };
   auto add_hvc = [&qemu_cmd, &hvc_num](const std::string& prefix) {
     qemu_cmd.AddParameter("-chardev");
     qemu_cmd.AddParameter("pipe,id=hvc", hvc_num, ",path=", prefix);
     qemu_cmd.AddParameter("-device");
-    qemu_cmd.AddParameter(
-        "virtio-serial-pci-non-transitional,max_ports=1,id=virtio-serial",
-        hvc_num, ",bus=hvc-bridge,addr=", fmt::format("{:0>2x}", hvc_num + 1));
-    qemu_cmd.AddParameter("-device");
-    qemu_cmd.AddParameter("virtconsole,bus=virtio-serial", hvc_num,
-                          ".0,chardev=hvc", hvc_num);
+    qemu_cmd.AddParameter("virtconsole,bus=virtio-serial.0,chardev=hvc",
+                          hvc_num);
     hvc_num++;
   };
   auto add_hvc_serial = [&qemu_cmd, &hvc_num](const std::string& prefix) {
     qemu_cmd.AddParameter("-chardev");
     qemu_cmd.AddParameter("serial,id=hvc", hvc_num, ",path=", prefix);
     qemu_cmd.AddParameter("-device");
-    qemu_cmd.AddParameter(
-        "virtio-serial-pci-non-transitional,max_ports=1,id=virtio-serial",
-        hvc_num, ",bus=hvc-bridge,addr=", fmt::format("{:0>2x}", hvc_num + 1));
-    qemu_cmd.AddParameter("-device");
-    qemu_cmd.AddParameter("virtconsole,bus=virtio-serial", hvc_num,
-                          ".0,chardev=hvc", hvc_num);
+    qemu_cmd.AddParameter("virtconsole,bus=virtio-serial.0,chardev=hvc",
+                          hvc_num);
     hvc_num++;
   };
 
@@ -447,13 +436,6 @@ Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
     qemu_cmd.AddParameter("none");
   }
 
-  qemu_cmd.AddParameter("-device");
-  if (is_x86) {
-    qemu_cmd.AddParameter("pcie-pci-bridge,id=hvc-bridge,addr=01.2");
-  } else {
-    qemu_cmd.AddParameter("pcie-pci-bridge,id=hvc-bridge");
-  }
-
   if (instance.hwcomposer() != kHwComposerNone) {
     auto display_configs = instance.display_configs();
     CF_EXPECT(display_configs.size() >= 1);
@@ -503,6 +485,10 @@ Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
       add_serial_console_ro(instance.kernel_log_pipe_name());
     }
   }
+
+  qemu_cmd.AddParameter("-device");
+  qemu_cmd.AddParameter(
+      "virtio-serial-pci-non-transitional,max_ports=31,id=virtio-serial");
 
   // /dev/hvc0 = kernel console
   // If kernel log is enabled, the virtio-console port will be specified as
@@ -646,17 +632,39 @@ Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
   auto readonly = instance.protected_vm() ? ",readonly" : "";
   size_t i = 0;
   for (const auto& disk : instance.virtual_disk_paths()) {
-    qemu_cmd.AddParameter("-drive");
-    qemu_cmd.AddParameter("file=", disk, ",if=none,id=drive-virtio-disk", i,
-                          ",aio=threads", readonly);
-    qemu_cmd.AddParameter("-device");
-    qemu_cmd.AddParameter(
-#ifdef __APPLE__
-        "virtio-blk-pci-non-transitional,drive=drive-virtio-disk", i,
+    if (instance.vhost_user_block()) {
+      auto block = CF_EXPECT(VhostUserBlockDevice(config, i, disk));
+      commands.emplace_back(std::move(block.device_cmd));
+      commands.emplace_back(std::move(block.device_logs_cmd));
+      auto socket_path = std::move(block.socket_path);
+      qemu_cmd.AddPrerequisite([socket_path]() -> Result<void> {
+#ifdef __linux__
+        return WaitForUnixSocketListeningWithoutConnect(socket_path,
+                                                        /*timeoutSec=*/30);
 #else
-        "virtio-blk-pci-non-transitional,scsi=off,drive=drive-virtio-disk", i,
+        return CF_ERR("Unhandled check if vhost user block ready.");
 #endif
-        ",id=virtio-disk", i, (i == 0 ? ",bootindex=1" : ""));
+      });
+
+      qemu_cmd.AddParameter("-chardev");
+      qemu_cmd.AddParameter("socket,id=vhost-user-block-", i,
+                            ",path=", socket_path);
+      qemu_cmd.AddParameter("-device");
+      qemu_cmd.AddParameter(
+          "vhost-user-blk-pci-non-transitional,chardev=vhost-user-block-", i);
+    } else {
+      qemu_cmd.AddParameter("-drive");
+      qemu_cmd.AddParameter("file=", disk, ",if=none,id=drive-virtio-disk", i,
+                            ",aio=threads", readonly);
+      qemu_cmd.AddParameter("-device");
+      qemu_cmd.AddParameter(
+#ifdef __APPLE__
+          "virtio-blk-pci-non-transitional,drive=drive-virtio-disk", i,
+#else
+          "virtio-blk-pci-non-transitional,scsi=off,drive=drive-virtio-disk", i,
+#endif
+          ",id=virtio-disk", i, (i == 0 ? ",bootindex=1" : ""));
+    }
     ++i;
   }
 
@@ -741,18 +749,9 @@ Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
       }
       break;
     case cuttlefish::ExternalNetworkMode::kSlirp: {
-      // TODO(schuffelen): Deduplicate with modem_simulator/cf_device_config.cpp
-      // The configuration here needs to match the ip address reported by the
-      // modem simulator, which the guest uses to statically assign an IP
-      // address to its virtio-net ethernet device.
-      std::string net = "10.0.2.15/24";
-      std::string host = "10.0.2.2";
-      auto device_config_helper = DeviceConfigHelper::Get();
-      if (device_config_helper) {
-        const auto& cfg = device_config_helper->GetDeviceConfig().ril_config();
-        net = fmt::format("{}/{}", cfg.ipaddr(), cfg.prefixlen());
-        host = cfg.gateway();
-      }
+      const std::string net =
+          fmt::format("{}/{}", instance.ril_ipaddr(), instance.ril_prefixlen());
+      const std::string& host = instance.ril_gateway();
       qemu_cmd.AddParameter("-netdev");
       // TODO(schuffelen): `dns` needs to match the first `nameserver` in
       // `/etc/resolv.conf`. Implement something that generalizes beyond gLinux.
@@ -819,12 +818,22 @@ Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
   qemu_cmd.AddParameter("-device");
   qemu_cmd.AddParameter("qemu-xhci,id=xhci");
 
+  qemu_cmd.AddParameter("-L");
+  qemu_cmd.AddParameter(HostQemuBiosPath());
+
   if (is_riscv64) {
     qemu_cmd.AddParameter("-kernel");
-  } else {
+    qemu_cmd.AddParameter(instance.bootloader());
+  } else if (is_arm) {
     qemu_cmd.AddParameter("-bios");
+    qemu_cmd.AddParameter(instance.bootloader());
+  } else {
+    qemu_cmd.AddParameter("-drive");
+    qemu_cmd.AddParameter("if=pflash,format=raw,readonly=on,file=",
+                          instance.bootloader());
+    qemu_cmd.AddParameter("-drive");
+    qemu_cmd.AddParameter("if=pflash,format=raw,file=", instance.pflash_path());
   }
-  qemu_cmd.AddParameter(instance.bootloader());
 
   if (instance.gdb_port() > 0) {
     qemu_cmd.AddParameter("-S");
@@ -832,7 +841,6 @@ Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
     qemu_cmd.AddParameter("tcp::", instance.gdb_port());
   }
 
-  std::vector<MonitorCommand> commands;
   commands.emplace_back(std::move(qemu_cmd), true);
   return commands;
 }

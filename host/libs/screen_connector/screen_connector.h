@@ -50,8 +50,9 @@ class ScreenConnector : public ScreenConnectorInfo,
  public:
   static_assert(cuttlefish::is_movable<ProcessedFrameType>::value,
                 "ProcessedFrameType should be std::move-able.");
-  static_assert(std::is_base_of<ScreenConnectorFrameInfo, ProcessedFrameType>::value,
-                "ProcessedFrameType should inherit ScreenConnectorFrameInfo");
+  static_assert(
+      std::is_base_of<ScreenConnectorFrameInfo, ProcessedFrameType>::value,
+      "ProcessedFrameType should inherit ScreenConnectorFrameInfo");
 
   using FrameMultiplexer = ScreenConnectorInputMultiplexer<ProcessedFrameType>;
 
@@ -68,7 +69,9 @@ class ScreenConnector : public ScreenConnectorInfo,
     }
     auto instance = config->ForDefaultInstance();
     std::unordered_set<std::string_view> valid_gpu_modes{
-        cuttlefish::kGpuModeDrmVirgl, cuttlefish::kGpuModeGfxstream,
+        cuttlefish::kGpuModeCustom,
+        cuttlefish::kGpuModeDrmVirgl,
+        cuttlefish::kGpuModeGfxstream,
         cuttlefish::kGpuModeGfxstreamGuestAngle,
         cuttlefish::kGpuModeGfxstreamGuestAngleHostSwiftShader,
         cuttlefish::kGpuModeGuestSwiftshader};
@@ -87,8 +90,8 @@ class ScreenConnector : public ScreenConnectorInfo,
    */
   using GenerateProcessedFrameCallback = std::function<void(
       std::uint32_t /*display_number*/, std::uint32_t /*frame_width*/,
-      std::uint32_t /*frame_height*/, std::uint32_t /*frame_stride_bytes*/,
-      std::uint8_t* /*frame_bytes*/,
+      std::uint32_t /*frame_height*/, std::uint32_t /*frame_fourcc_format*/,
+      std::uint32_t /*frame_stride_bytes*/, std::uint8_t* /*frame_bytes*/,
       /* ScImpl enqueues this type into the Q */
       ProcessedFrameType& msg)>;
 
@@ -106,8 +109,8 @@ class ScreenConnector : public ScreenConnectorInfo,
 
     sc_android_src_.SetFrameCallback(
         [this](std::uint32_t display_number, std::uint32_t frame_w,
-               std::uint32_t frame_h, std::uint32_t frame_stride_bytes,
-               std::uint8_t* frame_bytes) {
+               std::uint32_t frame_h, std::uint32_t frame_fourcc_format,
+               std::uint32_t frame_stride_bytes, std::uint8_t* frame_bytes) {
           const bool is_confui_mode = host_mode_ctrl_.IsConfirmatioUiMode();
           if (is_confui_mode) {
             return;
@@ -118,8 +121,8 @@ class ScreenConnector : public ScreenConnectorInfo,
           {
             std::lock_guard<std::mutex> lock(streamer_callback_mutex_);
             callback_from_streamer_(display_number, frame_w, frame_h,
-                                    frame_stride_bytes, frame_bytes,
-                                    processed_frame);
+                                    frame_fourcc_format, frame_stride_bytes,
+                                    frame_bytes, processed_frame);
           }
 
           sc_frame_multiplexer_.PushToAndroidQueue(std::move(processed_frame));
@@ -137,8 +140,8 @@ class ScreenConnector : public ScreenConnectorInfo,
     sc_android_src_.SetDisplayEventCallback(std::move(event_callback));
   }
 
-  /* returns the processed frame that also includes meta-info such as success/fail
-   * and display number from the guest
+  /* returns the processed frame that also includes meta-info such as
+   * success/fail and display number from the guest
    *
    * NOTE THAT THIS IS THE ONLY CONSUMER OF THE TWO QUEUES
    */
@@ -154,6 +157,7 @@ class ScreenConnector : public ScreenConnectorInfo,
   bool RenderConfirmationUi(std::uint32_t display_number,
                             std::uint32_t frame_width,
                             std::uint32_t frame_height,
+                            std::uint32_t frame_fourcc_format,
                             std::uint32_t frame_stride_bytes,
                             std::uint8_t* frame_bytes) override {
     render_confui_cnt_++;
@@ -169,7 +173,8 @@ class ScreenConnector : public ScreenConnectorInfo,
                      << "is sending a #" + std::to_string(render_confui_cnt_)
                      << "Conf UI frame";
     callback_from_streamer_(display_number, frame_width, frame_height,
-                            frame_stride_bytes, frame_bytes, processed_frame);
+                            frame_fourcc_format, frame_stride_bytes,
+                            frame_bytes, processed_frame);
     // now add processed_frame to the queue
     sc_frame_multiplexer_.PushToConfUiQueue(std::move(processed_frame));
     return true;
@@ -191,7 +196,8 @@ class ScreenConnector : public ScreenConnectorInfo,
    */
   FrameMultiplexer sc_frame_multiplexer_;
   GenerateProcessedFrameCallback callback_from_streamer_;
-  std::mutex streamer_callback_mutex_; // mutex to set & read callback_from_streamer_
+  std::mutex
+      streamer_callback_mutex_;  // mutex to set & read callback_from_streamer_
   std::condition_variable streamer_callback_set_cv_;
 };
 

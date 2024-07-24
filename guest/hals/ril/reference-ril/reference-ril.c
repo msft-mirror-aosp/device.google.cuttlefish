@@ -111,7 +111,7 @@ typedef struct {
     // byte #:  |3  |2  |1  |0
     //
     // Higher byte order give higher priority. Thus, a value of 0x0000000f represents
-    // a preferred mode of GSM, WCDMA, CDMA, and EvDo in which all are equally preferrable, whereas
+    // a preferred mode of GSM, WCDMA, CDMA, and EvDo in which all are equally preferable, whereas
     // 0x00000201 represents a mode with GSM and WCDMA, in which WCDMA is preferred over GSM
     int32_t preferredNetworkMode;
     int subscription_source;
@@ -918,6 +918,10 @@ static void requestOrSendDataCallList(int cid, RIL_Token *t)
             continue;
 
         i = ncid - 1;
+
+        if (i >= n || i < 0)
+            goto error;
+
         // Assume no error
         responses[i].status = 0;
 
@@ -1046,19 +1050,29 @@ static void requestOrSendDataCallList(int cid, RIL_Token *t)
     err = at_tok_nextstr(&input, &sskip);  // local_addr_and_subnet_mask
     if (err < 0) goto error;
 
-    err = at_tok_nextstr(&input, &responses[i].gateways);  // gw_addr
+    err = at_tok_nextstr(
+        &input, (responses) ? &responses[i].gateways : &sskip);  // gw_addr
     if (err < 0) goto error;
 
-    err = at_tok_nextstr(&input, &responses[i].dnses);  // dns_prim_addr
+    err = at_tok_nextstr(
+        &input, (responses) ? &responses[i].dnses : &sskip);  // dns_prim_addr
     if (err < 0) goto error;
+
+    size_t response_size = 0;
+    RIL_Data_Call_Response_v11 *presponse = NULL;
+    if (responses) {
+        if (i >= n || i < 0)
+            goto error;
+        presponse = &responses[i];
+        response_size = sizeof(*presponse);
+    }
 
     if (t != NULL)
-        RIL_onRequestComplete(*t, RIL_E_SUCCESS, &responses[i],
-                               sizeof(RIL_Data_Call_Response_v11));
+      RIL_onRequestComplete(*t, RIL_E_SUCCESS,
+                            presponse, response_size);
     else
         RIL_onUnsolicitedResponse(RIL_UNSOL_DATA_CALL_LIST_CHANGED,
-                                  responses,
-                                  n * sizeof(RIL_Data_Call_Response_v11));
+                                  responses, n * response_size);
 
     at_response_free(p_response);
     return;
@@ -6067,7 +6081,7 @@ static void onUnsolicited (const char *s, const char *sms_pdu)
             sms_pdu, strlen(sms_pdu));
     } else if (strStartsWith(s, "+CGEV:")) {
         /* Really, we can ignore NW CLASS and ME CLASS events here,
-         * but right now we don't since extranous
+         * but right now we don't since extraneous
          * RIL_UNSOL_DATA_CALL_LIST_CHANGED calls are tolerated
          */
         /* can't issue AT commands here -- call on main thread */
@@ -6211,6 +6225,77 @@ static void onUnsolicited (const char *s, const char *sms_pdu)
         }
 
         free(line);
+    } else if (strStartsWith(s, "+REMOTEIDDISCLOSURE")) {
+        RLOGD("starting REMOTEIDDISCLOSURE %s", s);
+        line = p = strdup(s);
+        if (!line) {
+            RLOGE("+REMOTEIDDISCLOSURE unable to allocate memory");
+            return;
+        }
+        if (at_tok_start(&p) < 0) {
+            RLOGE("invalid +REMOTEIDDISCLOSURE command: %s", s);
+            free(line);
+            return;
+        }
+
+        RIL_CellularIdentifierDisclosure disclosure;
+
+        if (at_tok_nextstr(&p, &disclosure.plmn) < 0) {
+            RLOGE("+REMOTEIDDISCLOSURE unable to parse plmn %s", s);
+            return;
+        }
+        if (at_tok_nextint(&p, &disclosure.identifierType) < 0) {
+            RLOGE("+REMOTEIDDISCLOSURE unable to parse identifier %s", s);
+            return;
+        }
+        if (at_tok_nextint(&p, &disclosure.protocolMessage) < 0) {
+            RLOGE("+REMOTEIDDISCLOSURE unable to parse protocol message %s", s);
+            return;
+        }
+        if (at_tok_nextbool(&p, (char*)&disclosure.isEmergency) < 0) {
+            RLOGE("+REMOTEIDDISCLOSURE unable to parse isEmergency %s", s);
+            return;
+        }
+
+        RIL_onUnsolicitedResponse(RIL_UNSOL_CELLULAR_IDENTIFIER_DISCLOSED, (void*)&disclosure,
+                                  sizeof(disclosure));
+        free(line);
+    } else if (strStartsWith(s, "+UPDATESECURITYALGORITHM")) {
+        RLOGD("starting UPDATESECURITYALGORITHM %s", s);
+        line = p = strdup(s);
+        if (!line) {
+            RLOGE("+UPDATESECURITYALGORITHM unable to allocate memory");
+            return;
+        }
+        if (at_tok_start(&p) < 0) {
+            RLOGE("invalid +UPDATESECURITYALGORITHM command: %s", s);
+            free(line);
+            return;
+        }
+
+        RIL_SecurityAlgorithmUpdate update;
+
+        if (at_tok_nextint(&p, &update.connectionEvent) < 0) {
+            RLOGE("+UPDATESECURITYALGORITHM unable to parse connection event %s", s);
+            return;
+        }
+        if (at_tok_nextint(&p, &update.encryption) < 0) {
+            RLOGE("+UPDATESECURITYALGORITHM unable to parse encryption %s", s);
+            return;
+        }
+        if (at_tok_nextint(&p, &update.integrity) < 0) {
+            RLOGE("+UPDATESECURITYALGORITHM unable to parse integrity %s", s);
+            return;
+        }
+        if (at_tok_nextbool(&p, (char*)&update.isUnprotectedEmergency) < 0) {
+            RLOGE("+UPDATESECURITYALGORITHM unable to parse isUnprotectedEmergency %s", s);
+            return;
+        }
+
+        RIL_onUnsolicitedResponse(RIL_UNSOL_SECURITY_ALGORITHM_UPDATED, &update, sizeof(update));
+        free(line);
+    } else {
+        RLOGE("Unexpected unsolicited request: %s", s);
     }
 }
 

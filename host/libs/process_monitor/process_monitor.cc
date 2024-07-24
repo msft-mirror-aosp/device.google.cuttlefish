@@ -43,10 +43,10 @@
 #include "common/libs/fs/shared_buf.h"
 #include "common/libs/fs/shared_select.h"
 #include "common/libs/utils/contains.h"
+#include "common/libs/utils/files.h"
 #include "common/libs/utils/result.h"
 #include "common/libs/utils/subprocess.h"
 #include "host/libs/command_util/runner/defs.h"
-#include "host/libs/command_util/runner/proto_utils.h"
 #include "host/libs/command_util/util.h"
 #include "host/libs/config/cuttlefish_config.h"
 #include "host/libs/config/known_paths.h"
@@ -88,7 +88,7 @@ void LogSubprocessExit(const std::string& name, const siginfo_t& infop) {
   }
 }
 
-Result<void> MonitorLoop(const std::atomic_bool& running,
+Result<void> MonitorLoop(std::atomic_bool& running,
                          std::mutex& properties_mutex,
                          const bool restart_subprocesses,
                          std::vector<MonitorEntry>& monitored) {
@@ -122,8 +122,8 @@ Result<void> MonitorLoop(const std::atomic_bool& running,
         if (running.load() && is_critical) {
           LOG(ERROR) << "Stopping all monitored processes due to unexpected "
                         "exit of critical process";
-          Command stop_cmd(StopCvdBinary());
-          stop_cmd.Start();
+          running.store(false);
+          break;
         }
       }
     }
@@ -171,18 +171,14 @@ Result<void> SuspendResumeImpl(std::vector<MonitorEntry>& monitor_entries,
   if (secure_env_itr != monitor_entries.end()) {
     CF_EXPECT(channel_to_secure_env->IsOpen(),
               "channel to secure_env is not open.");
-    const ExtendedActionType extended_type =
-        (is_suspend ? ExtendedActionType::kSuspend
-                    : ExtendedActionType::kResume);
-    auto serialized_request = CF_EXPECT(
-        (is_suspend ? SerializeSuspendRequest() : SerializeResumeRequest()),
-        "Failed to serialize request.");
-    CF_EXPECT(WriteLauncherActionWithData(
-        channel_to_secure_env, LauncherAction::kExtended, extended_type,
-        std::move(serialized_request)));
-    const std::string failed_command = (is_suspend ? "suspend" : "resume");
-    CF_EXPECT(ReadLauncherResponse(channel_to_secure_env),
-              "secure_env refused to " + failed_command);
+    run_cvd::ExtendedLauncherAction extended_action;
+    if (is_suspend) {
+      extended_action.mutable_suspend();
+    } else {
+      extended_action.mutable_resume();
+    }
+    CF_EXPECT(RunLauncherAction(channel_to_secure_env, extended_action,
+                                std::nullopt));
   }
 
   for (const auto& entry : monitor_entries) {
@@ -250,11 +246,22 @@ Result<void> ProcessMonitor::StartSubprocesses(
       options.Strace(properties.strace_log_dir_ + "/strace-" + short_name);
     }
     if (properties.sandbox_processes_ && monitored.can_sandbox) {
-      options.SandboxArguments({
+      std::vector<std::string> sandbox_arguments = {
           HostBinaryPath("process_sandboxer"),
           "--log_dir=" + properties.strace_log_dir_,
+          "--runtime_dir=" + CurrentDirectory(),
           "--host_artifacts_path=" + DefaultHostArtifactsPath(""),
-      });
+      };
+      if (properties.sandboxer_writes_to_launcher_log_) {
+        sandbox_arguments.emplace_back(
+            "--log_files=" + properties.strace_log_dir_ + "/sandbox.log," +
+            properties.strace_log_dir_ + "/launcher.log");
+        sandbox_arguments.emplace_back("--verbose_stderr=true");
+      } else {
+        sandbox_arguments.emplace_back(
+            "--log_files=" + properties.strace_log_dir_ + "/sandbox.log");
+      }
+      options.SandboxArguments(std::move(sandbox_arguments));
     }
     monitored.proc.reset(
         new Subprocess(monitored.cmd->Start(std::move(options))));
@@ -357,6 +364,16 @@ ProcessMonitor::Properties& ProcessMonitor::Properties::SandboxProcesses(
 ProcessMonitor::Properties ProcessMonitor::Properties::SandboxProcesses(
     bool r) && {
   return std::move(SandboxProcesses(r));
+}
+
+ProcessMonitor::Properties&
+ProcessMonitor::Properties::SandboxerWritesToLauncherLog(bool r) & {
+  sandboxer_writes_to_launcher_log_ = r;
+  return *this;
+}
+ProcessMonitor::Properties
+ProcessMonitor::Properties::SandboxerWritesToLauncherLog(bool r) && {
+  return std::move(SandboxerWritesToLauncherLog(r));
 }
 
 ProcessMonitor::ProcessMonitor(ProcessMonitor::Properties&& properties,

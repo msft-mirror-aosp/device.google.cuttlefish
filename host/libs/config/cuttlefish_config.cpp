@@ -50,6 +50,7 @@ const char* const kVhostUserVsockModeTrue = "true";
 const char* const kVhostUserVsockModeFalse = "false";
 
 const char* const kGpuModeAuto = "auto";
+const char* const kGpuModeCustom = "custom";
 const char* const kGpuModeDrmVirgl = "drm_virgl";
 const char* const kGpuModeGfxstream = "gfxstream";
 const char* const kGpuModeGfxstreamGuestAngle = "gfxstream_guest_angle";
@@ -110,11 +111,12 @@ void CuttlefishConfig::set_root_dir(const std::string& root_dir) {
 }
 
 static constexpr char kVmManager[] = "vm_manager";
-std::string CuttlefishConfig::vm_manager() const {
-  return (*dictionary_)[kVmManager].asString();
+VmmMode CuttlefishConfig::vm_manager() const {
+  auto str = (*dictionary_)[kVmManager].asString();
+  return ParseVmm(str).value_or(VmmMode::kUnknown);
 }
-void CuttlefishConfig::set_vm_manager(const std::string& name) {
-  (*dictionary_)[kVmManager] = name;
+void CuttlefishConfig::set_vm_manager(VmmMode vmm) {
+  (*dictionary_)[kVmManager] = fmt::format("{}", vmm);
 }
 
 static constexpr char kApVmManager[] = "ap_vm_manager";
@@ -125,31 +127,18 @@ void CuttlefishConfig::set_ap_vm_manager(const std::string& name) {
   (*dictionary_)[kApVmManager] = name;
 }
 
-static SecureHal StringToSecureHal(std::string mode) {
-  std::transform(mode.begin(), mode.end(), mode.begin(), ::tolower);
-  if (mode == "keymint") {
-    return SecureHal::Keymint;
-  } else if (mode == "gatekeeper") {
-    return SecureHal::Gatekeeper;
-  } else if (mode == "oemlock") {
-    return SecureHal::Oemlock;
-  } else {
-    return SecureHal::Unknown;
-  }
-}
-
 static constexpr char kSecureHals[] = "secure_hals";
-std::set<SecureHal> CuttlefishConfig::secure_hals() const {
+Result<std::set<SecureHal>> CuttlefishConfig::secure_hals() const {
   std::set<SecureHal> args_set;
   for (auto& hal : (*dictionary_)[kSecureHals]) {
-    args_set.insert(StringToSecureHal(hal.asString()));
+    args_set.insert(CF_EXPECT(ParseSecureHal(hal.asString())));
   }
   return args_set;
 }
-void CuttlefishConfig::set_secure_hals(const std::set<std::string>& hals) {
+void CuttlefishConfig::set_secure_hals(const std::set<SecureHal>& hals) {
   Json::Value hals_json_obj(Json::arrayValue);
   for (const auto& hal : hals) {
-    hals_json_obj.append(hal);
+    hals_json_obj.append(ToString(hal));
   }
   (*dictionary_)[kSecureHals] = hals_json_obj;
 }
@@ -162,7 +151,9 @@ void CuttlefishConfig::set_crosvm_binary(const std::string& crosvm_binary) {
   (*dictionary_)[kCrosvmBinary] = crosvm_binary;
 }
 
-bool CuttlefishConfig::IsCrosvm() const { return vm_manager() == "crosvm"; }
+bool CuttlefishConfig::IsCrosvm() const {
+  return vm_manager() == VmmMode::kCrosvm;
+}
 
 static constexpr char kGem5DebugFlags[] = "gem5_debug_flags";
 std::string CuttlefishConfig::gem5_debug_flags() const {
@@ -292,6 +283,14 @@ bool CuttlefishConfig::enable_automotive_proxy() const {
   return (*dictionary_)[kEnableAutomotiveProxy].asBool();
 }
 
+static constexpr char kVhalProxyServerPort[] = "vhal_proxy_server_port";
+void CuttlefishConfig::set_vhal_proxy_server_port(int port) {
+  (*dictionary_)[kVhalProxyServerPort] = port;
+}
+int CuttlefishConfig::vhal_proxy_server_port() const {
+  return (*dictionary_)[kVhalProxyServerPort].asInt();
+}
+
 static constexpr char kEnableHostNfc[] = "enable_host_nfc";
 void CuttlefishConfig::set_enable_host_nfc(bool enable_host_nfc) {
   (*dictionary_)[kEnableHostNfc] = enable_host_nfc;
@@ -348,14 +347,6 @@ void CuttlefishConfig::set_casimir_rf_port(int port) {
 }
 int CuttlefishConfig::casimir_rf_port() const {
   return (*dictionary_)[kCasimirRfPort].asInt();
-}
-
-static constexpr char kEnableWifi[] = "enable_wifi";
-void CuttlefishConfig::set_enable_wifi(bool enable_wifi) {
-  (*dictionary_)[kEnableWifi] = enable_wifi;
-}
-bool CuttlefishConfig::enable_wifi() const {
-  return (*dictionary_)[kEnableWifi].asBool();
 }
 
 static constexpr char kNetsimRadios[] = "netsim_radios";
@@ -662,18 +653,12 @@ std::string CuttlefishConfig::AssemblyPath(
   return AbsolutePath(assembly_dir() + "/" + file_name);
 }
 
+static constexpr char kInstancesUdsDir[] = "instances_uds_dir";
+void CuttlefishConfig::set_instances_uds_dir(const std::string& dir) {
+  (*dictionary_)[kInstancesUdsDir] = dir;
+}
 std::string CuttlefishConfig::instances_uds_dir() const {
-  // Try to use /tmp/cf_avd_{uid}/ for UDS directory.
-  // If it fails, use HOME directory(legacy) instead.
-
-  auto defaultPath = AbsolutePath("/tmp/cf_avd_" + std::to_string(getuid()));
-
-  if (!DirectoryExists(defaultPath) ||
-      CanAccess(defaultPath, R_OK | W_OK | X_OK)) {
-    return defaultPath;
-  }
-
-  return instances_dir();
+  return (*dictionary_)[kInstancesUdsDir].asString();
 }
 
 std::string CuttlefishConfig::InstancesUdsPath(
@@ -690,18 +675,12 @@ std::string CuttlefishConfig::EnvironmentsPath(
   return AbsolutePath(environments_dir() + "/" + file_name);
 }
 
+static constexpr char kEnvironmentsUdsDir[] = "environments_uds_dir";
+void CuttlefishConfig::set_environments_uds_dir(const std::string& dir) {
+  (*dictionary_)[kEnvironmentsUdsDir] = dir;
+}
 std::string CuttlefishConfig::environments_uds_dir() const {
-  // Try to use /tmp/cf_env_{uid}/ for UDS directory.
-  // If it fails, use HOME directory instead.
-
-  auto defaultPath = AbsolutePath("/tmp/cf_env_" + std::to_string(getuid()));
-
-  if (!DirectoryExists(defaultPath) ||
-      CanAccess(defaultPath, R_OK | W_OK | X_OK)) {
-    return defaultPath;
-  }
-
-  return environments_dir();
+  return (*dictionary_)[kEnvironmentsUdsDir].asString();
 }
 
 std::string CuttlefishConfig::EnvironmentsUdsPath(

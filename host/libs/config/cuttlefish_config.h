@@ -33,6 +33,7 @@
 #include "host/libs/config/config_constants.h"
 #include "host/libs/config/config_fragment.h"
 #include "host/libs/config/config_utils.h"
+#include "host/libs/config/secure_hals.h"
 
 namespace Json {
 class Value;
@@ -40,12 +41,16 @@ class Value;
 
 namespace cuttlefish {
 
-enum class SecureHal {
-  Unknown,
-  Keymint,
-  Gatekeeper,
-  Oemlock,
+enum class VmmMode {
+  kUnknown,
+  kCrosvm,
+  kGem5,
+  kQemu,
 };
+
+std::ostream& operator<<(std::ostream&, VmmMode);
+std::string ToString(VmmMode mode);
+Result<VmmMode> ParseVmm(std::string_view);
 
 enum class ExternalNetworkMode {
   kUnknown,
@@ -86,17 +91,20 @@ class CuttlefishConfig {
   std::string assembly_dir() const;
   std::string AssemblyPath(const std::string&) const;
 
+  void set_instances_uds_dir(const std::string&);
   std::string instances_uds_dir() const;
   std::string InstancesUdsPath(const std::string&) const;
 
+  void set_environments_dir(const std::string&);
   std::string environments_dir() const;
   std::string EnvironmentsPath(const std::string&) const;
 
+  void set_environments_uds_dir(const std::string&);
   std::string environments_uds_dir() const;
   std::string EnvironmentsUdsPath(const std::string&) const;
 
-  std::string vm_manager() const;
-  void set_vm_manager(const std::string& name);
+  VmmMode vm_manager() const;
+  void set_vm_manager(VmmMode vmm);
 
   std::string ap_vm_manager() const;
   void set_ap_vm_manager(const std::string& name);
@@ -117,8 +125,8 @@ class CuttlefishConfig {
     static TouchpadConfig Deserialize(const Json::Value& config_json);
   };
 
-  void set_secure_hals(const std::set<std::string>& hals);
-  std::set<SecureHal> secure_hals() const;
+  void set_secure_hals(const std::set<SecureHal>&);
+  Result<std::set<SecureHal>> secure_hals() const;
 
   void set_crosvm_binary(const std::string& crosvm_binary);
   std::string crosvm_binary() const;
@@ -138,6 +146,10 @@ class CuttlefishConfig {
   void set_enable_automotive_proxy(bool enable_automotive_proxy);
   bool enable_automotive_proxy() const;
 
+  // The vsock port used by vhal_proxy_server
+  void set_vhal_proxy_server_port(int port);
+  int vhal_proxy_server_port() const;
+
   // Bluetooth is enabled by bt_connector and rootcanal
   void set_enable_host_bluetooth_connector(bool enable_host_bluetooth);
   bool enable_host_bluetooth_connector() const;
@@ -156,9 +168,6 @@ class CuttlefishConfig {
   int casimir_nci_port() const;
   void set_casimir_rf_port(int port);
   int casimir_rf_port() const;
-
-  void set_enable_wifi(const bool enable_wifi);
-  bool enable_wifi() const;
 
   // Flags for the set of radios that are connected to netsim
   enum NetsimRadio {
@@ -341,6 +350,7 @@ class CuttlefishConfig {
     uint32_t session_id() const;
     bool use_allocd() const;
     int vsock_guest_cid() const;
+    std::string vsock_guest_group() const;
     std::string uuid() const;
     std::string instance_name() const;
     std::string environment_name() const;
@@ -373,13 +383,14 @@ class CuttlefishConfig {
     std::string rotary_socket_path() const;
     std::string keyboard_socket_path() const;
     std::string switches_socket_path() const;
-    std::string frames_socket_path() const;
 
     std::string access_kregistry_path() const;
 
     std::string hwcomposer_pmem_path() const;
 
     std::string pstore_path() const;
+
+    std::string pflash_path() const;
 
     std::string console_path() const;
 
@@ -396,7 +407,6 @@ class CuttlefishConfig {
     std::string gnss_out_pipe_name() const;
 
     std::string logcat_pipe_name() const;
-    std::string restore_pipe_name() const;
     std::string restore_adbd_pipe_name() const;
 
     std::string launcher_log_path() const;
@@ -498,14 +508,6 @@ class CuttlefishConfig {
     bool crosvm_use_balloon() const;
     bool crosvm_use_rng() const;
     bool use_pmem() const;
-    /* fmayle@ found out that when cuttlefish starts from the saved snapshot
-     * that was saved after ADBD start event, the socket_vsock_proxy must not
-     * wait for the AdbdStarted event.
-     *
-     * This instance-specific configuration tells the host sock_vsock_proxy
-     * not to wait for the adbd start event.
-     */
-    bool sock_vsock_proxy_wait_adbd_start() const;
 
     // Wifi MAC address inside the guest
     int wifi_mac_prefix() const;
@@ -514,6 +516,7 @@ class CuttlefishConfig {
 
     std::string persistent_bootconfig_path() const;
 
+    // used for the persistent_composite_disk vbmeta
     std::string vbmeta_path() const;
 
     std::string ap_vbmeta_path() const;
@@ -543,6 +546,8 @@ class CuttlefishConfig {
 
     int cpus() const;
 
+    std::string vcpu_config_path() const;
+
     std::string data_policy() const;
 
     int blank_data_image_mb() const;
@@ -564,20 +569,28 @@ class CuttlefishConfig {
     bool enable_audio() const;
     bool enable_gnss_grpc_proxy() const;
     bool enable_bootanimation() const;
+    bool enable_usb() const;
     std::vector<std::string> extra_bootconfig_args() const;
     bool record_screen() const;
     std::string gem5_debug_file() const;
     bool protected_vm() const;
     bool mte() const;
     std::string boot_slot() const;
+    bool fail_fast() const;
+    bool vhost_user_block() const;
 
     // Kernel and bootloader logging
     bool enable_kernel_log() const;
     bool vhost_net() const;
     bool vhost_user_vsock() const;
+    int openthread_node_id() const;
 
-    // The dns address of mobile network (RIL)
+    // Mobile network info (RIL)
     std::string ril_dns() const;
+    std::string ril_ipaddr() const;
+    std::string ril_gateway() const;
+    std::string ril_broadcast() const;
+    uint8_t ril_prefixlen() const;
 
     bool enable_webrtc() const;
     std::string webrtc_assets_dir() const;
@@ -604,6 +617,11 @@ class CuttlefishConfig {
     std::string gpu_angle_feature_overrides_disabled() const;
     std::string gpu_capture_binary() const;
     std::string gpu_gfxstream_transport() const;
+    std::string gpu_renderer_features() const;
+    std::string gpu_context_types() const;
+    std::string guest_vulkan_driver() const;
+    bool guest_uses_bgra_framebuffers() const;
+    std::string frames_socket_path() const;
 
     std::string gpu_vhost_user_mode() const;
 
@@ -630,6 +648,7 @@ class CuttlefishConfig {
     std::string vendor_boot_image() const;
     std::string new_vendor_boot_image() const;
     std::string vbmeta_image() const;
+    std::string new_vbmeta_image() const;
     std::string vbmeta_system_image() const;
     std::string vbmeta_vendor_dlkm_image() const;
     std::string new_vbmeta_vendor_dlkm_image() const;
@@ -669,6 +688,8 @@ class CuttlefishConfig {
     bool bootconfig_supported() const;
     std::string filename_encryption_mode() const;
     ExternalNetworkMode external_network_mode() const;
+
+    bool start_vhal_proxy_server() const;
   };
 
   // A view into an existing CuttlefishConfig object for a particular instance.
@@ -711,6 +732,7 @@ class CuttlefishConfig {
     void set_session_id(uint32_t session_id);
     void set_use_allocd(bool use_allocd);
     void set_vsock_guest_cid(int vsock_guest_cid);
+    void set_vsock_guest_group(const std::string& vsock_guest_group);
     void set_uuid(const std::string& uuid);
     void set_environment_name(const std::string& env_name);
     // modem simulator related
@@ -731,7 +753,6 @@ class CuttlefishConfig {
     void set_crosvm_use_balloon(const bool use_balloon);
     void set_crosvm_use_rng(const bool use_rng);
     void set_use_pmem(const bool use_pmem);
-    void set_sock_vsock_proxy_wait_adbd_start(const bool);
     // Wifi MAC address inside the guest
     void set_wifi_mac_prefix(const int wifi_mac_prefix);
     // Gnss grpc proxy server port inside the host
@@ -749,6 +770,7 @@ class CuttlefishConfig {
     void set_kgdb(bool kgdb);
     void set_target_arch(Arch target_arch);
     void set_cpus(int cpus);
+    void set_vcpu_config_path(const std::string& vcpu_config_path);
     void set_data_policy(const std::string& data_policy);
     void set_blank_data_image_mb(int blank_data_image_mb);
     void set_gdb_port(int gdb_port);
@@ -764,6 +786,7 @@ class CuttlefishConfig {
     void set_pause_in_bootloader(bool pause_in_bootloader);
     void set_run_as_daemon(bool run_as_daemon);
     void set_enable_audio(bool enable);
+    void set_enable_usb(bool enable);
     void set_enable_gnss_grpc_proxy(const bool enable_gnss_grpc_proxy);
     void set_enable_bootanimation(const bool enable_bootanimation);
     void set_extra_bootconfig_args(const std::string& extra_bootconfig_args);
@@ -773,6 +796,8 @@ class CuttlefishConfig {
     void set_mte(bool mte);
     void set_boot_slot(const std::string& boot_slot);
     void set_grpc_socket_path(const std::string& sockets);
+    void set_fail_fast(bool fail_fast);
+    void set_vhost_user_block(bool qemu_vhost_user_block);
 
     // Kernel and bootloader logging
     void set_enable_kernel_log(bool enable_kernel_log);
@@ -794,8 +819,14 @@ class CuttlefishConfig {
     void set_vhost_net(bool vhost_net);
     void set_vhost_user_vsock(bool vhost_user_vsock);
 
-    // The dns address of mobile network (RIL)
+    void set_openthread_node_id(int node_id);
+
+    // Mobile network (RIL)
     void set_ril_dns(const std::string& ril_dns);
+    void set_ril_ipaddr(const std::string& ril_ipaddr);
+    void set_ril_gateway(const std::string& ril_gateway);
+    void set_ril_broadcast(const std::string& ril_broadcast);
+    void set_ril_prefixlen(uint8_t ril_prefixlen);
 
     // Configuration flags for a minimal device
     void set_enable_minimal_mode(bool enable_minimal_mode);
@@ -808,6 +839,12 @@ class CuttlefishConfig {
     void set_gpu_angle_feature_overrides_disabled(const std::string& overrides);
     void set_gpu_capture_binary(const std::string&);
     void set_gpu_gfxstream_transport(const std::string& transport);
+    void set_gpu_renderer_features(const std::string& features);
+    void set_gpu_context_types(const std::string& context_types);
+    void set_guest_vulkan_driver(const std::string& driver);
+    void set_guest_uses_bgra_framebuffers(bool uses_bgra);
+    void set_frames_socket_path(const std::string& driver);
+
     void set_enable_gpu_udmabuf(const bool enable_gpu_udmabuf);
     void set_enable_gpu_vhost_user(const bool enable_gpu_vhost_user);
     void set_enable_gpu_external_blob(const bool enable_gpu_external_blob);
@@ -829,6 +866,7 @@ class CuttlefishConfig {
     void set_vendor_boot_image(const std::string& vendor_boot_image);
     void set_new_vendor_boot_image(const std::string& new_vendor_boot_image);
     void set_vbmeta_image(const std::string& vbmeta_image);
+    void set_new_vbmeta_image(const std::string& new_vbmeta_image);
     void set_vbmeta_system_image(const std::string& vbmeta_system_image);
     void set_vbmeta_vendor_dlkm_image(
         const std::string& vbmeta_vendor_dlkm_image);
@@ -861,6 +899,10 @@ class CuttlefishConfig {
     void set_bootconfig_supported(bool bootconfig_supported);
     void set_filename_encryption_mode(const std::string& userdata_format);
     void set_external_network_mode(ExternalNetworkMode network_mode);
+
+    // Whether we should start vhal_proxy_server for the guest-side VHAL to
+    // connect to.
+    void set_start_vhal_proxy_server(bool enable_vhal_proxy_server);
 
    private:
     void SetPath(const std::string& key, const std::string& path);
@@ -970,6 +1012,7 @@ extern const char* const kVhostUserVsockModeFalse;
 
 // GPU modes
 extern const char* const kGpuModeAuto;
+extern const char* const kGpuModeCustom;
 extern const char* const kGpuModeDrmVirgl;
 extern const char* const kGpuModeGfxstream;
 extern const char* const kGpuModeGfxstreamGuestAngle;
@@ -992,4 +1035,6 @@ extern const char* const kHwComposerNone;
 #if FMT_VERSION >= 90000
 template <>
 struct fmt::formatter<cuttlefish::ExternalNetworkMode> : ostream_formatter {};
+template <>
+struct fmt::formatter<cuttlefish::VmmMode> : ostream_formatter {};
 #endif

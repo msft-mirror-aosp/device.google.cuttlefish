@@ -84,13 +84,13 @@ std::vector<ImagePartition> PersistentAPCompositeDiskConfig(
 }  // namespace
 
 bool IsVmManagerQemu(const CuttlefishConfig& config) {
-  return config.vm_manager() == vm_manager::QemuManager::name();
+  return config.vm_manager() == VmmMode::kQemu;
 }
 Result<void> InitializeInstanceCompositeDisk(
     const CuttlefishConfig& config,
     const CuttlefishConfig::InstanceSpecific& instance,
-    InitializeFactoryResetProtected& /* dependency */,
-    GeneratePersistentVbmeta& /* dependency */) {
+    AutoSetup<InitializeFactoryResetProtected>::Type& /* dependency */,
+    AutoSetup<GeneratePersistentVbmeta>::Type& /* dependency */) {
   const auto ipath = [&instance](const std::string& path) -> std::string {
     return instance.PerInstancePath(path.c_str());
   };

@@ -15,12 +15,14 @@
 
 #pragma once
 
+#include <optional>
 #include <string>
 #include <utility>
 
 #include "common/libs/fs/shared_fd.h"
 #include "common/libs/utils/result.h"
 #include "common/libs/utils/subprocess.h"
+#include "host/libs/vm_manager/pci.h"
 
 namespace cuttlefish {
 
@@ -48,18 +50,12 @@ class CrosvmBuilder {
   void AddSerial(const std::string& output, const std::string& input);
 
 #ifdef __linux__
-  SharedFD AddTap(const std::string& tap_name);
-  SharedFD AddTap(const std::string& tap_name, const std::string& mac);
+  SharedFD AddTap(const std::string& tap_name,
+                  std::optional<std::string_view> mac = std::nullopt,
+                  const std::optional<pci::Address>& pci = std::nullopt);
 #endif
 
   int HvcNum();
-
-  /**
-   * Configures the crosvm to start with --restore=<guest snapshot path>
-   */
-  Result<void> SetToRestoreFromSnapshot(const std::string& snapshot_dir_path,
-                                        const std::string& instance_id,
-                                        const std::string& snapshot_name);
 
   Command& Cmd();
 

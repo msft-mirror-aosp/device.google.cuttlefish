@@ -25,7 +25,7 @@ TARGET_CPU_ABI := arm64-v8a
 TARGET_CPU_VARIANT := cortex-a53
 
 # Use 16K page size kernel
-TARGET_KERNEL_USE ?= 6.1
+TARGET_KERNEL_USE ?= 6.6
 TARGET_KERNEL_ARCH ?= arm64
 SYSTEM_DLKM_SRC ?= kernel/prebuilts/$(TARGET_KERNEL_USE)/$(TARGET_KERNEL_ARCH)/16k
 TARGET_KERNEL_PATH ?= $(SYSTEM_DLKM_SRC)/kernel-$(TARGET_KERNEL_USE)
@@ -52,6 +52,8 @@ HOST_CROSS_2ND_ARCH :=
 -include device/google/cuttlefish/shared/swiftshader/BoardConfig.mk
 -include device/google/cuttlefish/shared/telephony/BoardConfig.mk
 -include device/google/cuttlefish/shared/virgl/BoardConfig.mk
+
+BOARD_16K_OTA_MOVE_VENDOR := true
 
 BOARD_SYSTEMIMAGE_FILE_SYSTEM_TYPE := erofs
 BOARD_SYSTEMIMAGE_EROFS_BLOCKSIZE := 16384

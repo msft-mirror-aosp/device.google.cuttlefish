@@ -46,7 +46,7 @@ class ServerLoopImpl : public ServerLoop,
  public:
   INJECT(ServerLoopImpl(const CuttlefishConfig& config,
                         const CuttlefishConfig::InstanceSpecific& instance,
-                        AutoSecureEnvFiles::Type& secure_env_files,
+                        AutoSnapshotControlFiles::Type& snapshot_control_files,
                         WebRtcRecorder& webrtc_recorder));
 
   Result<void> LateInject(fruit::Injector<>& injector) override;
@@ -66,18 +66,16 @@ class ServerLoopImpl : public ServerLoop,
  private:
   bool Enabled() const override { return true; }
   std::unordered_set<SetupFeature*> Dependencies() const override {
-    return {&secure_env_files_};
+    return {&snapshot_control_files_};
   }
   Result<void> ResultSetup() override;
   Result<void> HandleExtended(const LauncherActionInfo& action_info,
                               ProcessMonitor& process_monitor);
-  Result<void> HandleSuspend(const std::string& serialized_data,
-                             ProcessMonitor& process_monitor);
-  Result<void> HandleResume(const std::string& serialized_data,
-                            ProcessMonitor& process_monitor);
-  Result<void> HandleSnapshotTake(const std::string& serialized_data);
-  Result<void> HandleStartScreenRecording(const std::string& serialized_data);
-  Result<void> HandleStopScreenRecording(const std::string& serialized_data);
+  Result<void> HandleSuspend(ProcessMonitor& process_monitor);
+  Result<void> HandleResume(ProcessMonitor& process_monitor);
+  Result<void> HandleSnapshotTake(const run_cvd::SnapshotTake& snapshot_take);
+  Result<void> HandleStartScreenRecording();
+  Result<void> HandleStopScreenRecording();
 
   void HandleActionWithNoData(const LauncherAction action,
                               const SharedFD& client,
@@ -95,7 +93,7 @@ class ServerLoopImpl : public ServerLoop,
   static std::unordered_map<std::string, std::string>
   InitializeVmToControlSockPath(const CuttlefishConfig::InstanceSpecific&);
   Result<std::string> VmControlSocket() const;
-  Result<void> TakeGuestSnapshot(const std::string&, const std::string&);
+  Result<void> TakeGuestSnapshot(VmmMode, const std::string&);
   Result<void> TakeCrosvmGuestSnapshot(const Json::Value&);
 
   const CuttlefishConfig& config_;
@@ -106,7 +104,7 @@ class ServerLoopImpl : public ServerLoop,
    * secure_env. The socket pairs are used to send suspend/resume to
    * secure_env, and get the responses.
    */
-  AutoSecureEnvFiles::Type& secure_env_files_;
+  AutoSnapshotControlFiles::Type& snapshot_control_files_;
   WebRtcRecorder& webrtc_recorder_;
   std::vector<CommandSource*> command_sources_;
   SharedFD server_;
