@@ -544,11 +544,12 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
     crosvm_cmd.Cmd().AddParameter("--mte");
   }
 
-  if (!instance.vcpu_config().empty()) {
-    auto vcpu_config_json = CF_EXPECT(LoadFromFile(instance.vcpu_config()));
+  if (!instance.vcpu_config_path().empty()) {
+    auto vcpu_config_json =
+        CF_EXPECT(LoadFromFile(instance.vcpu_config_path()));
     std::string affinity_arg = "--cpu-affinity=";
     std::string capacity_arg = "--cpu-capacity=";
-    std::string frequencies_arg = "--cpu-frequencies=";
+    std::string frequencies_arg = "--cpu-frequencies-khz=";
 
     for (int i = 0; i < instance.cpus(); i++) {
       if (i != 0) {
@@ -561,7 +562,8 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
 
       auto cpu = fmt::format("cpu{}", i);
       const auto cpu_json =
-          CF_EXPECT(GetValue<Json::Value>(vcpu_config_json, {cpu}));
+          CF_EXPECT(GetValue<Json::Value>(vcpu_config_json, {cpu}),
+                    "Missing vCPU config!");
 
       const auto affinity =
           CF_EXPECT(GetValue<std::string>(cpu_json, {"affinity"}));

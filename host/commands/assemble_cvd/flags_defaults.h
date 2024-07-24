@@ -254,4 +254,4 @@
 #define CF_DEFAULTS_VHOST_USER_BLOCK false
 
 // Virtual Cpufreq default configuration path
-#define CF_DEFAULTS_VCPU_CONFIG_PATH CF_DEFAULTS_DYNAMIC_STRING
+#define CF_DEFAULTS_VCPU_CONFIG_PATH ""
