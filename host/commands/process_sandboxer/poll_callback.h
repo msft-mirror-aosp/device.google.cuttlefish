@@ -13,26 +13,31 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#ifndef ANDROID_DEVICE_GOOGLE_CUTTLEFISH_HOST_COMMANDS_PROCESS_SANDBOXER_POLL_CALLBACK_H
+#define ANDROID_DEVICE_GOOGLE_CUTTLEFISH_HOST_COMMANDS_PROCESS_SANDBOXER_POLL_CALLBACK_H
 
-#include "host/commands/process_sandboxer/policies.h"
+#include <poll.h>
 
-#include <sys/prctl.h>
+#include <functional>
+#include <vector>
 
-#include "sandboxed_api/sandbox2/policybuilder.h"
+#include <absl/status/status.h>
 
 namespace cuttlefish {
 namespace process_sandboxer {
 
-sandbox2::PolicyBuilder LogcatReceiverPolicy(const HostInfo& host) {
-  return BaselinePolicy(host, host.HostToolExe("logcat_receiver"))
-      .AddDirectory(host.log_dir, /* is_ro= */ false)
-      .AddFile(host.cuttlefish_config_path)
-      .AllowHandleSignals()
-      .AllowOpen()
-      .AllowRead()
-      .AllowSafeFcntl()
-      .AllowWrite();
-}
+class PollCallback {
+ public:
+  void Add(int fd, std::function<absl::Status(short)> cb);
+
+  absl::Status Poll();
+
+ private:
+  std::vector<pollfd> pollfds_;
+  std::vector<std::function<absl::Status(short)>> callbacks_;
+};
 
 }  // namespace process_sandboxer
 }  // namespace cuttlefish
+
+#endif
