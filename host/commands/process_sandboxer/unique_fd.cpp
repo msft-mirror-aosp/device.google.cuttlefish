@@ -13,25 +13,45 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include "host/commands/process_sandboxer/unique_fd.h"
 
-#include "host/commands/process_sandboxer/policies.h"
+#include <unistd.h>
 
-#include <sys/prctl.h>
-
-#include "sandboxed_api/sandbox2/policybuilder.h"
+#include <absl/log/log.h>
 
 namespace cuttlefish {
 namespace process_sandboxer {
 
-sandbox2::PolicyBuilder LogcatReceiverPolicy(const HostInfo& host) {
-  return BaselinePolicy(host, host.HostToolExe("logcat_receiver"))
-      .AddDirectory(host.log_dir, /* is_ro= */ false)
-      .AddFile(host.cuttlefish_config_path)
-      .AllowHandleSignals()
-      .AllowOpen()
-      .AllowRead()
-      .AllowSafeFcntl()
-      .AllowWrite();
+UniqueFd::UniqueFd(int fd) : fd_(fd) {}
+
+UniqueFd::UniqueFd(UniqueFd&& other) { std::swap(fd_, other.fd_); }
+
+UniqueFd::~UniqueFd() { Close(); }
+
+UniqueFd& UniqueFd::operator=(UniqueFd&& other) {
+  Close();
+  std::swap(fd_, other.fd_);
+  return *this;
+}
+
+int UniqueFd::Get() const { return fd_; }
+
+int UniqueFd::Release() {
+  int ret = -1;
+  std::swap(ret, fd_);
+  return ret;
+}
+
+void UniqueFd::Reset(int fd) {
+  Close();
+  fd_ = fd;
+}
+
+void UniqueFd::Close() {
+  if (fd_ > 0 && close(fd_) < 0) {
+    PLOG(ERROR) << "Failed to close fd " << fd_;
+  }
+  fd_ = -1;
 }
 
 }  // namespace process_sandboxer
