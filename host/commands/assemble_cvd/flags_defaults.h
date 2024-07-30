@@ -54,7 +54,6 @@
   cuttlefish::ForCurrentInstance(cuttlefish::kDefaultUuidPrefix)
 #define CF_DEFAULTS_FILE_VERBOSITY "DEBUG"
 #define CF_DEFAULTS_VERBOSITY "INFO"
-#define CF_DEFAULTS_RUN_FILE_DISCOVERY true
 #define CF_DEFAULTS_MEMORY_MB CF_DEFAULTS_DYNAMIC_INT
 #define CF_DEFAULTS_SHARE_SCHED_CORE false
 #define CF_DEFAULTS_TRACK_HOST_TOOLS_CRC false
@@ -182,6 +181,10 @@
 // Automotive Proxy default parameter
 #define CF_DEFAULTS_ENABLE_AUTOMOTIVE_PROXY false
 
+// Vhal Proxy Server default parameter
+#define CF_DEFAULTS_ENABLE_VHAL_PROXY_SERVER false
+#define CF_DEFAULTS_VHAL_PROXY_SERVER_INSTANCE_NUM 0
+
 // Bluetooth default parameters
 #define CF_DEFAULTS_ENABLE_HOST_BLUETOOTH true
 #define CF_DEFAULTS_ROOTCANAL_INSTANCE_NUM 0
@@ -245,3 +248,10 @@
 
 // Whether to exit when heuristics predict the boot will not complete
 #define CF_DEFAULTS_FAIL_FAST true
+
+// Whether to use the crosvm vhost-user block device implementation with QEMU
+// TODO: b/346855591 - default to `true`
+#define CF_DEFAULTS_VHOST_USER_BLOCK false
+
+// Virtual Cpufreq default configuration path
+#define CF_DEFAULTS_VCPU_CONFIG_PATH ""

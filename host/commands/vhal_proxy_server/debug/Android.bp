@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022 The Android Open Source Project
+// Copyright (C) 2024 The Android Open Source Project
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,22 +13,27 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#pragma once
-
-#include <vector>
-
-#include <gtest/gtest.h>
-
-namespace cuttlefish {
-
-// Get one unique item at a time
-class OneEachTest : public testing::TestWithParam<std::vector<unsigned>> {};
-
-/*
- * ClaimAll, StrideBeyond, Consecutive, Take, TakeAll, TakeRange,
- * Reclaim
- *
- */
-class CvdIdAllocatorTest : public testing::Test {};
-
-}  // namespace cuttlefish
+cc_binary_host {
+    name: "vhal_proxy_server_cmd",
+    defaults: [
+        "cuttlefish_host",
+    ],
+    srcs: [
+        "VhalProxyServerCmd.cpp",
+    ],
+    cflags: [
+        "-Wno-unused-parameter",
+    ],
+    static_libs: [
+        "android.hardware.automotive.vehicle@default-grpc-libgrpc",
+        "libcuttlefish_fs",
+        "libcuttlefish_utils",
+    ],
+    shared_libs: [
+        "libbase",
+        "libcutils",
+        "libgrpc++",
+        "liblog",
+        "libprotobuf-cpp-full",
+    ],
+}
