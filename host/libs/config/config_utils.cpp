@@ -26,6 +26,7 @@
 
 #include "common/libs/utils/contains.h"
 #include "common/libs/utils/environment.h"
+#include "common/libs/utils/subprocess.h"
 #include "host/libs/config/config_constants.h"
 #include "host/libs/config/cuttlefish_config.h"
 
@@ -92,7 +93,6 @@ std::string ForCurrentInstance(const char* prefix) {
   stream << prefix << std::setfill('0') << std::setw(2) << GetInstance();
   return stream.str();
 }
-int ForCurrentInstance(int base) { return base + GetInstance() - 1; }
 
 std::string RandomSerialNumber(const std::string& prefix) {
   const char hex_characters[] = "0123456789ABCDEF";
@@ -156,8 +156,10 @@ std::string DefaultGuestImagePath(const std::string& file_name) {
 bool HostSupportsQemuCli() {
   static bool supported =
 #ifdef __linux__
-      std::system(
-          "/usr/lib/cuttlefish-common/bin/capability_query.py qemu_cli") == 0;
+      RunWithManagedStdio(
+          Command("/usr/lib/cuttlefish-common/bin/capability_query.py")
+              .AddParameter("qemu_cli"),
+          nullptr, nullptr, nullptr) == 0;
 #else
       true;
 #endif

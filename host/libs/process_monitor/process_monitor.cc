@@ -43,6 +43,7 @@
 #include "common/libs/fs/shared_buf.h"
 #include "common/libs/fs/shared_select.h"
 #include "common/libs/utils/contains.h"
+#include "common/libs/utils/files.h"
 #include "common/libs/utils/result.h"
 #include "common/libs/utils/subprocess.h"
 #include "host/libs/command_util/runner/defs.h"
@@ -244,12 +245,27 @@ Result<void> ProcessMonitor::StartSubprocesses(
     if (Contains(properties_.strace_commands_, short_name)) {
       options.Strace(properties.strace_log_dir_ + "/strace-" + short_name);
     }
-    if (properties.sandbox_processes_ && monitored.can_sandbox) {
-      options.SandboxArguments({
+    // TODO(schuffelen): Remove this code.
+    // Since run_cvd is sandboxed higher than this using the sandboxer_proxy
+    // technique to intercept fork/exec calls, this code no longer has to be
+    // sandbox-aware, and should make simpler fork/exec calls when it can.
+    if (false && properties.sandbox_processes_ && monitored.can_sandbox) {
+      std::vector<std::string> sandbox_arguments = {
           HostBinaryPath("process_sandboxer"),
           "--log_dir=" + properties.strace_log_dir_,
+          "--runtime_dir=" + CurrentDirectory(),
           "--host_artifacts_path=" + DefaultHostArtifactsPath(""),
-      });
+      };
+      if (properties.sandboxer_writes_to_launcher_log_) {
+        sandbox_arguments.emplace_back(
+            "--log_files=" + properties.strace_log_dir_ + "/sandbox.log," +
+            properties.strace_log_dir_ + "/launcher.log");
+        sandbox_arguments.emplace_back("--verbose_stderr=true");
+      } else {
+        sandbox_arguments.emplace_back(
+            "--log_files=" + properties.strace_log_dir_ + "/sandbox.log");
+      }
+      options.SandboxArguments(std::move(sandbox_arguments));
     }
     monitored.proc.reset(
         new Subprocess(monitored.cmd->Start(std::move(options))));
@@ -352,6 +368,16 @@ ProcessMonitor::Properties& ProcessMonitor::Properties::SandboxProcesses(
 ProcessMonitor::Properties ProcessMonitor::Properties::SandboxProcesses(
     bool r) && {
   return std::move(SandboxProcesses(r));
+}
+
+ProcessMonitor::Properties&
+ProcessMonitor::Properties::SandboxerWritesToLauncherLog(bool r) & {
+  sandboxer_writes_to_launcher_log_ = r;
+  return *this;
+}
+ProcessMonitor::Properties
+ProcessMonitor::Properties::SandboxerWritesToLauncherLog(bool r) && {
+  return std::move(SandboxerWritesToLauncherLog(r));
 }
 
 ProcessMonitor::ProcessMonitor(ProcessMonitor::Properties&& properties,
