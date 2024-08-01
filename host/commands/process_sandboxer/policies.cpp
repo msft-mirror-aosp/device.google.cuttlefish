@@ -29,8 +29,7 @@
 
 using sapi::file::JoinPath;
 
-namespace cuttlefish {
-namespace process_sandboxer {
+namespace cuttlefish::process_sandboxer {
 
 std::string HostInfo::HostToolExe(std::string_view exe) const {
   return JoinPath(artifacts_path, "bin", exe);
@@ -57,12 +56,12 @@ std::unique_ptr<sandbox2::Policy> PolicyForExecutable(
 
   builders[host.HostToolExe("kernel_log_monitor")] = KernelLogMonitorPolicy;
   builders[host.HostToolExe("logcat_receiver")] = LogcatReceiverPolicy;
+  builders[host.HostToolExe("modem_simulator")] = ModemSimulatorPolicy;
+  builders[host.HostToolExe("process_restarter")] = ProcessRestarterPolicy;
+  builders[host.HostToolExe("run_cvd")] = RunCvdPolicy;
+  builders[host.HostToolExe("tcp_connector")] = TcpConnectorPolicy;
   builders[host.HostToolExe("secure_env")] = SecureEnvPolicy;
-
-  // TODO(schuffelen): Don't include test policies in the production impl
-  builders[JoinPath(host.artifacts_path, "testcases", "process_sandboxer_test",
-                    "x86_64", "process_sandboxer_test_hello_world")] =
-      HelloWorldPolicy;
+  builders[host.HostToolExe("webRTC")] = WebRtcPolicy;
 
   if (auto it = builders.find(executable); it != builders.end()) {
     // TODO(schuffelen): Only share this with executables known to launch others
@@ -76,5 +75,4 @@ std::unique_ptr<sandbox2::Policy> PolicyForExecutable(
   }
 }
 
-}  // namespace process_sandboxer
-}  // namespace cuttlefish
+}  // namespace cuttlefish::process_sandboxer
