@@ -40,7 +40,7 @@
 #include <absl/strings/str_cat.h>
 #include <absl/strings/str_format.h>
 #include <absl/strings/str_join.h>
-#include "absl/strings/numbers.h"
+#include <absl/types/span.h>
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wunused-parameter"
 #include <sandboxed_api/sandbox2/executor.h>
@@ -62,47 +62,24 @@ using sandbox2::Sandbox2;
 using sapi::file::CleanPath;
 using sapi::file::JoinPath;
 
-class SandboxManager::ManagedProcess {
+class SandboxManager::ProcessNoSandbox : public SandboxManager::ManagedProcess {
  public:
-  ManagedProcess(std::optional<int> client_fd, UniqueFd event_fd,
-                 std::unique_ptr<Sandbox2> sandbox)
-      : client_fd_(client_fd),
-        event_fd_(std::move(event_fd)),
-        sandbox_(std::move(sandbox)) {
-    if (!sandbox_) {
-      return;
-    }
-    waiter_thread_ = std::thread([this]() {
-      sandbox_->AwaitResult().IgnoreResult();
-      uint64_t buf = 1;
-      if (write(event_fd_.Get(), &buf, sizeof(buf)) < 0) {
-        PLOG(ERROR) << "Failed to write to eventfd";
-      }
-    });
-  }
-  ManagedProcess(ManagedProcess&) = delete;
-  ~ManagedProcess() {
-    if (!sandbox_) {
-      return;
-    }
-    sandbox_->Kill();
-    waiter_thread_.join();
-    auto res = sandbox_->AwaitResult().ToStatus();
-    if (!res.ok()) {
-      LOG(ERROR) << "Issue in closing sandbox: '" << res.ToString() << "'";
+  ProcessNoSandbox(int client_fd, PidFd pid_fd)
+      : client_fd_(client_fd), pid_fd_(std::move(pid_fd)) {}
+  ~ProcessNoSandbox() {
+    auto halt = pid_fd_.HaltHierarchy();
+    if (!halt.ok()) {
+      LOG(ERROR) << "Failed to halt children: " << halt.ToString();
     }
   }
 
-  const std::optional<int>& ClientFd() const { return client_fd_; }
-  int EventFd() const { return event_fd_.Get(); }
+  std::optional<int> ClientFd() const override { return client_fd_; }
+  int PollFd() const override { return pid_fd_.Get(); }
 
-  absl::StatusOr<uintptr_t> ExitCode() {
-    if (sandbox_) {
-      return sandbox_->AwaitResult().reason_code();
-    }
+  absl::StatusOr<uintptr_t> ExitCode() override {
     siginfo_t infop;
     idtype_t id_type = (idtype_t)3;  // P_PIDFD
-    if (waitid(id_type, event_fd_.Get(), &infop, WEXITED) < 0) {
+    if (waitid(id_type, pid_fd_.Get(), &infop, WEXITED | WNOWAIT) < 0) {
       return absl::ErrnoToStatus(errno, "`waitid` failed");
     }
     switch (infop.si_code) {
@@ -119,7 +96,44 @@ class SandboxManager::ManagedProcess {
   }
 
  private:
-  // TODO(schuffelen): Determine if pid reuse is an issue
+  int client_fd_;
+  PidFd pid_fd_;
+};
+
+class SandboxManager::SandboxedProcess : public SandboxManager::ManagedProcess {
+ public:
+  SandboxedProcess(std::optional<int> client_fd, UniqueFd event_fd,
+                   std::unique_ptr<Sandbox2> sandbox)
+      : client_fd_(client_fd),
+        event_fd_(std::move(event_fd)),
+        sandbox_(std::move(sandbox)) {
+    waiter_thread_ = std::thread([this]() { WaitForExit(); });
+  }
+  ~SandboxedProcess() override {
+    sandbox_->Kill();
+    waiter_thread_.join();
+    auto res = sandbox_->AwaitResult().ToStatus();
+    if (!res.ok()) {
+      LOG(ERROR) << "Issue in closing sandbox: '" << res.ToString() << "'";
+    }
+  }
+
+  std::optional<int> ClientFd() const override { return client_fd_; }
+  int PollFd() const override { return event_fd_.Get(); }
+
+  absl::StatusOr<uintptr_t> ExitCode() override {
+    return sandbox_->AwaitResult().reason_code();
+  }
+
+ private:
+  void WaitForExit() {
+    sandbox_->AwaitResult().IgnoreResult();
+    uint64_t buf = 1;
+    if (write(event_fd_.Get(), &buf, sizeof(buf)) < 0) {
+      PLOG(ERROR) << "Failed to write to eventfd";
+    }
+  }
+
   std::optional<int> client_fd_;
   UniqueFd event_fd_;
   std::thread waiter_thread_;
@@ -226,7 +240,8 @@ class SandboxManager::SocketClient {
       return absl::PermissionDeniedError("gid changed");
     }
     if (!pid_fd_) {
-      auto pid_fd = PidFd::Create(credentials_->pid);
+      absl::StatusOr<PidFd> pid_fd =
+          PidFd::FromRunningProcess(credentials_->pid);
       if (!pid_fd.ok()) {
         return pid_fd.status();
       }
@@ -258,7 +273,7 @@ class SandboxManager::SocketClient {
   SandboxManager& manager_;
   UniqueFd client_fd_;
   std::optional<ucred> credentials_;
-  std::unique_ptr<PidFd> pid_fd_;
+  std::optional<PidFd> pid_fd_;
 
   ClientState client_state_ = ClientState::kInitial;
   size_t pingback_;
@@ -336,7 +351,7 @@ SandboxManager::~SandboxManager() {
 }
 
 absl::Status SandboxManager::RunProcess(
-    std::optional<int> client_fd, const std::vector<std::string>& argv,
+    std::optional<int> client_fd, absl::Span<const std::string> argv,
     std::vector<std::pair<UniqueFd, int>> fds) {
   if (argv.empty()) {
     return absl::InvalidArgumentError("Not enough arguments");
@@ -371,7 +386,7 @@ absl::Status SandboxManager::RunProcess(
 }
 
 absl::Status SandboxManager::RunSandboxedProcess(
-    std::optional<int> client_fd, const std::vector<std::string>& argv,
+    std::optional<int> client_fd, absl::Span<const std::string> argv,
     std::vector<std::pair<UniqueFd, int>> fds, std::unique_ptr<Policy> policy) {
   if (VLOG_IS_ON(1)) {
     std::stringstream process_stream;
@@ -428,73 +443,26 @@ absl::Status SandboxManager::RunSandboxedProcess(
   // that signals the eventfd when sandbox2 says the sandboxed process has
   // exited.
 
-  sandboxes_.emplace_back(
-      new ManagedProcess(client_fd, std::move(event_fd), std::move(sbx)));
+  subprocesses_.emplace_back(
+      new SandboxedProcess(client_fd, std::move(event_fd), std::move(sbx)));
 
   return absl::OkStatus();
 }
 
 absl::Status SandboxManager::RunProcessNoSandbox(
-    std::optional<int> client_fd, const std::vector<std::string>& argv,
+    std::optional<int> client_fd, absl::Span<const std::string> argv,
     std::vector<std::pair<UniqueFd, int>> fds) {
-  int pidfd;
-  clone_args args_for_clone = clone_args{
-      .flags = CLONE_PIDFD,
-      .pidfd = reinterpret_cast<std::uintptr_t>(&pidfd),
-  };
-
-  long res = syscall(SYS_clone3, &args_for_clone, sizeof(args_for_clone));
-  if (res < 0) {
-    std::string argv_str = absl::StrJoin(argv, "','");
-    std::string error = absl::StrCat("clone3 failed: argv=['", argv_str, "']");
-    return absl::ErrnoToStatus(errno, error);
-  } else if (res > 0) {
-    std::string argv_str = absl::StrJoin(argv, "','");
-    VLOG(1) << res << ": Running w/o sandbox ['" << argv_str << "]";
-    sandboxes_.emplace_back(
-        new ManagedProcess(client_fd, UniqueFd(pidfd), nullptr));
-    return absl::OkStatus();
+  if (!client_fd) {
+    return absl::InvalidArgumentError("no client for unsandboxed process");
   }
 
-  /* Duplicate every input in `fds` into a range higher than the highest output
-   * in `fds`, in case there is any overlap between inputs and outputs. */
-  int minimum_backup_fd = -1;
-  for (const auto& [my_fd, target_fd] : fds) {
-    if (target_fd + 1 > minimum_backup_fd) {
-      minimum_backup_fd = target_fd + 1;
-    }
+  absl::StatusOr<PidFd> fd = PidFd::LaunchSubprocess(argv, std::move(fds));
+  if (!fd.ok()) {
+    return fd.status();
   }
+  subprocesses_.emplace_back(new ProcessNoSandbox(*client_fd, std::move(*fd)));
 
-  std::unordered_map<int, int> backup_mapping;
-  for (const auto& [my_fd, target_fd] : fds) {
-    int backup = fcntl(my_fd.Get(), F_DUPFD, minimum_backup_fd);
-    PCHECK(backup >= 0) << "fcntl(..., F_DUPFD) failed";
-    int flags = fcntl(backup, F_GETFD);
-    PCHECK(flags >= 0) << "fcntl(..., F_GETFD failed";
-    flags &= FD_CLOEXEC;
-    PCHECK(fcntl(backup, F_SETFD, flags) >= 0) << "fcntl(..., F_SETFD failed";
-    backup_mapping[backup] = target_fd;
-  }
-
-  for (const auto& [backup_fd, target_fd] : backup_mapping) {
-    // dup2 always unsets FD_CLOEXEC
-    PCHECK(dup2(backup_fd, target_fd) >= 0) << "dup2 failed";
-  }
-
-  std::vector<std::string> argv_clone = argv;
-  std::vector<char*> argv_cstr;
-  for (auto& arg : argv_clone) {
-    argv_cstr.emplace_back(arg.data());
-  }
-  argv_cstr.emplace_back(nullptr);
-
-  if (prctl(PR_SET_PDEATHSIG, SIGHUP) < 0) {  // Die when parent dies
-    PLOG(FATAL) << "prctl failed";
-  }
-
-  execv(argv_cstr[0], argv_cstr.data());
-
-  PLOG(FATAL) << "execv failed";
+  return absl::OkStatus();
 }
 
 bool SandboxManager::Running() const { return running_; }
@@ -505,8 +473,8 @@ absl::Status SandboxManager::Iterate() {
   poll_cb.Add(signal_fd_.Get(), bind_front(&SandboxManager::Signalled, this));
   poll_cb.Add(server_fd_.Get(), bind_front(&SandboxManager::NewClient, this));
 
-  for (auto it = sandboxes_.begin(); it != sandboxes_.end(); it++) {
-    int fd = (*it)->EventFd();
+  for (auto it = subprocesses_.begin(); it != subprocesses_.end(); it++) {
+    int fd = (*it)->PollFd();
     poll_cb.Add(fd, bind_front(&SandboxManager::ProcessExit, this, it));
   }
   for (auto it = clients_.begin(); it != clients_.end(); it++) {
@@ -579,7 +547,7 @@ absl::Status SandboxManager::ProcessExit(SandboxManager::SboxIter it,
       }
     }
   }
-  sandboxes_.erase(it);
+  subprocesses_.erase(it);
   static constexpr char kErr[] = "eventfd exited";
   return revents == POLLIN ? absl::OkStatus() : absl::InternalError(kErr);
 }
