@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Copyright 2020 The Android Open Source Project
+<!-- Copyright 2024 The Android Open Source Project
 
      Licensed under the Apache License, Version 2.0 (the "License");
      you may not use this file except in compliance with the License.
@@ -13,6 +13,12 @@
      See the License for the specific language governing permissions and
      limitations under the License.
 -->
+
 <permissions>
-    <unavailable-feature name="android.software.print" />
+    <!-- Uncalibrated acceleromter and gyroscope aren't supported on cuttlefish. Until support is
+    added, the limited axes versions of these sensors won't be generated and as a result should not
+    be included in the device through package manager features. Removing these until support is
+    added for these sensors. -->
+    <unavailable-feature name="android.hardware.sensor.accelerometer_limited_axes_uncalibrated" />
+    <unavailable-feature name="android.hardware.sensor.gyroscope_limited_axes_uncalibrated" />
 </permissions>
