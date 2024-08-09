@@ -20,6 +20,7 @@
 
 #include <android-base/file.h>
 #include <android-base/logging.h>
+#include <android-base/no_destructor.h>
 #include <android-base/parseint.h>
 #include <gflags/gflags.h>
 
@@ -67,6 +68,8 @@ DEFINE_bool(enable_host_sandbox, CF_DEFAULTS_HOST_SANDBOX,
 namespace cuttlefish {
 namespace {
 
+using android::base::NoDestructor;
+
 std::string SubtoolPath(const std::string& subtool_base) {
   auto my_own_dir = android::base::GetExecutableDirectory();
   std::stringstream subtool_path_stream;
@@ -85,7 +88,41 @@ std::string SandboxerPath() { return SubtoolPath("process_sandboxer"); }
 int InvokeAssembler(const std::string& assembler_stdin,
                     std::string& assembler_stdout,
                     const std::vector<std::string>& argv) {
-  Command assemble_cmd(AssemblerPath());
+  Command assemble_cmd(FLAGS_enable_host_sandbox ? SandboxerPath()
+                                                 : AssemblerPath());
+  if (FLAGS_enable_host_sandbox) {
+    // sandbox2 always has uid 1000
+    std::string environments_uds_dir = "/tmp/cf_env_1000";
+    std::string instance_uds_dir = "/tmp/cf_avd_1000/cvd-1";
+
+    std::string root_dir = StringFromEnv("HOME", "");
+    CHECK(!root_dir.empty()) << "No `HOME` env var";
+    root_dir += "/cuttlefish";
+    std::string assembly_dir = root_dir + "/assembly";
+    std::string environments_dir = root_dir + "/environments";
+    std::string runtime_dir = root_dir + "/instances/cvd-1";
+    std::string logs_dir = runtime_dir + "/logs";
+
+    std::vector<std::string> make_dirs = {environments_uds_dir,
+                                          instance_uds_dir, assembly_dir,
+                                          runtime_dir, logs_dir};
+
+    for (const std::string& dir : make_dirs) {
+      auto res = EnsureDirectoryExists(dir);
+      CHECK(res.ok()) << res.error().FormatForEnv();
+    }
+
+    assemble_cmd.AddParameter("--assembly_dir=", assembly_dir)
+        .AddParameter("--environments_dir=", environments_dir)
+        .AddParameter("--environments_uds_dir=", environments_uds_dir)
+        .AddParameter("--instance_uds_dir=", instance_uds_dir)
+        .AddParameter("--runtime_dir=", runtime_dir)
+        .AddParameter("--host_artifacts_path=", DefaultHostArtifactsPath(""))
+        .AddParameter("--guest_image_path=", DefaultGuestImagePath(""))
+        .AddParameter("--log_dir=", logs_dir);
+
+    assemble_cmd.AddParameter("--").AddParameter(AssemblerPath());
+  }
   for (const auto& arg : argv) {
     assemble_cmd.AddParameter(arg);
   }
@@ -98,12 +135,14 @@ Subprocess StartRunner(SharedFD runner_stdin, const CuttlefishConfig& config,
                        const std::vector<std::string>& argv) {
   Command run_cmd(FLAGS_enable_host_sandbox ? SandboxerPath() : RunnerPath());
   if (FLAGS_enable_host_sandbox) {
-    run_cmd.AddParameter("--environments_dir=", config.environments_dir())
+    run_cmd.AddParameter("--assembly_dir=", config.assembly_dir())
+        .AddParameter("--environments_dir=", config.environments_dir())
         .AddParameter("--environments_uds_dir=", config.environments_uds_dir())
         .AddParameter("--instance_uds_dir=", instance.instance_uds_dir())
         .AddParameter("--log_dir=", instance.PerInstanceLogPath(""))
         .AddParameter("--runtime_dir=", instance.instance_dir())
-        .AddParameter("--host_artifacts_path=", DefaultHostArtifactsPath(""));
+        .AddParameter("--host_artifacts_path=", DefaultHostArtifactsPath(""))
+        .AddParameter("--guest_image_path=", DefaultGuestImagePath(""));
     std::string log_files = instance.PerInstanceLogPath("sandbox.log");
     if (!instance.run_as_daemon()) {
       log_files += "," + instance.PerInstanceLogPath("launcher.log");
@@ -209,45 +248,49 @@ bool HostToolsUpdated() {
 // Used to find bool flag and convert "flag"/"noflag" to "--flag=value"
 // This is the solution for vectorize bool flags in gFlags
 
-std::unordered_set<std::string> kBoolFlags = {
-    "guest_enforce_security",
-    "use_random_serial",
-    "use_allocd",
-    "use_sdcard",
-    "pause_in_bootloader",
-    "daemon",
-    "enable_minimal_mode",
-    "enable_modem_simulator",
-    "console",
-    "enable_sandbox",
-    "enable_virtiofs",
-    "enable_usb",
-    "restart_subprocesses",
-    "enable_gpu_udmabuf",
-    "enable_gpu_vhost_user",
-    "enable_audio",
-    "start_gnss_proxy",
-    "enable_bootanimation",
-    "record_screen",
-    "protected_vm",
-    "enable_kernel_log",
-    "kgdb",
-    "start_webrtc",
-    "smt",
-    "vhost_net",
-    "vhost_user_vsock",
-    "chromeos_boot",
-    "enable_host_sandbox",
-    "fail_fast",
-    "vhost_user_block",
-};
+const std::unordered_set<std::string>& BoolFlags() {
+  static const NoDestructor<std::unordered_set<std::string>> bool_flags({
+      "chromeos_boot",
+      "console",
+      "daemon",
+      "enable_audio",
+      "enable_bootanimation",
+      "enable_gpu_udmabuf",
+      "enable_gpu_vhost_user",
+      "enable_host_sandbox",
+      "enable_kernel_log",
+      "enable_minimal_mode",
+      "enable_modem_simulator",
+      "enable_sandbox",
+      "enable_usb",
+      "enable_virtiofs",
+      "fail_fast",
+      "guest_enforce_security",
+      "kgdb",
+      "pause_in_bootloader",
+      "protected_vm",
+      "record_screen",
+      "restart_subprocesses",
+      "smt",
+      "start_gnss_proxy",
+      "start_webrtc",
+      "use_allocd",
+      "use_random_serial",
+      "use_sdcard",
+      "vhost_net",
+      "vhost_user_block",
+      "vhost_user_vsock",
+  });
+  return *bool_flags;
+}
 
 struct BooleanFlag {
   bool is_bool_flag;
   bool bool_flag_value;
   std::string name;
 };
-BooleanFlag IsBoolArg(const std::string& argument) {
+BooleanFlag IsBoolArg(const std::string& argument,
+                      const std::unordered_set<std::string>& flag_set) {
   // Validate format
   // we only deal with special bool case: -flag, --flag, -noflag, --noflag
   // and convert to -flag=true, --flag=true, -flag=false, --flag=false
@@ -269,13 +312,13 @@ BooleanFlag IsBoolArg(const std::string& argument) {
   if (result_name.length() == 0) {
     return {false, false, ""};
   }
-  if (kBoolFlags.find(result_name) != kBoolFlags.end()) {
+  if (flag_set.find(result_name) != flag_set.end()) {
     // matched -flag, --flag
     return {true, true, result_name};
   } else if (android::base::ConsumePrefix(&new_name, "no")) {
     // 2nd chance to check -noflag, --noflag
     result_name = new_name;
-    if (kBoolFlags.find(result_name) != kBoolFlags.end()) {
+    if (flag_set.find(result_name) != flag_set.end()) {
       // matched -noflag, --noflag
       return {true, false, result_name};
     }
@@ -294,18 +337,18 @@ std::string FormatBoolString(const std::string& name_str, bool value) {
   return new_flag;
 }
 
-bool OverrideBoolArg(std::vector<std::string>& args) {
-  bool overridden = false;
+std::vector<std::string> OverrideBoolArg(
+    std::vector<std::string> args,
+    const std::unordered_set<std::string>& flag_set) {
   for (int index = 0; index < args.size(); index++) {
     const std::string curr_arg = args[index];
-    BooleanFlag value = IsBoolArg(curr_arg);
+    BooleanFlag value = IsBoolArg(curr_arg, flag_set);
     if (value.is_bool_flag) {
       // Override the value
       args[index] = FormatBoolString(value.name, value.bool_flag_value);
-      overridden = true;
     }
   }
-  return overridden;
+  return args;
 }
 
 int CvdInternalStartMain(int argc, char** argv) {
@@ -333,10 +376,9 @@ int CvdInternalStartMain(int argc, char** argv) {
 
   // Used to find bool flag and convert "flag"/"noflag" to "--flag=value"
   // This is the solution for vectorize bool flags in gFlags
-  if (OverrideBoolArg(args)) {
-    for (int i = 1; i < argc; i++) {
-      argv[i] = &args[i-1][0]; // args[] start from 0
-    }
+  args = OverrideBoolArg(std::move(args), BoolFlags());
+  for (int i = 1; i < argc; i++) {
+    argv[i] = args[i - 1].data();  // args[] start from 0
   }
 
   gflags::ParseCommandLineNonHelpFlags(&argc, &argv, false);
@@ -360,6 +402,12 @@ int CvdInternalStartMain(int argc, char** argv) {
   if (!instance_nums.ok()) {
     LOG(ERROR) << instance_nums.error().FormatForEnv();
     abort();
+  }
+
+  // TODO(schuffelen): Lift instance id assumptions in sandboxing
+  if (FLAGS_enable_host_sandbox) {
+    CHECK_EQ(instance_nums->size(), 1) << "At most one host-sandboxed device";
+    CHECK_EQ((*instance_nums)[0], 1) << "Host-sandboxed device needs id=1";
   }
 
   if (CuttlefishConfig::ConfigExists()) {
