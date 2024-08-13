@@ -32,16 +32,18 @@ using sapi::file::JoinPath;
 namespace cuttlefish::process_sandboxer {
 
 std::string HostInfo::HostToolExe(std::string_view exe) const {
-  return JoinPath(artifacts_path, "bin", exe);
+  return JoinPath(host_artifacts_path, "bin", exe);
 }
 
 std::ostream& operator<<(std::ostream& out, const HostInfo& host) {
   out << "HostInfo {\n";
-  out << "\tartifacts_path: \"" << host.artifacts_path << "\"\n";
+  out << "\tassembly_dir: \"" << host.assembly_dir << "\"\n";
   out << "\tcuttlefish_config_path: \"" << host.cuttlefish_config_path
       << "\"\n";
   out << "\tenvironments_dir: \"" << host.environments_dir << "\"\n";
   out << "\tenvironments_uds_dir: " << host.environments_uds_dir << "\"\n";
+  out << "\tguest_image_path: " << host.guest_image_path << "\t\n";
+  out << "\thost_artifacts_path: \"" << host.host_artifacts_path << "\"\n";
   out << "\tinstance_uds_dir: " << host.instance_uds_dir << "\"\n";
   out << "\tlog_dir: " << host.log_dir << "\"\n";
   out << "\truntime_dir: " << host.runtime_dir << "\"\n";
@@ -54,14 +56,19 @@ std::unique_ptr<sandbox2::Policy> PolicyForExecutable(
   using Builder = sandbox2::PolicyBuilder(const HostInfo&);
   absl::flat_hash_map<std::string, Builder*> builders;
 
+  builders[host.HostToolExe("adb_connector")] = AdbConnectorPolicy;
+  builders[host.HostToolExe("assemble_cvd")] = AssembleCvdPolicy;
   builders[host.HostToolExe("kernel_log_monitor")] = KernelLogMonitorPolicy;
+  builders[host.HostToolExe("log_tee")] = LogTeePolicy;
   builders[host.HostToolExe("logcat_receiver")] = LogcatReceiverPolicy;
   builders[host.HostToolExe("modem_simulator")] = ModemSimulatorPolicy;
   builders[host.HostToolExe("process_restarter")] = ProcessRestarterPolicy;
   builders[host.HostToolExe("run_cvd")] = RunCvdPolicy;
-  builders[host.HostToolExe("tcp_connector")] = TcpConnectorPolicy;
+  builders[host.HostToolExe("screen_recording_server")] =
+      ScreenRecordingServerPolicy;
   builders[host.HostToolExe("secure_env")] = SecureEnvPolicy;
   builders[host.HostToolExe("socket_vsock_proxy")] = SocketVsockProxyPolicy;
+  builders[host.HostToolExe("tcp_connector")] = TcpConnectorPolicy;
   builders[host.HostToolExe("webRTC")] = WebRtcPolicy;
 
   if (auto it = builders.find(executable); it != builders.end()) {

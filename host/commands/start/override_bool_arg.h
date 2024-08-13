@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2021 The Android Open Source Project
+// Copyright (C) 2022 The Android Open Source Project
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,14 +12,16 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+#pragma once
 
-package {
-    default_applicable_licenses: ["Android-Apache-2.0"],
-}
+#include <string>
+#include <unordered_set>
+#include <vector>
 
-prebuilt_etc {
-    name: "cuttlefish_excluded_hardware.prebuilt.xml",
-    src: "cuttlefish_excluded_hardware.xml",
-    relative_install_path: "permissions",
-    soc_specific: true,
+namespace cuttlefish {
+
+std::vector<std::string> OverrideBoolArg(
+    std::vector<std::string> args,
+    const std::unordered_set<std::string>& flag_set);
+
 }

@@ -22,16 +22,17 @@
 
 #include "sandboxed_api/sandbox2/policybuilder.h"
 
-namespace cuttlefish {
-namespace process_sandboxer {
+namespace cuttlefish::process_sandboxer {
 
 struct HostInfo {
   std::string HostToolExe(std::string_view exe) const;
 
-  std::string artifacts_path;
+  std::string assembly_dir;
   std::string cuttlefish_config_path;
   std::string environments_dir;
   std::string environments_uds_dir;
+  std::string guest_image_path;
+  std::string host_artifacts_path;
   std::string instance_uds_dir;
   std::string log_dir;
   std::string runtime_dir;
@@ -41,11 +42,15 @@ std::ostream& operator<<(std::ostream&, const HostInfo&);
 
 sandbox2::PolicyBuilder BaselinePolicy(const HostInfo&, std::string_view exe);
 
+sandbox2::PolicyBuilder AdbConnectorPolicy(const HostInfo&);
+sandbox2::PolicyBuilder AssembleCvdPolicy(const HostInfo&);
 sandbox2::PolicyBuilder KernelLogMonitorPolicy(const HostInfo&);
+sandbox2::PolicyBuilder LogTeePolicy(const HostInfo&);
 sandbox2::PolicyBuilder LogcatReceiverPolicy(const HostInfo&);
 sandbox2::PolicyBuilder ModemSimulatorPolicy(const HostInfo&);
 sandbox2::PolicyBuilder ProcessRestarterPolicy(const HostInfo&);
 sandbox2::PolicyBuilder RunCvdPolicy(const HostInfo&);
+sandbox2::PolicyBuilder ScreenRecordingServerPolicy(const HostInfo&);
 sandbox2::PolicyBuilder SecureEnvPolicy(const HostInfo&);
 sandbox2::PolicyBuilder SocketVsockProxyPolicy(const HostInfo&);
 sandbox2::PolicyBuilder TcpConnectorPolicy(const HostInfo&);
@@ -55,7 +60,6 @@ std::unique_ptr<sandbox2::Policy> PolicyForExecutable(
     const HostInfo& host_info, std::string_view server_socket_outside_path,
     std::string_view executable_path);
 
-}  // namespace process_sandboxer
-}  // namespace cuttlefish
+}  // namespace cuttlefish::process_sandboxer
 
 #endif
