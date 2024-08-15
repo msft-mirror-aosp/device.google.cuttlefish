@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2022 The Android Open Source Project
+ * Copyright (C) 2024 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,28 +15,8 @@
  */
 #pragma once
 
-#include <memory>
-
-#include <grpc/grpc.h>
-#include <grpcpp/channel.h>
-#include <grpcpp/client_context.h>
-#include <grpcpp/create_channel.h>
-
-#include "gnss_grpc_proxy.grpc.pb.h"
-
-#include "common/libs/utils/result.h"
-#include "host/libs/location/GpsFix.h"
-
 namespace cuttlefish {
 
-class GnssClient {
- public:
-  GnssClient(const std::shared_ptr<grpc::Channel>& channel);
+bool InSandbox();
 
-  Result<void> SendGpsLocations(int delay, const GpsFixArray& coordinates);
-
- private:
-  std::unique_ptr<gnss_grpc_proxy::GnssGrpcProxy::Stub> stub_;
-};
-
-}  // namespace cuttlefish
+}
