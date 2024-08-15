@@ -27,7 +27,7 @@ using sapi::file::JoinPath;
 
 sandbox2::PolicyBuilder RunCvdPolicy(const HostInfo& host) {
   std::string sandboxer_proxy = host.HostToolExe("sandboxer_proxy");
-  return BaselinePolicy(host, JoinPath(host.artifacts_path, "bin", "run_cvd"))
+  return BaselinePolicy(host, host.HostToolExe("run_cvd"))
       .AddDirectory(host.runtime_dir, /* is_ro= */ false)
       .AddFile(host.cuttlefish_config_path)
       .AddFile("/dev/net/tun", /* is_ro= */ false)
@@ -55,6 +55,7 @@ sandbox2::PolicyBuilder RunCvdPolicy(const HostInfo& host) {
       .AddFileAt(sandboxer_proxy, host.HostToolExe("tcp_connector"))
       .AddFileAt(sandboxer_proxy, host.HostToolExe("tombstone_receiver"))
       .AddFileAt(sandboxer_proxy, host.HostToolExe("webRTC"))
+      .AddFileAt(sandboxer_proxy, host.HostToolExe("webrtc_operator"))
       .AddFileAt(sandboxer_proxy, host.HostToolExe("wmediumd"))
       .AddFileAt(sandboxer_proxy, host.HostToolExe("wmediumd_gen_config"))
       .AddDirectory(host.environments_dir)
