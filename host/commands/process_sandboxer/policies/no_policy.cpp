@@ -36,7 +36,6 @@ std::set<std::string> NoPolicy(const HostInfo& host) {
       host.HostToolExe("control_env_proxy_server"),  // TODO: b/318592219
       host.HostToolExe("crosvm"),
       host.HostToolExe("extract-ikconfig"),        // TODO: b/359309462
-      host.HostToolExe("gnss_grpc_proxy"),         // TODO: b/318591948
       host.HostToolExe("metrics"),                 // TODO: b/318594189
       host.HostToolExe("mkenvimage_slim"),         // TODO: b/318610408
       host.HostToolExe("netsimd"),                 // TODO: b/318603863
@@ -47,7 +46,6 @@ std::set<std::string> NoPolicy(const HostInfo& host) {
       host.HostToolExe("simg2img"),                // TODO: b/359312017
       host.HostToolExe("vhost_device_vsock"),      // TODO: b/318613691
       host.HostToolExe("webrtc_operator"),         // TODO: b/359312626
-      host.HostToolExe("wmediumd"),                // TODO: b//318610207
       host.HostToolExe("wmediumd_gen_config"),     // TODO: b/359313561
   };
 }

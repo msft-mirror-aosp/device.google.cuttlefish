@@ -47,6 +47,7 @@ sandbox2::PolicyBuilder BaselinePolicy(const HostInfo&, std::string_view exe);
 sandbox2::PolicyBuilder AdbConnectorPolicy(const HostInfo&);
 sandbox2::PolicyBuilder AssembleCvdPolicy(const HostInfo&);
 sandbox2::PolicyBuilder EchoServerPolicy(const HostInfo&);
+sandbox2::PolicyBuilder GnssGrpcProxyPolicy(const HostInfo&);
 sandbox2::PolicyBuilder KernelLogMonitorPolicy(const HostInfo&);
 sandbox2::PolicyBuilder LogTeePolicy(const HostInfo&);
 sandbox2::PolicyBuilder LogcatReceiverPolicy(const HostInfo&);
@@ -59,6 +60,7 @@ sandbox2::PolicyBuilder SocketVsockProxyPolicy(const HostInfo&);
 sandbox2::PolicyBuilder TcpConnectorPolicy(const HostInfo&);
 sandbox2::PolicyBuilder TombstoneReceiverPolicy(const HostInfo&);
 sandbox2::PolicyBuilder WebRtcPolicy(const HostInfo&);
+sandbox2::PolicyBuilder WmediumdPolicy(const HostInfo&);
 
 std::set<std::string> NoPolicy(const HostInfo&);
 
