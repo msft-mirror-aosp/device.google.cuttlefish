@@ -18,9 +18,11 @@ color_plain="\033[0m"
 color_yellow="\033[0;33m"
 
 # validate number of arguments
-if [ "$#" -lt 1 ] || [ "$#" -gt 3 ]; then
-  echo "This script requires 1 mandatory and 2 optional parameters,"
-  echo "server address and optionally cvd instances per docker, and number of docker instances to invoke"
+if [ "$#" -lt 1 ] || [ "$#" -gt 5 ]; then
+  echo "This script requires 1 mandatory and 4 optional parameters,"
+  echo "server address and optionally cvd instances per docker, and number of " \
+       "docker instances to invoke, vendor_boot image to replace, and config " \
+       "file path for launching configuration."
   exit 1
 fi
 
@@ -28,6 +30,7 @@ fi
 # $1: ARM server address
 # $2: CVD Instance number per docker (Optional, default is 1)
 # $3: Docker Instance number (Optional, default is 1)
+# $4: Vendor Boot Image path (Optional, default is "")
 server=$1
 
 if [ "$#" -lt 2 ]; then
@@ -41,6 +44,28 @@ if [ "$#" -lt 3 ]; then
 else
  num_dockers=$3
 fi
+
+if [ "$#" -lt 4 ]; then
+ vendor_boot_image=""
+else
+ vendor_boot_image=$4
+fi
+
+if [ "$#" -lt 5 ]; then
+ config_path=""
+else
+ config_path=$5
+ if [ ! -f $config_path ]; then
+  echo Config file $config_path does not exist
+  exit 1
+ fi
+
+ if ! cat $config_path | jq > /dev/null ; then
+  echo Failed to parse config file $config_path
+  exit 1
+ fi
+fi
+
 
 # set img_dir and cvd_host_tool_dir
 img_dir=${ANDROID_PRODUCT_OUT:-$PWD}
@@ -56,6 +81,10 @@ if [ -f $img_dir/required_images ]; then
 else
   rsync -aSvch --recursive $img_dir/bootloader $img_dir/*.img $server:~/$cvd_home_dir --info=progress2
   cvd_home_files=($(rsync -rzan --recursive $img_dir/bootloader --out-format="%n" $img_dir/*.img $server:~/$cvd_home_dir --info=name2 | awk '{print $1}'))
+fi
+
+if [[ $vendor_boot_image != "" ]]; then
+  scp $vendor_boot_image $server:~/$cvd_home_dir/vendor_boot.img
 fi
 
 # upload cvd-host_package.tar.gz into ARM server
@@ -193,17 +222,52 @@ for docker_inspect in ${docker_inspects[*]}; do
   host_orchestrator_ports+=($port)
 done
 
+if [[ $config_path != "" ]]; then
+  cvd_creation_data=$(cat $config_path | jq -c)
+else
+  cvd_creation_data="{\"cvd\":{\"build_source\": \
+    {\"user_build_source\":{\"artifacts_dir\":\"$user_artifacts_dir\"}}}, \
+    \"additional_instances_num\":$((num_instances_per_docker - 1))}";
+fi
+cvd_creation_data=$(echo $cvd_creation_data | sed s/\$user_artifact_id/$user_artifacts_dir/g)
+
 # start Cuttlefish instance on top of docker instance
 # TODO(b/317942272): support starting the instance with an optional vendor boot debug image.
 echo -e "Starting Cuttlefish"
-ssh $server "for port in ${host_orchestrator_ports[*]}; do \
+ssh $server "job_ids=() && \
+for port in ${host_orchestrator_ports[*]}; do \
   host_orchestrator_url=https://localhost:\$port && \
-  curl -s -k -X POST \$host_orchestrator_url/cvds \
-  -H 'Content-Type: application/json' \
-  -d '{\"cvd\": {\"build_source\": {\"user_build_source\": {\"artifacts_dir\": \"$user_artifacts_dir\"}}}, \
-       \"additional_instances_num\": $((num_instances_per_docker - 1))}'; \
-done
+  job_id=\"\" && \
+  while [ -z \"\$job_id\" ]; do \
+    job_id=\$(curl -s -k -X POST \$host_orchestrator_url/cvds \
+      -H 'Content-Type: application/json' \
+      -d '$cvd_creation_data' \
+        | jq -r '.name') && \
+    if [ -z \"\$job_id\" ]; then \
+      echo \"  Failed to request creating Cuttlefish, retrying\" && \
+      sleep 1; \
+    else \
+      echo \"  Succeeded to request: \$job_id\" && \
+      job_ids+=(\${job_id}); \
+    fi; \
+  done; \
+done \
+
+echo \"Waiting Cuttlefish instances to be booted\" && \
+i=0 && \
+for port in ${host_orchestrator_ports[*]}; do \
+  job_id=\${job_ids[\$i]} && \
+  i=\$((i+1)) && \
+  host_orchestrator_url=https://localhost:\$port && \
+  job_done=\"false\" && \
+  while [[ \$job_done == \"false\" ]]; do \
+    sleep 1 && \
+    job_done=\$(curl -s -k \${host_orchestrator_url}/operations/\$job_id | jq -r '.done'); \
+  done && \
+  echo \"  Boot completed: \$job_id\"; \
+done \
 "
+echo -e "Done"
 
 # Web UI port is 3443 instead 1443 because there could be a running operator or host orchestrator in this machine as well.
 web_ui_port=3443

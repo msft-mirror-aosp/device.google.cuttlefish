@@ -52,9 +52,10 @@ public class SnapshotTest extends BaseHostJUnit4Test {
     public void testSnapshot() throws Exception {
         String snapshotId = "snapshot_" + UUID.randomUUID().toString();
 
+        // Reboot to make sure device isn't dirty from previous tests.
+        getDevice().reboot();
         // Snapshot the device
-        boolean snapshotRes = new DeviceSnapshotHandler().snapshotDevice(getDevice(), snapshotId);
-        assertTrue("failed to snapshot.", snapshotRes);
+        new DeviceSnapshotHandler().snapshotDevice(getDevice(), snapshotId);
 
         // Create a file in tmp directory
         final String tmpFile = "/data/local/tmp/snapshot_tmp";
@@ -71,11 +72,7 @@ public class SnapshotTest extends BaseHostJUnit4Test {
         for (int i = 0; i < mTestCount; i++) {
             CLog.d("Restore snapshot attempt #%d", i);
             long start = System.currentTimeMillis();
-            boolean restoreRes =
-                    new DeviceSnapshotHandler().restoreSnapshotDevice(getDevice(), snapshotId);
-            assertTrue(
-                    String.format("Restore snapshot for device reset failed during attempt #%d", i),
-                    restoreRes);
+            new DeviceSnapshotHandler().restoreSnapshotDevice(getDevice(), snapshotId);
             long duration = System.currentTimeMillis() - start;
             CLog.d("Restore snapshot took %dms to finish", duration);
         }
@@ -98,13 +95,12 @@ public class SnapshotTest extends BaseHostJUnit4Test {
     public void testSnapshotReboot() throws Exception {
         String snapshotId = "snapshot_" + UUID.randomUUID().toString();
 
+        // Reboot to make sure device isn't dirty from previous tests.
+        getDevice().reboot();
         // Snapshot the device.
-        boolean snapshotRes = new DeviceSnapshotHandler().snapshotDevice(getDevice(), snapshotId);
-        assertTrue("failed to snapshot", snapshotRes);
+        new DeviceSnapshotHandler().snapshotDevice(getDevice(), snapshotId);
         // Restore the device.
-        boolean restoreRes =
-                new DeviceSnapshotHandler().restoreSnapshotDevice(getDevice(), snapshotId);
-        assertTrue("Restore snapshot for device reset failed", restoreRes);
+        new DeviceSnapshotHandler().restoreSnapshotDevice(getDevice(), snapshotId);
         // Reboot the device.
         getDevice().reboot();
         // Verify that the device is back online.
@@ -116,13 +112,12 @@ public class SnapshotTest extends BaseHostJUnit4Test {
     public void testSnapshotPowerwash() throws Exception {
         String snapshotId = "snapshot_" + UUID.randomUUID().toString();
 
-        // Snapshot the device>
-        boolean snapshotRes = new DeviceSnapshotHandler().snapshotDevice(getDevice(), snapshotId);
-        assertTrue("failed to snapshot", snapshotRes);
+        // Reboot to make sure device isn't dirty from previous tests.
+        getDevice().reboot();
+        // Snapshot the device.
+        new DeviceSnapshotHandler().snapshotDevice(getDevice(), snapshotId);
         // Restore the device.
-        boolean restoreRes =
-                new DeviceSnapshotHandler().restoreSnapshotDevice(getDevice(), snapshotId);
-        assertTrue("Restore snapshot for device reset failed before powerwash", restoreRes);
+        new DeviceSnapshotHandler().restoreSnapshotDevice(getDevice(), snapshotId);
         CLog.d("Powerwash attempt after restore");
         long start = System.currentTimeMillis();
         boolean success = new DeviceResetHandler(getInvocationContext()).resetDevice(getDevice());
@@ -147,12 +142,9 @@ public class SnapshotTest extends BaseHostJUnit4Test {
         // Verify that the device is back online.
         getDevice().executeShellCommand("echo test");
         // Snapshot the device>
-        boolean snapshotRes = new DeviceSnapshotHandler().snapshotDevice(getDevice(), snapshotId);
-        assertTrue("failed to snapshot", snapshotRes);
+        new DeviceSnapshotHandler().snapshotDevice(getDevice(), snapshotId);
         // Restore the device.
-        boolean restoreRes =
-                new DeviceSnapshotHandler().restoreSnapshotDevice(getDevice(), snapshotId);
-        assertTrue("Restore snapshot after powerwash for device reset failed", restoreRes);
+        new DeviceSnapshotHandler().restoreSnapshotDevice(getDevice(), snapshotId);
         // Verify that the device is back online.
         getDevice().executeShellCommand("echo test");
     }

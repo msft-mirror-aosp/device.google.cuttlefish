@@ -36,7 +36,6 @@ $(call inherit-product, $(SRC_TARGET_DIR)/product/aosp_product.mk)
 #
 # All components inherited here go to vendor image
 #
-LOCAL_PREFER_VENDOR_APEX := true
 $(call inherit-product, device/google/cuttlefish/shared/phone/device_vendor.mk)
 
 # Nested virtualization support
@@ -62,3 +61,13 @@ $(call inherit-product, $(SRC_TARGET_DIR)/product/window_extensions.mk)
 PRODUCT_VENDOR_PROPERTIES += \
     ro.soc.manufacturer=$(PRODUCT_MANUFACTURER) \
     ro.soc.model=$(PRODUCT_DEVICE)
+
+# Compare target product name directly to avoid this from any product inherits aosp_cf.mk
+ifneq ($(filter aosp_cf_x86_64_phone aosp_cf_x86_64_phone_soong_system,$(TARGET_PRODUCT)),)
+# TODO(b/350000347) Enable Soong defined system image from coverage build
+ifneq ($(CLANG_COVERAGE),true)
+ifneq ($(NATIVE_COVERAGE),true)
+PRODUCT_SOONG_DEFINED_SYSTEM_IMAGE := aosp_cf_system_x86_64
+endif # NATIVE_COVERAGE
+endif # CLANG_COVERAGE
+endif # aosp_cf_x86_64_phone

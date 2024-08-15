@@ -33,24 +33,13 @@
 #include "host/libs/config/config_constants.h"
 #include "host/libs/config/config_fragment.h"
 #include "host/libs/config/config_utils.h"
+#include "host/libs/config/secure_hals.h"
 
 namespace Json {
 class Value;
 }
 
 namespace cuttlefish {
-
-enum class SecureHal {
-  Unknown,
-  GuestGatekeeperInsecure,
-  GuestKeymintInsecure,
-  HostKeymintInsecure,
-  HostKeymintSecure,
-  HostGatekeeperInsecure,
-  HostGatekeeperSecure,
-  HostOemlockInsecure,
-  HostOemlockSecure,
-};
 
 enum class VmmMode {
   kUnknown,
@@ -102,12 +91,15 @@ class CuttlefishConfig {
   std::string assembly_dir() const;
   std::string AssemblyPath(const std::string&) const;
 
+  void set_instances_uds_dir(const std::string&);
   std::string instances_uds_dir() const;
   std::string InstancesUdsPath(const std::string&) const;
 
+  void set_environments_dir(const std::string&);
   std::string environments_dir() const;
   std::string EnvironmentsPath(const std::string&) const;
 
+  void set_environments_uds_dir(const std::string&);
   std::string environments_uds_dir() const;
   std::string EnvironmentsUdsPath(const std::string&) const;
 
@@ -133,8 +125,8 @@ class CuttlefishConfig {
     static TouchpadConfig Deserialize(const Json::Value& config_json);
   };
 
-  void set_secure_hals(const std::set<std::string>& hals);
-  std::set<SecureHal> secure_hals() const;
+  void set_secure_hals(const std::set<SecureHal>&);
+  Result<std::set<SecureHal>> secure_hals() const;
 
   void set_crosvm_binary(const std::string& crosvm_binary);
   std::string crosvm_binary() const;
@@ -153,6 +145,10 @@ class CuttlefishConfig {
 
   void set_enable_automotive_proxy(bool enable_automotive_proxy);
   bool enable_automotive_proxy() const;
+
+  // The vsock port used by vhal_proxy_server
+  void set_vhal_proxy_server_port(int port);
+  int vhal_proxy_server_port() const;
 
   // Bluetooth is enabled by bt_connector and rootcanal
   void set_enable_host_bluetooth_connector(bool enable_host_bluetooth);
@@ -279,9 +275,6 @@ class CuttlefishConfig {
   std::set<std::string> straced_host_executables() const;
   void set_straced_host_executables(const std::set<std::string>& executables);
 
-  bool host_sandbox() const;
-  void set_host_sandbox(bool host_sandbox);
-
   bool IsCrosvm() const;
 
   class InstanceSpecific;
@@ -393,6 +386,8 @@ class CuttlefishConfig {
     std::string hwcomposer_pmem_path() const;
 
     std::string pstore_path() const;
+
+    std::string pflash_path() const;
 
     std::string console_path() const;
 
@@ -548,6 +543,8 @@ class CuttlefishConfig {
 
     int cpus() const;
 
+    std::string vcpu_config_path() const;
+
     std::string data_policy() const;
 
     int blank_data_image_mb() const;
@@ -577,6 +574,7 @@ class CuttlefishConfig {
     bool mte() const;
     std::string boot_slot() const;
     bool fail_fast() const;
+    bool vhost_user_block() const;
 
     // Kernel and bootloader logging
     bool enable_kernel_log() const;
@@ -619,6 +617,7 @@ class CuttlefishConfig {
     std::string gpu_renderer_features() const;
     std::string gpu_context_types() const;
     std::string guest_vulkan_driver() const;
+    bool guest_uses_bgra_framebuffers() const;
     std::string frames_socket_path() const;
 
     std::string gpu_vhost_user_mode() const;
@@ -686,6 +685,8 @@ class CuttlefishConfig {
     bool bootconfig_supported() const;
     std::string filename_encryption_mode() const;
     ExternalNetworkMode external_network_mode() const;
+
+    bool start_vhal_proxy_server() const;
   };
 
   // A view into an existing CuttlefishConfig object for a particular instance.
@@ -766,6 +767,7 @@ class CuttlefishConfig {
     void set_kgdb(bool kgdb);
     void set_target_arch(Arch target_arch);
     void set_cpus(int cpus);
+    void set_vcpu_config_path(const std::string& vcpu_config_path);
     void set_data_policy(const std::string& data_policy);
     void set_blank_data_image_mb(int blank_data_image_mb);
     void set_gdb_port(int gdb_port);
@@ -792,6 +794,7 @@ class CuttlefishConfig {
     void set_boot_slot(const std::string& boot_slot);
     void set_grpc_socket_path(const std::string& sockets);
     void set_fail_fast(bool fail_fast);
+    void set_vhost_user_block(bool qemu_vhost_user_block);
 
     // Kernel and bootloader logging
     void set_enable_kernel_log(bool enable_kernel_log);
@@ -836,6 +839,7 @@ class CuttlefishConfig {
     void set_gpu_renderer_features(const std::string& features);
     void set_gpu_context_types(const std::string& context_types);
     void set_guest_vulkan_driver(const std::string& driver);
+    void set_guest_uses_bgra_framebuffers(bool uses_bgra);
     void set_frames_socket_path(const std::string& driver);
 
     void set_enable_gpu_udmabuf(const bool enable_gpu_udmabuf);
@@ -892,6 +896,10 @@ class CuttlefishConfig {
     void set_bootconfig_supported(bool bootconfig_supported);
     void set_filename_encryption_mode(const std::string& userdata_format);
     void set_external_network_mode(ExternalNetworkMode network_mode);
+
+    // Whether we should start vhal_proxy_server for the guest-side VHAL to
+    // connect to.
+    void set_start_vhal_proxy_server(bool enable_vhal_proxy_server);
 
    private:
     void SetPath(const std::string& key, const std::string& path);

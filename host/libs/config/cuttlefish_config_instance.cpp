@@ -586,6 +586,15 @@ static constexpr char kCpus[] = "cpus";
 void CuttlefishConfig::MutableInstanceSpecific::set_cpus(int cpus) { (*Dictionary())[kCpus] = cpus; }
 int CuttlefishConfig::InstanceSpecific::cpus() const { return (*Dictionary())[kCpus].asInt(); }
 
+static constexpr char kVcpuInfo[] = "vcpu_config_path";
+void CuttlefishConfig::MutableInstanceSpecific::set_vcpu_config_path(
+    const std::string& vcpu_config_path) {
+  (*Dictionary())[kVcpuInfo] = vcpu_config_path;
+}
+std::string CuttlefishConfig::InstanceSpecific::vcpu_config_path() const {
+  return (*Dictionary())[kVcpuInfo].asString();
+}
+
 static constexpr char kDataPolicy[] = "data_policy";
 void CuttlefishConfig::MutableInstanceSpecific::set_data_policy(
     const std::string& data_policy) {
@@ -797,6 +806,16 @@ void CuttlefishConfig::MutableInstanceSpecific::set_guest_vulkan_driver(
   (*Dictionary())[kVulkanDriver] = driver;
 }
 
+static constexpr char kGuestUsesBgraFramebuffers[] =
+    "guest_uses_bgra_framebuffers";
+bool CuttlefishConfig::InstanceSpecific::guest_uses_bgra_framebuffers() const {
+  return (*Dictionary())[kGuestUsesBgraFramebuffers].asBool();
+}
+void CuttlefishConfig::MutableInstanceSpecific::
+    set_guest_uses_bgra_framebuffers(bool uses_bgra) {
+  (*Dictionary())[kGuestUsesBgraFramebuffers] = uses_bgra;
+}
+
 static constexpr char kRestartSubprocesses[] = "restart_subprocesses";
 bool CuttlefishConfig::InstanceSpecific::restart_subprocesses() const {
   return (*Dictionary())[kRestartSubprocesses].asBool();
@@ -956,6 +975,15 @@ void CuttlefishConfig::MutableInstanceSpecific::set_fail_fast(bool fail_fast) {
 }
 bool CuttlefishConfig::InstanceSpecific::fail_fast() const {
   return (*Dictionary())[kFailFast].asBool();
+}
+
+static constexpr char kVhostUserBlock[] = "vhost_user_block";
+void CuttlefishConfig::MutableInstanceSpecific::set_vhost_user_block(
+    bool block) {
+  (*Dictionary())[kVhostUserBlock] = block;
+}
+bool CuttlefishConfig::InstanceSpecific::vhost_user_block() const {
+  return (*Dictionary())[kVhostUserBlock].asBool();
 }
 
 static constexpr char kEnableWebRTC[] = "enable_webrtc";
@@ -1275,6 +1303,10 @@ std::string CuttlefishConfig::InstanceSpecific::hwcomposer_pmem_path() const {
 
 std::string CuttlefishConfig::InstanceSpecific::pstore_path() const {
   return AbsolutePath(PerInstancePath("pstore"));
+}
+
+std::string CuttlefishConfig::InstanceSpecific::pflash_path() const {
+  return AbsolutePath(PerInstancePath("pflash.img"));
 }
 
 std::string CuttlefishConfig::InstanceSpecific::console_path() const {
@@ -1834,6 +1866,15 @@ int CuttlefishConfig::InstanceSpecific::wifi_mac_prefix() const {
 void CuttlefishConfig::MutableInstanceSpecific::set_wifi_mac_prefix(
     int wifi_mac_prefix) {
   (*Dictionary())[kWifiMacPrefix] = wifi_mac_prefix;
+}
+
+static constexpr char kStartVhalProxyServer[] = "start_vhal_proxy_server";
+void CuttlefishConfig::MutableInstanceSpecific::set_start_vhal_proxy_server(
+    bool start_vhal_proxy_server) {
+  (*Dictionary())[kStartVhalProxyServer] = start_vhal_proxy_server;
+}
+bool CuttlefishConfig::InstanceSpecific::start_vhal_proxy_server() const {
+  return (*Dictionary())[kStartVhalProxyServer].asBool();
 }
 
 std::string CuttlefishConfig::InstanceSpecific::factory_reset_protected_path() const {
