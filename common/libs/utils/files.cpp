@@ -65,6 +65,7 @@
 #include "common/libs/fs/shared_buf.h"
 #include "common/libs/fs/shared_fd.h"
 #include "common/libs/utils/contains.h"
+#include "common/libs/utils/in_sandbox.h"
 #include "common/libs/utils/inotify.h"
 #include "common/libs/utils/result.h"
 #include "common/libs/utils/subprocess.h"
@@ -152,6 +153,9 @@ Result<std::vector<std::string>> DirectoryContents(const std::string& path) {
   CF_EXPECTF(dir != nullptr, "Could not read from dir \"{}\"", path);
   struct dirent* ent{};
   while ((ent = readdir(dir.get()))) {
+    if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0) {
+      continue;
+    }
     ret.emplace_back(ent->d_name);
   }
   return ret;
@@ -188,6 +192,10 @@ Result<void> EnsureDirectoryExists(const std::string& directory_path,
   if (mkdir(directory_path.c_str(), mode) < 0 && errno != EEXIST) {
     return CF_ERRNO("Failed to create directory: \"" << directory_path << "\""
                                                      << strerror(errno));
+  }
+  // TODO(schuffelen): Find an alternative for host-sandboxing mode
+  if (InSandbox()) {
+    return {};
   }
 
   CF_EXPECTF(chmod(directory_path.c_str(), mode) == 0,
@@ -595,9 +603,6 @@ Result<void> WalkDirectory(
     const std::function<bool(const std::string&)>& callback) {
   const auto files = CF_EXPECT(DirectoryContents(dir));
   for (const auto& filename : files) {
-    if (filename == "." || filename == "..") {
-      continue;
-    }
     auto file_path = dir + "/";
     file_path.append(filename);
     callback(file_path);
@@ -747,7 +752,7 @@ Result<void> WaitForUnixSocketListeningWithoutConnect(const std::string& path,
       return CF_ERR("Timed out");
     }
 
-    Command lsof("lsof");
+    Command lsof("/usr/bin/lsof");
     lsof.AddParameter(/*"format"*/ "-F", /*"connection state"*/ "TST");
     lsof.AddParameter(path);
     std::string lsof_out;

@@ -43,6 +43,7 @@
 #include "common/libs/fs/shared_buf.h"
 #include "common/libs/fs/shared_select.h"
 #include "common/libs/utils/contains.h"
+#include "common/libs/utils/files.h"
 #include "common/libs/utils/result.h"
 #include "common/libs/utils/subprocess.h"
 #include "host/libs/command_util/runner/defs.h"
@@ -87,7 +88,7 @@ void LogSubprocessExit(const std::string& name, const siginfo_t& infop) {
   }
 }
 
-Result<void> MonitorLoop(const std::atomic_bool& running,
+Result<void> MonitorLoop(std::atomic_bool& running,
                          std::mutex& properties_mutex,
                          const bool restart_subprocesses,
                          std::vector<MonitorEntry>& monitored) {
@@ -121,8 +122,8 @@ Result<void> MonitorLoop(const std::atomic_bool& running,
         if (running.load() && is_critical) {
           LOG(ERROR) << "Stopping all monitored processes due to unexpected "
                         "exit of critical process";
-          Command stop_cmd(StopCvdBinary());
-          stop_cmd.Start();
+          running.store(false);
+          break;
         }
       }
     }
@@ -244,13 +245,6 @@ Result<void> ProcessMonitor::StartSubprocesses(
     if (Contains(properties_.strace_commands_, short_name)) {
       options.Strace(properties.strace_log_dir_ + "/strace-" + short_name);
     }
-    if (properties.sandbox_processes_ && monitored.can_sandbox) {
-      options.SandboxArguments({
-          HostBinaryPath("process_sandboxer"),
-          "--log_dir=" + properties.strace_log_dir_,
-          "--host_artifacts_path=" + DefaultHostArtifactsPath(""),
-      });
-    }
     monitored.proc.reset(
         new Subprocess(monitored.cmd->Start(std::move(options))));
     CF_EXPECT(monitored.proc->Started(), "Failed to start subprocess");
@@ -314,8 +308,7 @@ ProcessMonitor::Properties ProcessMonitor::Properties::RestartSubprocesses(
 
 ProcessMonitor::Properties& ProcessMonitor::Properties::AddCommand(
     MonitorCommand cmd) & {
-  auto& entry = entries_.emplace_back(std::move(cmd.command), cmd.is_critical);
-  entry.can_sandbox = cmd.can_sandbox;
+  entries_.emplace_back(std::move(cmd.command), cmd.is_critical);
   return *this;
 }
 
@@ -342,16 +335,6 @@ ProcessMonitor::Properties& ProcessMonitor::Properties::StraceLogDir(
 ProcessMonitor::Properties ProcessMonitor::Properties::StraceLogDir(
     std::string log_dir) && {
   return std::move(StraceLogDir(std::move(log_dir)));
-}
-
-ProcessMonitor::Properties& ProcessMonitor::Properties::SandboxProcesses(
-    bool r) & {
-  sandbox_processes_ = r;
-  return *this;
-}
-ProcessMonitor::Properties ProcessMonitor::Properties::SandboxProcesses(
-    bool r) && {
-  return std::move(SandboxProcesses(r));
 }
 
 ProcessMonitor::ProcessMonitor(ProcessMonitor::Properties&& properties,

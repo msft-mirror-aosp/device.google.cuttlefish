@@ -88,11 +88,11 @@ void CrosvmBuilder::AddHvcReadWrite(const std::string& output,
 }
 
 void CrosvmBuilder::AddReadOnlyDisk(const std::string& path) {
-  command_.AddParameter("--disk=", path);
+  command_.AddParameter("--block=path=", path, ",ro=true");
 }
 
 void CrosvmBuilder::AddReadWriteDisk(const std::string& path) {
-  command_.AddParameter("--rwdisk=", path);
+  command_.AddParameter("--block=path=", path);
 }
 
 void CrosvmBuilder::AddSerialSink() {
@@ -117,39 +117,16 @@ void CrosvmBuilder::AddSerial(const std::string& output,
 }
 
 #ifdef __linux__
-SharedFD CrosvmBuilder::AddTap(const std::string& tap_name,
-                               std::optional<std::string_view> mac,
-                               const std::optional<pci::Address>& pci) {
-  auto tap_fd = OpenTapInterface(tap_name);
-  if (tap_fd->IsOpen()) {
-    command_.AddParameter("--net=tap-fd=", tap_fd, MacCrosvmArgument(mac), PciCrosvmArgument(pci));
-  } else {
-    LOG(ERROR) << "Unable to connect to \"" << tap_name
-               << "\": " << tap_fd->StrError();
-  }
-  return tap_fd;
+void CrosvmBuilder::AddTap(const std::string& tap_name,
+                           std::optional<std::string_view> mac,
+                           const std::optional<pci::Address>& pci) {
+  command_.AddParameter("--net=tap-name=", tap_name, MacCrosvmArgument(mac),
+                        PciCrosvmArgument(pci));
 }
 
 #endif
 
 int CrosvmBuilder::HvcNum() { return hvc_num_; }
-
-Result<void> CrosvmBuilder::SetToRestoreFromSnapshot(
-    const std::string& snapshot_dir_path, const std::string& instance_id_in_str,
-    const std::string& snapshot_name) {
-  auto meta_info_json = CF_EXPECT(LoadMetaJson(snapshot_dir_path));
-  const std::vector<std::string> selectors{kGuestSnapshotField,
-                                           instance_id_in_str};
-  const auto guest_snapshot_dir_suffix =
-      CF_EXPECT(GetValue<std::string>(meta_info_json, selectors));
-  // guest_snapshot_dir_suffix is a relative to
-  // the snapshot_path
-  const auto restore_path = snapshot_dir_path + "/" +
-                            guest_snapshot_dir_suffix + "/" +
-                            kGuestSnapshotBase + snapshot_name;
-  command_.AddParameter("--restore=", restore_path);
-  return {};
-}
 
 Command& CrosvmBuilder::Cmd() { return command_; }
 
