@@ -558,14 +558,6 @@ std::set<std::string> CuttlefishConfig::straced_host_executables() const {
   return straced_host_executables;
 }
 
-static constexpr char kHostSandbox[] = "host_sandbox";
-bool CuttlefishConfig::host_sandbox() const {
-  return (*dictionary_)[kHostSandbox].asBool();
-}
-void CuttlefishConfig::set_host_sandbox(bool host_sandbox) {
-  (*dictionary_)[kHostSandbox] = host_sandbox;
-}
-
 /*static*/ CuttlefishConfig* CuttlefishConfig::BuildConfigImpl(
     const std::string& path) {
   auto ret = new CuttlefishConfig();
@@ -653,18 +645,12 @@ std::string CuttlefishConfig::AssemblyPath(
   return AbsolutePath(assembly_dir() + "/" + file_name);
 }
 
+static constexpr char kInstancesUdsDir[] = "instances_uds_dir";
+void CuttlefishConfig::set_instances_uds_dir(const std::string& dir) {
+  (*dictionary_)[kInstancesUdsDir] = dir;
+}
 std::string CuttlefishConfig::instances_uds_dir() const {
-  // Try to use /tmp/cf_avd_{uid}/ for UDS directory.
-  // If it fails, use HOME directory(legacy) instead.
-
-  auto defaultPath = AbsolutePath("/tmp/cf_avd_" + std::to_string(getuid()));
-
-  if (!DirectoryExists(defaultPath) ||
-      CanAccess(defaultPath, R_OK | W_OK | X_OK)) {
-    return defaultPath;
-  }
-
-  return instances_dir();
+  return (*dictionary_)[kInstancesUdsDir].asString();
 }
 
 std::string CuttlefishConfig::InstancesUdsPath(
@@ -681,18 +667,12 @@ std::string CuttlefishConfig::EnvironmentsPath(
   return AbsolutePath(environments_dir() + "/" + file_name);
 }
 
+static constexpr char kEnvironmentsUdsDir[] = "environments_uds_dir";
+void CuttlefishConfig::set_environments_uds_dir(const std::string& dir) {
+  (*dictionary_)[kEnvironmentsUdsDir] = dir;
+}
 std::string CuttlefishConfig::environments_uds_dir() const {
-  // Try to use /tmp/cf_env_{uid}/ for UDS directory.
-  // If it fails, use HOME directory instead.
-
-  auto defaultPath = AbsolutePath("/tmp/cf_env_" + std::to_string(getuid()));
-
-  if (!DirectoryExists(defaultPath) ||
-      CanAccess(defaultPath, R_OK | W_OK | X_OK)) {
-    return defaultPath;
-  }
-
-  return environments_dir();
+  return (*dictionary_)[kEnvironmentsUdsDir].asString();
 }
 
 std::string CuttlefishConfig::EnvironmentsUdsPath(

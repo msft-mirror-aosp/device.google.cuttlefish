@@ -512,9 +512,6 @@ DEFINE_string(straced_host_executables, CF_DEFAULTS_STRACED_HOST_EXECUTABLES,
               "Comma-separated list of executable names to run under strace "
               "to collect their system call information.");
 
-DEFINE_bool(enable_host_sandbox, CF_DEFAULTS_HOST_SANDBOX,
-            "Lock down host processes with sandbox2");
-
 DEFINE_vec(
     fail_fast, CF_DEFAULTS_FAIL_FAST ? "true" : "false",
     "Whether to exit when a heuristic predicts the boot will not complete");
@@ -526,6 +523,9 @@ DECLARE_string(assembly_dir);
 DECLARE_string(boot_image);
 DECLARE_string(system_image_dir);
 DECLARE_string(snapshot_path);
+
+DEFINE_vec(vcpu_config_path, CF_DEFAULTS_VCPU_CONFIG_PATH,
+           "configuration file for Virtual Cpufreq");
 
 namespace cuttlefish {
 using vm_manager::QemuManager;
@@ -622,7 +622,8 @@ Result<std::vector<GuestConfig>> ReadGuestConfig() {
 
     Command ikconfig_cmd(HostBinaryPath("extract-ikconfig"));
     ikconfig_cmd.AddParameter(kernel_image_path);
-    ikconfig_cmd.SetEnvironment({new_path});
+    ikconfig_cmd.UnsetFromEnvironment("PATH").AddEnvironmentVariable("PATH",
+                                                                     new_path);
 
     std::string ikconfig_path =
         StringFromEnv("TEMP", "/tmp") + "/ikconfig.XXXXXX";
@@ -950,6 +951,24 @@ Result<void> CheckSnapshotCompatible(
   return {};
 }
 
+std::optional<std::string> EnvironmentUdsDir() {
+  auto environments_uds_dir = "/tmp/cf_env_" + std::to_string(getuid());
+  if (DirectoryExists(environments_uds_dir) &&
+      !CanAccess(environments_uds_dir, R_OK | W_OK | X_OK)) {
+    return std::nullopt;
+  }
+  return environments_uds_dir;
+}
+
+std::optional<std::string> InstancesUdsDir() {
+  auto instances_uds_dir = "/tmp/cf_avd_" + std::to_string(getuid());
+  if (DirectoryExists(instances_uds_dir) &&
+      !CanAccess(instances_uds_dir, R_OK | W_OK | X_OK)) {
+    return std::nullopt;
+  }
+  return instances_uds_dir;
+}
+
 } // namespace
 
 Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
@@ -976,6 +995,11 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
   }
 
   tmp_config_obj.set_root_dir(root_dir);
+
+  tmp_config_obj.set_environments_uds_dir(
+      EnvironmentUdsDir().value_or(tmp_config_obj.environments_dir()));
+  tmp_config_obj.set_instances_uds_dir(
+      InstancesUdsDir().value_or(tmp_config_obj.instances_dir()));
 
   auto instance_nums =
       CF_EXPECT(InstanceNumsCalculator().FromGlobalGflags().Calculate());
@@ -1233,6 +1257,9 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
 
   std::vector<std::string> mcu_config_vec = CF_EXPECT(GET_FLAG_STR_VALUE(mcu_config_path));
 
+  std::vector<std::string> vcpu_config_vec =
+      CF_EXPECT(GET_FLAG_STR_VALUE(vcpu_config_path));
+
   std::string default_enable_sandbox = "";
   std::string default_enable_virtiofs = "";
   std::string comma_str = "";
@@ -1296,8 +1323,6 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
   auto straced = android::base::Tokenize(FLAGS_straced_host_executables, ",");
   std::set<std::string> straced_set(straced.begin(), straced.end());
   tmp_config_obj.set_straced_host_executables(straced_set);
-
-  tmp_config_obj.set_host_sandbox(FLAGS_enable_host_sandbox);
 
   auto vhal_proxy_server_instance_num = *instance_nums.begin() - 1;
   if (FLAGS_vhal_proxy_server_instance_num > 0) {
@@ -1834,6 +1859,12 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
                                  /* follow_symlinks */ true),
                 "Failed to read mcu config file");
       instance.set_mcu(CF_EXPECT(ParseJson(file_content), "Failed parsing JSON file"));
+    }
+
+    if (!vcpu_config_vec[instance_index].empty()) {
+      auto vcpu_cfg_path = vcpu_config_vec[instance_index];
+      CF_EXPECT(FileExists(vcpu_cfg_path), "vCPU config file does not exist");
+      instance.set_vcpu_config_path(AbsolutePath(vcpu_cfg_path));
     }
 
     instance_index++;
