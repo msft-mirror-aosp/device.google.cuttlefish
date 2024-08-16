@@ -81,7 +81,7 @@ PRODUCT_COPY_FILES += \
 
 # vehicle HAL
 ifeq ($(LOCAL_VHAL_PRODUCT_PACKAGE),)
-    LOCAL_VHAL_PRODUCT_PACKAGE := android.hardware.automotive.vehicle@V3-emulator-service
+    LOCAL_VHAL_PRODUCT_PACKAGE := com.android.hardware.automotive.vehicle.cf
     BOARD_SEPOLICY_DIRS += device/google/cuttlefish/shared/auto/sepolicy/vhal
 endif
 PRODUCT_PACKAGES += $(LOCAL_VHAL_PRODUCT_PACKAGE)
@@ -132,7 +132,6 @@ ENABLE_CARTELEMETRY_SERVICE ?= true
 
 ifeq ($(ENABLE_MOCK_EVSHAL), true)
 CUSTOMIZE_EVS_SERVICE_PARAMETER := true
-USE_AIDL_DISPLAY_SERVICE := true
 PRODUCT_PACKAGES += android.hardware.automotive.evs-aidl-default-service
 PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/auto/evs/init.evs.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/init.evs.rc
