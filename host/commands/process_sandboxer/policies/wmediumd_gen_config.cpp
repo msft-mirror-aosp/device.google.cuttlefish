@@ -17,7 +17,6 @@
 #include "host/commands/process_sandboxer/policies.h"
 
 #include <sandboxed_api/sandbox2/allow_all_syscalls.h>
-#include <sandboxed_api/sandbox2/allow_unrestricted_networking.h>
 #include <sandboxed_api/sandbox2/policybuilder.h>
 #include <sandboxed_api/util/path.h>
 
@@ -25,17 +24,11 @@ namespace cuttlefish::process_sandboxer {
 
 using sapi::file::JoinPath;
 
-sandbox2::PolicyBuilder WebRtcPolicy(const HostInfo& host) {
-  // TODO: b/318609110 - Add system call policy. This only applies namespaces.
-  return BaselinePolicy(host, host.HostToolExe("webRTC"))
-      .AddDirectory(host.log_dir, /* is_ro= */ false)
-      .AddDirectory(host.host_artifacts_path + "/usr/share/webrtc/assets")
-      .AddDirectory(host.instance_uds_dir, /* is_ro= */ false)
-      .AddDirectory(JoinPath(host.runtime_dir, "recording"), /* is_ro= */ false)
-      .AddFile(host.cuttlefish_config_path)
-      .AddFile("/dev/urandom")
-      .AddFile("/run/cuttlefish/operator")
-      .Allow(sandbox2::UnrestrictedNetworking())
+sandbox2::PolicyBuilder WmediumdGenConfigPolicy(const HostInfo& host) {
+  // TODO: b/359313561 - Add system call policy. This only applies namespaces.
+  return BaselinePolicy(host, host.HostToolExe("wmediumd_gen_config"))
+      .AddDirectory(JoinPath(host.environments_dir, "env-1"),
+                    /* is_ro= */ false)
       .DefaultAction(sandbox2::AllowAllSyscalls());
 }
 
