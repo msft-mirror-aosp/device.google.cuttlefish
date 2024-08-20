@@ -16,10 +16,11 @@
 
 #pragma once
 
+#include <atomic>
 #include <memory>
 #include <mutex>
 #include <optional>
-#include <vector>
+#include <thread>
 
 #include "host/frontend/webrtc/cvd_video_frame_buffer.h"
 #include "host/frontend/webrtc/libdevice/video_sink.h"
@@ -42,9 +43,8 @@ struct WebRtcScProcessedFrame : public ScreenConnectorFrameInfo {
     // copy internal buffer, not move
     CvdVideoFrameBuffer* new_buffer = new CvdVideoFrameBuffer(*(buf_.get()));
     auto cloned_frame = std::make_unique<WebRtcScProcessedFrame>();
-    cloned_frame->buf_ =
-        std::move(std::unique_ptr<CvdVideoFrameBuffer>(new_buffer));
-    return std::move(cloned_frame);
+    cloned_frame->buf_ = std::unique_ptr<CvdVideoFrameBuffer>(new_buffer);
+    return cloned_frame;
   }
 };
 
@@ -61,7 +61,7 @@ class DisplayHandler {
 
   DisplayHandler(webrtc_streaming::Streamer& streamer,
                  ScreenConnector& screen_connector);
-  ~DisplayHandler() = default;
+  ~DisplayHandler();
 
   [[noreturn]] void Loop();
 
@@ -69,14 +69,23 @@ class DisplayHandler {
   void SendLastFrame(std::optional<uint32_t> display_number);
 
  private:
+  struct BufferInfo {
+    int64_t last_sent_time_stamp;
+    std::shared_ptr<webrtc_streaming::VideoFrameBuffer> buffer;
+  };
+
   GenerateProcessedFrameCallback GetScreenConnectorCallback();
+  void SendBuffers(std::map<uint32_t, std::shared_ptr<BufferInfo>> buffers);
+  void RepeatFramesPeriodically();
+
   std::map<uint32_t, std::shared_ptr<webrtc_streaming::VideoSink>>
       display_sinks_;
   webrtc_streaming::Streamer& streamer_;
   ScreenConnector& screen_connector_;
-  std::map<uint32_t, std::shared_ptr<webrtc_streaming::VideoFrameBuffer>>
-      display_last_buffers_;
-  std::mutex last_buffer_mutex_;
-  std::mutex next_frame_mutex_;
+  std::map<uint32_t, std::shared_ptr<BufferInfo>> display_last_buffers_;
+  std::mutex last_buffers_mutex_;
+  std::mutex send_mutex_;
+  std::thread frame_repeater_;
+  std::atomic<bool> repeater_running_ = true;
 };
 }  // namespace cuttlefish
