@@ -377,6 +377,7 @@ class CuttlefishConfig {
     std::string instance_internal_uds_dir() const;
 
     std::string touch_socket_path(int touch_dev_idx) const;
+    std::string mouse_socket_path() const;
     std::string rotary_socket_path() const;
     std::string keyboard_socket_path() const;
     std::string switches_socket_path() const;
@@ -676,6 +677,8 @@ class CuttlefishConfig {
 
     std::string custom_partition_path() const;
 
+    std::string hibernation_partition_image() const;
+
     int blank_metadata_image_mb() const;
     int blank_sdcard_image_mb() const;
     std::string bootloader() const;
@@ -896,6 +899,8 @@ class CuttlefishConfig {
     void set_bootconfig_supported(bool bootconfig_supported);
     void set_filename_encryption_mode(const std::string& userdata_format);
     void set_external_network_mode(ExternalNetworkMode network_mode);
+    void set_hibernation_partition_image(
+        const std::string& hibernation_partition_image);
 
     // Whether we should start vhal_proxy_server for the guest-side VHAL to
     // connect to.

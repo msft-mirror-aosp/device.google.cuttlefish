@@ -51,16 +51,22 @@ sandbox2::PolicyBuilder GnssGrpcProxyPolicy(const HostInfo&);
 sandbox2::PolicyBuilder KernelLogMonitorPolicy(const HostInfo&);
 sandbox2::PolicyBuilder LogTeePolicy(const HostInfo&);
 sandbox2::PolicyBuilder LogcatReceiverPolicy(const HostInfo&);
+sandbox2::PolicyBuilder MkEnvImgSlimPolicy(const HostInfo& host);
 sandbox2::PolicyBuilder ModemSimulatorPolicy(const HostInfo&);
+sandbox2::PolicyBuilder NewFsMsDosPolicy(const HostInfo&);
+sandbox2::PolicyBuilder OpenWrtControlServerPolicy(const HostInfo& host);
+sandbox2::PolicyBuilder OperatorProxyPolicy(const HostInfo& host);
 sandbox2::PolicyBuilder ProcessRestarterPolicy(const HostInfo&);
 sandbox2::PolicyBuilder RunCvdPolicy(const HostInfo&);
 sandbox2::PolicyBuilder ScreenRecordingServerPolicy(const HostInfo&);
 sandbox2::PolicyBuilder SecureEnvPolicy(const HostInfo&);
+sandbox2::PolicyBuilder Simg2ImgPolicy(const HostInfo&);
 sandbox2::PolicyBuilder SocketVsockProxyPolicy(const HostInfo&);
 sandbox2::PolicyBuilder TcpConnectorPolicy(const HostInfo&);
 sandbox2::PolicyBuilder TombstoneReceiverPolicy(const HostInfo&);
 sandbox2::PolicyBuilder WebRtcPolicy(const HostInfo&);
 sandbox2::PolicyBuilder WmediumdPolicy(const HostInfo&);
+sandbox2::PolicyBuilder WmediumdGenConfigPolicy(const HostInfo&);
 
 std::set<std::string> NoPolicy(const HostInfo&);
 
