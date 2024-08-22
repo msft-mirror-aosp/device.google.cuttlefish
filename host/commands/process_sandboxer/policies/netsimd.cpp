@@ -17,17 +17,22 @@
 #include "host/commands/process_sandboxer/policies.h"
 
 #include <sandboxed_api/sandbox2/allow_all_syscalls.h>
+#include <sandboxed_api/sandbox2/allow_unrestricted_networking.h>
 #include <sandboxed_api/sandbox2/policybuilder.h>
+#include <sandboxed_api/util/path.h>
 
 namespace cuttlefish::process_sandboxer {
 
-sandbox2::PolicyBuilder ModemSimulatorPolicy(const HostInfo& host) {
-  // TODO: b/318601112 - Add system call policy. This only applies namespaces.
-  return BaselinePolicy(host, host.HostToolExe("modem_simulator"))
-      .AddDirectory(host.host_artifacts_path + "/etc/modem_simulator")
-      .AddDirectory(host.log_dir, /* is_ro= */ false)
-      .AddDirectory(host.runtime_dir, /* is_ro= */ false)  // modem_nvram.json
-      .AddFile(host.cuttlefish_config_path)
+using sapi::file::JoinPath;
+
+sandbox2::PolicyBuilder NetsimdPolicy(const HostInfo& host) {
+  // TODO: b/318603863 - Add system call policy. This only applies namespaces.
+  return BaselinePolicy(host, host.HostToolExe("netsimd"))
+      .AddDirectory(JoinPath(host.host_artifacts_path, "bin", "netsim-ui"))
+      .AddDirectory("/tmp", /* is_ro= */ false)  // to create new directories
+      .AddDirectory(JoinPath(host.runtime_dir, "internal"), /* is_ro= */ false)
+      .AddFile("/dev/urandom")  // For gRPC
+      .Allow(sandbox2::UnrestrictedNetworking())
       .DefaultAction(sandbox2::AllowAllSyscalls());
 }
 
