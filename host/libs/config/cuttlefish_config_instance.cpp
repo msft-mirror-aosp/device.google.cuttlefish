@@ -373,6 +373,16 @@ void CuttlefishConfig::MutableInstanceSpecific::set_custom_partition_path(
 std::string CuttlefishConfig::InstanceSpecific::custom_partition_path() const {
   return (*Dictionary())[kCustomPartitionPath].asString();
 }
+static constexpr char kHibernationPartitionImage[] =
+    "hibernation_partition_image";
+void CuttlefishConfig::MutableInstanceSpecific::set_hibernation_partition_image(
+    const std::string& hibernation_partition_image) {
+  (*Dictionary())[kHibernationPartitionImage] = hibernation_partition_image;
+}
+std::string CuttlefishConfig::InstanceSpecific::hibernation_partition_image()
+    const {
+  return (*Dictionary())[kHibernationPartitionImage].asString();
+}
 static constexpr char kBlankMetadataImageMb[] = "blank_metadata_image_mb";
 int CuttlefishConfig::InstanceSpecific::blank_metadata_image_mb() const {
   return (*Dictionary())[kBlankMetadataImageMb].asInt();
@@ -1835,6 +1845,10 @@ std::string CuttlefishConfig::InstanceSpecific::touch_socket_path(
     int touch_dev_idx) const {
   return PerInstanceInternalUdsPath(
       ("touch_" + std::to_string(touch_dev_idx) + ".sock").c_str());
+}
+
+std::string CuttlefishConfig::InstanceSpecific::mouse_socket_path() const {
+  return PerInstanceInternalPath("mouse.sock");
 }
 
 std::string CuttlefishConfig::InstanceSpecific::rotary_socket_path() const {
