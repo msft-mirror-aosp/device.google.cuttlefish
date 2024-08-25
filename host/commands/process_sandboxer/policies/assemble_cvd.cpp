@@ -43,7 +43,6 @@ sandbox2::PolicyBuilder AssembleCvdPolicy(const HostInfo& host) {
       .AddDirectory(host.runtime_dir, /* is_ro= */ false)
       .AddFileAt(sandboxer_proxy,
                  "/usr/lib/cuttlefish-common/bin/capability_query.py")
-      .AddFileAt(sandboxer_proxy, "/bin/bash")
       .AddFileAt(sandboxer_proxy, host.HostToolExe("avbtool"))
       .AddFileAt(sandboxer_proxy, host.HostToolExe("crosvm"))
       .AddFileAt(sandboxer_proxy, host.HostToolExe("extract-ikconfig"))
@@ -51,8 +50,6 @@ sandbox2::PolicyBuilder AssembleCvdPolicy(const HostInfo& host) {
       .AddFileAt(sandboxer_proxy, host.HostToolExe("newfs_msdos"))
       // TODO(schuffelen): Do this in-process?
       .AddFileAt(sandboxer_proxy, host.HostToolExe("simg2img"))
-      // TODO(schuffelen): Do this in-process?
-      .AddFileAt(sandboxer_proxy, "/bin/mv")
       .AddFileAt(sandboxer_proxy, "/usr/bin/lsof")
       .AddDirectory(host.environments_dir)
       .AddDirectory(host.environments_uds_dir, false)
