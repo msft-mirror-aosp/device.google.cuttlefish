@@ -18,25 +18,20 @@
 
 #include <syscall.h>
 
+#include <sandboxed_api/sandbox2/allow_unrestricted_networking.h>
 #include <sandboxed_api/sandbox2/policybuilder.h>
 #include <sandboxed_api/sandbox2/trace_all_syscalls.h>
-#include <sandboxed_api/util/path.h>
 
 namespace cuttlefish::process_sandboxer {
 
-using sapi::file::JoinPath;
-
-sandbox2::PolicyBuilder WmediumdPolicy(const HostInfo& host) {
-  // TODO: b/318610207 - Add system call policy. This only applies namespaces.
-  return BaselinePolicy(host, host.HostToolExe("wmediumd"))
-      .AddDirectory(host.environments_uds_dir, /* is_ro= */ false)
+sandbox2::PolicyBuilder OpenWrtControlServerPolicy(const HostInfo& host) {
+  // TODO: b/318605411 - Add system call policy. This only applies namespaces.
+  return BaselinePolicy(host, host.HostToolExe("openwrt_control_server"))
       .AddDirectory(host.instance_uds_dir, /* is_ro= */ false)
-      .AddDirectory(host.log_dir, /* is_ro= */ false)
+      .AddDirectory(host.log_dir)
       .AddFile("/dev/urandom")  // For gRPC
-      .AddFile(JoinPath(host.environments_dir, "env-1", "wmediumd.cfg"),
-               /* is_ro= */ false)
-      .AddFile(host.cuttlefish_config_path)
       .AllowSleep()
+      .Allow(sandbox2::UnrestrictedNetworking())  // HTTP calls to luci
       .DefaultAction(sandbox2::TraceAllSyscalls());
 }
 
