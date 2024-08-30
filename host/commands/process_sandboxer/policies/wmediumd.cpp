@@ -16,6 +16,8 @@
 
 #include "host/commands/process_sandboxer/policies.h"
 
+#include <syscall.h>
+
 #include <sandboxed_api/sandbox2/policybuilder.h>
 #include <sandboxed_api/sandbox2/trace_all_syscalls.h>
 #include <sandboxed_api/util/path.h>
@@ -34,6 +36,11 @@ sandbox2::PolicyBuilder WmediumdPolicy(const HostInfo& host) {
       .AddFile(JoinPath(host.environments_dir, "env-1", "wmediumd.cfg"),
                /* is_ro= */ false)
       .AddFile(host.cuttlefish_config_path)
+      .AllowSelect()
+      .AllowSleep()
+      .AllowSyscall(__NR_timerfd_settime)
+      .AllowSyscall(__NR_recvmsg)
+      .AllowSyscall(__NR_sendmsg)
       .DefaultAction(sandbox2::TraceAllSyscalls());
 }
 
