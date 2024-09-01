@@ -21,13 +21,11 @@
 
 namespace cuttlefish::process_sandboxer {
 
-sandbox2::PolicyBuilder ScreenRecordingServerPolicy(const HostInfo& host) {
-  // TODO: b/318607077 - Add system call policy. This only applies namespaces.
-  return BaselinePolicy(host, host.HostToolExe("screen_recording_server"))
+sandbox2::PolicyBuilder ControlEnvProxyServerPolicy(const HostInfo& host) {
+  // TODO: b/318592219 - Add system call policy. This only applies namespaces.
+  return BaselinePolicy(host, host.HostToolExe("control_env_proxy_server"))
       .AddDirectory(host.instance_uds_dir, /* is_ro= */ false)
-      .AddDirectory(host.log_dir, /* is_ro= */ false)
       .AddFile("/dev/urandom")  // For gRPC
-      .AddFile(host.cuttlefish_config_path)
       .DefaultAction(sandbox2::TraceAllSyscalls());
 }
 

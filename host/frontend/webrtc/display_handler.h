@@ -16,7 +16,7 @@
 
 #pragma once
 
-#include <atomic>
+#include <chrono>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -68,10 +68,18 @@ class DisplayHandler {
   // If std::nullopt, send last frame for all displays.
   void SendLastFrame(std::optional<uint32_t> display_number);
 
+  void AddDisplayClient();
+  void RemoveDisplayClient();
+
  private:
   struct BufferInfo {
-    int64_t last_sent_time_stamp;
+    std::chrono::system_clock::time_point last_sent_time_stamp;
     std::shared_ptr<webrtc_streaming::VideoFrameBuffer> buffer;
+  };
+  enum class RepeaterState: int {
+    PAUSED = 0,
+    REPEATING = 1,
+    STOPPED = 2,
   };
 
   GenerateProcessedFrameCallback GetScreenConnectorCallback();
@@ -86,6 +94,9 @@ class DisplayHandler {
   std::mutex last_buffers_mutex_;
   std::mutex send_mutex_;
   std::thread frame_repeater_;
-  std::atomic<bool> repeater_running_ = true;
+  RepeaterState repeater_state_ = RepeaterState::PAUSED;
+  int num_active_clients_ = 0;
+  std::mutex repeater_state_mutex_;
+  std::condition_variable repeater_state_condvar_;
 };
 }  // namespace cuttlefish
