@@ -34,6 +34,7 @@
 #include <absl/functional/bind_front.h>
 #include <absl/log/log.h>
 #include <absl/log/vlog_is_on.h>
+#include <absl/memory/memory.h>
 #include <absl/status/status.h>
 #include <absl/status/statusor.h>
 #include <absl/strings/numbers.h>
@@ -44,11 +45,14 @@
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wunused-parameter"
 #include <sandboxed_api/sandbox2/executor.h>
+#include <sandboxed_api/sandbox2/notify.h>
 #include <sandboxed_api/sandbox2/policy.h>
 #include <sandboxed_api/sandbox2/sandbox2.h>
+#include <sandboxed_api/sandbox2/util.h>
 #include <sandboxed_api/util/path.h>
 #pragma clang diagnostic pop
 
+#include "host/commands/process_sandboxer/credentialed_unix_server.h"
 #include "host/commands/process_sandboxer/pidfd.h"
 #include "host/commands/process_sandboxer/policies.h"
 #include "host/commands/process_sandboxer/poll_callback.h"
@@ -59,8 +63,18 @@ namespace cuttlefish::process_sandboxer {
 using sandbox2::Executor;
 using sandbox2::Policy;
 using sandbox2::Sandbox2;
+using sandbox2::Syscall;
+using sandbox2::util::GetProgName;
 using sapi::file::CleanPath;
 using sapi::file::JoinPath;
+
+namespace {
+
+std::string ServerSocketOutsidePath(std::string_view runtime_dir) {
+  return JoinPath(runtime_dir, "/", "server.sock");
+}
+
+}  // namespace
 
 class SandboxManager::ProcessNoSandbox : public SandboxManager::ManagedProcess {
  public:
@@ -263,11 +277,15 @@ class SandboxManager::SocketClient {
     if (!fds.ok()) {
       return fds.status();
     }
+    absl::StatusOr<std::vector<std::string>> env = pid_fd_->Env();
+    if (!env.ok()) {
+      return env.status();
+    }
     fds->erase(std::remove_if(fds->begin(), fds->end(), [this](auto& arg) {
       return arg.second == ignored_fd_;
     }));
     return manager_.RunProcess(client_fd_.Get(), std::move(*argv),
-                               std::move(*fds));
+                               std::move(*fds), *env);
   }
 
   SandboxManager& manager_;
@@ -280,68 +298,42 @@ class SandboxManager::SocketClient {
   int ignored_fd_ = -1;
 };
 
+SandboxManager::SandboxManager(HostInfo host_info, std::string runtime_dir,
+                               SignalFd signals, CredentialedUnixServer server)
+    : host_info_(std::move(host_info)),
+      runtime_dir_(std::move(runtime_dir)),
+      signals_(std::move(signals)),
+      server_(std::move(server)) {}
+
 absl::StatusOr<std::unique_ptr<SandboxManager>> SandboxManager::Create(
     HostInfo host_info) {
-  std::unique_ptr<SandboxManager> manager(new SandboxManager());
-  manager->host_info_ = std::move(host_info);
-  manager->runtime_dir_ =
+  std::string runtime_dir =
       absl::StrFormat("/tmp/sandbox_manager.%u.XXXXXX", getpid());
-  if (mkdtemp(manager->runtime_dir_.data()) == nullptr) {
+  if (mkdtemp(runtime_dir.data()) == nullptr) {
     return absl::ErrnoToStatus(errno, "mkdtemp failed");
   }
-  VLOG(1) << "Created temporary directory '" << manager->runtime_dir_ << "'";
+  VLOG(1) << "Created temporary directory '" << runtime_dir << "'";
 
-  sigset_t mask;
-  if (sigfillset(&mask) < 0) {
-    return absl::ErrnoToStatus(errno, "sigfillset failed");
-  }
-  // TODO(schuffelen): Explore interaction between catching SIGCHLD and sandbox2
-  if (sigdelset(&mask, SIGCHLD) < 0) {
-    return absl::ErrnoToStatus(errno, "sigdelset failed");
-  }
-  if (sigprocmask(SIG_SETMASK, &mask, NULL) < 0) {
-    return absl::ErrnoToStatus(errno, "sigprocmask failed");
-  }
-  VLOG(1) << "Blocked signals";
-
-  manager->signal_fd_.Reset(signalfd(-1, &mask, SFD_CLOEXEC | SFD_NONBLOCK));
-  if (manager->signal_fd_.Get() < 0) {
-    return absl::ErrnoToStatus(errno, "signalfd failed");
-  }
-  VLOG(1) << "Created signalfd";
-
-  manager->server_fd_.Reset(socket(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC, 0));
-  if (manager->server_fd_.Get() < 0) {
-    return absl::ErrnoToStatus(errno, "`socket` failed");
-  }
-  sockaddr_un socket_name = {
-      .sun_family = AF_UNIX,
-  };
-  std::snprintf(socket_name.sun_path, sizeof(socket_name.sun_path), "%s",
-                manager->ServerSocketOutsidePath().c_str());
-  auto sockname_ptr = reinterpret_cast<sockaddr*>(&socket_name);
-  if (bind(manager->server_fd_.Get(), sockname_ptr, sizeof(socket_name)) < 0) {
-    return absl::ErrnoToStatus(errno, "`bind` failed");
+  absl::StatusOr<SignalFd> signals = SignalFd::AllExceptSigChld();
+  if (!signals.ok()) {
+    return signals.status();
   }
 
-  int enable = 1;
-  if (setsockopt(manager->server_fd_.Get(), SOL_SOCKET, SO_PASSCRED, &enable,
-                 sizeof(enable)) < 0) {
-    static constexpr char kErr[] = "`setsockopt(..., SO_PASSCRED, ...)` failed";
-    return absl::ErrnoToStatus(errno, kErr);
+  absl::StatusOr<CredentialedUnixServer> server =
+      CredentialedUnixServer::Open(ServerSocketOutsidePath(runtime_dir));
+  if (!server.ok()) {
+    return server.status();
   }
 
-  if (listen(manager->server_fd_.Get(), 10) < 0) {
-    return absl::ErrnoToStatus(errno, "`listen` failed");
-  }
-
-  return manager;
+  return absl::WrapUnique(
+      new SandboxManager(std::move(host_info), std::move(runtime_dir),
+                         std::move(*signals), std::move(*server)));
 }
 
 SandboxManager::~SandboxManager() {
   VLOG(1) << "Sandbox shutting down";
   if (!runtime_dir_.empty()) {
-    if (unlink(ServerSocketOutsidePath().c_str()) < 0) {
+    if (unlink(ServerSocketOutsidePath(runtime_dir_).c_str()) < 0) {
       PLOG(ERROR) << "`unlink` failed";
     }
     if (rmdir(runtime_dir_.c_str()) < 0) {
@@ -352,7 +344,8 @@ SandboxManager::~SandboxManager() {
 
 absl::Status SandboxManager::RunProcess(
     std::optional<int> client_fd, absl::Span<const std::string> argv,
-    std::vector<std::pair<UniqueFd, int>> fds) {
+    std::vector<std::pair<UniqueFd, int>> fds,
+    absl::Span<const std::string> env) {
   if (argv.empty()) {
     return absl::InvalidArgumentError("Not enough arguments");
   }
@@ -373,21 +366,34 @@ absl::Status SandboxManager::RunProcess(
       return absl::ErrnoToStatus(errno, "Failed to `dup` stdio descriptor");
     }
   }
-  auto exe = CleanPath(argv[0]);
+  std::string exe = CleanPath(argv[0]);
   // TODO(schuffelen): Introduce an allow-list for executables to run outside
   // any sandbox.
-  auto policy = PolicyForExecutable(host_info_, ServerSocketOutsidePath(), exe);
+  std::unique_ptr<Policy> policy = PolicyForExecutable(
+      host_info_, ServerSocketOutsidePath(runtime_dir_), exe);
   if (policy) {
-    return RunSandboxedProcess(client_fd, argv, std::move(fds),
+    return RunSandboxedProcess(client_fd, argv, std::move(fds), env,
                                std::move(policy));
   } else {
-    return RunProcessNoSandbox(client_fd, argv, std::move(fds));
+    return RunProcessNoSandbox(client_fd, argv, std::move(fds), env);
   }
 }
 
+class TraceAndAllow : public sandbox2::Notify {
+ public:
+  TraceAction EventSyscallTrace(const Syscall& syscall) override {
+    std::string prog_name = GetProgName(syscall.pid());
+    LOG(WARNING) << "[PERMITTED]: SYSCALL ::: PID: " << syscall.pid()
+                 << ", PROG: '" << prog_name
+                 << "' : " << syscall.GetDescription();
+    return TraceAction::kAllow;
+  }
+};
+
 absl::Status SandboxManager::RunSandboxedProcess(
     std::optional<int> client_fd, absl::Span<const std::string> argv,
-    std::vector<std::pair<UniqueFd, int>> fds, std::unique_ptr<Policy> policy) {
+    std::vector<std::pair<UniqueFd, int>> fds,
+    absl::Span<const std::string> env, std::unique_ptr<Policy> policy) {
   if (VLOG_IS_ON(1)) {
     std::stringstream process_stream;
     process_stream << "Launching executable with argv: [\n";
@@ -403,7 +409,7 @@ absl::Status SandboxManager::RunSandboxedProcess(
   }
 
   auto exe = CleanPath(argv[0]);
-  auto executor = std::make_unique<Executor>(exe, argv);
+  auto executor = std::make_unique<Executor>(exe, argv, env);
   executor->set_cwd(host_info_.runtime_dir);
 
   // https://cs.android.com/android/platform/superproject/main/+/main:external/sandboxed-api/sandboxed_api/sandbox2/limits.h;l=116;drc=d451478e26c0352ecd6912461e867a1ae64b17f5
@@ -422,7 +428,11 @@ absl::Status SandboxManager::RunSandboxedProcess(
     return absl::ErrnoToStatus(errno, "`eventfd` failed");
   }
 
-  auto sbx = std::make_unique<Sandbox2>(std::move(executor), std::move(policy));
+  // TODO: b/318576505 - Don't allow unknown system calls.
+  std::unique_ptr<sandbox2::Notify> notify(new TraceAndAllow());
+
+  auto sbx = std::make_unique<Sandbox2>(std::move(executor), std::move(policy),
+                                        std::move(notify));
   if (!sbx->RunAsync()) {
     return sbx->AwaitResult().ToStatus();
   }
@@ -451,12 +461,13 @@ absl::Status SandboxManager::RunSandboxedProcess(
 
 absl::Status SandboxManager::RunProcessNoSandbox(
     std::optional<int> client_fd, absl::Span<const std::string> argv,
-    std::vector<std::pair<UniqueFd, int>> fds) {
+    std::vector<std::pair<UniqueFd, int>> fds,
+    absl::Span<const std::string> env) {
   if (!client_fd) {
     return absl::InvalidArgumentError("no client for unsandboxed process");
   }
 
-  absl::StatusOr<PidFd> fd = PidFd::LaunchSubprocess(argv, std::move(fds));
+  absl::StatusOr<PidFd> fd = PidFd::LaunchSubprocess(argv, std::move(fds), env);
   if (!fd.ok()) {
     return fd.status();
   }
@@ -470,8 +481,8 @@ bool SandboxManager::Running() const { return running_; }
 absl::Status SandboxManager::Iterate() {
   PollCallback poll_cb;
 
-  poll_cb.Add(signal_fd_.Get(), bind_front(&SandboxManager::Signalled, this));
-  poll_cb.Add(server_fd_.Get(), bind_front(&SandboxManager::NewClient, this));
+  poll_cb.Add(signals_.Fd(), bind_front(&SandboxManager::Signalled, this));
+  poll_cb.Add(server_.Fd(), bind_front(&SandboxManager::NewClient, this));
 
   for (auto it = subprocesses_.begin(); it != subprocesses_.end(); it++) {
     int fd = (*it)->PollFd();
@@ -490,27 +501,22 @@ absl::Status SandboxManager::Signalled(short revents) {
     running_ = false;
     return absl::InternalError("signalfd exited");
   }
-  signalfd_siginfo info;
-  auto read_res = read(signal_fd_.Get(), &info, sizeof(info));
-  if (read_res < 0) {
-    return absl::ErrnoToStatus(errno, "`read(signal_fd_, ...)` failed");
-  } else if (read_res == 0) {
-    return absl::InternalError("read(signal_fd_, ...) returned EOF");
-  } else if (read_res != (ssize_t)sizeof(info)) {
-    std::string err = absl::StrCat("read(signal_fd_, ...) gave '", read_res);
-    return absl::InternalError(err);
-  }
-  VLOG(1) << "Received signal with signo '" << info.ssi_signo << "'";
 
-  switch (info.ssi_signo) {
+  absl::StatusOr<signalfd_siginfo> info = signals_.ReadSignal();
+  if (!info.ok()) {
+    return info.status();
+  }
+  VLOG(1) << "Received signal with signo '" << info->ssi_signo << "'";
+
+  switch (info->ssi_signo) {
     case SIGHUP:
     case SIGINT:
     case SIGTERM:
-      LOG(INFO) << "Received signal '" << info.ssi_signo << "', exiting";
+      LOG(INFO) << "Received signal '" << info->ssi_signo << "', exiting";
       running_ = false;
       return absl::OkStatus();
     default:
-      std::string err = absl::StrCat("Unexpected signal ", info.ssi_signo);
+      std::string err = absl::StrCat("Unexpected signal ", info->ssi_signo);
       return absl::InternalError(err);
   }
 }
@@ -520,11 +526,11 @@ absl::Status SandboxManager::NewClient(short revents) {
     running_ = false;
     return absl::InternalError("server socket exited");
   }
-  UniqueFd client(accept4(server_fd_.Get(), nullptr, nullptr, SOCK_CLOEXEC));
-  if (client.Get() < 0) {
-    return absl::ErrnoToStatus(errno, "`accept` failed");
+  absl::StatusOr<UniqueFd> client = server_.AcceptClient();
+  if (!client.ok()) {
+    return client.status();
   }
-  clients_.emplace_back(new SocketClient(*this, std::move(client)));
+  clients_.emplace_back(new SocketClient(*this, std::move(*client)));
   return absl::OkStatus();
 }
 
@@ -548,6 +554,9 @@ absl::Status SandboxManager::ProcessExit(SandboxManager::SboxIter it,
     }
   }
   subprocesses_.erase(it);
+  if (subprocesses_.empty()) {
+    running_ = false;
+  }
   static constexpr char kErr[] = "eventfd exited";
   return revents == POLLIN ? absl::OkStatus() : absl::InternalError(kErr);
 }
@@ -559,10 +568,6 @@ absl::Status SandboxManager::ClientMessage(SandboxManager::ClientIter it,
   }
   clients_.erase(it);
   return absl::InternalError("client dropped file descriptor");
-}
-
-std::string SandboxManager::ServerSocketOutsidePath() const {
-  return JoinPath(runtime_dir_, "/", "server.sock");
 }
 
 }  // namespace cuttlefish::process_sandboxer
