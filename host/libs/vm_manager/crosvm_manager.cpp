@@ -322,14 +322,6 @@ Result<VhostUserDeviceCommands> BuildVhostUserGpu(
   // Connect device to main crosvm:
   gpu_device_cmd.Cmd().AddParameter("--socket=", gpu_device_socket_path);
 
-  main_crosvm_cmd->AddPrerequisite([gpu_device_socket_path]() -> Result<void> {
-#ifdef __linux__
-    return WaitForUnixSocketListeningWithoutConnect(gpu_device_socket_path,
-                                                    /*timeoutSec=*/30);
-#else
-    return CF_ERR("Unhandled check if vhost user gpu ready.");
-#endif
-  });
   main_crosvm_cmd->AddParameter(
       "--vhost-user=gpu,pci-address=", gpu_pci_address,
       ",socket=", gpu_device_socket_path);
@@ -491,6 +483,8 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
   }
 
   crosvm_cmd.Cmd().AddParameter("--core-scheduling=false");
+
+  crosvm_cmd.Cmd().AddParameter("--vhost-user-connect-timeout-ms=", 30 * 1000);
 
   if (instance.vhost_net()) {
     crosvm_cmd.Cmd().AddParameter("--vhost-net");
@@ -891,10 +885,12 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
   if (instance.enable_virtiofs()) {
     CF_EXPECT(instance.enable_sandbox(),
               "virtiofs is currently not supported without sandboxing");
-    // Set up directory shared with virtiofs
+    // Set up directory shared with virtiofs, setting security_ctx option to
+    // false prevents host error when unable to write data in the
+    // /proc/thread-self/attr/fscreate file.
     crosvm_cmd.Cmd().AddParameter(
         "--shared-dir=", instance.PerInstancePath(kSharedDirName),
-        ":shared:type=fs");
+        ":shared:type=fs:security_ctx=false");
   }
 
   if (instance.target_arch() == Arch::X86_64) {
@@ -918,7 +914,7 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
 
   if (gpu_capture_enabled) {
     const std::string gpu_capture_basename =
-        cpp_basename(instance.gpu_capture_binary());
+        android::base::Basename(instance.gpu_capture_binary());
 
     auto gpu_capture_logs_path =
         instance.PerInstanceInternalPath("gpu_capture.fifo");
