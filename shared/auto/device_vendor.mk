@@ -132,7 +132,6 @@ ENABLE_CARTELEMETRY_SERVICE ?= true
 
 ifeq ($(ENABLE_MOCK_EVSHAL), true)
 CUSTOMIZE_EVS_SERVICE_PARAMETER := true
-USE_AIDL_DISPLAY_SERVICE := true
 PRODUCT_PACKAGES += android.hardware.automotive.evs-aidl-default-service
 PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/auto/evs/init.evs.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/init.evs.rc
@@ -155,3 +154,4 @@ PRODUCT_PACKAGES += ConnectivityOverlayCuttleFish
 GOOGLE_CAR_SERVICE_OVERLAY += ConnectivityOverlayCuttleFishGoogle
 
 TARGET_BOARD_INFO_FILE ?= device/google/cuttlefish/shared/auto/android-info.txt
+BOARD_BOOTCONFIG += androidboot.hibernation_resume_device=259:3
