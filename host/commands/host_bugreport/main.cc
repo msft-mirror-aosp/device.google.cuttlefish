@@ -18,6 +18,7 @@
 #include <fstream>
 #include <string>
 
+#include <android-base/file.h>
 #include <android-base/logging.h>
 #include <android-base/strings.h>
 #include <gflags/gflags.h>
@@ -25,6 +26,7 @@
 #include "common/libs/fs/shared_fd.h"
 #include "common/libs/fs/shared_select.h"
 #include "common/libs/utils/files.h"
+#include "common/libs/utils/subprocess.h"
 #include "common/libs/utils/tee_logging.h"
 #include "host/libs/config/cuttlefish_config.h"
 #include "ziparchive/zip_writer.h"
@@ -69,6 +71,42 @@ void AddNetsimdLogs(ZipWriter& writer) {
   for (const auto& name : names.value()) {
     SaveFile(writer, "netsimd/" + name, dir + "/" + name);
   }
+}
+
+Result<void> CreateDeviceBugreport(
+    const CuttlefishConfig::InstanceSpecific& ins, const std::string& out_dir) {
+  std::string adb_bin_path = HostBinaryPath("adb");
+  CF_EXPECT(FileExists(adb_bin_path),
+            "adb binary not found at: " << adb_bin_path);
+  Command connect_cmd("timeout");
+  connect_cmd.SetWorkingDirectory(
+      "/");  // Use a deterministic working directory
+  connect_cmd.AddParameter("30s")
+      .AddParameter(adb_bin_path)
+      .AddParameter("connect")
+      .AddParameter(ins.adb_ip_and_port());
+  CF_EXPECT_EQ(connect_cmd.Start().Wait(), 0, "adb connect failed");
+  Command wait_for_device_cmd("timeout");
+  wait_for_device_cmd.SetWorkingDirectory(
+      "/");  // Use a deterministic working directory
+  wait_for_device_cmd.AddParameter("30s")
+      .AddParameter(adb_bin_path)
+      .AddParameter("-s")
+      .AddParameter(ins.adb_ip_and_port())
+      .AddParameter("wait-for-device");
+  CF_EXPECT_EQ(wait_for_device_cmd.Start().Wait(), 0,
+               "adb wait-for-device failed");
+  Command bugreport_cmd("timeout");
+  bugreport_cmd.SetWorkingDirectory(
+      "/");  // Use a deterministic working directory
+  bugreport_cmd.AddParameter("300s")
+      .AddParameter(adb_bin_path)
+      .AddParameter("-s")
+      .AddParameter(ins.adb_ip_and_port())
+      .AddParameter("bugreport")
+      .AddParameter(out_dir);
+  CF_EXPECT_EQ(bugreport_cmd.Start().Wait(), 0, "adb bugreport failed");
+  return {};
 }
 
 Result<void> CvdHostBugreportMain(int argc, char** argv) {
@@ -145,6 +183,30 @@ Result<void> CvdHostBugreportMain(int argc, char** argv) {
         LOG(ERROR) << "Cannot read from recording directory: "
                    << result.error().FormatForEnv(/* color = */ false);
       }
+    }
+
+    {
+      // TODO(b/359657254) Create the `adb bugreport` asynchronously.
+      std::string device_br_dir = "/tmp/cvd_dbrXXXXXX";
+      CF_EXPECTF(mkdtemp(device_br_dir.data()) != nullptr,
+                 "mkdtemp failed: '{}'", strerror(errno));
+      auto result = CreateDeviceBugreport(instance, device_br_dir);
+      if (result.ok()) {
+        auto names = DirectoryContents(device_br_dir);
+        if (names.ok()) {
+          for (const auto& name : names.value()) {
+            std::string filename = device_br_dir + "/" + name;
+            SaveFile(writer, android::base::Basename(filename), filename);
+          }
+        } else {
+          LOG(ERROR) << "Cannot read from device bugreport directory: "
+                     << names.error().FormatForEnv(/* color = */ false);
+        }
+      } else {
+        LOG(ERROR) << "Failed to create device bugreport: "
+                   << result.error().FormatForEnv(/* color = */ false);
+      }
+      static_cast<void>(RecursivelyRemoveDirectory(device_br_dir));
     }
   }
 
