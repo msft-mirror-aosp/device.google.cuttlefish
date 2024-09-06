@@ -214,8 +214,14 @@ PRODUCT_PACKAGES += CFSatelliteService
 #
 # Common manifest for all targets
 #
-PRODUCT_SHIPPING_API_LEVEL := 35
+
+ifeq ($(RELEASE_AIDL_USE_UNFROZEN),true)
+PRODUCT_SHIPPING_API_LEVEL := 36
 LOCAL_DEVICE_FCM_MANIFEST_FILE ?= device/google/cuttlefish/shared/config/manifest.xml
+else
+PRODUCT_SHIPPING_API_LEVEL := 35
+LOCAL_DEVICE_FCM_MANIFEST_FILE ?= device/google/cuttlefish/shared/config/previous_manifest.xml
+endif
 DEVICE_MANIFEST_FILE += $(LOCAL_DEVICE_FCM_MANIFEST_FILE)
 
 PRODUCT_CHECK_PREBUILT_MAX_PAGE_SIZE := true
@@ -234,7 +240,6 @@ PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/config/media_profiles.xml:$(TARGET_COPY_OUT_VENDOR)/etc/media_profiles_vendor.xml \
     device/google/cuttlefish/shared/config/seriallogging.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/seriallogging.rc \
     device/google/cuttlefish/shared/config/ueventd.rc:$(TARGET_COPY_OUT_VENDOR)/etc/ueventd.rc \
-    device/google/cuttlefish/shared/permissions/cuttlefish_excluded_hardware.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/cuttlefish_excluded_hardware.xml \
     device/google/cuttlefish/shared/permissions/privapp-permissions-cuttlefish.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/privapp-permissions-cuttlefish.xml \
     frameworks/av/media/libeffects/data/audio_effects.xml:$(TARGET_COPY_OUT_VENDOR)/etc/audio_effects.xml \
     frameworks/av/media/libstagefright/data/media_codecs_google_audio.xml:$(TARGET_COPY_OUT_VENDOR)/etc/media_codecs_google_audio.xml \
@@ -408,11 +413,21 @@ PRODUCT_PACKAGES += \
 endif
 
 #
+# Trusty VM for Keymint and Gatekeeper HAL
+#
+TRUSTY_KEYMINT_IMPL ?= rust
+TRUSTY_SYSTEM_VM ?= nonsecure
+ifeq ($(TRUSTY_SYSTEM_VM),nonsecure)
+    $(call inherit-product, system/core/trusty/keymint/trusty-keymint.mk)
+endif
+
+#
 # KeyMint HAL
 #
 PRODUCT_PACKAGES += \
 	com.android.hardware.keymint.rust_cf_remote \
 	com.android.hardware.keymint.rust_nonsecure \
+	com.android.hardware.keymint.rust_cf_guest_trusty_nonsecure \
 
 # Indicate that KeyMint includes support for the ATTEST_KEY key purpose.
 PRODUCT_COPY_FILES += \

@@ -16,31 +16,20 @@
 
 #include "host/commands/process_sandboxer/policies.h"
 
-#include <sys/socket.h>
 #include <syscall.h>
 
-#include <sandboxed_api/sandbox2/allow_unrestricted_networking.h>
 #include <sandboxed_api/sandbox2/policybuilder.h>
 #include <sandboxed_api/sandbox2/trace_all_syscalls.h>
-#include <sandboxed_api/sandbox2/util/bpf_helper.h>
 
 namespace cuttlefish::process_sandboxer {
 
-sandbox2::PolicyBuilder AdbConnectorPolicy(const HostInfo& host) {
-  return BaselinePolicy(host, host.HostToolExe("adb_connector"))
-      .AddDirectory(host.log_dir, /* is_ro= */ false)
-      .AddFile(host.cuttlefish_config_path)
-      .Allow(sandbox2::UnrestrictedNetworking())  // Used to message adb server
-      .AddPolicyOnSyscall(__NR_socket, {ARG_32(0), JEQ32(AF_INET, ALLOW),
-                                        JEQ32(AF_UNIX, ALLOW)})
-      .AllowSafeFcntl()
+sandbox2::PolicyBuilder ControlEnvProxyServerPolicy(const HostInfo& host) {
+  // TODO: b/318592219 - Add system call policy. This only applies namespaces.
+  return BaselinePolicy(host, host.HostToolExe("control_env_proxy_server"))
+      .AddDirectory(host.instance_uds_dir, /* is_ro= */ false)
+      .AddFile("/dev/urandom")  // For gRPC
       .AllowSleep()
-      .AllowSyscall(__NR_clone)  // Multithreading
-      .AllowSyscall(__NR_connect)
-      .AllowSyscall(__NR_recvmsg)
-      .AllowSyscall(__NR_sendmsg)
-      .AllowSyscall(__NR_sendto)
-      .AllowTCGETS();
+      .DefaultAction(sandbox2::TraceAllSyscalls());
 }
 
 }  // namespace cuttlefish::process_sandboxer
