@@ -16,9 +16,8 @@
 
 #include "host/commands/process_sandboxer/policies.h"
 
-#include <sys/syscall.h>
-
 #include <sandboxed_api/sandbox2/policybuilder.h>
+#include <sandboxed_api/sandbox2/trace_all_syscalls.h>
 #include <sandboxed_api/util/path.h>
 
 namespace cuttlefish::process_sandboxer {
@@ -26,17 +25,13 @@ namespace cuttlefish::process_sandboxer {
 using sapi::file::JoinPath;
 
 sandbox2::PolicyBuilder TombstoneReceiverPolicy(const HostInfo& host) {
+  // TODO: b/318609742- Add system call policy. This only applies namespaces.
   return BaselinePolicy(host, host.HostToolExe("tombstone_receiver"))
       .AddDirectory(host.log_dir, /* is_ro= */ false)
       .AddDirectory(JoinPath(host.runtime_dir, "tombstones"),
                     /* is_ro= */ false)
       .AddFile(host.cuttlefish_config_path)
-      .AllowSafeFcntl()
-      .AllowSelect()
-      .AllowSyscall(__NR_accept)
-      .AllowSyscall(__NR_getsockname)
-      .AllowSyscall(__NR_recvfrom)
-      .AllowTCGETS();
+      .DefaultAction(sandbox2::TraceAllSyscalls());
 }
 
 }  // namespace cuttlefish::process_sandboxer
