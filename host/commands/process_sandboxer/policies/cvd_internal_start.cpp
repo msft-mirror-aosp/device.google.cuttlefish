@@ -13,22 +13,27 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 #include "host/commands/process_sandboxer/policies.h"
 
-#include <syscall.h>
+#include <absl/log/log.h>
 
 #include <sandboxed_api/sandbox2/policybuilder.h>
 #include <sandboxed_api/sandbox2/trace_all_syscalls.h>
+#include <sandboxed_api/sandbox2/util/bpf_helper.h>
+#include <sandboxed_api/util/path.h>
 
 namespace cuttlefish::process_sandboxer {
 
-sandbox2::PolicyBuilder ControlEnvProxyServerPolicy(const HostInfo& host) {
-  // TODO: b/318592219 - Add system call policy. This only applies namespaces.
-  return BaselinePolicy(host, host.HostToolExe("control_env_proxy_server"))
-      .AddDirectory(host.instance_uds_dir, /* is_ro= */ false)
-      .AddFile("/dev/urandom")  // For gRPC
-      .AllowSleep()
+using sapi::file::JoinPath;
+
+sandbox2::PolicyBuilder CvdInternalStartPolicy(const HostInfo& host) {
+  std::string sandboxer_proxy = host.HostToolExe("sandboxer_proxy");
+  return BaselinePolicy(host, host.HostToolExe("cvd_internal_start"))
+      .AddDirectory(host.assembly_dir)
+      .AddDirectory(host.runtime_dir)
+      .AddFile("/dev/null")
+      .AddFileAt(sandboxer_proxy, host.HostToolExe("assemble_cvd"))
+      .AddFileAt(sandboxer_proxy, host.HostToolExe("run_cvd"))
       .DefaultAction(sandbox2::TraceAllSyscalls());
 }
 
