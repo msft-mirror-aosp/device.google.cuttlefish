@@ -412,11 +412,24 @@ PRODUCT_PACKAGES += \
 endif
 
 #
+# Trusty VM for Keymint and Gatekeeper HAL
+#
+TRUSTY_KEYMINT_IMPL ?= rust
+TRUSTY_SYSTEM_VM ?= nonsecure
+ifeq ($(TRUSTY_SYSTEM_VM),nonsecure)
+    $(call inherit-product, system/core/trusty/keymint/trusty-keymint.mk)
+    PRODUCT_PACKAGES += \
+        trusty_vm_nonsecure \
+
+endif
+
+#
 # KeyMint HAL
 #
 PRODUCT_PACKAGES += \
 	com.android.hardware.keymint.rust_cf_remote \
 	com.android.hardware.keymint.rust_nonsecure \
+	com.android.hardware.keymint.rust_cf_guest_trusty_nonsecure \
 
 # Indicate that KeyMint includes support for the ATTEST_KEY key purpose.
 PRODUCT_COPY_FILES += \
@@ -502,8 +515,9 @@ endif
 # wifi
 # Add com.android.hardware.wifi for android.hardware.wifi-service
 PRODUCT_PACKAGES += com.android.hardware.wifi
-# Add com.google.cf.wifi for hostapd, wpa_supplicant, etc.
+# Add com.google.cf.wifi and com.google.cf.wpa_supplicant for hostapd and wpa_supplicant
 PRODUCT_PACKAGES += com.google.cf.wifi
+PRODUCT_PACKAGES += com.google.cf.wpa_supplicant
 $(call add_soong_config_namespace, wpa_supplicant)
 $(call add_soong_config_var_value, wpa_supplicant, platform_version, $(PLATFORM_VERSION))
 $(call add_soong_config_var_value, wpa_supplicant, nl80211_driver, CONFIG_DRIVER_NL80211_QCA)
