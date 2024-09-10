@@ -39,6 +39,13 @@ PRODUCT_COPY_FILES += $(TARGET_KERNEL_PATH):kernel
 
 BOARD_KERNEL_VERSION := $(word 1,$(subst vermagic=,,$(shell egrep -h -ao -m 1 'vermagic=.*' $(KERNEL_MODULES_PATH)/nd_virtio.ko)))
 
+ifneq (,$(findstring auto, $(PRODUCT_NAME)))
+HIB_SWAP_IMAGE_SIZE_GB ?= 4
+ifeq ("$(wildcard $(PRODUCT_OUT)/hibernation_swap.img)", "")
+$(shell dd if=/dev/zero of=$(PRODUCT_OUT)/hibernation_swap.img bs=1K count=$(HIB_SWAP_IMAGE_SIZE_GB)M)
+endif
+endif
+
 # The list of modules strictly/only required either to reach second stage
 # init, OR for recovery. Do not use this list to workaround second stage
 # issues.
@@ -55,12 +62,6 @@ RAMDISK_KERNEL_MODULES ?= \
     virtio_pci.ko \
     virtio-rng.ko \
     vmw_vsock_virtio_transport.ko \
-
-ifeq ($(TARGET_KERNEL_ARCH),arm64)
-BOARD_KERNEL_PATH_16K := kernel/prebuilts/mainline/$(TARGET_KERNEL_ARCH)/16k/kernel-mainline
-BOARD_KERNEL_MODULES_16K += $(wildcard kernel/prebuilts/mainline/$(TARGET_KERNEL_ARCH)/16k/*.ko)
-BOARD_KERNEL_MODULES_16K += $(wildcard kernel/prebuilts/common-modules/virtual-device/mainline/$(TARGET_KERNEL_ARCH)/16k/*.ko)
-endif
 
 BOARD_VENDOR_RAMDISK_KERNEL_MODULES := \
     $(patsubst %,$(KERNEL_MODULES_PATH)/%,$(RAMDISK_KERNEL_MODULES))
@@ -83,14 +84,23 @@ BOARD_VENDOR_RAMDISK_KERNEL_MODULES += $(wildcard $(SYSTEM_DLKM_SRC)/libarc4.ko)
 BOARD_VENDOR_RAMDISK_KERNEL_MODULES += $(wildcard $(SYSTEM_DLKM_SRC)/rfkill.ko)
 BOARD_VENDOR_RAMDISK_KERNEL_MODULES += $(wildcard $(SYSTEM_DLKM_SRC)/cfg80211.ko)
 BOARD_VENDOR_RAMDISK_KERNEL_MODULES += $(wildcard $(SYSTEM_DLKM_SRC)/mac80211.ko)
+BOARD_VENDOR_RAMDISK_KERNEL_MODULES += $(wildcard $(KERNEL_MODULES_PATH)/libarc4.ko)
+BOARD_VENDOR_RAMDISK_KERNEL_MODULES += $(wildcard $(KERNEL_MODULES_PATH)/rfkill.ko)
 BOARD_VENDOR_RAMDISK_KERNEL_MODULES += $(wildcard $(KERNEL_MODULES_PATH)/cfg80211.ko)
 BOARD_VENDOR_RAMDISK_KERNEL_MODULES += $(wildcard $(KERNEL_MODULES_PATH)/mac80211.ko)
 BOARD_VENDOR_RAMDISK_KERNEL_MODULES += $(wildcard $(KERNEL_MODULES_PATH)/mac80211_hwsim.ko)
 BOARD_DO_NOT_STRIP_VENDOR_RAMDISK_MODULES := true
-ALL_KERNEL_MODULES := $(wildcard $(KERNEL_MODULES_PATH)/*.ko)
 BOARD_VENDOR_KERNEL_MODULES := \
     $(filter-out $(BOARD_VENDOR_RAMDISK_KERNEL_MODULES),\
                  $(wildcard $(KERNEL_MODULES_PATH)/*.ko))
+
+ifeq ($(TARGET_KERNEL_ARCH),arm64)
+ifeq (true,$(PRODUCT_16K_DEVELOPER_OPTION))
+BOARD_KERNEL_PATH_16K := kernel/prebuilts/mainline/$(TARGET_KERNEL_ARCH)/16k/kernel-mainline
+BOARD_KERNEL_MODULES_16K += $(wildcard kernel/prebuilts/mainline/$(TARGET_KERNEL_ARCH)/16k/*.ko)
+BOARD_KERNEL_MODULES_16K += $(wildcard kernel/prebuilts/common-modules/virtual-device/mainline/$(TARGET_KERNEL_ARCH)/16k/*.ko)
+endif
+endif
 
 # TODO(b/170639028): Back up TARGET_NO_BOOTLOADER
 __TARGET_NO_BOOTLOADER := $(TARGET_NO_BOOTLOADER)
@@ -349,11 +359,6 @@ BOARD_KERNEL_CMDLINE += firmware_class.path=/vendor/etc/
 # Needed to boot Android
 BOARD_KERNEL_CMDLINE += loop.max_part=7
 BOARD_KERNEL_CMDLINE += init=/init
-
-# Enable KUnit for userdebug and eng builds
-ifneq (,$(filter userdebug eng, $(TARGET_BUILD_VARIANT)))
-  BOARD_KERNEL_CMDLINE += kunit.enable=1
-endif
 
 BOARD_BOOTCONFIG += androidboot.hardware=cutf_cvm
 

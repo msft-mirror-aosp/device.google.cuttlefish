@@ -16,20 +16,20 @@
 
 #include "host/commands/process_sandboxer/policies.h"
 
-#include "sandboxed_api/sandbox2/policybuilder.h"
-#include "sandboxed_api/util/path.h"
+#include <syscall.h>
 
-using sapi::file::JoinPath;
+#include <sandboxed_api/sandbox2/policybuilder.h>
+#include <sandboxed_api/sandbox2/trace_all_syscalls.h>
 
-namespace cuttlefish {
-namespace process_sandboxer {
+namespace cuttlefish::process_sandboxer {
 
-sandbox2::PolicyBuilder HelloWorldPolicy(const HostInfo& host) {
-  auto exe =
-      JoinPath(host.artifacts_path, "testcases", "process_sandboxer_test",
-               "x86_64", "process_sandboxer_test_hello_world");
-  return BaselinePolicy(host, exe);
+sandbox2::PolicyBuilder ControlEnvProxyServerPolicy(const HostInfo& host) {
+  // TODO: b/318592219 - Add system call policy. This only applies namespaces.
+  return BaselinePolicy(host, host.HostToolExe("control_env_proxy_server"))
+      .AddDirectory(host.instance_uds_dir, /* is_ro= */ false)
+      .AddFile("/dev/urandom")  // For gRPC
+      .AllowSleep()
+      .DefaultAction(sandbox2::TraceAllSyscalls());
 }
 
-}  // namespace process_sandboxer
-}  // namespace cuttlefish
+}  // namespace cuttlefish::process_sandboxer
