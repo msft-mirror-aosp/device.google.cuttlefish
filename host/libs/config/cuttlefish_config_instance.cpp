@@ -373,6 +373,16 @@ void CuttlefishConfig::MutableInstanceSpecific::set_custom_partition_path(
 std::string CuttlefishConfig::InstanceSpecific::custom_partition_path() const {
   return (*Dictionary())[kCustomPartitionPath].asString();
 }
+static constexpr char kHibernationPartitionImage[] =
+    "hibernation_partition_image";
+void CuttlefishConfig::MutableInstanceSpecific::set_hibernation_partition_image(
+    const std::string& hibernation_partition_image) {
+  (*Dictionary())[kHibernationPartitionImage] = hibernation_partition_image;
+}
+std::string CuttlefishConfig::InstanceSpecific::hibernation_partition_image()
+    const {
+  return (*Dictionary())[kHibernationPartitionImage].asString();
+}
 static constexpr char kBlankMetadataImageMb[] = "blank_metadata_image_mb";
 int CuttlefishConfig::InstanceSpecific::blank_metadata_image_mb() const {
   return (*Dictionary())[kBlankMetadataImageMb].asInt();
@@ -585,6 +595,15 @@ bool CuttlefishConfig::InstanceSpecific::kgdb() const {
 static constexpr char kCpus[] = "cpus";
 void CuttlefishConfig::MutableInstanceSpecific::set_cpus(int cpus) { (*Dictionary())[kCpus] = cpus; }
 int CuttlefishConfig::InstanceSpecific::cpus() const { return (*Dictionary())[kCpus].asInt(); }
+
+static constexpr char kVcpuInfo[] = "vcpu_config_path";
+void CuttlefishConfig::MutableInstanceSpecific::set_vcpu_config_path(
+    const std::string& vcpu_config_path) {
+  (*Dictionary())[kVcpuInfo] = vcpu_config_path;
+}
+std::string CuttlefishConfig::InstanceSpecific::vcpu_config_path() const {
+  return (*Dictionary())[kVcpuInfo].asString();
+}
 
 static constexpr char kDataPolicy[] = "data_policy";
 void CuttlefishConfig::MutableInstanceSpecific::set_data_policy(

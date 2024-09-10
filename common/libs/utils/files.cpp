@@ -65,6 +65,7 @@
 #include "common/libs/fs/shared_buf.h"
 #include "common/libs/fs/shared_fd.h"
 #include "common/libs/utils/contains.h"
+#include "common/libs/utils/in_sandbox.h"
 #include "common/libs/utils/inotify.h"
 #include "common/libs/utils/result.h"
 #include "common/libs/utils/subprocess.h"
@@ -191,6 +192,10 @@ Result<void> EnsureDirectoryExists(const std::string& directory_path,
   if (mkdir(directory_path.c_str(), mode) < 0 && errno != EEXIST) {
     return CF_ERRNO("Failed to create directory: \"" << directory_path << "\""
                                                      << strerror(errno));
+  }
+  // TODO(schuffelen): Find an alternative for host-sandboxing mode
+  if (InSandbox()) {
+    return {};
   }
 
   CF_EXPECTF(chmod(directory_path.c_str(), mode) == 0,
@@ -527,17 +532,6 @@ FileSizes SparseFileSizes(const std::string& path) {
   return (FileSizes) { .sparse_size = farthest_seek, .disk_size = data_bytes };
 }
 
-std::string cpp_basename(const std::string& str) {
-  char* copy = strdup(str.c_str()); // basename may modify its argument
-  std::string ret(basename(copy));
-  free(copy);
-  return ret;
-}
-
-std::string cpp_dirname(const std::string& str) {
-  return android::base::Dirname(str);
-}
-
 bool FileIsSocket(const std::string& path) {
   struct stat st {};
   return stat(path.c_str(), &st) == 0 && S_ISSOCK(st.st_mode);
@@ -583,7 +577,7 @@ std::string FindFile(const std::string& path, const std::string& target_name) {
   std::string ret;
   WalkDirectory(path,
                 [&ret, &target_name](const std::string& filename) mutable {
-                  if (cpp_basename(filename) == target_name) {
+                  if (android::base::Basename(filename) == target_name) {
                     ret = filename;
                   }
                   return true;
@@ -633,8 +627,8 @@ static Result<void> WaitForFileInternal(const std::string& path, int timeoutSec,
   const auto targetTime =
       std::chrono::system_clock::now() + std::chrono::seconds(timeoutSec);
 
-  const auto parentPath = cpp_dirname(path);
-  const auto filename = cpp_basename(path);
+  const std::string parentPath = android::base::Dirname(path);
+  const std::string filename = android::base::Basename(path);
 
   CF_EXPECT(WaitForFile(parentPath, timeoutSec),
             "Error while waiting for parent directory creation");
@@ -747,7 +741,7 @@ Result<void> WaitForUnixSocketListeningWithoutConnect(const std::string& path,
       return CF_ERR("Timed out");
     }
 
-    Command lsof("lsof");
+    Command lsof("/usr/bin/lsof");
     lsof.AddParameter(/*"format"*/ "-F", /*"connection state"*/ "TST");
     lsof.AddParameter(path);
     std::string lsof_out;

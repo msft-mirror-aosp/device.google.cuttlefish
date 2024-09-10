@@ -22,7 +22,6 @@
 #include <fstream>
 #include <memory>
 #include <regex>
-#include <sstream>
 #include <string>
 
 #include <android-base/logging.h>
@@ -33,16 +32,47 @@
 #include "common/libs/utils/result.h"
 #include "common/libs/utils/subprocess.h"
 #include "host/libs/avb/avb.cpp"
+#include "host/libs/config/config_utils.h"
 #include "host/libs/config/cuttlefish_config.h"
 #include "host/libs/config/known_paths.h"
 
-const char TMP_EXTENSION[] = ".tmp";
-const char CPIO_EXT[] = ".cpio";
-const char TMP_RD_DIR[] = "stripped_ramdisk_dir";
-const char STRIPPED_RD[] = "stripped_ramdisk";
-const char CONCATENATED_VENDOR_RAMDISK[] = "concatenated_vendor_ramdisk";
 namespace cuttlefish {
 namespace {
+
+constexpr char TMP_EXTENSION[] = ".tmp";
+constexpr char kCpioExt[] = ".cpio";
+constexpr char TMP_RD_DIR[] = "stripped_ramdisk_dir";
+constexpr char STRIPPED_RD[] = "stripped_ramdisk";
+constexpr char kConcatenatedVendorRamdisk[] = "concatenated_vendor_ramdisk";
+
+void RunMkBootFs(const std::string& input_dir, const std::string& output) {
+  SharedFD output_fd = SharedFD::Open(output, O_CREAT | O_RDWR | O_TRUNC, 0644);
+  CHECK(output_fd->IsOpen()) << output_fd->StrError();
+
+  int success = Command(HostBinaryPath("mkbootfs"))
+                    .AddParameter(input_dir)
+                    .RedirectStdIO(Subprocess::StdIOChannel::kStdOut, output_fd)
+                    .Start()
+                    .Wait();
+  CHECK_EQ(success, 0) << "`mkbootfs` failed.";
+}
+
+void RunLz4(const std::string& input, const std::string& output) {
+  SharedFD output_fd = SharedFD::Open(output, O_CREAT | O_RDWR | O_TRUNC, 0644);
+  CHECK(output_fd->IsOpen()) << output_fd->StrError();
+  int success = Command(HostBinaryPath("lz4"))
+                    .AddParameter("-c")
+                    .AddParameter("-l")
+                    .AddParameter("-12")
+                    .AddParameter("--favor-decSpeed")
+                    .AddParameter(input)
+                    .RedirectStdIO(Subprocess::StdIOChannel::kStdOut, output_fd)
+                    .Start()
+                    .Wait();
+  CHECK_EQ(success, 0) << "`lz4` failed to transform '" << input << "' to '"
+                       << output << "'";
+}
+
 std::string ExtractValue(const std::string& dictionary, const std::string& key) {
   std::size_t index = dictionary.find(key);
   if (index != std::string::npos) {
@@ -91,17 +121,8 @@ void RepackVendorRamdisk(const std::string& kernel_modules_ramdisk_path,
                       << "Exited with status " << success;
 
   const std::string stripped_ramdisk_path = build_dir + "/" + STRIPPED_RD;
-  success = Execute({"/bin/bash", "-c",
-                     HostBinaryPath("mkbootfs") + " " + ramdisk_stage_dir +
-                         " > " + stripped_ramdisk_path + CPIO_EXT});
-  CHECK(success == 0) << "Unable to run cd or cpio. Exited with status "
-                      << success;
 
-  success = Execute({"/bin/bash", "-c",
-                     HostBinaryPath("lz4") + " -c -l -12 --favor-decSpeed " +
-                         stripped_ramdisk_path + CPIO_EXT + " > " +
-                         stripped_ramdisk_path});
-  CHECK(success == 0) << "Unable to run lz4. Exited with status " << success;
+  PackRamdisk(ramdisk_stage_dir, stripped_ramdisk_path);
 
   // Concatenates the stripped ramdisk and input ramdisk and places the result at new_ramdisk_path
   std::ofstream final_rd(new_ramdisk_path, std::ios_base::binary | std::ios_base::trunc);
@@ -124,42 +145,48 @@ bool IsCpioArchive(const std::string& path) {
 
 void PackRamdisk(const std::string& ramdisk_stage_dir,
                  const std::string& output_ramdisk) {
-  int success = Execute({"/bin/bash", "-c",
-                         HostBinaryPath("mkbootfs") + " " + ramdisk_stage_dir +
-                             " > " + output_ramdisk + CPIO_EXT});
-  CHECK(success == 0) << "Unable to run cd or cpio. Exited with status "
-                      << success;
-
-  success = Execute({"/bin/bash", "-c",
-                     HostBinaryPath("lz4") + " -c -l -12 --favor-decSpeed " +
-                         output_ramdisk + CPIO_EXT + " > " + output_ramdisk});
-  CHECK(success == 0) << "Unable to run lz4. Exited with status " << success;
+  RunMkBootFs(ramdisk_stage_dir, output_ramdisk + kCpioExt);
+  RunLz4(output_ramdisk + kCpioExt, output_ramdisk);
 }
 
 void UnpackRamdisk(const std::string& original_ramdisk_path,
                    const std::string& ramdisk_stage_dir) {
   int success = 0;
   if (IsCpioArchive(original_ramdisk_path)) {
-    CHECK(Copy(original_ramdisk_path, original_ramdisk_path + CPIO_EXT))
+    CHECK(Copy(original_ramdisk_path, original_ramdisk_path + kCpioExt))
         << "failed to copy " << original_ramdisk_path << " to "
-        << original_ramdisk_path + CPIO_EXT;
+        << original_ramdisk_path + kCpioExt;
   } else {
-    success =
-        Execute({"/bin/bash", "-c",
-                 HostBinaryPath("lz4") + " -c -d -l " + original_ramdisk_path +
-                     " > " + original_ramdisk_path + CPIO_EXT});
-    CHECK(success == 0) << "Unable to run lz4 on file " << original_ramdisk_path
-                        << " . Exited with status " << success;
+    SharedFD output_fd = SharedFD::Open(original_ramdisk_path + kCpioExt,
+                                        O_CREAT | O_RDWR | O_TRUNC, 0644);
+    CHECK(output_fd->IsOpen()) << output_fd->StrError();
+
+    success = Command(HostBinaryPath("lz4"))
+                  .AddParameter("-c")
+                  .AddParameter("-d")
+                  .AddParameter("-l")
+                  .AddParameter(original_ramdisk_path)
+                  .RedirectStdIO(Subprocess::StdIOChannel::kStdOut, output_fd)
+                  .Start()
+                  .Wait();
+    CHECK_EQ(success, 0) << "Unable to run lz4 on file '"
+                         << original_ramdisk_path << "'.";
   }
   const auto ret = EnsureDirectoryExists(ramdisk_stage_dir);
   CHECK(ret.ok()) << ret.error().FormatForEnv();
 
-  success = Execute(
-      {"/bin/bash", "-c",
-       "(cd " + ramdisk_stage_dir + " && while " + HostBinaryPath("toybox") +
-           " cpio -idu; do :; done) < " + original_ramdisk_path + CPIO_EXT});
-  CHECK(success == 0) << "Unable to run cd or cpio. Exited with status "
-                      << success;
+  SharedFD input = SharedFD::Open(original_ramdisk_path + kCpioExt, O_RDONLY);
+  int cpio_status;
+  do {
+    LOG(ERROR) << "Running";
+    cpio_status = Command(HostBinaryPath("toybox"))
+                      .AddParameter("cpio")
+                      .AddParameter("-idu")
+                      .SetWorkingDirectory(ramdisk_stage_dir)
+                      .RedirectStdIO(Subprocess::StdIOChannel::kStdIn, input)
+                      .Start()
+                      .Wait();
+  } while (cpio_status == 0);
 }
 
 bool GetAvbMetadataFromBootImage(const std::string& boot_image_path,
@@ -174,30 +201,24 @@ bool GetAvbMetadataFromBootImage(const std::string& boot_image_path,
   return true;
 }
 
-bool UnpackBootImage(const std::string& boot_image_path,
-                     const std::string& unpack_dir) {
-  auto unpack_path = HostBinaryPath("unpack_bootimg");
-  Command unpack_cmd(unpack_path);
-  unpack_cmd.AddParameter("--boot_img");
-  unpack_cmd.AddParameter(boot_image_path);
-  unpack_cmd.AddParameter("--out");
-  unpack_cmd.AddParameter(unpack_dir);
+Result<void> UnpackBootImage(const std::string& boot_image_path,
+                             const std::string& unpack_dir) {
+  SharedFD output_file = SharedFD::Creat(unpack_dir + "/boot_params", 0666);
+  CF_EXPECTF(output_file->IsOpen(),
+             "Unable to create intermediate boot params file: '{}'",
+             output_file->StrError());
 
-  auto output_file = SharedFD::Creat(unpack_dir + "/boot_params", 0666);
-  if (!output_file->IsOpen()) {
-    LOG(ERROR) << "Unable to create intermediate boot params file: "
-               << output_file->StrError();
-    return false;
-  }
-  unpack_cmd.RedirectStdIO(Subprocess::StdIOChannel::kStdOut, output_file);
+  Command unpack_cmd =
+      Command(HostBinaryPath("unpack_bootimg"))
+          .AddParameter("--boot_img")
+          .AddParameter(boot_image_path)
+          .AddParameter("--out")
+          .AddParameter(unpack_dir)
+          .RedirectStdIO(Subprocess::StdIOChannel::kStdOut, output_file);
 
-  int success = unpack_cmd.Start().Wait();
-  if (success != 0) {
-    LOG(ERROR) << "Unable to run unpack_bootimg. Exited with status "
-               << success;
-    return false;
-  }
-  return true;
+  CF_EXPECT_EQ(unpack_cmd.Start().Wait(), 0, "Unable to run unpack_bootimg.");
+
+  return {};
 }
 
 bool UnpackVendorBootImageIfNotUnpacked(
@@ -229,21 +250,36 @@ bool UnpackVendorBootImageIfNotUnpacked(
   }
 
   // Concatenates all vendor ramdisk into one single ramdisk.
-  Command concat_cmd("/bin/bash");
-  concat_cmd.AddParameter("-c");
-  concat_cmd.AddParameter("cat " + unpack_dir + "/vendor_ramdisk*");
-  auto concat_file =
-      SharedFD::Creat(unpack_dir + "/" + CONCATENATED_VENDOR_RAMDISK, 0666);
+  std::string concat_file_path = unpack_dir + "/" + kConcatenatedVendorRamdisk;
+  SharedFD concat_file = SharedFD::Creat(concat_file_path, 0666);
   if (!concat_file->IsOpen()) {
     LOG(ERROR) << "Unable to create concatenated vendor ramdisk file: "
                << concat_file->StrError();
     return false;
   }
-  concat_cmd.RedirectStdIO(Subprocess::StdIOChannel::kStdOut, concat_file);
-  success = concat_cmd.Start().Wait();
-  if (success != 0) {
-    LOG(ERROR) << "Unable to run cat. Exited with status " << success;
+
+  Result<std::vector<std::string>> unpack_files = DirectoryContents(unpack_dir);
+  if (!unpack_files.ok()) {
+    LOG(ERROR) << "No unpacked files: " << unpack_files.error().FormatForEnv();
     return false;
+  }
+  for (const std::string& unpacked : *unpack_files) {
+    LOG(ERROR) << "acs: " << unpacked;
+    if (!android::base::StartsWith(unpacked, "vendor_ramdisk")) {
+      continue;
+    }
+    std::string input_path = unpack_dir + "/" + unpacked;
+    SharedFD input = SharedFD::Open(input_path, O_RDONLY);
+    if (!input->IsOpen()) {
+      LOG(ERROR) << "Failed to open '" << input_path << ": "
+                 << input->StrError();
+      return false;
+    }
+    if (!concat_file->CopyAllFrom(*input)) {
+      LOG(ERROR) << "Failed to copy from '" << input_path << "' to '"
+                 << concat_file_path << "'";
+      return false;
+    }
   }
   return true;
 }
@@ -296,11 +332,11 @@ bool RepackVendorBootImage(const std::string& new_ramdisk,
     ramdisk_path = unpack_dir + "/vendor_ramdisk_repacked";
     if (!FileExists(ramdisk_path)) {
       RepackVendorRamdisk(new_ramdisk,
-                          unpack_dir + "/" + CONCATENATED_VENDOR_RAMDISK,
+                          unpack_dir + "/" + kConcatenatedVendorRamdisk,
                           ramdisk_path, unpack_dir);
     }
   } else {
-    ramdisk_path = unpack_dir + "/" + CONCATENATED_VENDOR_RAMDISK;
+    ramdisk_path = unpack_dir + "/" + kConcatenatedVendorRamdisk;
   }
 
   std::string bootconfig = ReadFile(unpack_dir + "/bootconfig");
@@ -384,7 +420,7 @@ void RepackGem5BootImage(const std::string& initrd_path,
   // Test to make sure new ramdisk hasn't already been repacked if input ramdisk is provided
   if (FileExists(input_ramdisk_path) && !FileExists(new_ramdisk_path)) {
     RepackVendorRamdisk(input_ramdisk_path,
-                        unpack_dir + "/" + CONCATENATED_VENDOR_RAMDISK,
+                        unpack_dir + "/" + kConcatenatedVendorRamdisk,
                         new_ramdisk_path, unpack_dir);
   }
   std::ifstream vendor_boot_ramdisk(FileExists(new_ramdisk_path) ? new_ramdisk_path : unpack_dir +
@@ -468,8 +504,9 @@ Result<std::string> ReadAndroidVersionFromBootImage(
   RecursivelyRemoveDirectory(unpack_dir);
   std::string os_version =
       ExtractValue(boot_params, "Prop: com.android.build.boot.os_version -> ");
-  // if the OS version is "None", it wasn't set when the boot image was made.
-  if (os_version == "None") {
+  // if the OS version is "None", or the prop does not exist, it wasn't set
+  // when the boot image was made.
+  if (os_version == "None" || os_version.empty()) {
     LOG(INFO) << "Could not extract os version from " << boot_image_path
               << ". Defaulting to 0.0.0.";
     return "0.0.0";

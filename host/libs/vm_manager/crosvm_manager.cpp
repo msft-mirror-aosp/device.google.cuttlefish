@@ -273,6 +273,9 @@ Result<VhostUserDeviceCommands> BuildVhostUserGpu(
   gpu_params_json["surfaceless"] = true;
   gpu_params_json["external-blob"] = instance.enable_gpu_external_blob();
   gpu_params_json["system-blob"] = instance.enable_gpu_system_blob();
+  if (!instance.gpu_renderer_features().empty()) {
+    gpu_params_json["renderer-features"] = instance.gpu_renderer_features();
+  }
 
   if (instance.hwcomposer() != kHwComposerNone) {
     // "displays": [
@@ -319,14 +322,6 @@ Result<VhostUserDeviceCommands> BuildVhostUserGpu(
   // Connect device to main crosvm:
   gpu_device_cmd.Cmd().AddParameter("--socket=", gpu_device_socket_path);
 
-  main_crosvm_cmd->AddPrerequisite([gpu_device_socket_path]() -> Result<void> {
-#ifdef __linux__
-    return WaitForUnixSocketListeningWithoutConnect(gpu_device_socket_path,
-                                                    /*timeoutSec=*/30);
-#else
-    return CF_ERR("Unhandled check if vhost user gpu ready.");
-#endif
-  });
   main_crosvm_cmd->AddParameter(
       "--vhost-user=gpu,pci-address=", gpu_pci_address,
       ",socket=", gpu_device_socket_path);
@@ -380,48 +375,53 @@ Result<void> ConfigureGpu(const CuttlefishConfig& config, Command* crosvm_cmd) {
       gpu_common_string + ",egl=true,surfaceless=true,glx=false" + gles_string +
       gpu_renderer_features_param;
 
-  if (gpu_mode == kGpuModeGuestSwiftshader) {
-    crosvm_cmd->AddParameter("--gpu=backend=2D", gpu_common_string);
-  } else if (gpu_mode == kGpuModeDrmVirgl) {
-    crosvm_cmd->AddParameter("--gpu=backend=virglrenderer,context-types=virgl2",
-                             gpu_common_3d_string);
-  } else if (gpu_mode == kGpuModeGfxstream) {
-    crosvm_cmd->AddParameter(
-        "--gpu=context-types=gfxstream-gles:gfxstream-vulkan:gfxstream-"
-        "composer",
-        gpu_common_3d_string);
-  } else if (gpu_mode == kGpuModeGfxstreamGuestAngle ||
-             gpu_mode == kGpuModeGfxstreamGuestAngleHostSwiftShader) {
-    crosvm_cmd->AddParameter(
-        "--gpu=context-types=gfxstream-vulkan:gfxstream-composer",
-        gpu_common_3d_string);
-  } else if (gpu_mode == kGpuModeCustom) {
-    const std::string gpu_context_types =
-        "--gpu=context-types=" + instance.gpu_context_types();
-    crosvm_cmd->AddParameter(gpu_context_types, gpu_common_string);
-  }
-
-  MaybeConfigureVulkanIcd(config, crosvm_cmd);
-
+  std::string gpu_displays_string = "";
   if (instance.hwcomposer() != kHwComposerNone) {
+    std::vector<std::string> gpu_displays_strings;
     for (const auto& display_config : instance.display_configs()) {
       const auto display_w = std::to_string(display_config.width);
       const auto display_h = std::to_string(display_config.height);
       const auto display_dpi = std::to_string(display_config.dpi);
       const auto display_rr = std::to_string(display_config.refresh_rate_hz);
-      const auto display_params = android::base::Join(
+      gpu_displays_strings.push_back(android::base::Join(
           std::vector<std::string>{
               "mode=windowed[" + display_w + "," + display_h + "]",
               "dpi=[" + display_dpi + "," + display_dpi + "]",
               "refresh-rate=" + display_rr,
           },
-          ",");
-
-      crosvm_cmd->AddParameter("--gpu-display=", display_params);
+          ","));
     }
+    gpu_displays_string =
+        "displays=[[" + android::base::Join(gpu_displays_strings, "],[") + "]],";
 
     crosvm_cmd->AddParameter("--wayland-sock=", instance.frames_socket_path());
   }
+
+  if (gpu_mode == kGpuModeGuestSwiftshader) {
+    crosvm_cmd->AddParameter("--gpu=", gpu_displays_string, "backend=2D",
+                             gpu_common_string);
+  } else if (gpu_mode == kGpuModeDrmVirgl) {
+    crosvm_cmd->AddParameter("--gpu=", gpu_displays_string,
+                             "backend=virglrenderer,context-types=virgl2",
+                             gpu_common_3d_string);
+  } else if (gpu_mode == kGpuModeGfxstream) {
+    crosvm_cmd->AddParameter(
+        "--gpu=", gpu_displays_string,
+        "context-types=gfxstream-gles:gfxstream-vulkan:gfxstream-composer",
+        gpu_common_3d_string);
+  } else if (gpu_mode == kGpuModeGfxstreamGuestAngle ||
+             gpu_mode == kGpuModeGfxstreamGuestAngleHostSwiftShader) {
+    crosvm_cmd->AddParameter(
+        "--gpu=", gpu_displays_string,
+        "context-types=gfxstream-vulkan:gfxstream-composer",
+        gpu_common_3d_string);
+  } else if (gpu_mode == kGpuModeCustom) {
+    crosvm_cmd->AddParameter("--gpu=", gpu_displays_string,
+                             "context-types=" + instance.gpu_context_types(),
+                             gpu_common_string);
+  }
+
+  MaybeConfigureVulkanIcd(config, crosvm_cmd);
 
   return {};
 }
@@ -484,6 +484,8 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
 
   crosvm_cmd.Cmd().AddParameter("--core-scheduling=false");
 
+  crosvm_cmd.Cmd().AddParameter("--vhost-user-connect-timeout-ms=", 30 * 1000);
+
   if (instance.vhost_net()) {
     crosvm_cmd.Cmd().AddParameter("--vhost-net");
   }
@@ -522,7 +524,7 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
   if (instance.hwcomposer() != kHwComposerNone) {
     const bool pmem_disabled = instance.mte() || !instance.use_pmem();
     if (!pmem_disabled && FileExists(instance.hwcomposer_pmem_path())) {
-      crosvm_cmd.Cmd().AddParameter("--rw-pmem-device=",
+      crosvm_cmd.Cmd().AddParameter("--pmem=path=",
                                     instance.hwcomposer_pmem_path());
     }
   }
@@ -534,6 +536,52 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
   crosvm_cmd.Cmd().AddParameter("--cpus=", instance.cpus());
   if (instance.mte()) {
     crosvm_cmd.Cmd().AddParameter("--mte");
+  }
+
+  if (!instance.vcpu_config_path().empty()) {
+    auto vcpu_config_json =
+        CF_EXPECT(LoadFromFile(instance.vcpu_config_path()));
+    std::string affinity_arg = "--cpu-affinity=";
+    std::string capacity_arg = "--cpu-capacity=";
+    std::string frequencies_arg = "--cpu-frequencies-khz=";
+
+    for (int i = 0; i < instance.cpus(); i++) {
+      if (i != 0) {
+        capacity_arg += ",";
+        affinity_arg += ":";
+        frequencies_arg += ";";
+      }
+
+      auto cpu_cluster = fmt::format("--cpu-cluster={}", i);
+
+      auto cpu = fmt::format("cpu{}", i);
+      const auto cpu_json =
+          CF_EXPECT(GetValue<Json::Value>(vcpu_config_json, {cpu}),
+                    "Missing vCPU config!");
+
+      const auto affinity =
+          CF_EXPECT(GetValue<std::string>(cpu_json, {"affinity"}));
+      auto affine_arg = fmt::format("{}={}", i, affinity);
+
+      const auto freqs =
+          CF_EXPECT(GetValue<std::string>(cpu_json, {"frequencies"}));
+      auto freq_arg = fmt::format("{}={}", i, freqs);
+
+      const auto capacity =
+          CF_EXPECT(GetValue<std::string>(cpu_json, {"capacity"}));
+      auto cap_arg = fmt::format("{}={}", i, capacity);
+
+      capacity_arg += cap_arg;
+      affinity_arg += affine_arg;
+      frequencies_arg += freq_arg;
+
+      crosvm_cmd.Cmd().AddParameter(cpu_cluster);
+    }
+
+    crosvm_cmd.Cmd().AddParameter(affinity_arg);
+    crosvm_cmd.Cmd().AddParameter(capacity_arg);
+    crosvm_cmd.Cmd().AddParameter(frequencies_arg);
+    crosvm_cmd.Cmd().AddParameter("--virt-cpufreq");
   }
 
   auto disk_num = instance.virtual_disk_paths().size();
@@ -605,7 +653,6 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
                                   instance.switches_socket_path(), "]");
   }
 
-  SharedFD wifi_tap;
   // GPU capture can only support named files and not file descriptors due to
   // having to pass arguments to crosvm via a wrapper script.
 #ifdef __linux__
@@ -622,14 +669,14 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
     crosvm_cmd.AddTap(instance.ethernet_tap_name(), instance.ethernet_mac(), ethernet_pci);
 
     if (!config.virtio_mac80211_hwsim() && environment.enable_wifi()) {
-      wifi_tap = crosvm_cmd.AddTap(instance.wifi_tap_name());
+      crosvm_cmd.AddTap(instance.wifi_tap_name());
     }
   }
 #endif
 
   const bool pmem_disabled = instance.mte() || !instance.use_pmem();
   if (!pmem_disabled && FileExists(instance.access_kregistry_path())) {
-    crosvm_cmd.Cmd().AddParameter("--rw-pmem-device=",
+    crosvm_cmd.Cmd().AddParameter("--pmem=path=",
                                   instance.access_kregistry_path());
   }
 
@@ -838,10 +885,12 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
   if (instance.enable_virtiofs()) {
     CF_EXPECT(instance.enable_sandbox(),
               "virtiofs is currently not supported without sandboxing");
-    // Set up directory shared with virtiofs
+    // Set up directory shared with virtiofs, setting security_ctx option to
+    // false prevents host error when unable to write data in the
+    // /proc/thread-self/attr/fscreate file.
     crosvm_cmd.Cmd().AddParameter(
         "--shared-dir=", instance.PerInstancePath(kSharedDirName),
-        ":shared:type=fs");
+        ":shared:type=fs:security_ctx=false");
   }
 
   if (instance.target_arch() == Arch::X86_64) {
@@ -865,7 +914,7 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
 
   if (gpu_capture_enabled) {
     const std::string gpu_capture_basename =
-        cpp_basename(instance.gpu_capture_binary());
+        android::base::Basename(instance.gpu_capture_binary());
 
     auto gpu_capture_logs_path =
         instance.PerInstanceInternalPath("gpu_capture.fifo");
