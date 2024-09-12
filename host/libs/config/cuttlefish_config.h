@@ -33,24 +33,13 @@
 #include "host/libs/config/config_constants.h"
 #include "host/libs/config/config_fragment.h"
 #include "host/libs/config/config_utils.h"
+#include "host/libs/config/secure_hals.h"
 
 namespace Json {
 class Value;
 }
 
 namespace cuttlefish {
-
-enum class SecureHal {
-  Unknown,
-  GuestGatekeeperInsecure,
-  GuestKeymintInsecure,
-  HostKeymintInsecure,
-  HostKeymintSecure,
-  HostGatekeeperInsecure,
-  HostGatekeeperSecure,
-  HostOemlockInsecure,
-  HostOemlockSecure,
-};
 
 enum class VmmMode {
   kUnknown,
@@ -133,8 +122,8 @@ class CuttlefishConfig {
     static TouchpadConfig Deserialize(const Json::Value& config_json);
   };
 
-  void set_secure_hals(const std::set<std::string>& hals);
-  std::set<SecureHal> secure_hals() const;
+  void set_secure_hals(const std::set<SecureHal>&);
+  Result<std::set<SecureHal>> secure_hals() const;
 
   void set_crosvm_binary(const std::string& crosvm_binary);
   std::string crosvm_binary() const;
@@ -583,6 +572,7 @@ class CuttlefishConfig {
     bool mte() const;
     std::string boot_slot() const;
     bool fail_fast() const;
+    bool vhost_user_block() const;
 
     // Kernel and bootloader logging
     bool enable_kernel_log() const;
@@ -801,6 +791,7 @@ class CuttlefishConfig {
     void set_boot_slot(const std::string& boot_slot);
     void set_grpc_socket_path(const std::string& sockets);
     void set_fail_fast(bool fail_fast);
+    void set_vhost_user_block(bool qemu_vhost_user_block);
 
     // Kernel and bootloader logging
     void set_enable_kernel_log(bool enable_kernel_log);

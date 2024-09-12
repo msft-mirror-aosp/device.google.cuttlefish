@@ -60,6 +60,7 @@
 #include "host/libs/config/esp.h"
 #include "host/libs/config/host_tools_version.h"
 #include "host/libs/config/instance_nums.h"
+#include "host/libs/config/secure_hals.h"
 #include "host/libs/config/touchpad.h"
 #include "host/libs/vm_manager/crosvm_manager.h"
 #include "host/libs/vm_manager/gem5_manager.h"
@@ -518,6 +519,9 @@ DEFINE_vec(
     fail_fast, CF_DEFAULTS_FAIL_FAST ? "true" : "false",
     "Whether to exit when a heuristic predicts the boot will not complete");
 
+DEFINE_vec(vhost_user_block, CF_DEFAULTS_VHOST_USER_BLOCK ? "true" : "false",
+           "(experimental) use crosvm vhost-user block device implementation ");
+
 DECLARE_string(assembly_dir);
 DECLARE_string(boot_image);
 DECLARE_string(system_image_dir);
@@ -675,8 +679,14 @@ Result<std::vector<GuestConfig>> ReadGuestConfig() {
       instance_android_info_txt =
           system_image_dir[instance_index] + "/android-info.txt";
     }
+
     auto res = GetAndroidInfoConfig(instance_android_info_txt, "gfxstream");
     guest_config.gfxstream_supported =
+        res.ok() && res.value() == "supported";
+
+    res = GetAndroidInfoConfig(instance_android_info_txt,
+                               "gfxstream_gl_program_binary_link_status");
+    guest_config.gfxstream_gl_program_binary_link_status_supported =
         res.ok() && res.value() == "supported";
 
     auto res_bgra_support = GetAndroidInfoConfig(instance_android_info_txt,
@@ -1007,20 +1017,9 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     SetCommandLineOptionWithMode("secure_hals", kDefaultSecure,
                                  google::FlagSettingMode::SET_FLAGS_DEFAULT);
   }
-  auto secure_hals_strs =
-      android::base::Tokenize(FLAGS_secure_hals, ",:;|/\\+");
-  tmp_config_obj.set_secure_hals(
-      std::set<std::string>(secure_hals_strs.begin(), secure_hals_strs.end()));
-  auto secure_hals = tmp_config_obj.secure_hals();
-  CF_EXPECT(!secure_hals.count(SecureHal::HostKeymintSecure) ||
-                !secure_hals.count(SecureHal::HostKeymintInsecure),
-            "Choose at most one host keymint implementation");
-  CF_EXPECT(!secure_hals.count(SecureHal::HostGatekeeperSecure) ||
-                !secure_hals.count(SecureHal::HostGatekeeperInsecure),
-            "Choose at most one host gatekeeper implementation");
-  CF_EXPECT(!secure_hals.count(SecureHal::HostOemlockSecure) ||
-                !secure_hals.count(SecureHal::HostOemlockInsecure),
-            "Choose at most one host oemlock implementation");
+  auto secure_hals = CF_EXPECT(ParseSecureHals(FLAGS_secure_hals));
+  CF_EXPECT(ValidateSecureHals(secure_hals));
+  tmp_config_obj.set_secure_hals(secure_hals);
 
   tmp_config_obj.set_extra_kernel_cmdline(FLAGS_extra_kernel_cmdline);
 
@@ -1229,6 +1228,9 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
 
   std::vector<bool> fail_fast_vec = CF_EXPECT(GET_FLAG_BOOL_VALUE(fail_fast));
 
+  std::vector<bool> vhost_user_block_vec =
+      CF_EXPECT(GET_FLAG_BOOL_VALUE(vhost_user_block));
+
   std::vector<std::string> mcu_config_vec = CF_EXPECT(GET_FLAG_STR_VALUE(mcu_config_path));
 
   std::string default_enable_sandbox = "";
@@ -1343,6 +1345,9 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
   } else {
     mutable_env_config.set_start_wmediumd(false);
   }
+
+  const auto graphics_availability =
+      GetGraphicsAvailabilityWithSubprocessCheck();
 
   // Instance specific configs
   bool is_first_instance = true;
@@ -1474,6 +1479,11 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     instance.set_blank_data_image_mb(blank_data_image_mb_vec[instance_index]);
     instance.set_gdb_port(gdb_port_vec[instance_index]);
     instance.set_fail_fast(fail_fast_vec[instance_index]);
+    if (vhost_user_block_vec[instance_index]) {
+      CF_EXPECT_EQ(tmp_config_obj.vm_manager(), VmmMode::kCrosvm,
+                   "vhost-user block only supported on crosvm");
+    }
+    instance.set_vhost_user_block(vhost_user_block_vec[instance_index]);
 
     std::optional<std::vector<CuttlefishConfig::DisplayConfig>>
         binding_displays_configs;
@@ -1588,7 +1598,8 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
 
     // gpu related settings
     const std::string gpu_mode = CF_EXPECT(ConfigureGpuSettings(
-        gpu_mode_vec[instance_index], gpu_vhost_user_mode_vec[instance_index],
+        graphics_availability, gpu_mode_vec[instance_index],
+        gpu_vhost_user_mode_vec[instance_index],
         gpu_renderer_features_vec[instance_index],
         gpu_context_types_vec[instance_index], vmm_mode,
         guest_configs[instance_index], instance));
@@ -2168,10 +2179,6 @@ Result<std::vector<GuestConfig>> GetGuestConfigAndSetDefaults() {
 
 std::string GetConfigFilePath(const CuttlefishConfig& config) {
   return config.AssemblyPath("cuttlefish_config.json");
-}
-
-std::string GetCuttlefishEnvPath() {
-  return StringFromEnv("HOME", ".") + "/.cuttlefish.sh";
 }
 
 std::string GetSeccompPolicyDir() {
