@@ -322,14 +322,6 @@ Result<VhostUserDeviceCommands> BuildVhostUserGpu(
   // Connect device to main crosvm:
   gpu_device_cmd.Cmd().AddParameter("--socket=", gpu_device_socket_path);
 
-  main_crosvm_cmd->AddPrerequisite([gpu_device_socket_path]() -> Result<void> {
-#ifdef __linux__
-    return WaitForUnixSocketListeningWithoutConnect(gpu_device_socket_path,
-                                                    /*timeoutSec=*/30);
-#else
-    return CF_ERR("Unhandled check if vhost user gpu ready.");
-#endif
-  });
   main_crosvm_cmd->AddParameter(
       "--vhost-user=gpu,pci-address=", gpu_pci_address,
       ",socket=", gpu_device_socket_path);
@@ -492,6 +484,8 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
 
   crosvm_cmd.Cmd().AddParameter("--core-scheduling=false");
 
+  crosvm_cmd.Cmd().AddParameter("--vhost-user-connect-timeout-ms=", 30 * 1000);
+
   if (instance.vhost_net()) {
     crosvm_cmd.Cmd().AddParameter("--vhost-net");
   }
@@ -542,6 +536,52 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
   crosvm_cmd.Cmd().AddParameter("--cpus=", instance.cpus());
   if (instance.mte()) {
     crosvm_cmd.Cmd().AddParameter("--mte");
+  }
+
+  if (!instance.vcpu_config_path().empty()) {
+    auto vcpu_config_json =
+        CF_EXPECT(LoadFromFile(instance.vcpu_config_path()));
+    std::string affinity_arg = "--cpu-affinity=";
+    std::string capacity_arg = "--cpu-capacity=";
+    std::string frequencies_arg = "--cpu-frequencies-khz=";
+
+    for (int i = 0; i < instance.cpus(); i++) {
+      if (i != 0) {
+        capacity_arg += ",";
+        affinity_arg += ":";
+        frequencies_arg += ";";
+      }
+
+      auto cpu_cluster = fmt::format("--cpu-cluster={}", i);
+
+      auto cpu = fmt::format("cpu{}", i);
+      const auto cpu_json =
+          CF_EXPECT(GetValue<Json::Value>(vcpu_config_json, {cpu}),
+                    "Missing vCPU config!");
+
+      const auto affinity =
+          CF_EXPECT(GetValue<std::string>(cpu_json, {"affinity"}));
+      auto affine_arg = fmt::format("{}={}", i, affinity);
+
+      const auto freqs =
+          CF_EXPECT(GetValue<std::string>(cpu_json, {"frequencies"}));
+      auto freq_arg = fmt::format("{}={}", i, freqs);
+
+      const auto capacity =
+          CF_EXPECT(GetValue<std::string>(cpu_json, {"capacity"}));
+      auto cap_arg = fmt::format("{}={}", i, capacity);
+
+      capacity_arg += cap_arg;
+      affinity_arg += affine_arg;
+      frequencies_arg += freq_arg;
+
+      crosvm_cmd.Cmd().AddParameter(cpu_cluster);
+    }
+
+    crosvm_cmd.Cmd().AddParameter(affinity_arg);
+    crosvm_cmd.Cmd().AddParameter(capacity_arg);
+    crosvm_cmd.Cmd().AddParameter(frequencies_arg);
+    crosvm_cmd.Cmd().AddParameter("--virt-cpufreq");
   }
 
   auto disk_num = instance.virtual_disk_paths().size();
@@ -613,7 +653,6 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
                                   instance.switches_socket_path(), "]");
   }
 
-  SharedFD wifi_tap;
   // GPU capture can only support named files and not file descriptors due to
   // having to pass arguments to crosvm via a wrapper script.
 #ifdef __linux__
@@ -630,7 +669,7 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
     crosvm_cmd.AddTap(instance.ethernet_tap_name(), instance.ethernet_mac(), ethernet_pci);
 
     if (!config.virtio_mac80211_hwsim() && environment.enable_wifi()) {
-      wifi_tap = crosvm_cmd.AddTap(instance.wifi_tap_name());
+      crosvm_cmd.AddTap(instance.wifi_tap_name());
     }
   }
 #endif
@@ -846,10 +885,12 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
   if (instance.enable_virtiofs()) {
     CF_EXPECT(instance.enable_sandbox(),
               "virtiofs is currently not supported without sandboxing");
-    // Set up directory shared with virtiofs
+    // Set up directory shared with virtiofs, setting security_ctx option to
+    // false prevents host error when unable to write data in the
+    // /proc/thread-self/attr/fscreate file.
     crosvm_cmd.Cmd().AddParameter(
         "--shared-dir=", instance.PerInstancePath(kSharedDirName),
-        ":shared:type=fs");
+        ":shared:type=fs:security_ctx=false");
   }
 
   if (instance.target_arch() == Arch::X86_64) {
@@ -873,7 +914,7 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
 
   if (gpu_capture_enabled) {
     const std::string gpu_capture_basename =
-        cpp_basename(instance.gpu_capture_binary());
+        android::base::Basename(instance.gpu_capture_binary());
 
     auto gpu_capture_logs_path =
         instance.PerInstanceInternalPath("gpu_capture.fifo");

@@ -19,6 +19,7 @@ import (
 	"strings"
 
 	"github.com/google/blueprint"
+	"github.com/google/blueprint/proptools"
 
 	"android/soong/android"
 )
@@ -32,6 +33,7 @@ type cvdHostPackage struct {
 	android.ModuleBase
 	android.PackagingBase
 	tarballFile android.InstallPath
+	stampFile   android.InstallPath
 }
 
 func cvdHostPackageFactory() android.Module {
@@ -120,6 +122,7 @@ func (c *cvdHostPackage) GenerateAndroidBuildActions(ctx android.ModuleContext) 
 	dirBuilder.Command().Text("touch").Output(stamp)
 	dirBuilder.Build("cvd_host_package", fmt.Sprintf("Packaging %s", c.BaseModuleName()))
 	ctx.InstallFile(android.PathForModuleInstall(ctx), c.BaseModuleName()+".stamp", stamp)
+	c.stampFile = android.PathForModuleInPartitionInstall(ctx, c.BaseModuleName()+".stamp")
 
 	tarball := android.PathForModuleOut(ctx, "package.tar.gz")
 	tarballBuilder := android.NewRuleBuilder(pctx, ctx)
@@ -137,15 +140,22 @@ func (c *cvdHostPackage) GenerateAndroidBuildActions(ctx android.ModuleContext) 
 
 type cvdHostPackageMetadataProvider interface {
 	tarballMetadata() android.Path
+	stampMetadata() android.Path
 }
 
 func (p *cvdHostPackage) tarballMetadata() android.Path {
 	return p.tarballFile
 }
 
+func (p *cvdHostPackage) stampMetadata() android.Path {
+	return p.stampFile
+}
+
 // Create "hosttar" phony target with "cvd-host_package.tar.gz" path.
+// Add stamp files into "droidcore" dependency.
 func (p *cvdHostPackageSingleton) GenerateBuildActions(ctx android.SingletonContext) {
 	var cvdHostPackageTarball android.Paths
+	var cvdHostPackageStamp android.Paths
 
 	ctx.VisitAllModules(func(module android.Module) {
 		if !module.Enabled(ctx) {
@@ -156,6 +166,7 @@ func (p *cvdHostPackageSingleton) GenerateBuildActions(ctx android.SingletonCont
 				return
 			}
 			cvdHostPackageTarball = append(cvdHostPackageTarball, c.tarballMetadata())
+			cvdHostPackageStamp = append(cvdHostPackageStamp, c.stampMetadata())
 		}
 	})
 
@@ -163,8 +174,13 @@ func (p *cvdHostPackageSingleton) GenerateBuildActions(ctx android.SingletonCont
 		// nothing to do.
 		return
 	}
-	p.tarballPaths = cvdHostPackageTarball
-	ctx.Phony("hosttar", cvdHostPackageTarball...)
+
+	board_platform := proptools.String(ctx.Config().ProductVariables().BoardPlatform)
+	if (board_platform == "vsoc_arm") || (board_platform == "vsoc_arm64") || (board_platform == "vsoc_riscv64") || (board_platform == "vsoc_x86") || (board_platform == "vsoc_x86_64") {
+		p.tarballPaths = cvdHostPackageTarball
+		ctx.Phony("hosttar", cvdHostPackageTarball...)
+		ctx.Phony("droidcore", cvdHostPackageStamp...)
+	}
 }
 
 func (p *cvdHostPackageSingleton) MakeVars(ctx android.MakeVarsContext) {

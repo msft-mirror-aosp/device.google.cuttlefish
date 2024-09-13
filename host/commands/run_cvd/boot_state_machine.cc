@@ -278,7 +278,9 @@ class CvdBootStateMachine : public SetupFeature, public KernelLogPipeConsumer {
             CHECK(status.ok())
                 << "Failed to send network service reset" << status.error_code()
                 << ": " << status.error_message();
-            LOG(DEBUG) << response.result();
+            LOG(DEBUG) << "OpenWRT `service network restart` response: "
+                       << response.result();
+
             auto SubtoolPath = [](const std::string& subtool_name) {
               auto my_own_dir = android::base::GetExecutableDirectory();
               std::stringstream subtool_path_stream;
@@ -289,20 +291,18 @@ class CvdBootStateMachine : public SetupFeature, public KernelLogPipeConsumer {
               }
               return subtool_path;
             };
-            const auto adb_bin_path = SubtoolPath("adb");
-            CHECK(Execute({adb_bin_path, "-s", instance_.adb_ip_and_port(),
-                           "wait-for-device"},
-                          SubprocessOptions(), WEXITED)
-                      .ok())
-                << "Failed to suspend bluetooth manager.";
-            CHECK(Execute({adb_bin_path, "-s", instance_.adb_ip_and_port(),
-                           "shell", "cmd", "bluetooth_manager", "enable"},
-                          SubprocessOptions(), WEXITED)
-                      .ok());
-            CHECK(Execute({adb_bin_path, "-s", instance_.adb_ip_and_port(),
-                           "shell", "cmd", "uwb", "enable-uwb"},
-                          SubprocessOptions(), WEXITED)
-                      .ok());
+            // Run the in-guest post-restore script.
+            Command adb_command(SubtoolPath("adb"));
+            // Avoid the adb server being started in the runtime directory and
+            // looking like a process that is still using the directory.
+            adb_command.SetWorkingDirectory("/");
+            adb_command.AddParameter("-s").AddParameter(
+                instance_.adb_ip_and_port());
+            adb_command.AddParameter("wait-for-device");
+            adb_command.AddParameter("shell");
+            adb_command.AddParameter("/vendor/bin/snapshot_hook_post_resume");
+            CHECK_EQ(adb_command.Start().Wait(), 0)
+                << "Failed to run /vendor/bin/snapshot_hook_post_resume";
             // Done last so that adb is more likely to be ready.
             CHECK(cuttlefish::WriteAll(restore_complete_pipe_write, "1") == 1)
                 << "Error writing to restore complete pipe: "
@@ -400,26 +400,40 @@ class CvdBootStateMachine : public SetupFeature, public KernelLogPipeConsumer {
 
   // Returns true if the machine is left in a final state
   bool OnBootEvtReceived(SharedFD boot_events_pipe) {
-    std::optional<monitor::ReadEventResult> read_result =
+    Result<std::optional<monitor::ReadEventResult>> read_result =
         monitor::ReadEvent(boot_events_pipe);
     if (!read_result) {
-      LOG(ERROR) << "Failed to read a complete kernel log boot event.";
+      LOG(ERROR) << "Failed to read a complete kernel log boot event: "
+                 << read_result.error().FormatForEnv();
+      state_ |= kGuestBootFailed;
+      return MaybeWriteNotification();
+    } else if (!*read_result) {
+      LOG(ERROR) << "EOF from kernel log monitor";
       state_ |= kGuestBootFailed;
       return MaybeWriteNotification();
     }
 
-    if (read_result->event == monitor::Event::BootCompleted) {
+    if ((*read_result)->event == monitor::Event::BootCompleted) {
       LOG(INFO) << "Virtual device booted successfully";
       state_ |= kGuestBootCompleted;
-    } else if (read_result->event == monitor::Event::BootFailed) {
+    } else if ((*read_result)->event == monitor::Event::BootFailed) {
       LOG(ERROR) << "Virtual device failed to boot";
       state_ |= kGuestBootFailed;
-    }  // Ignore the other signals
+    } else if ((*read_result)->event == monitor::Event::HibernationExited) {
+      LOG(INFO) << "Virtual device successfully resumed from hibernation";
+      state_ |= kGuestHibernationCompleted;
+    }
+    // Ignore the other signals
 
     return MaybeWriteNotification();
   }
   bool BootCompleted() const { return state_ & kGuestBootCompleted; }
+
   bool BootFailed() const { return state_ & kGuestBootFailed; }
+
+  bool HibernationCompleted() const {
+    return state_ & kGuestHibernationCompleted;
+  }
 
   void SendExitCode(RunnerExitCodes exit_code, SharedFD fd) {
     fd->Write(&exit_code, sizeof(exit_code));
@@ -431,16 +445,16 @@ class CvdBootStateMachine : public SetupFeature, public KernelLogPipeConsumer {
     std::vector<SharedFD> fds = {reboot_notification_, fg_launcher_pipe_};
     for (auto& fd : fds) {
       if (fd->IsOpen()) {
-        if (BootCompleted()) {
+        if (BootCompleted() || HibernationCompleted()) {
           SendExitCode(RunnerExitCodes::kSuccess, fd);
-        } else if (state_ & kGuestBootFailed) {
+        } else if (BootFailed()) {
           SendExitCode(RunnerExitCodes::kVirtualDeviceBootFailed, fd);
         }
       }
     }
     // Either we sent the code before or just sent it, in any case the state is
     // final
-    return BootCompleted() || (state_ & kGuestBootFailed);
+    return BootCompleted() || HibernationCompleted() || BootFailed();
   }
 
   const CuttlefishConfig& config_;
@@ -460,6 +474,7 @@ class CvdBootStateMachine : public SetupFeature, public KernelLogPipeConsumer {
   static const int kBootStarted = 0;
   static const int kGuestBootCompleted = 1 << 0;
   static const int kGuestBootFailed = 1 << 1;
+  static const int kGuestHibernationCompleted = 1 << 2;
 };
 
 }  // namespace

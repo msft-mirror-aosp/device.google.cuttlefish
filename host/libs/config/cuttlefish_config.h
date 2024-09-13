@@ -91,12 +91,15 @@ class CuttlefishConfig {
   std::string assembly_dir() const;
   std::string AssemblyPath(const std::string&) const;
 
+  void set_instances_uds_dir(const std::string&);
   std::string instances_uds_dir() const;
   std::string InstancesUdsPath(const std::string&) const;
 
+  void set_environments_dir(const std::string&);
   std::string environments_dir() const;
   std::string EnvironmentsPath(const std::string&) const;
 
+  void set_environments_uds_dir(const std::string&);
   std::string environments_uds_dir() const;
   std::string EnvironmentsUdsPath(const std::string&) const;
 
@@ -271,9 +274,6 @@ class CuttlefishConfig {
 
   std::set<std::string> straced_host_executables() const;
   void set_straced_host_executables(const std::set<std::string>& executables);
-
-  bool host_sandbox() const;
-  void set_host_sandbox(bool host_sandbox);
 
   bool IsCrosvm() const;
 
@@ -543,6 +543,8 @@ class CuttlefishConfig {
 
     int cpus() const;
 
+    std::string vcpu_config_path() const;
+
     std::string data_policy() const;
 
     int blank_data_image_mb() const;
@@ -674,6 +676,8 @@ class CuttlefishConfig {
 
     std::string custom_partition_path() const;
 
+    std::string hibernation_partition_image() const;
+
     int blank_metadata_image_mb() const;
     int blank_sdcard_image_mb() const;
     std::string bootloader() const;
@@ -765,6 +769,7 @@ class CuttlefishConfig {
     void set_kgdb(bool kgdb);
     void set_target_arch(Arch target_arch);
     void set_cpus(int cpus);
+    void set_vcpu_config_path(const std::string& vcpu_config_path);
     void set_data_policy(const std::string& data_policy);
     void set_blank_data_image_mb(int blank_data_image_mb);
     void set_gdb_port(int gdb_port);
@@ -893,6 +898,8 @@ class CuttlefishConfig {
     void set_bootconfig_supported(bool bootconfig_supported);
     void set_filename_encryption_mode(const std::string& userdata_format);
     void set_external_network_mode(ExternalNetworkMode network_mode);
+    void set_hibernation_partition_image(
+        const std::string& hibernation_partition_image);
 
     // Whether we should start vhal_proxy_server for the guest-side VHAL to
     // connect to.

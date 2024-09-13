@@ -16,16 +16,17 @@
 
 #include "host/commands/assemble_cvd/disk/disk.h"
 
-#include <fruit/fruit.h>
+#include <android-base/file.h>
 
 #include "common/libs/utils/files.h"
 #include "host/commands/assemble_cvd/boot_image_utils.h"
-#include "host/libs/vm_manager/gem5_manager.h"
+#include "host/libs/config/feature.h"
 
 namespace cuttlefish {
 
-Result<void> Gem5ImageUnpacker(const CuttlefishConfig& config,
-                               KernelRamdiskRepacker& /* dependency */) {
+Result<void> Gem5ImageUnpacker(
+    const CuttlefishConfig& config,
+    AutoSetup<RepackKernelRamdisk>::Type& /* dependency */) {
   if (config.vm_manager() != VmmMode::kGem5) {
     return {};
   }
@@ -71,15 +72,15 @@ Result<void> Gem5ImageUnpacker(const CuttlefishConfig& config,
       mkdir(binaries_dir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) == 0 ||
           errno == EEXIST,
       "\"" << binaries_dir << "\": " << strerror(errno));
-  CF_EXPECT(cuttlefish::Copy(
+  CF_EXPECT(Copy(
       instance_.bootloader(),
-      binaries_dir + "/" + cpp_basename(instance_.bootloader())));
+      binaries_dir + "/" + android::base::Basename(instance_.bootloader())));
 
   // Gem5 also needs the ARM version of the bootloader, even though it
   // doesn't use it. It'll even open it to check it's a valid ELF file.
   // Work around this by copying such a named file from the same directory
-  CF_EXPECT(cuttlefish::Copy(cpp_dirname(instance_.bootloader()) + "/boot.arm",
-                             binaries_dir + "/boot.arm"));
+  CF_EXPECT(Copy(android::base::Dirname(instance_.bootloader()) + "/boot.arm",
+                 binaries_dir + "/boot.arm"));
 
   return {};
 }

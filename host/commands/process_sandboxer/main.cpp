@@ -14,63 +14,67 @@
  * limitations under the License.
  */
 
+#include <fcntl.h>
 #include <stdlib.h>
+#include <sys/prctl.h>
 
 #include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
-#include "absl/flags/flag.h"
-#include "absl/flags/parse.h"
-#include "absl/log/check.h"
-#include "absl/log/globals.h"
-#include "absl/log/initialize.h"
-#include "absl/log/log.h"
-#include "absl/status/status.h"
-#include "absl/strings/numbers.h"
-#include "sandboxed_api/util/path.h"
+#include <absl/flags/flag.h>
+#include <absl/flags/parse.h>
+#include <absl/log/check.h>
+#include <absl/log/globals.h>
+#include <absl/log/initialize.h>
+#include <absl/log/log.h>
+#include <absl/status/status.h>
+#include <absl/strings/numbers.h>
+#include <absl/strings/str_cat.h>
+#include <sandboxed_api/util/path.h>
 
 #include "host/commands/process_sandboxer/logs.h"
+#include "host/commands/process_sandboxer/pidfd.h"
 #include "host/commands/process_sandboxer/policies.h"
 #include "host/commands/process_sandboxer/sandbox_manager.h"
+#include "host/commands/process_sandboxer/unique_fd.h"
 
 inline constexpr char kCuttlefishConfigEnvVarName[] = "CUTTLEFISH_CONFIG_FILE";
 
+ABSL_FLAG(std::string, assembly_dir, "", "cuttlefish/assembly build dir");
 ABSL_FLAG(std::string, host_artifacts_path, "", "Host exes and libs");
+ABSL_FLAG(std::string, environments_dir, "", "Cross-instance environment dir");
+ABSL_FLAG(std::string, environments_uds_dir, "", "Environment unix sockets");
+ABSL_FLAG(std::string, instance_uds_dir, "", "Instance unix domain sockets");
+ABSL_FLAG(std::string, guest_image_path, "", "Directory with `system.img`");
 ABSL_FLAG(std::string, log_dir, "", "Where to write log files");
-ABSL_FLAG(std::vector<std::string>, inherited_fds, std::vector<std::string>(),
-          "File descriptors to keep in the sandbox");
-ABSL_FLAG(std::string, runtime_dir, "",
-          "Working directory of host executables");
 ABSL_FLAG(std::vector<std::string>, log_files, std::vector<std::string>(),
           "File paths outside the sandbox to write logs to");
+ABSL_FLAG(std::string, runtime_dir, "",
+          "Working directory of host executables");
 ABSL_FLAG(bool, verbose_stderr, false, "Write debug messages to stderr");
 
-using absl::GetFlag;
-using absl::OkStatus;
-using absl::Status;
-using absl::StatusCode;
+namespace cuttlefish::process_sandboxer {
+namespace {
+
 using sapi::file::CleanPath;
 using sapi::file::JoinPath;
 
-namespace cuttlefish {
-namespace process_sandboxer {
-namespace {
-
 std::optional<std::string_view> FromEnv(const std::string& name) {
-  auto value = getenv(name.c_str());
+  char* value = getenv(name.c_str());
   return value == NULL ? std::optional<std::string_view>() : value;
 }
 
-Status ProcessSandboxerMain(int argc, char** argv) {
-  auto args = absl::ParseCommandLine(argc, argv);
+absl::Status ProcessSandboxerMain(int argc, char** argv) {
+  std::vector<char*> args = absl::ParseCommandLine(argc, argv);
   /* When building in AOSP, the flags in absl/log/flags.cc are missing. This
    * uses the absl/log/globals.h interface to log ERROR severity to stderr, and
    * write all LOG and VLOG(1) messages to log sinks pointing to log files. */
   absl::InitializeLog();
-  if (GetFlag(FLAGS_verbose_stderr)) {
+  if (absl::GetFlag(FLAGS_verbose_stderr)) {
     absl::SetStderrThreshold(absl::LogSeverity::kError);
   } else {
     absl::SetStderrThreshold(absl::LogSeverity::kInfo);
@@ -78,64 +82,155 @@ Status ProcessSandboxerMain(int argc, char** argv) {
   absl::EnableLogPrefix(true);
   absl::SetGlobalVLogLevel(1);
 
-  auto logs_status = LogToFiles(GetFlag(FLAGS_log_files));
+  if (prctl(PR_SET_CHILD_SUBREAPER, 1) < 0) {
+    return absl::ErrnoToStatus(errno, "prctl(PR_SET_CHILD_SUBREAPER failed");
+  }
+
+  HostInfo host{
+      .assembly_dir = CleanPath(absl::GetFlag(FLAGS_assembly_dir)),
+      .cuttlefish_config_path =
+          CleanPath(FromEnv(kCuttlefishConfigEnvVarName).value_or("")),
+      .environments_dir = CleanPath(absl::GetFlag(FLAGS_environments_dir)),
+      .environments_uds_dir =
+          CleanPath(absl::GetFlag(FLAGS_environments_uds_dir)),
+      .guest_image_path = CleanPath(absl::GetFlag(FLAGS_guest_image_path)),
+      .host_artifacts_path =
+          CleanPath(absl::GetFlag(FLAGS_host_artifacts_path)),
+      .instance_uds_dir = CleanPath(absl::GetFlag(FLAGS_instance_uds_dir)),
+      .log_dir = CleanPath(absl::GetFlag(FLAGS_log_dir)),
+      .runtime_dir = CleanPath(absl::GetFlag(FLAGS_runtime_dir)),
+  };
+
+  // TODO: schuffelen - try to guess these from the cvd_internal_start arguments
+
+  std::optional<std::string_view> home = FromEnv("HOME");
+
+  // CleanPath will set empty strings to ".", so consider that the unset value.
+  if (host.assembly_dir == "." && home.has_value()) {
+    host.assembly_dir = CleanPath(JoinPath(*home, "cuttlefish", "assembly"));
+  }
+  if (host.cuttlefish_config_path == "." && home.has_value()) {
+    host.cuttlefish_config_path = CleanPath(
+        JoinPath(*home, "cuttlefish", "assembly", "cuttlefish_config.json"));
+  }
+  if (host.environments_dir == "." && home.has_value()) {
+    host.environments_dir =
+        CleanPath(JoinPath(*home, "cuttlefish", "environments"));
+  }
+  if (host.environments_uds_dir == ".") {
+    host.environments_uds_dir = "/tmp/cf_env_1000";
+  }
+  if (host.instance_uds_dir == ".") {
+    host.instance_uds_dir = "/tmp/cf_avd_1000/cvd-1";
+  }
+  if (host.log_dir == "." && home.has_value()) {
+    host.log_dir =
+        CleanPath(JoinPath(*home, "cuttlefish", "instances", "cvd-1", "logs"));
+  }
+  if (host.runtime_dir == "." && home.has_value()) {
+    host.runtime_dir =
+        CleanPath(JoinPath(*home, "cuttlefish", "instances", "cvd-1"));
+  }
+
+  std::optional<std::string_view> product_out = FromEnv("ANDROID_PRODUCT_OUT");
+
+  if (host.guest_image_path == ".") {
+    if (product_out.has_value()) {
+      host.guest_image_path = CleanPath(*product_out);
+    } else if (home.has_value()) {
+      host.guest_image_path = CleanPath(*home);
+    }
+  }
+
+  std::optional<std::string_view> host_out = FromEnv("ANDROID_HOST_OUT");
+
+  if (host.host_artifacts_path == ".") {
+    if (host_out.has_value()) {
+      host.host_artifacts_path = CleanPath(*host_out);
+    } else if (home.has_value()) {
+      host.host_artifacts_path = CleanPath(*home);
+    }
+  }
+
+  absl::Status dir_creation = host.EnsureOutputDirectoriesExist();
+  if (!dir_creation.ok()) {
+    return dir_creation;
+  }
+
+  absl::Status logs_status;
+  if (absl::GetFlag(FLAGS_log_files).empty()) {
+    std::string default_log_path = JoinPath(host.log_dir, "launcher.log");
+    unlink(default_log_path.c_str());  // Clean from previous run
+    logs_status = LogToFiles({default_log_path});
+  } else {
+    logs_status = LogToFiles(absl::GetFlag(FLAGS_log_files));
+    if (!logs_status.ok()) {
+      return logs_status;
+    }
+  }
   if (!logs_status.ok()) {
     return logs_status;
   }
 
-  VLOG(1) << "Entering ProcessSandboxerMain";
+  VLOG(1) << host;
 
-  HostInfo host;
-  host.artifacts_path = CleanPath(GetFlag(FLAGS_host_artifacts_path));
-  host.cuttlefish_config_path =
-      CleanPath(FromEnv(kCuttlefishConfigEnvVarName).value_or(""));
-  host.log_dir = CleanPath(GetFlag(FLAGS_log_dir));
-  host.runtime_dir = CleanPath(GetFlag(FLAGS_runtime_dir));
-  setenv("LD_LIBRARY_PATH", JoinPath(host.artifacts_path, "lib64").c_str(), 1);
+  setenv("LD_LIBRARY_PATH", JoinPath(host.host_artifacts_path, "lib64").c_str(),
+         1);
 
   if (args.size() < 2) {
-    return Status(StatusCode::kInvalidArgument, "Need argv in positional args");
+    std::string err = absl::StrCat("Wanted argv.size() > 1, was ", args.size());
+    return absl::InvalidArgumentError(err);
   }
-  auto exe = CleanPath(args[1]);
+  std::string exe = CleanPath(args[1]);
   std::vector<std::string> exe_argv(++args.begin(), args.end());
 
   auto sandbox_manager_res = SandboxManager::Create(std::move(host));
   if (!sandbox_manager_res.ok()) {
     return sandbox_manager_res.status();
   }
-  auto sandbox_mgr = std::move(*sandbox_manager_res);
+  std::unique_ptr<SandboxManager> manager = std::move(*sandbox_manager_res);
 
-  std::map<int, int> fds;
-  for (const auto& inherited_fd : GetFlag(FLAGS_inherited_fds)) {
-    int fd;
-    if (!absl::SimpleAtoi(inherited_fd, &fd)) {
-      return Status(StatusCode::kInvalidArgument, "non-int inherited_fd");
+  std::vector<std::pair<UniqueFd, int>> fds;
+  for (int i = 0; i <= 2; i++) {
+    auto duped = fcntl(i, F_DUPFD_CLOEXEC, 0);
+    if (duped < 0) {
+      static constexpr char kErr[] = "Failed to `dup` stdio file descriptor";
+      return absl::ErrnoToStatus(errno, kErr);
     }
-    fds[fd] = fd;  // RunProcess will close these
+    fds.emplace_back(UniqueFd(duped), i);
   }
 
-  auto status = sandbox_mgr->RunProcess(std::move(exe_argv), std::move(fds));
+  std::vector<std::string> this_env;
+  for (size_t i = 0; environ[i] != nullptr; i++) {
+    this_env.emplace_back(environ[i]);
+  }
+
+  absl::Status status = manager->RunProcess(std::nullopt, std::move(exe_argv),
+                                            std::move(fds), this_env);
   if (!status.ok()) {
     return status;
   }
 
-  while (sandbox_mgr->Running()) {
-    auto iter = sandbox_mgr->Iterate();
+  while (manager->Running()) {
+    absl::Status iter = manager->Iterate();
     if (!iter.ok()) {
       LOG(ERROR) << "Error in SandboxManager::Iterate: " << iter.ToString();
     }
   }
-  return OkStatus();
+
+  absl::StatusOr<PidFd> self_pidfd = PidFd::FromRunningProcess(getpid());
+  if (!self_pidfd.ok()) {
+    return self_pidfd.status();
+  }
+
+  return self_pidfd->HaltChildHierarchy();
 }
 
 }  // namespace
-}  // namespace process_sandboxer
-}  // namespace cuttlefish
-
-using cuttlefish::process_sandboxer::ProcessSandboxerMain;
+}  // namespace cuttlefish::process_sandboxer
 
 int main(int argc, char** argv) {
-  auto status = ProcessSandboxerMain(argc, argv);
+  auto status = cuttlefish::process_sandboxer::ProcessSandboxerMain(argc, argv);
   if (status.ok()) {
     VLOG(1) << "process_sandboxer exiting normally";
     return 0;
