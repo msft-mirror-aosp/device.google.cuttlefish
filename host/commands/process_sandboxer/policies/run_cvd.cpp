@@ -24,13 +24,9 @@
 #include <absl/strings/str_cat.h>
 #include <absl/strings/str_replace.h>
 #include <sandboxed_api/sandbox2/policybuilder.h>
-#include <sandboxed_api/sandbox2/trace_all_syscalls.h>
 #include <sandboxed_api/sandbox2/util/bpf_helper.h>
-#include <sandboxed_api/util/path.h>
 
 namespace cuttlefish::process_sandboxer {
-
-using sapi::file::JoinPath;
 
 sandbox2::PolicyBuilder RunCvdPolicy(const HostInfo& host) {
   std::string sandboxer_proxy = host.HostToolExe("sandboxer_proxy");
