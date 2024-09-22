@@ -49,10 +49,10 @@
 #include <sandboxed_api/sandbox2/policy.h>
 #include <sandboxed_api/sandbox2/sandbox2.h>
 #include <sandboxed_api/sandbox2/util.h>
-#include <sandboxed_api/util/path.h>
 #pragma clang diagnostic pop
 
 #include "host/commands/process_sandboxer/credentialed_unix_server.h"
+#include "host/commands/process_sandboxer/filesystem.h"
 #include "host/commands/process_sandboxer/pidfd.h"
 #include "host/commands/process_sandboxer/policies.h"
 #include "host/commands/process_sandboxer/poll_callback.h"
@@ -65,8 +65,6 @@ using sandbox2::Policy;
 using sandbox2::Sandbox2;
 using sandbox2::Syscall;
 using sandbox2::util::GetProgName;
-using sapi::file::CleanPath;
-using sapi::file::JoinPath;
 
 namespace {
 
@@ -367,8 +365,6 @@ absl::Status SandboxManager::RunProcess(
     }
   }
   std::string exe = CleanPath(argv[0]);
-  // TODO(schuffelen): Introduce an allow-list for executables to run outside
-  // any sandbox.
   std::unique_ptr<Policy> policy = PolicyForExecutable(
       host_info_, ServerSocketOutsidePath(runtime_dir_), exe);
   if (policy) {
