@@ -45,12 +45,14 @@
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wunused-parameter"
 #include <sandboxed_api/sandbox2/executor.h>
+#include <sandboxed_api/sandbox2/notify.h>
 #include <sandboxed_api/sandbox2/policy.h>
 #include <sandboxed_api/sandbox2/sandbox2.h>
-#include <sandboxed_api/util/path.h>
+#include <sandboxed_api/sandbox2/util.h>
 #pragma clang diagnostic pop
 
 #include "host/commands/process_sandboxer/credentialed_unix_server.h"
+#include "host/commands/process_sandboxer/filesystem.h"
 #include "host/commands/process_sandboxer/pidfd.h"
 #include "host/commands/process_sandboxer/policies.h"
 #include "host/commands/process_sandboxer/poll_callback.h"
@@ -61,8 +63,8 @@ namespace cuttlefish::process_sandboxer {
 using sandbox2::Executor;
 using sandbox2::Policy;
 using sandbox2::Sandbox2;
-using sapi::file::CleanPath;
-using sapi::file::JoinPath;
+using sandbox2::Syscall;
+using sandbox2::util::GetProgName;
 
 namespace {
 
@@ -268,6 +270,9 @@ class SandboxManager::SocketClient {
     if (!argv.ok()) {
       return argv.status();
     }
+    if ((*argv)[0] == "openssl") {
+      (*argv)[0] = "/usr/bin/openssl";
+    }
     absl::StatusOr<std::vector<std::pair<UniqueFd, int>>> fds =
         pid_fd_->AllFds();
     if (!fds.ok()) {
@@ -363,8 +368,6 @@ absl::Status SandboxManager::RunProcess(
     }
   }
   std::string exe = CleanPath(argv[0]);
-  // TODO(schuffelen): Introduce an allow-list for executables to run outside
-  // any sandbox.
   std::unique_ptr<Policy> policy = PolicyForExecutable(
       host_info_, ServerSocketOutsidePath(runtime_dir_), exe);
   if (policy) {
@@ -374,6 +377,17 @@ absl::Status SandboxManager::RunProcess(
     return RunProcessNoSandbox(client_fd, argv, std::move(fds), env);
   }
 }
+
+class TraceAndAllow : public sandbox2::Notify {
+ public:
+  TraceAction EventSyscallTrace(const Syscall& syscall) override {
+    std::string prog_name = GetProgName(syscall.pid());
+    LOG(WARNING) << "[PERMITTED]: SYSCALL ::: PID: " << syscall.pid()
+                 << ", PROG: '" << prog_name
+                 << "' : " << syscall.GetDescription();
+    return TraceAction::kAllow;
+  }
+};
 
 absl::Status SandboxManager::RunSandboxedProcess(
     std::optional<int> client_fd, absl::Span<const std::string> argv,
@@ -393,7 +407,7 @@ absl::Status SandboxManager::RunSandboxedProcess(
     VLOG(1) << process_stream.str();
   }
 
-  auto exe = CleanPath(argv[0]);
+  std::string exe = CleanPath(argv[0]);
   auto executor = std::make_unique<Executor>(exe, argv, env);
   executor->set_cwd(host_info_.runtime_dir);
 
@@ -413,7 +427,11 @@ absl::Status SandboxManager::RunSandboxedProcess(
     return absl::ErrnoToStatus(errno, "`eventfd` failed");
   }
 
-  auto sbx = std::make_unique<Sandbox2>(std::move(executor), std::move(policy));
+  // TODO: b/318576505 - Don't allow unknown system calls.
+  std::unique_ptr<sandbox2::Notify> notify(new TraceAndAllow());
+
+  auto sbx = std::make_unique<Sandbox2>(std::move(executor), std::move(policy),
+                                        std::move(notify));
   if (!sbx->RunAsync()) {
     return sbx->AwaitResult().ToStatus();
   }

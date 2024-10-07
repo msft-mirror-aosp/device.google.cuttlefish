@@ -15,23 +15,24 @@
  */
 #include "host/commands/process_sandboxer/policies.h"
 
+#include <sys/mman.h>
+#include <sys/prctl.h>
+#include <sys/socket.h>
+#include <sys/stat.h>
+#include <syscall.h>
+
 #include <absl/strings/str_cat.h>
 #include <absl/strings/str_replace.h>
-#include <sandboxed_api/sandbox2/allow_all_syscalls.h>
 #include <sandboxed_api/sandbox2/policybuilder.h>
-#include <sandboxed_api/util/path.h>
+#include <sandboxed_api/sandbox2/util/bpf_helper.h>
 
 namespace cuttlefish::process_sandboxer {
-
-using sapi::file::JoinPath;
 
 sandbox2::PolicyBuilder RunCvdPolicy(const HostInfo& host) {
   std::string sandboxer_proxy = host.HostToolExe("sandboxer_proxy");
   return BaselinePolicy(host, host.HostToolExe("run_cvd"))
       .AddDirectory(host.runtime_dir, /* is_ro= */ false)
       .AddFile(host.cuttlefish_config_path)
-      .AddFileAt(sandboxer_proxy,
-                 "/usr/lib/cuttlefish-common/bin/capability_query.py")
       .AddFileAt(sandboxer_proxy, host.HostToolExe("adb_connector"))
       .AddFileAt(sandboxer_proxy, host.HostToolExe("casimir_control_server"))
       .AddFileAt(sandboxer_proxy, host.HostToolExe("control_env_proxy_server"))
@@ -57,8 +58,9 @@ sandbox2::PolicyBuilder RunCvdPolicy(const HostInfo& host) {
       .AddFileAt(sandboxer_proxy, host.HostToolExe("wmediumd"))
       .AddFileAt(sandboxer_proxy, host.HostToolExe("wmediumd_gen_config"))
       .AddDirectory(host.environments_dir)
-      .AddDirectory(host.environments_uds_dir, false)
-      .AddDirectory(host.instance_uds_dir, false)
+      .AddDirectory(host.environments_uds_dir, /* is_ro= */ false)
+      .AddDirectory(host.instance_uds_dir, /* is_ro= */ false)
+      .AddDirectory(host.vsock_device_dir, /* is_ro= */ false)
       // The UID inside the sandbox2 namespaces is always 1000.
       .AddDirectoryAt(host.environments_uds_dir,
                       absl::StrReplaceAll(
@@ -70,10 +72,68 @@ sandbox2::PolicyBuilder RunCvdPolicy(const HostInfo& host) {
                           host.instance_uds_dir,
                           {{absl::StrCat("cf_avd_", getuid()), "cf_avd_1000"}}),
                       false)
-      // TODO(schuffelen): Write a system call policy. As written, this only
-      // uses the namespacing features of sandbox2, ignoring the seccomp
-      // features.
-      .DefaultAction(sandbox2::AllowAllSyscalls{});
+      .AddPolicyOnSyscall(__NR_madvise,
+                          {ARG_32(2), JEQ32(MADV_DONTNEED, ALLOW)})
+      .AddPolicyOnSyscall(
+          __NR_mknodat,
+          [](bpf_labels& labels) -> std::vector<sock_filter> {
+            return {
+                ARG_32(2),
+                // a <- a & S_IFMT // Mask to only the file type bits
+                BPF_STMT(BPF_ALU + BPF_AND + BPF_K,
+                         static_cast<uint32_t>(S_IFMT)),
+                // Only allow `mkfifo`
+                JNE32(S_IFIFO, JUMP(&labels, cf_mknodat_end)),
+                ARG_32(3),
+                JEQ32(0, ALLOW),
+                LABEL(&labels, cf_mknodat_end),
+            };
+          })
+      .AddPolicyOnSyscall(__NR_prctl,
+                          {ARG_32(0), JEQ32(PR_SET_PDEATHSIG, ALLOW),
+                           JEQ32(PR_SET_CHILD_SUBREAPER, ALLOW)})
+      .AddPolicyOnSyscall(
+          __NR_setsockopt,
+          [](bpf_labels& labels) -> std::vector<sock_filter> {
+            return {
+                ARG_32(1),
+                JNE32(SOL_SOCKET, JUMP(&labels, cf_setsockopt_end)),
+                ARG_32(2),
+                JEQ32(SO_REUSEADDR, ALLOW),
+                JEQ32(SO_RCVTIMEO, ALLOW),
+                LABEL(&labels, cf_setsockopt_end),
+            };
+          })
+      .AddPolicyOnSyscall(__NR_socket, {ARG_32(0), JEQ32(AF_UNIX, ALLOW),
+                                        JEQ32(AF_VSOCK, ALLOW)})
+      .AllowChmod()
+      .AllowDup()
+      .AllowEventFd()
+      .AllowFork()  // Multithreading, sandboxer_proxy, process monitor
+      .AllowGetIDs()
+      .AllowInotifyInit()
+      .AllowMkdir()
+      .AllowPipe()
+      .AllowSafeFcntl()
+      .AllowSelect()
+      .AllowSyscall(__NR_accept)
+      .AllowSyscall(__NR_bind)
+      .AllowSyscall(__NR_connect)
+      .AllowSyscall(__NR_execve)  // sandboxer_proxy
+      .AllowSyscall(__NR_getsid)
+      .AllowSyscall(__NR_inotify_add_watch)
+      .AllowSyscall(__NR_inotify_rm_watch)
+      .AllowSyscall(__NR_listen)
+      .AllowSyscall(__NR_msgget)  // Metrics SysV RPC
+      .AllowSyscall(__NR_msgsnd)  // Metrics SysV RPC
+      .AllowSyscall(__NR_recvmsg)
+      .AllowSyscall(__NR_sendmsg)
+      .AllowSyscall(__NR_setpgid)
+      .AllowSyscall(__NR_socketpair)
+      .AllowSyscall(__NR_waitid)  // Not covered by `AllowWait()`
+      .AllowTCGETS()
+      .AllowUnlink()
+      .AllowWait();
 }
 
 }  // namespace cuttlefish::process_sandboxer

@@ -651,6 +651,7 @@ class CuttlefishConfig {
     std::string new_vbmeta_vendor_dlkm_image() const;
     std::string vbmeta_system_dlkm_image() const;
     std::string new_vbmeta_system_dlkm_image() const;
+    std::string vvmtruststore_path() const;
     std::string default_target_zip() const;
     std::string system_target_zip() const;
 
@@ -675,6 +676,8 @@ class CuttlefishConfig {
     std::string fuchsia_root_image() const;
 
     std::string custom_partition_path() const;
+
+    std::string hibernation_partition_image() const;
 
     int blank_metadata_image_mb() const;
     int blank_sdcard_image_mb() const;
@@ -873,6 +876,7 @@ class CuttlefishConfig {
         const std::string& vbmeta_system_dlkm_image);
     void set_new_vbmeta_system_dlkm_image(
         const std::string& vbmeta_system_dlkm_image);
+    void set_vvmtruststore_path(const std::string& vvmtruststore_path);
     void set_default_target_zip(const std::string& default_target_zip);
     void set_system_target_zip(const std::string& system_target_zip);
     void set_otheros_esp_image(const std::string& otheros_esp_image);
@@ -896,6 +900,8 @@ class CuttlefishConfig {
     void set_bootconfig_supported(bool bootconfig_supported);
     void set_filename_encryption_mode(const std::string& userdata_format);
     void set_external_network_mode(ExternalNetworkMode network_mode);
+    void set_hibernation_partition_image(
+        const std::string& hibernation_partition_image);
 
     // Whether we should start vhal_proxy_server for the guest-side VHAL to
     // connect to.

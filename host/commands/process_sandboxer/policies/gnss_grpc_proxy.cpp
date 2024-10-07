@@ -16,19 +16,42 @@
 
 #include "host/commands/process_sandboxer/policies.h"
 
-#include <sandboxed_api/sandbox2/allow_all_syscalls.h>
+#include <errno.h>
+#include <sys/mman.h>
+#include <sys/syscall.h>
+
 #include <sandboxed_api/sandbox2/policybuilder.h>
+#include <sandboxed_api/sandbox2/util/bpf_helper.h>
 
 namespace cuttlefish::process_sandboxer {
 
 sandbox2::PolicyBuilder GnssGrpcProxyPolicy(const HostInfo& host) {
-  // TODO: b/318591948 - Add system call policy. This only applies namespaces.
   return BaselinePolicy(host, host.HostToolExe("gnss_grpc_proxy"))
       .AddDirectory(host.instance_uds_dir, /* is_ro= */ false)
       .AddDirectory(host.log_dir, /* is_ro= */ false)
       .AddFile("/dev/urandom")  // For gRPC
       .AddFile(host.cuttlefish_config_path)
-      .DefaultAction(sandbox2::AllowAllSyscalls());
+      .AddPolicyOnSyscall(__NR_socket, {ARG_32(0), JEQ32(AF_UNIX, ALLOW),
+                                        JEQ32(AF_INET, ERRNO(EACCES)),
+                                        JEQ32(AF_INET6, ERRNO(EACCES))})
+      .AllowEventFd()
+      .AllowSafeFcntl()
+      .AllowSleep()
+      .AllowSyscall(__NR_bind)
+      .AllowSyscall(__NR_clone)  // multithreading
+      .AllowSyscall(__NR_getpeername)
+      .AllowSyscall(__NR_getsockname)
+      .AllowSyscall(__NR_listen)
+      .AddPolicyOnSyscall(__NR_madvise,
+                          {ARG_32(2), JEQ32(MADV_DONTNEED, ALLOW)})
+      .AllowSyscall(__NR_recvmsg)
+      .AllowSyscall(__NR_sched_getparam)
+      .AllowSyscall(__NR_sched_getscheduler)
+      .AllowSyscall(__NR_sched_yield)
+      .AllowSyscall(__NR_shutdown)
+      .AllowSyscall(__NR_sendmsg)
+      .AllowSyscalls({__NR_accept, __NR_accept4})
+      .AllowTCGETS();
 }
 
 }  // namespace cuttlefish::process_sandboxer
