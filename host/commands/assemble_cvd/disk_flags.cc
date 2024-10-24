@@ -87,6 +87,8 @@ DEFINE_string(
     "to "
     "be vbmeta_system_dlkm.img in the directory specified by "
     "-system_image_dir.");
+DEFINE_string(vvmtruststore_path, CF_DEFAULTS_VVMTRUSTSTORE_PATH,
+              "Location of the vvmtruststore image");
 
 DEFINE_string(
     default_target_zip, CF_DEFAULTS_DEFAULT_TARGET_ZIP,
@@ -119,9 +121,13 @@ DEFINE_string(fuchsia_multiboot_bin_path, CF_DEFAULTS_FUCHSIA_MULTIBOOT_BIN_PATH
 DEFINE_string(fuchsia_root_image, CF_DEFAULTS_FUCHSIA_ROOT_IMAGE,
               "Location of fuchsia root filesystem image for cuttlefish otheros flow.");
 
-DEFINE_string(custom_partition_path, CF_DEFAULTS_CUSTOM_PARTITION_PATH,
-              "Location of custom image that will be passed as a \"custom\" partition"
-              "to rootfs and can be used by /dev/block/by-name/custom");
+DEFINE_string(
+    custom_partition_path, CF_DEFAULTS_CUSTOM_PARTITION_PATH,
+    "Location of custom image that will be passed as a \"custom\" partition"
+    "to rootfs and can be used by /dev/block/by-name/custom. Multiple images "
+    "can be passed, separated by semicolons and can be used as "
+    "/dev/block/by-name/custom_1, /dev/block/by-name/custom_2, etc. Example: "
+    "--custom_partition_path=\"/path/to/custom.img;/path/to/other.img\"");
 
 DEFINE_string(
     hibernation_image, CF_DEFAULTS_HIBERNATION_IMAGE,
@@ -458,13 +464,27 @@ std::vector<ImagePartition> android_composite_disk_config(
         .read_only = FLAGS_use_overlay,
     });
   }
-  const auto custom_partition_path = instance.custom_partition_path();
-  if (!custom_partition_path.empty()) {
+
+  const auto vvmtruststore_path = instance.vvmtruststore_path();
+  if (!vvmtruststore_path.empty()) {
     partitions.push_back(ImagePartition{
-        .label = "custom",
-        .image_file_path = AbsolutePath(custom_partition_path),
+        .label = "vvmtruststore",
+        .image_file_path = AbsolutePath(vvmtruststore_path),
         .read_only = FLAGS_use_overlay,
     });
+  }
+
+  const auto custom_partition_path = instance.custom_partition_path();
+  if (!custom_partition_path.empty()) {
+    auto custom_partition_paths =
+        android::base::Split(custom_partition_path, ";");
+    for (int i = 0; i < custom_partition_paths.size(); i++) {
+      partitions.push_back(ImagePartition{
+          .label = i > 0 ? "custom_" + std::to_string(i) : "custom",
+          .image_file_path = AbsolutePath(custom_partition_paths[i]),
+          .read_only = FLAGS_use_overlay,
+      });
+    }
   }
 
   return partitions;
@@ -751,6 +771,7 @@ Result<void> DiskImageFlagsVectorization(CuttlefishConfig& config, const Fetcher
       android::base::Split(FLAGS_vbmeta_vendor_dlkm_image, ",");
   auto vbmeta_system_dlkm_image =
       android::base::Split(FLAGS_vbmeta_system_dlkm_image, ",");
+  auto vvmtruststore_path = android::base::Split(FLAGS_vvmtruststore_path, ",");
 
   std::vector<std::string> default_target_zip_vec =
       android::base::Split(FLAGS_default_target_zip, ",");
@@ -856,6 +877,11 @@ Result<void> DiskImageFlagsVectorization(CuttlefishConfig& config, const Fetcher
     } else {
       instance.set_vbmeta_system_dlkm_image(
           vbmeta_system_dlkm_image[instance_index]);
+    }
+    if (instance_index >= vvmtruststore_path.size()) {
+      instance.set_vvmtruststore_path(vvmtruststore_path[0]);
+    } else {
+      instance.set_vvmtruststore_path(vvmtruststore_path[instance_index]);
     }
     if (instance_index >= super_image.size()) {
       cur_super_image = super_image[0];
