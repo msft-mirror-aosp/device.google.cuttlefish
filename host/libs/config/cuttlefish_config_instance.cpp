@@ -423,6 +423,14 @@ void CuttlefishConfig::MutableInstanceSpecific::set_kernel_path(
     const std::string& kernel_path) {
   (*Dictionary())[kKernelPath] = kernel_path;
 }
+static constexpr char kVvmtruststorePath[] = "vvmtruststore_path";
+void CuttlefishConfig::MutableInstanceSpecific::set_vvmtruststore_path(
+    const std::string& vvmtruststore_path) {
+  (*Dictionary())[kVvmtruststorePath] = vvmtruststore_path;
+}
+std::string CuttlefishConfig::InstanceSpecific::vvmtruststore_path() const {
+  return (*Dictionary())[kVvmtruststorePath].asString();
+}
 // end of system image files
 
 static constexpr char kDefaultTargetZip[] = "default_target_zip";
@@ -883,6 +891,14 @@ void CuttlefishConfig::MutableInstanceSpecific::set_enable_audio(bool enable) {
 }
 bool CuttlefishConfig::InstanceSpecific::enable_audio() const {
   return (*Dictionary())[kEnableAudio].asBool();
+}
+
+static constexpr char kEnableMouse[] = "enable_mouse";
+void CuttlefishConfig::MutableInstanceSpecific::set_enable_mouse(bool enable) {
+  (*Dictionary())[kEnableMouse] = enable;
+}
+bool CuttlefishConfig::InstanceSpecific::enable_mouse() const {
+  return (*Dictionary())[kEnableMouse].asBool();
 }
 
 static constexpr char kEnableGnssGrpcProxy[] = "enable_gnss_grpc_proxy";
@@ -1845,6 +1861,10 @@ std::string CuttlefishConfig::InstanceSpecific::touch_socket_path(
     int touch_dev_idx) const {
   return PerInstanceInternalUdsPath(
       ("touch_" + std::to_string(touch_dev_idx) + ".sock").c_str());
+}
+
+std::string CuttlefishConfig::InstanceSpecific::mouse_socket_path() const {
+  return PerInstanceInternalPath("mouse.sock");
 }
 
 std::string CuttlefishConfig::InstanceSpecific::rotary_socket_path() const {

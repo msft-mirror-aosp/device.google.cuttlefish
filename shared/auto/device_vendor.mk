@@ -31,7 +31,10 @@ $(call inherit-product, device/google/cuttlefish/shared/device.mk)
 
 # Extend cuttlefish common sepolicy with auto-specific functionality
 BOARD_SEPOLICY_DIRS += device/google/cuttlefish/shared/auto/sepolicy \
-                       device/google/cuttlefish/shared/auto/sepolicy/vendor
+                       device/google/cuttlefish/shared/auto/sepolicy/vendor \
+
+SYSTEM_EXT_PRIVATE_SEPOLICY_DIRS += device/google/cuttlefish/shared/auto/sepolicy/system_ext/private
+SYSTEM_EXT_PUBLIC_SEPOLICY_DIRS += device/google/cuttlefish/shared/auto/sepolicy/system_ext/public
 
 ################################################
 # Begin general Android Auto Embedded configurations
@@ -48,6 +51,10 @@ endif
 
 PRODUCT_PRODUCT_PROPERTIES += \
     ro.boot.uwbcountrycode=US
+
+PRODUCT_SYSTEM_PROPERTIES += \
+    ro.sys.hibernate_enabled=1 \
+    ro.sys.swap_storage_device=/dev/block/vda19
 
 PRODUCT_COPY_FILES += \
     frameworks/native/data/etc/car_core_hardware.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/car_core_hardware.xml \
@@ -79,12 +86,20 @@ PRODUCT_PACKAGES += \
 PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/auto/display_settings.xml:$(TARGET_COPY_OUT_VENDOR)/etc/display_settings.xml
 
+# Include the fstab needed for suspend to disk
+PRODUCT_COPY_FILES += \
+    device/google/cuttlefish/shared/auto/hibernation_swap/fstab.hibernationswap:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.hibernationswap
+
 # vehicle HAL
 ifeq ($(LOCAL_VHAL_PRODUCT_PACKAGE),)
     LOCAL_VHAL_PRODUCT_PACKAGE := com.android.hardware.automotive.vehicle.cf
     BOARD_SEPOLICY_DIRS += device/google/cuttlefish/shared/auto/sepolicy/vhal
 endif
 PRODUCT_PACKAGES += $(LOCAL_VHAL_PRODUCT_PACKAGE)
+
+# Ethernet setup script for vehicle HAL
+PRODUCT_PACKAGES += auto_ethernet_setup_script
+PRODUCT_PACKAGES += auto_ethernet_config_script
 
 # Remote access HAL
 PRODUCT_PACKAGES += android.hardware.automotive.remoteaccess@V2-default-service
