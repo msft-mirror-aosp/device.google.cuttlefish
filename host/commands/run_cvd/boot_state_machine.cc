@@ -30,6 +30,7 @@
 #include <grpcpp/create_channel.h>
 #include "common/libs/utils/result.h"
 
+#include "common/libs/fs/shared_buf.h"
 #include "common/libs/fs/shared_fd.h"
 #include "common/libs/utils/tee_logging.h"
 #include "host/commands/assemble_cvd/flags_defaults.h"
@@ -200,7 +201,6 @@ class CvdBootStateMachine : public SetupFeature, public KernelLogPipeConsumer {
 
   // SetupFeature
   std::string Name() const override { return "CvdBootStateMachine"; }
-  bool Enabled() const override { return true; }
 
  private:
   std::unordered_set<SetupFeature*> Dependencies() const {
@@ -419,21 +419,12 @@ class CvdBootStateMachine : public SetupFeature, public KernelLogPipeConsumer {
     } else if ((*read_result)->event == monitor::Event::BootFailed) {
       LOG(ERROR) << "Virtual device failed to boot";
       state_ |= kGuestBootFailed;
-    } else if ((*read_result)->event == monitor::Event::HibernationExited) {
-      LOG(INFO) << "Virtual device successfully resumed from hibernation";
-      state_ |= kGuestHibernationCompleted;
-    }
-    // Ignore the other signals
+    }  // Ignore the other signals
 
     return MaybeWriteNotification();
   }
   bool BootCompleted() const { return state_ & kGuestBootCompleted; }
-
   bool BootFailed() const { return state_ & kGuestBootFailed; }
-
-  bool HibernationCompleted() const {
-    return state_ & kGuestHibernationCompleted;
-  }
 
   void SendExitCode(RunnerExitCodes exit_code, SharedFD fd) {
     fd->Write(&exit_code, sizeof(exit_code));
@@ -445,16 +436,16 @@ class CvdBootStateMachine : public SetupFeature, public KernelLogPipeConsumer {
     std::vector<SharedFD> fds = {reboot_notification_, fg_launcher_pipe_};
     for (auto& fd : fds) {
       if (fd->IsOpen()) {
-        if (BootCompleted() || HibernationCompleted()) {
+        if (BootCompleted()) {
           SendExitCode(RunnerExitCodes::kSuccess, fd);
-        } else if (BootFailed()) {
+        } else if (state_ & kGuestBootFailed) {
           SendExitCode(RunnerExitCodes::kVirtualDeviceBootFailed, fd);
         }
       }
     }
     // Either we sent the code before or just sent it, in any case the state is
     // final
-    return BootCompleted() || HibernationCompleted() || BootFailed();
+    return BootCompleted() || (state_ & kGuestBootFailed);
   }
 
   const CuttlefishConfig& config_;
@@ -474,7 +465,6 @@ class CvdBootStateMachine : public SetupFeature, public KernelLogPipeConsumer {
   static const int kBootStarted = 0;
   static const int kGuestBootCompleted = 1 << 0;
   static const int kGuestBootFailed = 1 << 1;
-  static const int kGuestHibernationCompleted = 1 << 2;
 };
 
 }  // namespace

@@ -22,6 +22,7 @@
 #include <sys/types.h>
 
 #include <cassert>
+#include <map>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -183,15 +184,35 @@ std::string ToSingleLineString(const Json::Value& value) {
   return Json::writeString(builder, value);
 }
 
-void MaybeConfigureVulkanIcd(const CuttlefishConfig& config, Command* command) {
+Result<std::string> HostSwiftShaderIcdPathForArch() {
+  switch (HostArch()) {
+    case Arch::Arm64:
+      return HostBinaryPath("aarch64-linux-gnu/vk_swiftshader_icd.json");
+    case Arch::X86:
+    case Arch::X86_64:
+      return HostUsrSharePath("vulkan/icd.d/vk_swiftshader_icd.json");
+    default:
+      break;
+  }
+  return CF_ERR("Unhandled host arch " << HostArchStr()
+                                       << " for finding SwiftShader ICD.");
+}
+
+Result<void> MaybeConfigureVulkanIcd(const CuttlefishConfig& config,
+                                     Command* command) {
   const auto& gpu_mode = config.ForDefaultInstance().gpu_mode();
   if (gpu_mode == kGpuModeGfxstreamGuestAngleHostSwiftShader) {
+    const std::string swiftshader_icd_json_path =
+        CF_EXPECT(HostSwiftShaderIcdPathForArch());
+
     // See https://github.com/KhronosGroup/Vulkan-Loader.
-    const std::string swiftshader_icd_json =
-        HostUsrSharePath("vulkan/icd.d/vk_swiftshader_icd.json");
-    command->AddEnvironmentVariable("VK_DRIVER_FILES", swiftshader_icd_json);
-    command->AddEnvironmentVariable("VK_ICD_FILENAMES", swiftshader_icd_json);
+    command->AddEnvironmentVariable("VK_DRIVER_FILES",
+                                    swiftshader_icd_json_path);
+    command->AddEnvironmentVariable("VK_ICD_FILENAMES",
+                                    swiftshader_icd_json_path);
   }
+
+  return {};
 }
 
 Result<std::string> CrosvmPathForVhostUserGpu(const CuttlefishConfig& config) {
@@ -329,7 +350,7 @@ Result<VhostUserDeviceCommands> BuildVhostUserGpu(
   gpu_device_cmd.Cmd().AddParameter("--params");
   gpu_device_cmd.Cmd().AddParameter(ToSingleLineString(gpu_params_json));
 
-  MaybeConfigureVulkanIcd(config, &gpu_device_cmd.Cmd());
+  CF_EXPECT(MaybeConfigureVulkanIcd(config, &gpu_device_cmd.Cmd()));
 
   gpu_device_cmd.Cmd().RedirectStdIO(Subprocess::StdIOChannel::kStdOut,
                                      gpu_device_logs);
@@ -421,9 +442,26 @@ Result<void> ConfigureGpu(const CuttlefishConfig& config, Command* crosvm_cmd) {
                              gpu_common_string);
   }
 
-  MaybeConfigureVulkanIcd(config, crosvm_cmd);
+  CF_EXPECT(MaybeConfigureVulkanIcd(config, crosvm_cmd));
 
   return {};
+}
+
+std::string SerializeFreqDomains(
+    const std::map<std::string, std::vector<int>>& freq_domains) {
+  std::stringstream freq_domain_arg;
+  bool first_vector = true;
+
+  for (const auto& pair : freq_domains) {
+    if (!first_vector) {
+      freq_domain_arg << ",";
+    }
+    first_vector = false;
+
+    freq_domain_arg << "[" << android::base::Join(pair.second, ",") << "]";
+  }
+
+  return {std::format("[{}]", freq_domain_arg.str())};
 }
 
 Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
@@ -533,17 +571,23 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
 
   // crosvm_cmd.Cmd().AddParameter("--null-audio");
   crosvm_cmd.Cmd().AddParameter("--mem=", instance.memory_mb());
-  crosvm_cmd.Cmd().AddParameter("--cpus=", instance.cpus());
   if (instance.mte()) {
     crosvm_cmd.Cmd().AddParameter("--mte");
   }
 
   if (!instance.vcpu_config_path().empty()) {
+    std::map<std::string, std::vector<int>> freq_domains;
     auto vcpu_config_json =
         CF_EXPECT(LoadFromFile(instance.vcpu_config_path()));
     std::string affinity_arg = "--cpu-affinity=";
     std::string capacity_arg = "--cpu-capacity=";
     std::string frequencies_arg = "--cpu-frequencies-khz=";
+    std::string cgroup_path_arg = "--vcpu-cgroup-path=";
+    std::string freq_domain_arg;
+
+    const auto parent_cgroup_path =
+        CF_EXPECT(GetValue<std::string>(vcpu_config_json, {"cgroup_path"}));
+    cgroup_path_arg += parent_cgroup_path;
 
     for (int i = 0; i < instance.cpus(); i++) {
       if (i != 0) {
@@ -571,6 +615,13 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
           CF_EXPECT(GetValue<std::string>(cpu_json, {"capacity"}));
       auto cap_arg = fmt::format("{}={}", i, capacity);
 
+      const auto domain =
+          CF_EXPECT(GetValue<std::string>(cpu_json, {"freq_domain"}));
+
+      freq_domains[domain].push_back(i);
+
+      freq_domain_arg = SerializeFreqDomains(freq_domains);
+
       capacity_arg += cap_arg;
       affinity_arg += affine_arg;
       frequencies_arg += freq_arg;
@@ -581,7 +632,13 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
     crosvm_cmd.Cmd().AddParameter(affinity_arg);
     crosvm_cmd.Cmd().AddParameter(capacity_arg);
     crosvm_cmd.Cmd().AddParameter(frequencies_arg);
-    crosvm_cmd.Cmd().AddParameter("--virt-cpufreq");
+    crosvm_cmd.Cmd().AddParameter(cgroup_path_arg);
+    crosvm_cmd.Cmd().AddParameter("--virt-cpufreq-upstream");
+    crosvm_cmd.Cmd().AddParameter(
+        "--cpus=", instance.cpus(),
+        fmt::format(",freq-domains={}", freq_domain_arg));
+  } else {
+    crosvm_cmd.Cmd().AddParameter("--cpus=", instance.cpus());
   }
 
   auto disk_num = instance.virtual_disk_paths().size();
@@ -644,6 +701,10 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
           ",width=", touchpad_config.width,
           ",height=", touchpad_config.height,
           ",name=", kTouchpadDefaultPrefix, i, "]");
+    }
+    if (instance.enable_mouse()) {
+      crosvm_cmd.Cmd().AddParameter(
+          "--input=mouse[path=", instance.mouse_socket_path(), "]");
     }
     crosvm_cmd.Cmd().AddParameter("--input=rotary[path=",
                                   instance.rotary_socket_path(), "]");
