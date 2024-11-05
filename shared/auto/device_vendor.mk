@@ -31,7 +31,10 @@ $(call inherit-product, device/google/cuttlefish/shared/device.mk)
 
 # Extend cuttlefish common sepolicy with auto-specific functionality
 BOARD_SEPOLICY_DIRS += device/google/cuttlefish/shared/auto/sepolicy \
-                       device/google/cuttlefish/shared/auto/sepolicy/vendor
+                       device/google/cuttlefish/shared/auto/sepolicy/vendor \
+
+SYSTEM_EXT_PRIVATE_SEPOLICY_DIRS += device/google/cuttlefish/shared/auto/sepolicy/system_ext/private
+SYSTEM_EXT_PUBLIC_SEPOLICY_DIRS += device/google/cuttlefish/shared/auto/sepolicy/system_ext/public
 
 ################################################
 # Begin general Android Auto Embedded configurations
@@ -94,6 +97,10 @@ ifeq ($(LOCAL_VHAL_PRODUCT_PACKAGE),)
 endif
 PRODUCT_PACKAGES += $(LOCAL_VHAL_PRODUCT_PACKAGE)
 
+# Ethernet setup script for vehicle HAL
+PRODUCT_PACKAGES += auto_ethernet_setup_script
+PRODUCT_PACKAGES += auto_ethernet_config_script
+
 # Remote access HAL
 PRODUCT_PACKAGES += android.hardware.automotive.remoteaccess@V2-default-service
 
@@ -122,6 +129,10 @@ PRODUCT_COPY_FILES += \
 
 # Occupant Awareness HAL
 PRODUCT_PACKAGES += android.hardware.automotive.occupant_awareness@1.0-service
+
+PRODUCT_PACKAGES += \
+    hibernation_swap-soong
+
 include packages/services/Car/car_product/occupant_awareness/OccupantAwareness.mk
 BOARD_SEPOLICY_DIRS += packages/services/Car/car_product/occupant_awareness/sepolicy
 

@@ -63,6 +63,7 @@
 #include "host/libs/config/instance_nums.h"
 #include "host/libs/config/secure_hals.h"
 #include "host/libs/config/touchpad.h"
+#include "host/libs/vhal_proxy_server/vhal_proxy_server_eth_addr.h"
 #include "host/libs/vm_manager/crosvm_manager.h"
 #include "host/libs/vm_manager/gem5_manager.h"
 #include "host/libs/vm_manager/qemu_manager.h"
@@ -698,6 +699,11 @@ Result<std::vector<GuestConfig>> ReadGuestConfig() {
     guest_config.gfxstream_gl_program_binary_link_status_supported =
         res.ok() && res.value() == "supported";
 
+    auto res_mouse_support =
+        GetAndroidInfoConfig(instance_android_info_txt, "mouse");
+    guest_config.mouse_supported =
+        res_mouse_support.ok() && res_mouse_support.value() == "supported";
+
     auto res_bgra_support = GetAndroidInfoConfig(instance_android_info_txt,
                                                  "supports_bgra_framebuffers");
     guest_config.supports_bgra_framebuffers =
@@ -706,6 +712,11 @@ Result<std::vector<GuestConfig>> ReadGuestConfig() {
     auto res_vhost_user_vsock =
         GetAndroidInfoConfig(instance_android_info_txt, "vhost_user_vsock");
     guest_config.vhost_user_vsock = res_vhost_user_vsock.value_or("") == "true";
+
+    auto res_prefer_drm_virgl_when_supported = GetAndroidInfoConfig(
+        instance_android_info_txt, "prefer_drm_virgl_when_supported");
+    guest_config.prefer_drm_virgl_when_supported =
+        res_prefer_drm_virgl_when_supported.value_or("") == "true";
 
     guest_configs.push_back(guest_config);
   }
@@ -1336,8 +1347,9 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
   if (FLAGS_vhal_proxy_server_instance_num > 0) {
     vhal_proxy_server_instance_num = FLAGS_vhal_proxy_server_instance_num - 1;
   }
-  tmp_config_obj.set_vhal_proxy_server_port(9300 +
-                                            vhal_proxy_server_instance_num);
+  tmp_config_obj.set_vhal_proxy_server_port(
+      cuttlefish::vhal_proxy_server::kDefaultEthPort +
+      vhal_proxy_server_instance_num);
   LOG(DEBUG) << "launch vhal proxy server: "
              << (FLAGS_enable_vhal_proxy_server &&
                  vhal_proxy_server_instance_num <= 0);
@@ -1408,6 +1420,7 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     instance.set_crosvm_use_rng(use_rng_vec[instance_index]);
     instance.set_use_pmem(use_pmem_vec[instance_index]);
     instance.set_bootconfig_supported(guest_configs[instance_index].bootconfig_supported);
+    instance.set_enable_mouse(guest_configs[instance_index].mouse_supported);
     instance.set_filename_encryption_mode(
       guest_configs[instance_index].hctr2_supported ? "hctr2" : "cts");
     instance.set_use_allocd(use_allocd_vec[instance_index]);
