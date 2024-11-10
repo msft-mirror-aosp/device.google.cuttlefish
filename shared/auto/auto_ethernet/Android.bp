@@ -13,26 +13,26 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package {
-    default_applicable_licenses: ["Android-Apache-2.0"],
+sh_binary {
+    name: "auto_ethernet_setup_script",
+    src: "ethernet.sh",
+    sub_dir: "ethernet",
+    system_ext_specific: true,
+    filename_from_src: true,
+    init_rc: ["ethernet.rc"],
+    visibility: [
+        "//device/google/cuttlefish/shared/auto:__subpackages__",
+    ],
 }
 
-prebuilt_etc_host {
-    name: "cvd_config_auto.json",
-    src: "config_auto.json",
-    sub_dir: "cvd_config",
-}
-
-genrule {
-    name: "hibernation_swap.gen",
-    out: ["hibernation_swap"],
-    cmd: "dd if=/dev/zero of=$(out) bs=1K count=4M",
-}
-
-prebuilt_root {
-    name: "hibernation_swap-soong",
-    src: ":hibernation_swap.gen",
-    filename: "hibernation_swap.img",
-    install_in_root: true,
-    no_full_install: false,
+sh_binary {
+    name: "auto_ethernet_config_script",
+    src: "ethernet_auto_eth.sh",
+    sub_dir: "ethernet",
+    system_ext_specific: true,
+    filename_from_src: true,
+    init_rc: ["ethernet.rc"],
+    visibility: [
+        "//device/google/cuttlefish/shared/auto:__subpackages__",
+    ],
 }

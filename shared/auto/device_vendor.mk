@@ -31,7 +31,10 @@ $(call inherit-product, device/google/cuttlefish/shared/device.mk)
 
 # Extend cuttlefish common sepolicy with auto-specific functionality
 BOARD_SEPOLICY_DIRS += device/google/cuttlefish/shared/auto/sepolicy \
-                       device/google/cuttlefish/shared/auto/sepolicy/vendor
+                       device/google/cuttlefish/shared/auto/sepolicy/vendor \
+
+SYSTEM_EXT_PRIVATE_SEPOLICY_DIRS += device/google/cuttlefish/shared/auto/sepolicy/system_ext/private
+SYSTEM_EXT_PUBLIC_SEPOLICY_DIRS += device/google/cuttlefish/shared/auto/sepolicy/system_ext/public
 
 ################################################
 # Begin general Android Auto Embedded configurations
@@ -86,6 +89,13 @@ ifeq ($(LOCAL_VHAL_PRODUCT_PACKAGE),)
 endif
 PRODUCT_PACKAGES += $(LOCAL_VHAL_PRODUCT_PACKAGE)
 
+# Ethernet setup script for vehicle HAL
+ENABLE_AUTO_ETHERNET ?= true
+ifeq ($(ENABLE_AUTO_ETHERNET), true)
+    PRODUCT_PACKAGES += auto_ethernet_setup_script
+    PRODUCT_PACKAGES += auto_ethernet_config_script
+endif
+
 # Remote access HAL
 PRODUCT_PACKAGES += android.hardware.automotive.remoteaccess@V2-default-service
 
@@ -111,6 +121,15 @@ PRODUCT_PACKAGES += wpa_supplicant_macsec
 PRODUCT_COPY_FILES += \
     $(LOCAL_PATH)/macsec/wpa_supplicant_macsec.conf:$(TARGET_COPY_OUT_VENDOR)/etc/wpa_supplicant_macsec.conf \
     $(LOCAL_PATH)/macsec/init.wpa_supplicant_macsec.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/init.wpa_supplicant_macsec.rc
+
+
+# Trout uses this .mk file, ignore if it isn't cf build
+ifneq (,$(findstring cf, $(PRODUCT_NAME)))
+PRODUCT_ARTIFACT_PATH_REQUIREMENT_ALLOWED_LIST += $(PRODUCT_OUT)/root/hibernation_swap.img
+
+PRODUCT_PACKAGES += \
+    hibernation_swap-soong
+endif
 
 # Occupant Awareness HAL
 PRODUCT_PACKAGES += android.hardware.automotive.occupant_awareness@1.0-service
