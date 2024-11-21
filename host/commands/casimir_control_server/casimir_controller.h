@@ -31,9 +31,13 @@ using namespace casimir::rf;
 class CasimirController {
  public:
   Result<void> Init(int casimir_rf_port);
+  Result<void> Init(const std::string& casimir_rf_path);
+
+  Result<void> Close();
+
   Result<void> Mute();
   Result<void> Unmute();
-  Result<void> Close();
+
   Result<void> SetPowerLevel(uint32_t power_level);
 
   /*
@@ -62,7 +66,6 @@ class CasimirController {
   Result<std::shared_ptr<std::vector<uint8_t>>> ReadRfPacket(
       std::chrono::milliseconds timeout);
 
- private:
   SharedFD sock_;
   uint8_t power_level;
 };
