@@ -31,15 +31,22 @@ using namespace casimir::rf;
 class CasimirController {
  public:
   Result<void> Init(int casimir_rf_port);
+  Result<void> Init(const std::string& casimir_rf_path);
+
   Result<void> Close();
+
+  Result<void> Mute();
+  Result<void> Unmute();
+
+  Result<void> SetPowerLevel(uint32_t power_level);
 
   /*
    * Poll for NFC-A + ISO-DEP
    */
   Result<uint16_t> Poll();
 
-  Result<std::shared_ptr<std::vector<uint8_t>>> SendApdu(
-      uint16_t receiver_id, const std::shared_ptr<std::vector<uint8_t>>& apdu);
+  Result<std::vector<uint8_t>> SendApdu(uint16_t receiver_id,
+                                        std::vector<uint8_t> apdu);
 
  private:
   /*
@@ -59,8 +66,8 @@ class CasimirController {
   Result<std::shared_ptr<std::vector<uint8_t>>> ReadRfPacket(
       std::chrono::milliseconds timeout);
 
- private:
   SharedFD sock_;
+  uint8_t power_level;
 };
 
 }  // namespace cuttlefish
