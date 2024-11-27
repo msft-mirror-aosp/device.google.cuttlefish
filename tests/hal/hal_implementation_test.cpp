@@ -191,7 +191,7 @@ static const std::set<std::string> kTvOnlyAidl = {
      */
     "android.hardware.tv.hdmi.cec",        "android.hardware.tv.hdmi.earc",
     "android.hardware.tv.hdmi.connection", "android.hardware.tv.tuner",
-    "android.hardware.tv.input",
+    "android.hardware.tv.input",           "android.hardware.tv.mediaquality",
 };
 
 static const std::set<std::string> kRadioOnlyAidl = {
@@ -225,6 +225,7 @@ static const std::set<std::string> kAlwaysMissingAidl = {
     "android.hardware.graphics.common",
     "android.hardware.input.common",
     "android.media.audio.common.types",
+    "android.media.audio.eraser.types",
     "android.hardware.radio",
     "android.hardware.uwb.fira_android",
     "android.hardware.wifi.common",
@@ -270,6 +271,8 @@ static const std::vector<VersionedAidlPackage> kKnownMissingAidl = {
     {"android.automotive.computepipe.registry.", 2, 273549907},
     {"android.automotive.computepipe.runner.", 2, 273549907},
     {"android.hardware.automotive.evs.", 2, 274162534},
+    {"android.hardware.security.see.authmgr.", 1, 379940224},
+    {"android.hardware.security.see.storage.", 1, 379940224},
 };
 
 // android.hardware.foo.IFoo -> android.hardware.foo.
