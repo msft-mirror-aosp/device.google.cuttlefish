@@ -30,10 +30,8 @@ using namespace casimir::rf;
 
 class CasimirController {
  public:
-  Result<void> Init(int casimir_rf_port);
-  Result<void> Init(const std::string& casimir_rf_path);
-
-  Result<void> Close();
+  static Result<CasimirController> ConnectToTcpPort(int rf_port);
+  static Result<CasimirController> ConnectToUnixSocket(const std::string& rf);
 
   Result<void> Mute();
   Result<void> Unmute();
@@ -45,10 +43,11 @@ class CasimirController {
    */
   Result<uint16_t> Poll();
 
-  Result<std::shared_ptr<std::vector<uint8_t>>> SendApdu(
-      uint16_t receiver_id, const std::shared_ptr<std::vector<uint8_t>>& apdu);
+  Result<std::vector<uint8_t>> SendApdu(uint16_t receiver_id,
+                                        std::vector<uint8_t> apdu);
 
  private:
+  CasimirController(SharedFD sock);
   /*
    * Select NFC-A, and returns sender id.
    */
