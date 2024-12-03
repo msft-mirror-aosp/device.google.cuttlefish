@@ -58,3 +58,5 @@ PRODUCT_PACKAGES += cuttlefish_phone_overlay_frameworks_base_core
 endif
 
 TARGET_BOARD_INFO_FILE ?= device/google/cuttlefish/shared/phone/android-info.txt
+
+$(call inherit-product, vendor/partner_modules/build/mainline_modules.mk)
