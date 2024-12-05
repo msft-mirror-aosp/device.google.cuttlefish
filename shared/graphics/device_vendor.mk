@@ -54,9 +54,16 @@ PRODUCT_PACKAGES += \
     com.android.hardware.graphics.composer.drm_hwcomposer \
     com.android.hardware.graphics.composer.ranchu \
 
-
 PRODUCT_VENDOR_PROPERTIES += \
     ro.vendor.hwcomposer.pmem=/dev/block/pmem1
+
+# drm_hwcomposer configuration
+# The virtio gpu module sends frames to the host as fast as possible and
+# does not emulate "real display timing".
+PRODUCT_VENDOR_PROPERTIES += ro.vendor.hwc.drm.present_fence_not_reliable=true
+
+PRODUCT_SYSTEM_PROPERTIES += \
+    service.sf.prime_shader_cache=0
 
 # Gralloc implementation
 $(call soong_config_set,cvd,RELEASE_SM_OPEN_DECLARED_PASSTHROUGH_HAL,$(RELEASE_SM_OPEN_DECLARED_PASSTHROUGH_HAL))
