@@ -377,6 +377,7 @@ class CuttlefishConfig {
     std::string instance_internal_uds_dir() const;
 
     std::string touch_socket_path(int touch_dev_idx) const;
+    std::string mouse_socket_path() const;
     std::string rotary_socket_path() const;
     std::string keyboard_socket_path() const;
     std::string switches_socket_path() const;
@@ -564,6 +565,7 @@ class CuttlefishConfig {
     bool pause_in_bootloader() const;
     bool run_as_daemon() const;
     bool enable_audio() const;
+    bool enable_mouse() const;
     bool enable_gnss_grpc_proxy() const;
     bool enable_bootanimation() const;
     bool enable_usb() const;
@@ -651,6 +653,7 @@ class CuttlefishConfig {
     std::string new_vbmeta_vendor_dlkm_image() const;
     std::string vbmeta_system_dlkm_image() const;
     std::string new_vbmeta_system_dlkm_image() const;
+    std::string vvmtruststore_path() const;
     std::string default_target_zip() const;
     std::string system_target_zip() const;
 
@@ -785,6 +788,7 @@ class CuttlefishConfig {
     void set_pause_in_bootloader(bool pause_in_bootloader);
     void set_run_as_daemon(bool run_as_daemon);
     void set_enable_audio(bool enable);
+    void set_enable_mouse(bool enable);
     void set_enable_usb(bool enable);
     void set_enable_gnss_grpc_proxy(const bool enable_gnss_grpc_proxy);
     void set_enable_bootanimation(const bool enable_bootanimation);
@@ -875,6 +879,7 @@ class CuttlefishConfig {
         const std::string& vbmeta_system_dlkm_image);
     void set_new_vbmeta_system_dlkm_image(
         const std::string& vbmeta_system_dlkm_image);
+    void set_vvmtruststore_path(const std::string& vvmtruststore_path);
     void set_default_target_zip(const std::string& default_target_zip);
     void set_system_target_zip(const std::string& system_target_zip);
     void set_otheros_esp_image(const std::string& otheros_esp_image);
@@ -951,6 +956,9 @@ class CuttlefishConfig {
 
     std::string control_socket_path() const;
     std::string launcher_log_path() const;
+
+    std::string casimir_nci_socket_path() const;
+    std::string casimir_rf_socket_path() const;
 
     // wmediumd related configs
     bool enable_wifi() const;

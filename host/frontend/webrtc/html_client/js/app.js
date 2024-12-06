@@ -334,6 +334,11 @@ class DeviceControlApp {
       }
     }
 
+    if (this.#deviceConnection.description.mouse_enabled) {
+      // Enable mouse button conditionally.
+      enableMouseButton(this.#deviceConnection);
+    }
+
     // Set up displays
     this.#updateDeviceDisplays();
     this.#deviceConnection.onStreamChange(stream => this.#onStreamChange(stream));
@@ -351,8 +356,8 @@ class DeviceControlApp {
     }
 
     // Set up keyboard and wheel capture
-    this.#startKeyboardCapture();
-    this.#startWheelCapture();
+    this.#startKeyboardCapture(document.querySelector('#device-displays'));
+    this.#startWheelCapture(document.querySelector('#device-displays'));
 
     this.#updateDeviceHardwareDetails(
         this.#deviceConnection.description.hardware);
@@ -976,10 +981,9 @@ class DeviceControlApp {
     }));
   }
 
-  #startKeyboardCapture() {
-    const deviceArea = document.querySelector('#device-displays');
-    deviceArea.addEventListener('keydown', evt => this.#onKeyEvent(evt));
-    deviceArea.addEventListener('keyup', evt => this.#onKeyEvent(evt));
+  #startKeyboardCapture(elem) {
+    elem.addEventListener('keydown', evt => this.#onKeyEvent(evt));
+    elem.addEventListener('keyup', evt => this.#onKeyEvent(evt));
   }
 
   #onKeyEvent(e) {
@@ -991,9 +995,8 @@ class DeviceControlApp {
     this.#deviceConnection.sendKeyEvent(e.code, e.type);
   }
 
-  #startWheelCapture() {
-    const deviceArea = document.querySelector('#device-displays');
-    deviceArea.addEventListener('wheel', evt => this.#onWheelEvent(evt),
+  #startWheelCapture(elm) {
+    elm.addEventListener('wheel', evt => this.#onWheelEvent(evt),
                                 { passive: false });
   }
 

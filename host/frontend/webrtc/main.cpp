@@ -41,13 +41,14 @@
 #include "host/libs/config/openwrt_args.h"
 #include "host/libs/confui/host_mode_ctrl.h"
 #include "host/libs/confui/host_server.h"
-#include "host/libs/input_connector/socket_input_connector.h"
+#include "host/libs/input_connector/input_connector.h"
 #include "host/libs/screen_connector/screen_connector.h"
 
 DEFINE_bool(multitouch, true,
             "Whether to send multi-touch or single-touch events");
 DEFINE_string(touch_fds, "",
               "A list of fds to listen on for touch connections.");
+DEFINE_int32(mouse_fd, -1, "An fd to listen on for mouse connections.");
 DEFINE_int32(rotary_fd, -1, "An fd to listen on for rotary connections.");
 DEFINE_int32(keyboard_fd, -1, "An fd to listen on for keyboard connections.");
 DEFINE_int32(switches_fd, -1, "An fd to listen on for switch connections.");
@@ -143,7 +144,7 @@ int main(int argc, char** argv) {
   auto cvd_config = cuttlefish::CuttlefishConfig::Get();
   auto instance = cvd_config->ForDefaultInstance();
 
-  cuttlefish::InputSocketsConnectorBuilder inputs_builder(
+  cuttlefish::InputConnectorBuilder inputs_builder(
       FLAGS_write_virtio_input ? cuttlefish::InputEventType::Virtio
                                : cuttlefish::InputEventType::Evdev);
 
@@ -172,6 +173,10 @@ int main(int argc, char** argv) {
   if (FLAGS_rotary_fd >= 0) {
     inputs_builder.WithRotary(cuttlefish::SharedFD::Dup(FLAGS_rotary_fd));
     close(FLAGS_rotary_fd);
+  }
+  if (FLAGS_mouse_fd >= 0) {
+    inputs_builder.WithMouse(cuttlefish::SharedFD::Dup(FLAGS_mouse_fd));
+    close(FLAGS_mouse_fd);
   }
   if (FLAGS_keyboard_fd >= 0) {
     inputs_builder.WithKeyboard(cuttlefish::SharedFD::Dup(FLAGS_keyboard_fd));
@@ -239,6 +244,7 @@ int main(int argc, char** argv) {
     streamer_config.operator_server.security =
         ServerConfig::Security::kInsecure;
   }
+  streamer_config.enable_mouse = instance.enable_mouse();
 
   KernelLogEventsHandler kernel_logs_event_handler(kernel_log_events_client);
 

@@ -192,8 +192,10 @@ Result<void> RestoreHostFiles(const std::string& cuttlefish_root_dir,
       CF_EXPECT(GuestSnapshotDirectories(snapshot_dir_path));
   auto filter_guest_dir =
       [&guest_snapshot_dirs](const std::string& src_dir) -> bool {
-    return !(Contains(guest_snapshot_dirs, src_dir) ||
-             src_dir.ends_with("logs"));
+    if (src_dir.ends_with("logs") && Contains(guest_snapshot_dirs, src_dir)) {
+      return false;
+    }
+    return !Contains(guest_snapshot_dirs, src_dir);
   };
   // cp -r snapshot_dir_path HOME
   CF_EXPECT(CopyDirectoryRecursively(snapshot_dir_path, cuttlefish_root_dir,
@@ -263,6 +265,7 @@ Result<std::set<std::string>> PreservingOnResume(
   preserving.insert("uboot_env.img");
   preserving.insert("factory_reset_protected.img");
   preserving.insert("misc.img");
+  preserving.insert("vmmtruststore.img");
   preserving.insert("metadata.img");
   preserving.insert("persistent_vbmeta.img");
   preserving.insert("oemlock_secure");
@@ -454,7 +457,8 @@ Result<const CuttlefishConfig*> InitFilesystemAndCreateConfig(
       auto vsock_dir =
           fmt::format("/tmp/vsock_{0}_{1}", instance.vsock_guest_cid(),
                       std::to_string(getuid()));
-      if (DirectoryExists(vsock_dir, /* follow_symlinks */ false)) {
+      if (DirectoryExists(vsock_dir, /* follow_symlinks */ false) &&
+          !IsDirectoryEmpty(vsock_dir)) {
         CF_EXPECT(RecursivelyRemoveDirectory(vsock_dir));
       }
       CF_EXPECT(EnsureDirectoryExists(vsock_dir, default_mode, default_group));
