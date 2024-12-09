@@ -171,7 +171,7 @@ fruit::Component<> runCvdComponent(
       .install(AutoSnapshotControlFiles::Component)
       .install(AutoCmd<SecureEnv>::Component)
       .install(serverLoopComponent)
-      .install(WebRtcControllerComponent)
+      .install(WebRtcRecorderComponent)
       .install(AutoSetup<ValidateTapDevices>::Component)
       .install(AutoSetup<ValidateHostConfiguration>::Component)
       .install(AutoSetup<ValidateHostKernel>::Component)
