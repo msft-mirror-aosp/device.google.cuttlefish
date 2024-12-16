@@ -30,9 +30,8 @@ endif
 
 TARGET_KERNEL_ARCH ?= $(TARGET_ARCH)
 
-ifneq (, $(filter $(PRODUCT_NAME),cf_x86_64_al cf_x86_64_desktop))
+ifneq (, $(filter $(PRODUCT_NAME),cf_x86_64_desktop))
 # TODO: b/357660371 - cf_arm64_desktop should use the desktop kernel, too
-# TODO: b/371116818 - Stop matching soon-to-be-deleted cf_x86_64_al target.
 SYSTEM_DLKM_SRC ?= device/google/cuttlefish_prebuilts/kernel/6.6-x86_64-desktop/system_dlkm
 KERNEL_MODULES_PATH ?= device/google/cuttlefish_prebuilts/kernel/6.6-x86_64-desktop/vendor_dlkm
 else
@@ -338,7 +337,6 @@ DHCPCD_USE_SCRIPT := yes
 
 TARGET_RECOVERY_PIXEL_FORMAT := ABGR_8888
 TARGET_RECOVERY_UI_LIB := librecovery_ui_cuttlefish
-TARGET_RECOVERY_FSTAB_GENRULE := gen_fstab_cf_f2fs_cts
 
 BOARD_SUPER_PARTITION_SIZE := 7516192768  # 7GiB
 BOARD_SUPER_PARTITION_GROUPS := google_system_dynamic_partitions google_vendor_dynamic_partitions
