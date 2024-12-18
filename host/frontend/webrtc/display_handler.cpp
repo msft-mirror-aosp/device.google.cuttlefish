@@ -27,8 +27,10 @@
 namespace cuttlefish {
 
 DisplayHandler::DisplayHandler(webrtc_streaming::Streamer& streamer,
+                               ScreenshotHandler& screenshot_handler,
                                ScreenConnector& screen_connector)
     : streamer_(streamer),
+      screenshot_handler_(screenshot_handler),
       screen_connector_(screen_connector),
       frame_repeater_([this]() { RepeatFramesPeriodically(); }) {
   screen_connector_.SetCallback(GetScreenConnectorCallback());
@@ -51,6 +53,7 @@ DisplayHandler::DisplayHandler(webrtc_streaming::Streamer& streamer,
               return;
             }
 
+            std::lock_guard<std::mutex> lock(send_mutex_);
             display_sinks_[display_number] = display;
           } else if constexpr (std::is_same_v<DisplayDestroyedEvent, T>) {
             LOG(VERBOSE) << "Display:" << e.display_number << " destroyed.";
@@ -58,8 +61,9 @@ DisplayHandler::DisplayHandler(webrtc_streaming::Streamer& streamer,
             const auto display_number = e.display_number;
             const auto display_id =
                 "display_" + std::to_string(e.display_number);
-            streamer_.RemoveDisplay(display_id);
+            std::lock_guard<std::mutex> lock(send_mutex_);
             display_sinks_.erase(display_number);
+            streamer_.RemoveDisplay(display_id);
           } else {
             static_assert("Unhandled display event.");
           }
@@ -181,6 +185,8 @@ void DisplayHandler::SendBuffers(
           .count();
 
   for (const auto& [display_number, buffer_info] : buffers) {
+    screenshot_handler_.OnFrame(display_number, buffer_info->buffer);
+
     auto it = display_sinks_.find(display_number);
     if (it != display_sinks_.end()) {
       it->second->OnFrame(buffer_info->buffer, time_stamp_since_epoch);
@@ -195,15 +201,32 @@ void DisplayHandler::RepeatFramesPeriodically() {
   // protects writing the BufferInfo timestamps.
   const std::chrono::milliseconds kRepeatingInterval(20);
   auto next_send = std::chrono::system_clock::now() + kRepeatingInterval;
-  std::unique_lock lock(repeater_state_mutex_);
-  while (repeater_state_ != RepeaterState::STOPPED) {
-    if (repeater_state_ == RepeaterState::REPEATING) {
-      repeater_state_condvar_.wait_until(lock, next_send);
-    } else {
-      repeater_state_condvar_.wait(lock);
-    }
-    if (repeater_state_ != RepeaterState::REPEATING) {
-      continue;
+  while (true) {
+    {
+      std::unique_lock lock(repeater_state_mutex_);
+      if (repeater_state_ == RepeaterState::STOPPED) {
+        break;
+      }
+      if (num_active_clients_ > 0) {
+        bool stopped =
+            repeater_state_condvar_.wait_until(lock, next_send, [this]() {
+              // Wait until time interval completes or asked to stop. Continue
+              // waiting even if the number of active clients drops to 0.
+              return repeater_state_ == RepeaterState::STOPPED;
+            });
+        if (stopped || num_active_clients_ == 0) {
+          continue;
+        }
+      } else {
+        repeater_state_condvar_.wait(lock, [this]() {
+          // Wait until asked to stop or have clients
+          return repeater_state_ == RepeaterState::STOPPED ||
+                 num_active_clients_ > 0;
+        });
+        // Need to break the loop if stopped or wait for the interval if have
+        // clients.
+        continue;
+      }
     }
 
     std::map<uint32_t, std::shared_ptr<BufferInfo>> buffers;
@@ -231,20 +254,14 @@ void DisplayHandler::RepeatFramesPeriodically() {
 
 void DisplayHandler::AddDisplayClient() {
   std::lock_guard lock(repeater_state_mutex_);
-  ++num_active_clients_;
-  if (num_active_clients_ == 1) {
-    repeater_state_ = RepeaterState::REPEATING;
+  if (++num_active_clients_ == 1) {
     repeater_state_condvar_.notify_one();
-  }
+  };
 }
 
 void DisplayHandler::RemoveDisplayClient() {
   std::lock_guard lock(repeater_state_mutex_);
   --num_active_clients_;
-  if (num_active_clients_ == 0) {
-    repeater_state_ = RepeaterState::PAUSED;
-    repeater_state_condvar_.notify_one();
-  }
 }
 
 }  // namespace cuttlefish

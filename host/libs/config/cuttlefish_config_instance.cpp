@@ -17,6 +17,7 @@
 #include "cuttlefish_config.h"
 #include "host/libs/config/cuttlefish_config.h"
 
+#include <string>
 #include <string_view>
 
 #include <android-base/logging.h>
@@ -422,6 +423,14 @@ std::string CuttlefishConfig::InstanceSpecific::kernel_path() const {
 void CuttlefishConfig::MutableInstanceSpecific::set_kernel_path(
     const std::string& kernel_path) {
   (*Dictionary())[kKernelPath] = kernel_path;
+}
+static constexpr char kVvmtruststorePath[] = "vvmtruststore_path";
+void CuttlefishConfig::MutableInstanceSpecific::set_vvmtruststore_path(
+    const std::string& vvmtruststore_path) {
+  (*Dictionary())[kVvmtruststorePath] = vvmtruststore_path;
+}
+std::string CuttlefishConfig::InstanceSpecific::vvmtruststore_path() const {
+  return (*Dictionary())[kVvmtruststorePath].asString();
 }
 // end of system image files
 
@@ -885,6 +894,14 @@ bool CuttlefishConfig::InstanceSpecific::enable_audio() const {
   return (*Dictionary())[kEnableAudio].asBool();
 }
 
+static constexpr char kEnableMouse[] = "enable_mouse";
+void CuttlefishConfig::MutableInstanceSpecific::set_enable_mouse(bool enable) {
+  (*Dictionary())[kEnableMouse] = enable;
+}
+bool CuttlefishConfig::InstanceSpecific::enable_mouse() const {
+  return (*Dictionary())[kEnableMouse].asBool();
+}
+
 static constexpr char kEnableGnssGrpcProxy[] = "enable_gnss_grpc_proxy";
 void CuttlefishConfig::MutableInstanceSpecific::set_enable_gnss_grpc_proxy(const bool enable_gnss_grpc_proxy) {
   (*Dictionary())[kEnableGnssGrpcProxy] = enable_gnss_grpc_proxy;
@@ -994,6 +1011,15 @@ void CuttlefishConfig::MutableInstanceSpecific::set_vhost_user_block(
 }
 bool CuttlefishConfig::InstanceSpecific::vhost_user_block() const {
   return (*Dictionary())[kVhostUserBlock].asBool();
+}
+
+static constexpr char kTi50[] = "ti50";
+void CuttlefishConfig::MutableInstanceSpecific::set_ti50_emulator(
+    const std::string& ti50) {
+  (*Dictionary())[kTi50] = ti50;
+}
+std::string CuttlefishConfig::InstanceSpecific::ti50_emulator() const {
+  return (*Dictionary())[kTi50].asString();
 }
 
 static constexpr char kEnableWebRTC[] = "enable_webrtc";

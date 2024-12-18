@@ -19,7 +19,9 @@
 #include <memory>
 #include <vector>
 
+#include "common/libs/fs/shared_fd.h"
 #include "common/libs/utils/result.h"
+#include "host/libs/input_connector/event_buffer.h"
 
 namespace cuttlefish {
 
@@ -41,6 +43,7 @@ class InputConnector {
     virtual ~EventSink() = default;
     virtual Result<void> SendMouseMoveEvent(int x, int y) = 0;
     virtual Result<void> SendMouseButtonEvent(int button, bool down) = 0;
+    virtual Result<void> SendMouseWheelEvent(int pixels) = 0;
     virtual Result<void> SendTouchEvent(const std::string& display, int x,
                                         int y, bool down) = 0;
     virtual Result<void> SendMultiTouchEvent(
@@ -54,6 +57,31 @@ class InputConnector {
   virtual ~InputConnector() = default;
 
   virtual std::unique_ptr<EventSink> CreateSink() = 0;
+};
+
+class InputConnectorImpl;
+
+class InputConnectorBuilder {
+ public:
+  explicit InputConnectorBuilder(InputEventType type);
+  ~InputConnectorBuilder();
+  InputConnectorBuilder(const InputConnectorBuilder&) = delete;
+  InputConnectorBuilder(InputConnectorBuilder&&) = delete;
+  InputConnectorBuilder& operator=(const InputConnectorBuilder&) = delete;
+
+  void WithMultitouchDevice(const std::string& device_label, SharedFD server);
+  void WithTouchDevice(const std::string& device_label, SharedFD server);
+  void WithKeyboard(SharedFD server);
+  void WithSwitches(SharedFD server);
+  void WithRotary(SharedFD server);
+  void WithMouse(SharedFD server);
+  // This object becomes invalid after calling Build(), the rvalue reference
+  // makes it explicit that it shouldn't be used after.
+  std::unique_ptr<InputConnector> Build() &&;
+
+ private:
+  std::unique_ptr<InputConnectorImpl> connector_;
+  InputEventType event_type_;
 };
 
 }  // namespace cuttlefish

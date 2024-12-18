@@ -31,9 +31,9 @@ java_test_host {
         "device-tests",
     ],
     libs: [
+        "compatibility-host-util",
         "cts-tradefed",
         "tradefed",
-        "compatibility-host-util",
     ],
     static_libs: [
         "cuttlefish_host_test_utils",
@@ -42,8 +42,39 @@ java_test_host {
         "auto_annotation_plugin",
         "auto_value_plugin",
     ],
-    data: [
+    device_common_data: [
         ":CuttlefishDisplayHotplugHelperApp",
+    ],
+}
+
+java_test_host {
+    name: "CuttlefishDisplayTests",
+    srcs: [
+        "src/com/android/cuttlefish/tests/CuttlefishDisplayTests.java",
+    ],
+    data_native_bins: [
+        "cvd_internal_display",
+    ],
+    test_options: {
+        unit_test: false,
+    },
+    test_suites: [
+        "device-tests",
+    ],
+    libs: [
+        "compatibility-host-util",
+        "cts-tradefed",
+        "tradefed",
+    ],
+    static_libs: [
+        "cuttlefish_host_test_utils",
+    ],
+    plugins: [
+        "auto_annotation_plugin",
+        "auto_value_plugin",
+    ],
+    device_common_data: [
+        ":CuttlefishVulkanSamplesFullscreenColor",
     ],
 }
 
@@ -60,5 +91,30 @@ java_test_host {
     ],
     libs: [
         "tradefed",
+    ],
+}
+
+java_test_host {
+    name: "CuttlefishVulkanSnapshotTests",
+    srcs: [
+        "src/com/android/cuttlefish/tests/CuttlefishVulkanSnapshotTests.java",
+    ],
+    test_suites: [
+        "device-tests",
+    ],
+    libs: [
+        "tradefed",
+    ],
+    static_libs: [
+        "cuttlefish_host_test_utils",
+    ],
+    plugins: [
+        "auto_annotation_plugin",
+        "auto_value_plugin",
+    ],
+    device_common_data: [
+        ":CuttlefishVulkanSamplesFullscreenColor",
+        ":CuttlefishVulkanSamplesFullscreenTexture",
+        ":CuttlefishVulkanSamplesSecondaryCommandBuffer",
     ],
 }

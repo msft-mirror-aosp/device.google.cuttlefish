@@ -33,21 +33,15 @@
 
 #include <cstdint>
 #include <cstring>
-#include <functional>
-#include <iomanip>
-#include <ios>
-#include <memory>
 #include <ostream>
 #include <set>
-#include <sstream>
-#include <streambuf>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include <android-base/logging.h>
 #include <android-base/strings.h>
-#include <fmt/format.h>
+#include <fmt/ranges.h>
 
 #include "common/libs/utils/files.h"
 #include "common/libs/utils/subprocess.h"
@@ -106,6 +100,16 @@ bool NetworkInterfaceExists(const std::string& interface_name) {
 }
 
 #ifdef __linux__
+static std::optional<Command> GrepCommand() {
+  if (FileExists("/usr/bin/grep")) {
+    return Command("/usr/bin/grep");
+  } else if (FileExists("/bin/grep")) {
+    return Command("/bin/grep");
+  } else {
+    return {};
+  }
+}
+
 std::set<std::string> TapInterfacesInUse() {
   std::vector<std::string> fdinfo_list;
 
@@ -127,17 +131,20 @@ std::set<std::string> TapInterfacesInUse() {
     }
   }
 
-  Command cmd = Command("/usr/bin/egrep")
-                    .AddParameter("-h")
-                    .AddParameter("-e")
-                    .AddParameter("^iff:.*");
+  std::optional<Command> cmd = GrepCommand();
+  if (!cmd) {
+    LOG(WARNING) << "Unable to test TAP interface usage";
+    return {};
+  }
+  cmd->AddParameter("-E").AddParameter("-h").AddParameter("-e").AddParameter(
+      "^iff:.*");
 
   for (const std::string& fdinfo : fdinfo_list) {
-    cmd.AddParameter(fdinfo);
+    cmd->AddParameter(fdinfo);
   }
 
   std::string stdout_str, stderr_str;
-  RunWithManagedStdio(std::move(cmd), nullptr, &stdout_str, &stderr_str);
+  RunWithManagedStdio(std::move(*cmd), nullptr, &stdout_str, &stderr_str);
 
   auto lines = android::base::Split(stdout_str, "\n");
   std::set<std::string> tap_interfaces;

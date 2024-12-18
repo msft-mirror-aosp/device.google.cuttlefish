@@ -20,9 +20,6 @@ $(call inherit-product, $(SRC_TARGET_DIR)/product/languages_full.mk)
 # Enable updating of APEXes
 $(call inherit-product, $(SRC_TARGET_DIR)/product/updatable_apex.mk)
 
-# Enable userspace reboot
-$(call inherit-product, $(SRC_TARGET_DIR)/product/userspace_reboot.mk)
-
 # Enforce generic ramdisk allow list
 $(call inherit-product, $(SRC_TARGET_DIR)/product/generic_ramdisk.mk)
 
@@ -31,6 +28,11 @@ VENDOR_SECURITY_PATCH = $(PLATFORM_SECURITY_PATCH)
 
 # Set boot SPL
 BOOT_SECURITY_PATCH = $(PLATFORM_SECURITY_PATCH)
+
+# Use EROFS APEX as default
+ifeq (true,$(RELEASE_APEX_USE_EROFS_PREINSTALLED))
+PRODUCT_DEFAULT_APEX_PAYLOAD_TYPE := erofs
+endif
 
 PRODUCT_VENDOR_PROPERTIES += \
     ro.vendor.boot_security_patch=$(BOOT_SECURITY_PATCH)
@@ -214,11 +216,12 @@ PRODUCT_PACKAGES += CFSatelliteService
 #
 # Common manifest for all targets
 #
+
 ifeq ($(RELEASE_AIDL_USE_UNFROZEN),true)
-PRODUCT_SHIPPING_API_LEVEL := 35
+PRODUCT_SHIPPING_API_LEVEL := 36
 LOCAL_DEVICE_FCM_MANIFEST_FILE ?= device/google/cuttlefish/shared/config/manifest.xml
 else
-PRODUCT_SHIPPING_API_LEVEL := 34
+PRODUCT_SHIPPING_API_LEVEL := 35
 LOCAL_DEVICE_FCM_MANIFEST_FILE ?= device/google/cuttlefish/shared/config/previous_manifest.xml
 endif
 DEVICE_MANIFEST_FILE += $(LOCAL_DEVICE_FCM_MANIFEST_FILE)
@@ -239,7 +242,6 @@ PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/config/media_profiles.xml:$(TARGET_COPY_OUT_VENDOR)/etc/media_profiles_vendor.xml \
     device/google/cuttlefish/shared/config/seriallogging.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/seriallogging.rc \
     device/google/cuttlefish/shared/config/ueventd.rc:$(TARGET_COPY_OUT_VENDOR)/etc/ueventd.rc \
-    device/google/cuttlefish/shared/permissions/cuttlefish_excluded_hardware.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/cuttlefish_excluded_hardware.xml \
     device/google/cuttlefish/shared/permissions/privapp-permissions-cuttlefish.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/privapp-permissions-cuttlefish.xml \
     frameworks/av/media/libeffects/data/audio_effects.xml:$(TARGET_COPY_OUT_VENDOR)/etc/audio_effects.xml \
     frameworks/av/media/libstagefright/data/media_codecs_google_audio.xml:$(TARGET_COPY_OUT_VENDOR)/etc/media_codecs_google_audio.xml \
@@ -270,6 +272,7 @@ PRODUCT_PACKAGES += \
     fstab.cf.f2fs.hctr2 \
     fstab.cf.f2fs.hctr2.vendor_ramdisk \
     fstab.cf.f2fs.cts \
+    fstab.cf.f2fs.cts.recovery \
     fstab.cf.f2fs.cts.vendor_ramdisk \
     fstab.cf.ext4.hctr2 \
     fstab.cf.ext4.hctr2.vendor_ramdisk \
@@ -413,11 +416,32 @@ PRODUCT_PACKAGES += \
 endif
 
 #
+# Trusty VM for Keymint and Gatekeeper HAL
+#
+ifeq ($(RELEASE_AVF_ENABLE_EARLY_VM),true)
+  TRUSTY_KEYMINT_IMPL ?= rust
+  TRUSTY_SYSTEM_VM ?= nonsecure
+endif
+ifeq ($(TRUSTY_SYSTEM_VM),nonsecure)
+    $(call inherit-product, system/core/trusty/keymint/trusty-keymint.mk)
+    $(call inherit-product, system/core/trusty/trusty-storage-cf.mk)
+    PRODUCT_PACKAGES += \
+        lk_trusty.elf \
+        trusty_security_vm_launcher \
+        early_vms.xml \
+        cf-trusty_security_vm_launcher.rc \
+        lk_trusty.elf \
+        trusty-ut-ctrl.system \
+
+endif
+
+#
 # KeyMint HAL
 #
 PRODUCT_PACKAGES += \
 	com.android.hardware.keymint.rust_cf_remote \
 	com.android.hardware.keymint.rust_nonsecure \
+	com.android.hardware.keymint.rust_cf_guest_trusty_nonsecure \
 
 # Indicate that KeyMint includes support for the ATTEST_KEY key purpose.
 PRODUCT_COPY_FILES += \
@@ -503,8 +527,9 @@ endif
 # wifi
 # Add com.android.hardware.wifi for android.hardware.wifi-service
 PRODUCT_PACKAGES += com.android.hardware.wifi
-# Add com.google.cf.wifi for hostapd, wpa_supplicant, etc.
+# Add com.google.cf.wifi and com.google.cf.wpa_supplicant for hostapd and wpa_supplicant
 PRODUCT_PACKAGES += com.google.cf.wifi
+PRODUCT_PACKAGES += com.google.cf.wpa_supplicant
 $(call add_soong_config_namespace, wpa_supplicant)
 $(call add_soong_config_var_value, wpa_supplicant, platform_version, $(PLATFORM_VERSION))
 $(call add_soong_config_var_value, wpa_supplicant, nl80211_driver, CONFIG_DRIVER_NL80211_QCA)

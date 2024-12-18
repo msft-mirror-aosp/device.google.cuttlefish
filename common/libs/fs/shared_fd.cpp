@@ -81,24 +81,6 @@ void CheckMarked(fd_set* in_out_mask, SharedFDSet* in_out_set) {
   }
 }
 
-/*
- * Android currently has host prebuilts of glibc 2.15 and 2.17, but
- * memfd_create was only added in glibc 2.27. It was defined in Linux 3.17,
- * so we consider it safe to use the low-level arbitrary syscall wrapper.
- */
-#ifndef __NR_memfd_create
-# if defined(__x86_64__)
-#  define __NR_memfd_create 319
-# elif defined(__i386__)
-#  define __NR_memfd_create 356
-# elif defined(__aarch64__)
-#  define __NR_memfd_create 279
-# else
-/* No interest in other architectures. */
-#  error "Unknown architecture."
-# endif
-#endif
-
 int memfd_create_wrapper(const char* name, unsigned int flags) {
 #ifdef __linux__
 #ifdef CUTTLEFISH_HOST
@@ -715,11 +697,8 @@ SharedFD SharedFD::VsockServer(
          "guest";
 #endif
   if (vhost_user_vsock_listening_cid) {
-    // TODO(b/277909042): better path than /tmp/vsock_{}/vm.vsock_{}
     return SharedFD::SocketLocalServer(
-        fmt::format("/tmp/vsock_{}_{}/vm.vsock_{}",
-                    *vhost_user_vsock_listening_cid, std::to_string(getuid()),
-                    port),
+        GetVhostUserVsockServerAddr(port, *vhost_user_vsock_listening_cid),
         false /* abstract */, type, 0666 /* mode */);
   }
 
@@ -752,6 +731,20 @@ SharedFD SharedFD::VsockServer(
   return VsockServer(VMADDR_PORT_ANY, type, vhost_user_vsock_listening_cid);
 }
 
+std::string SharedFD::GetVhostUserVsockServerAddr(
+    unsigned int port, int vhost_user_vsock_listening_cid) {
+  // TODO(b/277909042): better path than /tmp/vsock_{}/vm.vsock_{}
+  return fmt::format(
+      "{}_{}", GetVhostUserVsockClientAddr(vhost_user_vsock_listening_cid),
+      port);
+}
+
+std::string SharedFD::GetVhostUserVsockClientAddr(int cid) {
+  // TODO(b/277909042): better path than /tmp/vsock_{}/vm.vsock_{}
+  return fmt::format("/tmp/vsock_{}_{}/vm.vsock", cid,
+                     std::to_string(getuid()));
+}
+
 SharedFD SharedFD::VsockClient(unsigned int cid, unsigned int port, int type,
                                bool vhost_user) {
 #ifndef CUTTLEFISH_HOST
@@ -759,9 +752,8 @@ SharedFD SharedFD::VsockClient(unsigned int cid, unsigned int port, int type,
 #endif
   if (vhost_user) {
     // TODO(b/277909042): better path than /tmp/vsock_{}/vm.vsock
-    auto client = SharedFD::SocketLocalClient(
-        fmt::format("/tmp/vsock_{}_{}/vm.vsock", cid, std::to_string(getuid())),
-        false /* abstract */, type);
+    auto client = SharedFD::SocketLocalClient(GetVhostUserVsockClientAddr(cid),
+                                              false /* abstract */, type);
     const std::string msg = fmt::format("connect {}\n", port);
     SendAll(client, msg);
 

@@ -22,6 +22,7 @@
 #include <sys/types.h>
 
 #include <cassert>
+#include <map>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -71,7 +72,7 @@ CrosvmManager::ConfigureGraphics(
 
   if (instance.gpu_mode() == kGpuModeGuestSwiftshader) {
     bootconfig_args = {
-        {"androidboot.cpuvulkan.version", std::to_string(VK_API_VERSION_1_2)},
+        {"androidboot.cpuvulkan.version", std::to_string(VK_API_VERSION_1_3)},
         {"androidboot.hardware.gralloc", "minigbm"},
         {"androidboot.hardware.hwcomposer", instance.hwcomposer()},
         {"androidboot.hardware.hwcomposer.display_finder_mode", "drm"},
@@ -183,15 +184,35 @@ std::string ToSingleLineString(const Json::Value& value) {
   return Json::writeString(builder, value);
 }
 
-void MaybeConfigureVulkanIcd(const CuttlefishConfig& config, Command* command) {
+Result<std::string> HostSwiftShaderIcdPathForArch() {
+  switch (HostArch()) {
+    case Arch::Arm64:
+      return HostBinaryPath("aarch64-linux-gnu/vk_swiftshader_icd.json");
+    case Arch::X86:
+    case Arch::X86_64:
+      return HostUsrSharePath("vulkan/icd.d/vk_swiftshader_icd.json");
+    default:
+      break;
+  }
+  return CF_ERR("Unhandled host arch " << HostArchStr()
+                                       << " for finding SwiftShader ICD.");
+}
+
+Result<void> MaybeConfigureVulkanIcd(const CuttlefishConfig& config,
+                                     Command* command) {
   const auto& gpu_mode = config.ForDefaultInstance().gpu_mode();
   if (gpu_mode == kGpuModeGfxstreamGuestAngleHostSwiftShader) {
+    const std::string swiftshader_icd_json_path =
+        CF_EXPECT(HostSwiftShaderIcdPathForArch());
+
     // See https://github.com/KhronosGroup/Vulkan-Loader.
-    const std::string swiftshader_icd_json =
-        HostUsrSharePath("vulkan/icd.d/vk_swiftshader_icd.json");
-    command->AddEnvironmentVariable("VK_DRIVER_FILES", swiftshader_icd_json);
-    command->AddEnvironmentVariable("VK_ICD_FILENAMES", swiftshader_icd_json);
+    command->AddEnvironmentVariable("VK_DRIVER_FILES",
+                                    swiftshader_icd_json_path);
+    command->AddEnvironmentVariable("VK_ICD_FILENAMES",
+                                    swiftshader_icd_json_path);
   }
+
+  return {};
 }
 
 Result<std::string> CrosvmPathForVhostUserGpu(const CuttlefishConfig& config) {
@@ -329,7 +350,7 @@ Result<VhostUserDeviceCommands> BuildVhostUserGpu(
   gpu_device_cmd.Cmd().AddParameter("--params");
   gpu_device_cmd.Cmd().AddParameter(ToSingleLineString(gpu_params_json));
 
-  MaybeConfigureVulkanIcd(config, &gpu_device_cmd.Cmd());
+  CF_EXPECT(MaybeConfigureVulkanIcd(config, &gpu_device_cmd.Cmd()));
 
   gpu_device_cmd.Cmd().RedirectStdIO(Subprocess::StdIOChannel::kStdOut,
                                      gpu_device_logs);
@@ -421,7 +442,7 @@ Result<void> ConfigureGpu(const CuttlefishConfig& config, Command* crosvm_cmd) {
                              gpu_common_string);
   }
 
-  MaybeConfigureVulkanIcd(config, crosvm_cmd);
+  CF_EXPECT(MaybeConfigureVulkanIcd(config, crosvm_cmd));
 
   return {};
 }
@@ -533,56 +554,11 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
 
   // crosvm_cmd.Cmd().AddParameter("--null-audio");
   crosvm_cmd.Cmd().AddParameter("--mem=", instance.memory_mb());
-  crosvm_cmd.Cmd().AddParameter("--cpus=", instance.cpus());
   if (instance.mte()) {
     crosvm_cmd.Cmd().AddParameter("--mte");
   }
 
-  if (!instance.vcpu_config_path().empty()) {
-    auto vcpu_config_json =
-        CF_EXPECT(LoadFromFile(instance.vcpu_config_path()));
-    std::string affinity_arg = "--cpu-affinity=";
-    std::string capacity_arg = "--cpu-capacity=";
-    std::string frequencies_arg = "--cpu-frequencies-khz=";
-
-    for (int i = 0; i < instance.cpus(); i++) {
-      if (i != 0) {
-        capacity_arg += ",";
-        affinity_arg += ":";
-        frequencies_arg += ";";
-      }
-
-      auto cpu_cluster = fmt::format("--cpu-cluster={}", i);
-
-      auto cpu = fmt::format("cpu{}", i);
-      const auto cpu_json =
-          CF_EXPECT(GetValue<Json::Value>(vcpu_config_json, {cpu}),
-                    "Missing vCPU config!");
-
-      const auto affinity =
-          CF_EXPECT(GetValue<std::string>(cpu_json, {"affinity"}));
-      auto affine_arg = fmt::format("{}={}", i, affinity);
-
-      const auto freqs =
-          CF_EXPECT(GetValue<std::string>(cpu_json, {"frequencies"}));
-      auto freq_arg = fmt::format("{}={}", i, freqs);
-
-      const auto capacity =
-          CF_EXPECT(GetValue<std::string>(cpu_json, {"capacity"}));
-      auto cap_arg = fmt::format("{}={}", i, capacity);
-
-      capacity_arg += cap_arg;
-      affinity_arg += affine_arg;
-      frequencies_arg += freq_arg;
-
-      crosvm_cmd.Cmd().AddParameter(cpu_cluster);
-    }
-
-    crosvm_cmd.Cmd().AddParameter(affinity_arg);
-    crosvm_cmd.Cmd().AddParameter(capacity_arg);
-    crosvm_cmd.Cmd().AddParameter(frequencies_arg);
-    crosvm_cmd.Cmd().AddParameter("--virt-cpufreq");
-  }
+  CF_EXPECT(crosvm_cmd.AddCpus(instance.cpus(), instance.vcpu_config_path()));
 
   auto disk_num = instance.virtual_disk_paths().size();
   CF_EXPECT(VmManager::kMaxDisks >= disk_num,
@@ -645,8 +621,10 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
           ",height=", touchpad_config.height,
           ",name=", kTouchpadDefaultPrefix, i, "]");
     }
-    crosvm_cmd.Cmd().AddParameter(
-        "--input=mouse[path=", instance.mouse_socket_path(), "]");
+    if (instance.enable_mouse()) {
+      crosvm_cmd.Cmd().AddParameter(
+          "--input=mouse[path=", instance.mouse_socket_path(), "]");
+    }
     crosvm_cmd.Cmd().AddParameter("--input=rotary[path=",
                                   instance.rotary_socket_path(), "]");
     crosvm_cmd.Cmd().AddParameter("--input=keyboard[path=",
@@ -864,6 +842,13 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
     auto path = instance.PerInstanceInternalPath("mcu");
     path += "/" + instance.mcu()["uart0"]["path"].asString();
     crosvm_cmd.AddHvcReadWrite(path, path);
+  } else {
+    crosvm_cmd.AddHvcSink();
+  }
+
+  // /dev/hvc16 = Ti50 TPM FIFO
+  if (!instance.ti50_emulator().empty()) {
+    crosvm_cmd.AddHvcSocket(instance.PerInstancePath("direct_tpm_fifo"));
   } else {
     crosvm_cmd.AddHvcSink();
   }

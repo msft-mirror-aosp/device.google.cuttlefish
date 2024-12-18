@@ -263,6 +263,11 @@ cvd_host_aarch64_graphics_detector = [
     "aarch64_linux_gnu_gfxstream_graphics_detector_for_crosvm",
 ]
 
+cvd_host_aarch64_swiftshader = [
+    "aarch64_linux_gnu_libvk_swiftshader.so",
+    "aarch64_linux_gnu_vk_swiftshader_icd.json",
+]
+
 cvd_host_x86_64 = cvd_host_x86_64_graphics_detector + cvd_host_x86_64_crosvm + qemu_x86_64_linux_gnu_binary
 
 cvd_host_aarch64_crosvm = [
@@ -277,7 +282,7 @@ cvd_host_aarch64_crosvm = [
     "aarch64_linux_gnu_libwayland_client.so.0_for_crosvm",
 ]
 
-cvd_host_aarch64 = cvd_host_aarch64_crosvm + cvd_host_aarch64_graphics_detector + qemu_aarch64_linux_gnu_binary
+cvd_host_aarch64 = cvd_host_aarch64_crosvm + cvd_host_aarch64_graphics_detector + qemu_aarch64_linux_gnu_binary + cvd_host_aarch64_swiftshader
 
 cvd_host_seccomp_policy_x86_64 = [
     "9p_device.policy_x86_64",
@@ -348,6 +353,11 @@ cvd_host_bootloader = [
     "bootloader_qemu_x86_64",
 ]
 
+cvd_host_ti50_emulator = [
+    "ti50_emulator_x86_64_bin",
+    "ti50_emulator_x86_64_lib",
+]
+
 prebuilt_etc_host {
     name: "cvd_avb_testkey_rsa2048",
     filename: "cvd_avb_testkey_rsa2048.pem",
@@ -362,6 +372,12 @@ prebuilt_etc_host {
 
 automotive_proxy_config = [
     "automotive_proxy_config",
+]
+
+automotive_vhal_prop_configs = [
+    "Host_Prebuilt_VehicleHalDefaultProperties_JSON",
+    "Host_Prebuilt_VehicleHalTestProperties_JSON",
+    "Host_Prebuilt_VehicleHalVendorClusterTestProperties_JSON",
 ]
 
 cvd_host_avb_testkey = [
@@ -438,10 +454,12 @@ cvd_host_package_customization {
                 cvd_host_model_simulator_files +
                 cvd_host_acloud_data +
                 cvd_host_bootloader +
+                cvd_host_ti50_emulator +
                 cvd_host_swiftshader_files +
                 cvd_openwrt_images +
                 cvd_host_netsim_gui_assets +
-                automotive_proxy_config,
+                automotive_proxy_config +
+                automotive_vhal_prop_configs,
         },
     },
 

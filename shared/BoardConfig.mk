@@ -20,9 +20,7 @@
 
 # Some targets still require 32 bit, and 6.6 kernels don't support
 # 32 bit devices (Wear, Go, Auto)
-ifneq (,$(findstring gwear_x86,$(PRODUCT_NAME)))
-TARGET_KERNEL_USE ?= 6.1
-else ifneq (,$(findstring x86_phone,$(PRODUCT_NAME)))
+ifeq (true,$(CLOCKWORK_EMULATOR_PRODUCT))
 TARGET_KERNEL_USE ?= 6.1
 else ifneq (,$(findstring x86_tv,$(PRODUCT_NAME)))
 TARGET_KERNEL_USE ?= 6.1
@@ -31,13 +29,20 @@ TARGET_KERNEL_USE ?= 6.6
 endif
 
 TARGET_KERNEL_ARCH ?= $(TARGET_ARCH)
+
+ifneq (,$(filter cf_x86_64_desktop cf_arm64_desktop,$(PRODUCT_NAME)))
+SYSTEM_DLKM_SRC ?= device/google/cuttlefish_prebuilts/kernel/6.6-$(TARGET_KERNEL_ARCH)-desktop/system_dlkm
+KERNEL_MODULES_PATH ?= device/google/cuttlefish_prebuilts/kernel/6.6-$(TARGET_KERNEL_ARCH)-desktop/vendor_dlkm
+else
 SYSTEM_DLKM_SRC ?= kernel/prebuilts/$(TARGET_KERNEL_USE)/$(TARGET_KERNEL_ARCH)
-TARGET_KERNEL_PATH ?= $(SYSTEM_DLKM_SRC)/kernel-$(TARGET_KERNEL_USE)
 KERNEL_MODULES_PATH ?= \
     kernel/prebuilts/common-modules/virtual-device/$(TARGET_KERNEL_USE)/$(subst _,-,$(TARGET_KERNEL_ARCH))
+endif
+
+TARGET_KERNEL_PATH ?= $(SYSTEM_DLKM_SRC)/kernel-$(TARGET_KERNEL_USE)
 PRODUCT_COPY_FILES += $(TARGET_KERNEL_PATH):kernel
 
-BOARD_KERNEL_VERSION := $(word 1,$(subst vermagic=,,$(shell egrep -h -ao -m 1 'vermagic=.*' $(KERNEL_MODULES_PATH)/nd_virtio.ko)))
+BOARD_KERNEL_VERSION := $(word 1,$(subst vermagic=,,$(shell grep -E -h -ao -m 1 'vermagic=.*' $(KERNEL_MODULES_PATH)/nd_virtio.ko)))
 
 ifneq (,$(findstring auto, $(PRODUCT_NAME)))
 HIB_SWAP_IMAGE_SIZE_GB ?= 4
@@ -53,53 +58,63 @@ RAMDISK_KERNEL_MODULES ?= \
     failover.ko \
     nd_virtio.ko \
     net_failover.ko \
-    virtio_blk.ko \
-    virtio_console.ko \
     virtio_dma_buf.ko \
     virtio-gpu.ko \
     virtio_input.ko \
     virtio_net.ko \
-    virtio_pci.ko \
     virtio-rng.ko \
-    vmw_vsock_virtio_transport.ko \
-
-ifeq ($(TARGET_KERNEL_ARCH),arm64)
-BOARD_KERNEL_PATH_16K := kernel/prebuilts/mainline/$(TARGET_KERNEL_ARCH)/16k/kernel-mainline
-BOARD_KERNEL_MODULES_16K += $(wildcard kernel/prebuilts/mainline/$(TARGET_KERNEL_ARCH)/16k/*.ko)
-BOARD_KERNEL_MODULES_16K += $(wildcard kernel/prebuilts/common-modules/virtual-device/mainline/$(TARGET_KERNEL_ARCH)/16k/*.ko)
-endif
 
 BOARD_VENDOR_RAMDISK_KERNEL_MODULES := \
     $(patsubst %,$(KERNEL_MODULES_PATH)/%,$(RAMDISK_KERNEL_MODULES))
-
-# GKI >5.15 will have and require virtio_pci_legacy_dev.ko
-BOARD_VENDOR_RAMDISK_KERNEL_MODULES += $(wildcard $(KERNEL_MODULES_PATH)/virtio_pci_legacy_dev.ko)
-# GKI >5.10 will have and require virtio_pci_modern_dev.ko
-BOARD_VENDOR_RAMDISK_KERNEL_MODULES += $(wildcard $(KERNEL_MODULES_PATH)/virtio_pci_modern_dev.ko)
-# GKI >6.4 will have an required vmw_vsock_virtio_transport_common.ko and vsock.ko
-BOARD_VENDOR_RAMDISK_KERNEL_MODULES += \
-	$(wildcard $(KERNEL_MODULES_PATH)/vmw_vsock_virtio_transport_common.ko) \
-	$(wildcard $(KERNEL_MODULES_PATH)/vsock.ko)
-
 
 # TODO(b/294888357) once virt_wifi is deprecated we can stop loading mac80211 in
 # first stage init. To minimize scope of modules options to first stage init,
 # mac80211_hwsim.radios=0 has to be specified in the modules options file (which we
 # only read in first stage) and mac80211_hwsim has to be loaded in first stage consequently..
-BOARD_VENDOR_RAMDISK_KERNEL_MODULES += $(wildcard $(SYSTEM_DLKM_SRC)/libarc4.ko)
-BOARD_VENDOR_RAMDISK_KERNEL_MODULES += $(wildcard $(SYSTEM_DLKM_SRC)/rfkill.ko)
 BOARD_VENDOR_RAMDISK_KERNEL_MODULES += $(wildcard $(SYSTEM_DLKM_SRC)/cfg80211.ko)
+BOARD_VENDOR_RAMDISK_KERNEL_MODULES += $(wildcard $(SYSTEM_DLKM_SRC)/libarc4.ko)
 BOARD_VENDOR_RAMDISK_KERNEL_MODULES += $(wildcard $(SYSTEM_DLKM_SRC)/mac80211.ko)
-BOARD_VENDOR_RAMDISK_KERNEL_MODULES += $(wildcard $(KERNEL_MODULES_PATH)/libarc4.ko)
-BOARD_VENDOR_RAMDISK_KERNEL_MODULES += $(wildcard $(KERNEL_MODULES_PATH)/rfkill.ko)
+BOARD_VENDOR_RAMDISK_KERNEL_MODULES += $(wildcard $(SYSTEM_DLKM_SRC)/rfkill.ko)
 BOARD_VENDOR_RAMDISK_KERNEL_MODULES += $(wildcard $(KERNEL_MODULES_PATH)/cfg80211.ko)
+BOARD_VENDOR_RAMDISK_KERNEL_MODULES += $(wildcard $(KERNEL_MODULES_PATH)/libarc4.ko)
 BOARD_VENDOR_RAMDISK_KERNEL_MODULES += $(wildcard $(KERNEL_MODULES_PATH)/mac80211.ko)
 BOARD_VENDOR_RAMDISK_KERNEL_MODULES += $(wildcard $(KERNEL_MODULES_PATH)/mac80211_hwsim.ko)
+BOARD_VENDOR_RAMDISK_KERNEL_MODULES += $(wildcard $(KERNEL_MODULES_PATH)/rfkill.ko)
+
+# virtio_blk/console/pci.ko + vmw_vsock_virtio_transport.ko are moved to
+# SYSTEM_DLKM_SRC (from KERNEL_MODULES_PATH), but exist under both paths in
+# some early kernel 6.6 prebuilt drops.
+ifeq ($(TARGET_KERNEL_USE),6.1)
+	SYSTEM_VIRTIO_PREBUILTS_PATH ?= $(KERNEL_MODULES_PATH)
+else
+	SYSTEM_VIRTIO_PREBUILTS_PATH ?= $(SYSTEM_DLKM_SRC)
+endif
+BOARD_VENDOR_RAMDISK_KERNEL_MODULES += $(SYSTEM_VIRTIO_PREBUILTS_PATH)/virtio_blk.ko
+BOARD_VENDOR_RAMDISK_KERNEL_MODULES += $(SYSTEM_VIRTIO_PREBUILTS_PATH)/virtio_console.ko
+BOARD_VENDOR_RAMDISK_KERNEL_MODULES += $(SYSTEM_VIRTIO_PREBUILTS_PATH)/virtio_pci.ko
+BOARD_VENDOR_RAMDISK_KERNEL_MODULES += $(SYSTEM_VIRTIO_PREBUILTS_PATH)/vmw_vsock_virtio_transport.ko
+
+# GKI >5.15 will have and require virtio_pci_legacy_dev.ko
+BOARD_VENDOR_RAMDISK_KERNEL_MODULES += $(wildcard $(SYSTEM_VIRTIO_PREBUILTS_PATH)/virtio_pci_legacy_dev.ko)
+# GKI >5.10 will have and require virtio_pci_modern_dev.ko
+BOARD_VENDOR_RAMDISK_KERNEL_MODULES += $(wildcard $(SYSTEM_VIRTIO_PREBUILTS_PATH)/virtio_pci_modern_dev.ko)
+# GKI >6.4 will have an required vmw_vsock_virtio_transport_common.ko and vsock.ko
+BOARD_VENDOR_RAMDISK_KERNEL_MODULES += \
+	$(wildcard $(SYSTEM_VIRTIO_PREBUILTS_PATH)/vmw_vsock_virtio_transport_common.ko) \
+	$(wildcard $(SYSTEM_VIRTIO_PREBUILTS_PATH)/vsock.ko)
+
 BOARD_DO_NOT_STRIP_VENDOR_RAMDISK_MODULES := true
-ALL_KERNEL_MODULES := $(wildcard $(KERNEL_MODULES_PATH)/*.ko)
 BOARD_VENDOR_KERNEL_MODULES := \
     $(filter-out $(BOARD_VENDOR_RAMDISK_KERNEL_MODULES),\
                  $(wildcard $(KERNEL_MODULES_PATH)/*.ko))
+
+ifeq ($(TARGET_KERNEL_ARCH),arm64)
+ifeq (true,$(PRODUCT_16K_DEVELOPER_OPTION))
+BOARD_KERNEL_PATH_16K := kernel/prebuilts/mainline/$(TARGET_KERNEL_ARCH)/16k/kernel-mainline
+BOARD_KERNEL_MODULES_16K += $(wildcard kernel/prebuilts/mainline/$(TARGET_KERNEL_ARCH)/16k/*.ko)
+BOARD_KERNEL_MODULES_16K += $(wildcard kernel/prebuilts/common-modules/virtual-device/mainline/$(TARGET_KERNEL_ARCH)/16k/*.ko)
+endif
+endif
 
 # TODO(b/170639028): Back up TARGET_NO_BOOTLOADER
 __TARGET_NO_BOOTLOADER := $(TARGET_NO_BOOTLOADER)
@@ -109,8 +124,13 @@ TARGET_NO_BOOTLOADER := $(__TARGET_NO_BOOTLOADER)
 # For now modules are only blocked in second stage init.
 # If a module ever needs to blocked in first stage init - add a new blocklist to
 # BOARD_VENDOR_RAMDISK_KERNEL_MODULES_BLOCKLIST_FILE
+ifeq ($(TARGET_KERNEL_ARCH),arm64)
+BOARD_VENDOR_KERNEL_MODULES_BLOCKLIST_FILE := \
+    device/google/cuttlefish/shared/modules_aarch64.blocklist
+else
 BOARD_VENDOR_KERNEL_MODULES_BLOCKLIST_FILE := \
     device/google/cuttlefish/shared/modules.blocklist
+endif
 
 BOARD_VENDOR_RAMDISK_KERNEL_MODULES_OPTIONS_FILE := \
     device/google/cuttlefish/shared/config/first_stage_modules.options
@@ -316,7 +336,6 @@ DHCPCD_USE_SCRIPT := yes
 
 TARGET_RECOVERY_PIXEL_FORMAT := ABGR_8888
 TARGET_RECOVERY_UI_LIB := librecovery_ui_cuttlefish
-TARGET_RECOVERY_FSTAB_GENRULE := gen_fstab_cf_f2fs_cts
 
 BOARD_SUPER_PARTITION_SIZE := 7516192768  # 7GiB
 BOARD_SUPER_PARTITION_GROUPS := google_system_dynamic_partitions google_vendor_dynamic_partitions
@@ -358,11 +377,6 @@ BOARD_KERNEL_CMDLINE += firmware_class.path=/vendor/etc/
 # Needed to boot Android
 BOARD_KERNEL_CMDLINE += loop.max_part=7
 BOARD_KERNEL_CMDLINE += init=/init
-
-# Enable KUnit for userdebug and eng builds
-ifneq (,$(filter userdebug eng, $(TARGET_BUILD_VARIANT)))
-  BOARD_KERNEL_CMDLINE += kunit.enable=1
-endif
 
 BOARD_BOOTCONFIG += androidboot.hardware=cutf_cvm
 

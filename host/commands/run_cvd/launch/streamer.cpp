@@ -111,7 +111,9 @@ class StreamerSockets : public virtual SetupFeature {
         cmd.AppendToLastParameter(",", touch_servers_[i]);
       }
     }
-    cmd.AddParameter("-mouse_fd=", mouse_server_);
+    if (instance_.enable_mouse()) {
+      cmd.AddParameter("-mouse_fd=", mouse_server_);
+    }
     cmd.AddParameter("-rotary_fd=", rotary_server_);
     cmd.AddParameter("-keyboard_fd=", keyboard_server_);
     cmd.AddParameter("-frame_server_fd=", frames_server_);
@@ -144,8 +146,10 @@ class StreamerSockets : public virtual SetupFeature {
       CF_EXPECT(touch_socket->IsOpen(), touch_socket->StrError());
       touch_servers_.emplace_back(std::move(touch_socket));
     }
-    mouse_server_ = CreateUnixInputServer(instance_.mouse_socket_path());
-    CF_EXPECT(mouse_server_->IsOpen(), mouse_server_->StrError());
+    if (instance_.enable_mouse()) {
+      mouse_server_ = CreateUnixInputServer(instance_.mouse_socket_path());
+      CF_EXPECT(mouse_server_->IsOpen(), mouse_server_->StrError());
+    }
     rotary_server_ =
         CreateUnixInputServer(instance_.rotary_socket_path());
 
@@ -210,13 +214,13 @@ class WebRtcServer : public virtual CommandSource,
                       StreamerSockets& sockets,
                       KernelLogPipeProvider& log_pipe_provider,
                       const CustomActionConfigProvider& custom_action_config,
-                      WebRtcRecorder& webrtc_recorder))
+                      WebRtcController& webrtc_controller))
       : config_(config),
         instance_(instance),
         sockets_(sockets),
         log_pipe_provider_(log_pipe_provider),
         custom_action_config_(custom_action_config),
-        webrtc_recorder_(webrtc_recorder) {}
+        webrtc_controller_(webrtc_controller) {}
   // DiagnosticInformation
   std::vector<std::string> Diagnostics() const override {
     if (!Enabled() ||
@@ -254,8 +258,8 @@ class WebRtcServer : public virtual CommandSource,
       commands.emplace_back(std::move(sig_proxy));
     }
 
-    auto stopper = [webrtc_recorder = webrtc_recorder_]() {
-      webrtc_recorder.SendStopRecordingCommand();
+    auto stopper = [webrtc_controller = webrtc_controller_]() mutable {
+      (void)webrtc_controller.SendStopRecordingCommand();
       return StopperResult::kStopFailure;
     };
 
@@ -275,7 +279,7 @@ class WebRtcServer : public virtual CommandSource,
     // issue is mitigated slightly by doing some retrying and backoff in the
     // webrtc process when connecting to the websocket, so it shouldn't be an
     // issue most of the time.
-    webrtc.AddParameter("--command_fd=", webrtc_recorder_.GetClientSocket());
+    webrtc.AddParameter("--command_fd=", webrtc_controller_.GetClientSocket());
     webrtc.AddParameter("-kernel_log_events_fd=", kernel_log_events_pipe_);
     webrtc.AddParameter("-client_dir=",
                         DefaultHostArtifactsPath("usr/share/webrtc/assets"));
@@ -300,7 +304,7 @@ class WebRtcServer : public virtual CommandSource,
   std::unordered_set<SetupFeature*> Dependencies() const override {
     return {static_cast<SetupFeature*>(&sockets_),
             static_cast<SetupFeature*>(&log_pipe_provider_),
-            static_cast<SetupFeature*>(&webrtc_recorder_)};
+            static_cast<SetupFeature*>(&webrtc_controller_)};
   }
 
   Result<void> ResultSetup() override {
@@ -320,7 +324,7 @@ class WebRtcServer : public virtual CommandSource,
   StreamerSockets& sockets_;
   KernelLogPipeProvider& log_pipe_provider_;
   const CustomActionConfigProvider& custom_action_config_;
-  WebRtcRecorder& webrtc_recorder_;
+  WebRtcController& webrtc_controller_;
   SharedFD kernel_log_events_pipe_;
   SharedFD switches_server_;
 };
@@ -330,7 +334,7 @@ class WebRtcServer : public virtual CommandSource,
 fruit::Component<
     fruit::Required<const CuttlefishConfig, KernelLogPipeProvider,
                     const CuttlefishConfig::InstanceSpecific,
-                    const CustomActionConfigProvider, WebRtcRecorder>>
+                    const CustomActionConfigProvider, WebRtcController>>
 launchStreamerComponent() {
   return fruit::createComponent()
       .addMultibinding<CommandSource, WebRtcServer>()

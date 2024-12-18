@@ -36,14 +36,20 @@ PRODUCT_PACKAGES += \
     ClusterOsDouble \
     CarServiceOverlayEmulatorOsDouble \
     CarServiceOverlayMdEmulatorOsDouble \
-    MultiDisplaySecondaryHomeTestLauncher \
-    MultiDisplayTest
+    MultiDisplayTest \
+    AAECarControlCenterApp
 
 PRODUCT_SYSTEM_DEFAULT_PROPERTIES += \
     com.android.car.internal.debug.num_auto_populated_users=1 # 1 passenger only (so 2nd display shows user picker)
 # TODO(b/233370174): add audio multi-zone
 #   ro.vendor.simulateMultiZoneAudio=true \
 
+# enables the rro package for passenger(secondary) user.
+ENABLE_PASSENGER_SYSTEMUI_RRO := true
+
+# Enable per-display power management
+PRODUCT_COPY_FILES += \
+    device/google/cuttlefish/vsoc_x86_64_only/auto_md/display_layout_configuration.xml:$(TARGET_COPY_OUT_VENDOR)/etc/displayconfig/display_layout_configuration.xml
 
 # This will disable dynamic displays and enable hardcoded displays on hwservicemanager.
 $(call inherit-product, device/generic/car/emulator/cluster/cluster-hwservicemanager.mk)

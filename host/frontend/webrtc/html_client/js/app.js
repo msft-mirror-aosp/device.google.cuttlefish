@@ -184,7 +184,6 @@ class DeviceControlApp {
     this.#showDeviceUI();
   }
 
-
   #showDeviceUI() {
     // Set up control panel buttons
     addMouseListeners(
@@ -299,8 +298,6 @@ class DeviceControlApp {
 
     createSliderListener('rotation-slider', () => this.#onMotionChanged(this.#deviceConnection));
 
-    trackMouseEvents(this.#deviceConnection, document.getElementById('mouse_btn'));
-
     if (this.#deviceConnection.description.custom_control_panel_buttons.length >
         0) {
       document.getElementById('control-panel-custom-buttons').style.display =
@@ -337,6 +334,11 @@ class DeviceControlApp {
       }
     }
 
+    if (this.#deviceConnection.description.mouse_enabled) {
+      // Enable mouse button conditionally.
+      enableMouseButton(this.#deviceConnection);
+    }
+
     // Set up displays
     this.#updateDeviceDisplays();
     this.#deviceConnection.onStreamChange(stream => this.#onStreamChange(stream));
@@ -354,13 +356,8 @@ class DeviceControlApp {
     }
 
     // Set up keyboard and wheel capture
-    // Since when pointer lock to the mouse_btn, keyboard events will
-    // be sent to the button instead of displays. So the button should also
-    // be able to handle the keyboard events.
     this.#startKeyboardCapture(document.querySelector('#device-displays'));
-    this.#startKeyboardCapture(document.getElementById('mouse_btn'));
     this.#startWheelCapture(document.querySelector('#device-displays'));
-    this.#startWheelCapture(document.getElementById('mouse_btn'));
 
     this.#updateDeviceHardwareDetails(
         this.#deviceConnection.description.hardware);
@@ -1218,4 +1215,3 @@ function getStyleAfterRotation(rotationDeg, ar) {
 
   return {transform, maxWidth, maxHeight};
 }
-
