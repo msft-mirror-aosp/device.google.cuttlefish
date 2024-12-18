@@ -85,6 +85,21 @@ class ConnectionObserverImpl : public webrtc_streaming::ConnectionObserver {
     SendLastFrameAsync(/*all displays*/ std::nullopt);
   }
 
+  Result<void> OnMouseMoveEvent(int x, int y) override {
+    CF_EXPECT(input_events_sink_->SendMouseMoveEvent(x, y));
+    return {};
+  }
+
+  Result<void> OnMouseButtonEvent(int button, bool down) override {
+    CF_EXPECT(input_events_sink_->SendMouseButtonEvent(button, down));
+    return {};
+  }
+
+  Result<void> OnMouseWheelEvent(int pixels) override {
+    CF_EXPECT(input_events_sink_->SendMouseWheelEvent(pixels));
+    return {};
+  }
+
   Result<void> OnTouchEvent(const std::string &device_label, int x, int y,
                             bool down) override {
     CF_EXPECT(input_events_sink_->SendTouchEvent(device_label, x, y, down));
@@ -111,7 +126,7 @@ class ConnectionObserverImpl : public webrtc_streaming::ConnectionObserver {
     return {};
   }
 
-  Result<void> OnWheelEvent(int pixels) {
+  Result<void> OnRotaryWheelEvent(int pixels) {
     CF_EXPECT(input_events_sink_->SendRotaryEvent(pixels));
     return {};
   }

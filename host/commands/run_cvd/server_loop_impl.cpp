@@ -63,11 +63,11 @@ ServerLoopImpl::ServerLoopImpl(
     const CuttlefishConfig& config,
     const CuttlefishConfig::InstanceSpecific& instance,
     AutoSnapshotControlFiles::Type& snapshot_control_files,
-    WebRtcRecorder& webrtc_recorder)
+    WebRtcController& webrtc_controller)
     : config_(config),
       instance_(instance),
       snapshot_control_files_(snapshot_control_files),
-      webrtc_recorder_(webrtc_recorder),
+      webrtc_controller_(webrtc_controller),
       vm_name_to_control_sock_{InitializeVmToControlSockPath(instance)},
       device_status_{DeviceStatus::kUnknown} {}
 
@@ -78,16 +78,18 @@ Result<void> ServerLoopImpl::LateInject(fruit::Injector<>& injector) {
 
 Result<void> ServerLoopImpl::Run() {
   // Monitor and restart host processes supporting the CVD
-  auto process_monitor_properties =
-      ProcessMonitor::Properties()
-          .RestartSubprocesses(instance_.restart_subprocesses())
-          .StraceLogDir(instance_.PerInstanceLogPath(""))
-          .StraceCommands(config_.straced_host_executables());
+  auto process_monitor_properties = ProcessMonitor::Properties();
+  process_monitor_properties.RestartSubprocesses(
+      instance_.restart_subprocesses());
+  process_monitor_properties.StraceLogDir(instance_.PerInstanceLogPath(""));
+  process_monitor_properties.StraceCommands(config_.straced_host_executables());
 
   for (auto& command_source : command_sources_) {
     if (command_source->Enabled()) {
       auto commands = CF_EXPECT(command_source->Commands());
-      process_monitor_properties.AddCommands(std::move(commands));
+      for (auto& command : commands) {
+        process_monitor_properties.AddCommand(std::move(command));
+      }
     }
   }
   const auto& channel_to_secure_env =
@@ -184,6 +186,12 @@ Result<void> ServerLoopImpl::HandleExtended(
     case ActionsCase::kStopScreenRecording: {
       LOG(DEBUG) << "Run_cvd received stop screen recording request.";
       CF_EXPECT(HandleStopScreenRecording());
+      return {};
+    }
+    case ActionsCase::kScreenshotDisplay: {
+      LOG(DEBUG) << "Run_cvd received screenshot display request.";
+      const auto& request = action_info.extended_action.screenshot_display();
+      CF_EXPECT(HandleScreenshotDisplay(request));
       return {};
     }
     default:
@@ -333,6 +341,7 @@ bool ServerLoopImpl::PowerwashFiles() {
 
   // TODO(b/269669405): Figure out why this file is not being deleted
   unlink(instance_.CrosvmSocketPath().c_str());
+  unlink(instance_.OpenwrtCrosvmSocketPath().c_str());
 
   // TODO(schuffelen): Clean up duplication with assemble_cvd
   unlink(instance_.PerInstancePath("NVChip").c_str());

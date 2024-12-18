@@ -27,7 +27,7 @@
 #include "host/commands/run_cvd/launch/grpc_socket_creator.h"
 #include "host/commands/run_cvd/launch/log_tee_creator.h"
 #include "host/commands/run_cvd/launch/snapshot_control_files.h"
-#include "host/commands/run_cvd/launch/webrtc_recorder.h"
+#include "host/commands/run_cvd/launch/webrtc_controller.h"
 #include "host/commands/run_cvd/launch/wmediumd_server.h"
 #include "host/libs/config/command_source.h"
 #include "host/libs/config/custom_actions.h"
@@ -50,8 +50,9 @@ VhostDeviceVsockComponent();
 Result<std::optional<MonitorCommand>> BluetoothConnector(
     const CuttlefishConfig&, const CuttlefishConfig::InstanceSpecific&);
 
-Result<MonitorCommand> NfcConnector(const CuttlefishConfig&,
-                                    const CuttlefishConfig::InstanceSpecific&);
+Result<MonitorCommand> NfcConnector(
+    const CuttlefishConfig::EnvironmentSpecific&,
+    const CuttlefishConfig::InstanceSpecific&);
 
 fruit::Component<fruit::Required<const CuttlefishConfig::InstanceSpecific>,
                  KernelLogPipeProvider>
@@ -62,8 +63,8 @@ Result<MonitorCommand> LogcatReceiver(
 std::string LogcatInfo(const CuttlefishConfig::InstanceSpecific&);
 
 Result<std::optional<MonitorCommand>> CasimirControlServer(
-    const CuttlefishConfig&, const CuttlefishConfig::InstanceSpecific&,
-    GrpcSocketCreator&);
+    const CuttlefishConfig&, const CuttlefishConfig::EnvironmentSpecific&,
+    const CuttlefishConfig::InstanceSpecific&, GrpcSocketCreator&);
 
 Result<std::optional<MonitorCommand>> ConsoleForwarder(
     const CuttlefishConfig::InstanceSpecific&);
@@ -94,8 +95,8 @@ fruit::Component<
 RootCanalComponent();
 
 Result<std::vector<MonitorCommand>> Casimir(
-    const CuttlefishConfig&, const CuttlefishConfig::InstanceSpecific&,
-    LogTeeCreator&);
+    const CuttlefishConfig&, const CuttlefishConfig::EnvironmentSpecific&,
+    const CuttlefishConfig::InstanceSpecific&, LogTeeCreator&);
 
 Result<std::vector<MonitorCommand>> Pica(
     const CuttlefishConfig&, const CuttlefishConfig::InstanceSpecific&,
@@ -128,10 +129,10 @@ Result<std::optional<MonitorCommand>> ModemSimulator(
 fruit::Component<
     fruit::Required<const CuttlefishConfig, KernelLogPipeProvider,
                     const CuttlefishConfig::InstanceSpecific,
-                    const CustomActionConfigProvider, WebRtcRecorder>>
+                    const CustomActionConfigProvider, WebRtcController>>
 launchStreamerComponent();
 
-fruit::Component<WebRtcRecorder> WebRtcRecorderComponent();
+fruit::Component<WebRtcController> WebRtcControllerComponent();
 
 fruit::Component<
     fruit::Required<const CuttlefishConfig,
@@ -140,4 +141,8 @@ McuComponent();
 
 std::optional<MonitorCommand> VhalProxyServer(
     const CuttlefishConfig&, const CuttlefishConfig::InstanceSpecific&);
+
+fruit::Component<fruit::Required<const CuttlefishConfig, LogTeeCreator,
+                                 const CuttlefishConfig::InstanceSpecific>>
+Ti50EmulatorComponent();
 }  // namespace cuttlefish
