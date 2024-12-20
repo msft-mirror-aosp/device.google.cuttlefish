@@ -24,8 +24,9 @@ PRODUCT_COPY_FILES += \
     frameworks/native/data/etc/handheld_core_hardware.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/handheld_core_hardware.xml
 
 $(call inherit-product, frameworks/native/build/phone-xhdpi-2048-dalvik-heap.mk)
-$(call inherit-product, device/google/cuttlefish/shared/biometrics_face/device_vendor.mk)
-$(call inherit-product, device/google/cuttlefish/shared/biometrics_fingerprint/device_vendor.mk)
+# b/379614302 remove Face/Fingerprint VHAL as it's incomplete in Android 15
+#$(call inherit-product, device/google/cuttlefish/shared/biometrics_face/device_vendor.mk)
+#$(call inherit-product, device/google/cuttlefish/shared/biometrics_fingerprint/device_vendor.mk)
 $(call inherit-product, device/google/cuttlefish/shared/bluetooth/device_vendor.mk)
 $(call inherit-product, device/google/cuttlefish/shared/consumerir/device_vendor.mk)
 $(call inherit-product, device/google/cuttlefish/shared/gnss/device_vendor.mk)
