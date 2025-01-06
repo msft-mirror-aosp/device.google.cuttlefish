@@ -97,9 +97,15 @@ ifeq ($(LOCAL_VHAL_PRODUCT_PACKAGE),)
 endif
 PRODUCT_PACKAGES += $(LOCAL_VHAL_PRODUCT_PACKAGE)
 
+# Set car power policy daemon connect to VHAL timeout to 60s for emulator (default is 5s).
+PRODUCT_SYSTEM_PROPERTIES += cppd.connectvhal.Timeoutmillis=60000
+
 # Ethernet setup script for vehicle HAL
-PRODUCT_PACKAGES += auto_ethernet_setup_script
-PRODUCT_PACKAGES += auto_ethernet_config_script
+ENABLE_AUTO_ETHERNET ?= true
+ifeq ($(ENABLE_AUTO_ETHERNET), true)
+    PRODUCT_PACKAGES += auto_ethernet_setup_script
+    PRODUCT_PACKAGES += auto_ethernet_config_script
+endif
 
 # Remote access HAL
 PRODUCT_PACKAGES += android.hardware.automotive.remoteaccess@V2-default-service
@@ -129,10 +135,6 @@ PRODUCT_COPY_FILES += \
 
 # Occupant Awareness HAL
 PRODUCT_PACKAGES += android.hardware.automotive.occupant_awareness@1.0-service
-
-PRODUCT_PACKAGES += \
-    hibernation_swap-soong
-
 include packages/services/Car/car_product/occupant_awareness/OccupantAwareness.mk
 BOARD_SEPOLICY_DIRS += packages/services/Car/car_product/occupant_awareness/sepolicy
 

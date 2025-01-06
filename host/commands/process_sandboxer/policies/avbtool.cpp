@@ -16,16 +16,22 @@
 
 #include "host/commands/process_sandboxer/policies.h"
 
+#include <stdlib.h>
 #include <sys/ioctl.h>
+#include <sys/socket.h>
 #include <syscall.h>
+#include <unistd.h>
+
+#include <string>
 
 #include <absl/log/check.h>
 #include <sandboxed_api/sandbox2/policybuilder.h>
 #include <sandboxed_api/sandbox2/util/bpf_helper.h>
-
-#include "host/commands/process_sandboxer/filesystem.h"
+#include <sandboxed_api/util/path.h>
 
 namespace cuttlefish::process_sandboxer {
+
+using sapi::file::JoinPath;
 
 /*
  * This executable is built as a `python_binary_host`:
@@ -69,9 +75,6 @@ sandbox2::PolicyBuilder AvbToolPolicy(const HostInfo& host) {
       .AddDirectory(host.guest_image_path)
       .AddDirectory(host.runtime_dir, /* is_ro= */ false)
       .AddDirectoryAt(fake_proc_self, "/proc/self")
-      // `assemble_cvd` uses `mkdtemp` in `/tmp` and passes the path to avbtool.
-      // TODO: schuffelen - make this more predictable
-      .AddDirectory("/tmp", /* is_ro= */ false)
       .AddFile("/dev/urandom")  // For Python
       .AddFileAt(host.HostToolExe("sandboxer_proxy"), "/usr/bin/openssl")
       // The executable `open`s itself to load the python files.

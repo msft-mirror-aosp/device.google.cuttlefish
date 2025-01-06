@@ -17,7 +17,9 @@
 #include <fcntl.h>
 #include <stdlib.h>
 #include <sys/prctl.h>
+#include <unistd.h>
 
+#include <cerrno>
 #include <memory>
 #include <optional>
 #include <string>
@@ -25,6 +27,7 @@
 #include <utility>
 #include <vector>
 
+#include <absl/base/log_severity.h>
 #include <absl/flags/flag.h>
 #include <absl/flags/parse.h>
 #include <absl/log/check.h>
@@ -32,15 +35,15 @@
 #include <absl/log/initialize.h>
 #include <absl/log/log.h>
 #include <absl/status/status.h>
-#include <absl/strings/numbers.h>
+#include <absl/strings/match.h>
 #include <absl/strings/str_cat.h>
+#include <sandboxed_api/util/fileops.h>
+#include <sandboxed_api/util/path.h>
 
-#include "host/commands/process_sandboxer/filesystem.h"
 #include "host/commands/process_sandboxer/logs.h"
 #include "host/commands/process_sandboxer/pidfd.h"
 #include "host/commands/process_sandboxer/policies.h"
 #include "host/commands/process_sandboxer/sandbox_manager.h"
-#include "host/commands/process_sandboxer/unique_fd.h"
 
 inline constexpr char kCuttlefishConfigEnvVarName[] = "CUTTLEFISH_CONFIG_FILE";
 
@@ -50,7 +53,7 @@ ABSL_FLAG(std::string, environments_dir, "", "Cross-instance environment dir");
 ABSL_FLAG(std::string, environments_uds_dir, "", "Environment unix sockets");
 ABSL_FLAG(std::string, instance_uds_dir, "", "Instance unix domain sockets");
 ABSL_FLAG(std::string, guest_image_path, "", "Directory with `system.img`");
-ABSL_FLAG(std::string, log_dir, "", "Where to write log files");
+ABSL_FLAG(std::string, sandboxer_log_dir, "", "Where to write log files");
 ABSL_FLAG(std::vector<std::string>, log_files, std::vector<std::string>(),
           "File paths outside the sandbox to write logs to");
 ABSL_FLAG(std::string, runtime_dir, "",
@@ -61,6 +64,10 @@ ABSL_FLAG(std::string, vsock_device_dir, "/tmp/vsock_3_1000",
 
 namespace cuttlefish::process_sandboxer {
 namespace {
+
+using sapi::file::CleanPath;
+using sapi::file::JoinPath;
+using sapi::file_util::fileops::FDCloser;
 
 std::optional<std::string_view> FromEnv(const std::string& name) {
   char* value = getenv(name.c_str());
@@ -85,10 +92,17 @@ absl::Status ProcessSandboxerMain(int argc, char** argv) {
     return absl::ErrnoToStatus(errno, "prctl(PR_SET_CHILD_SUBREAPER failed");
   }
 
+  std::string early_tmp_dir(FromEnv("TMPDIR").value_or("/tmp"));
+  early_tmp_dir += "/XXXXXX";
+  if (mkdtemp(early_tmp_dir.data()) == nullptr) {
+    return absl::ErrnoToStatus(errno, "mkdtemp failed");
+  }
+
   HostInfo host{
       .assembly_dir = CleanPath(absl::GetFlag(FLAGS_assembly_dir)),
       .cuttlefish_config_path =
           CleanPath(FromEnv(kCuttlefishConfigEnvVarName).value_or("")),
+      .early_tmp_dir = early_tmp_dir,
       .environments_dir = CleanPath(absl::GetFlag(FLAGS_environments_dir)),
       .environments_uds_dir =
           CleanPath(absl::GetFlag(FLAGS_environments_uds_dir)),
@@ -96,7 +110,7 @@ absl::Status ProcessSandboxerMain(int argc, char** argv) {
       .host_artifacts_path =
           CleanPath(absl::GetFlag(FLAGS_host_artifacts_path)),
       .instance_uds_dir = CleanPath(absl::GetFlag(FLAGS_instance_uds_dir)),
-      .log_dir = CleanPath(absl::GetFlag(FLAGS_log_dir)),
+      .log_dir = CleanPath(absl::GetFlag(FLAGS_sandboxer_log_dir)),
       .runtime_dir = CleanPath(absl::GetFlag(FLAGS_runtime_dir)),
       .vsock_device_dir = CleanPath(absl::GetFlag(FLAGS_vsock_device_dir)),
   };
@@ -184,20 +198,24 @@ absl::Status ProcessSandboxerMain(int argc, char** argv) {
   std::string exe = CleanPath(args[1]);
   std::vector<std::string> exe_argv(++args.begin(), args.end());
 
+  if (absl::EndsWith(exe, "cvd_internal_start")) {
+    exe_argv.emplace_back("--early_tmp_dir=" + host.early_tmp_dir);
+  }
+
   auto sandbox_manager_res = SandboxManager::Create(std::move(host));
   if (!sandbox_manager_res.ok()) {
     return sandbox_manager_res.status();
   }
   std::unique_ptr<SandboxManager> manager = std::move(*sandbox_manager_res);
 
-  std::vector<std::pair<UniqueFd, int>> fds;
+  std::vector<std::pair<FDCloser, int>> fds;
   for (int i = 0; i <= 2; i++) {
     auto duped = fcntl(i, F_DUPFD_CLOEXEC, 0);
     if (duped < 0) {
       static constexpr char kErr[] = "Failed to `dup` stdio file descriptor";
       return absl::ErrnoToStatus(errno, kErr);
     }
-    fds.emplace_back(UniqueFd(duped), i);
+    fds.emplace_back(FDCloser(duped), i);
   }
 
   std::vector<std::string> this_env;

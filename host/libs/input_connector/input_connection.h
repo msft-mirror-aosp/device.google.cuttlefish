@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2024 The Android Open Source Project
+ * Copyright (C) 2023 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,32 +13,24 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef ANDROID_DEVICE_GOOGLE_CUTTLEFISH_HOST_COMMANDS_PROCESS_SANDBOXER_UNIQUE_FD_H
-#define ANDROID_DEVICE_GOOGLE_CUTTLEFISH_HOST_COMMANDS_PROCESS_SANDBOXER_UNIQUE_FD_H
+
+#pragma once
+
+#include <memory>
+
+#include "common/libs/fs/shared_fd.h"
 
 namespace cuttlefish {
-namespace process_sandboxer {
 
-class UniqueFd {
+class InputConnection {
  public:
-  UniqueFd() = default;
-  explicit UniqueFd(int fd);
-  UniqueFd(UniqueFd&&);
-  UniqueFd(UniqueFd&) = delete;
-  ~UniqueFd();
-  UniqueFd& operator=(UniqueFd&&);
+  virtual ~InputConnection() = default;
 
-  int Get() const;
-  int Release();
-  void Reset(int fd);
-
- private:
-  void Close();
-
-  int fd_ = -1;
+  virtual Result<void> WriteEvents(const void* data, size_t len) = 0;
 };
 
-}  // namespace process_sandboxer
-}  // namespace cuttlefish
+// Create an input device that accepts connection on a socket (TCP or UNIX) and
+// writes input events to its client (typically crosvm).
+std::unique_ptr<InputConnection> NewServerInputConnection(SharedFD server_fd);
 
-#endif
+}  // namespace cuttlefish

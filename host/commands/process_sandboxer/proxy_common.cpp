@@ -13,21 +13,25 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "proxy_common.h"
+#include "host/commands/process_sandboxer/proxy_common.h"
 
 #include <sys/socket.h>
+#include <sys/uio.h>
 
-#include <absl/status/statusor.h>
-#include <absl/strings/numbers.h>
-
+#include <cerrno>
 #include <cstdlib>
+#include <cstring>
+#include <optional>
 #include <string>
-#include "absl/status/status.h"
+#include <string_view>
+
+#include <absl/status/status.h>
+#include <absl/status/statusor.h>
 
 namespace cuttlefish::process_sandboxer {
 
 absl::StatusOr<Message> Message::RecvFrom(int sock) {
-  msghdr empty_hdr;
+  msghdr empty_hdr = {};
   int len = recvmsg(sock, &empty_hdr, MSG_PEEK | MSG_TRUNC);
   if (len < 0) {
     return absl::ErrnoToStatus(errno, "recvmsg with MSG_PEEK failed");

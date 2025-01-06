@@ -16,19 +16,30 @@
 
 #include "host/commands/process_sandboxer/policies.h"
 
+#include <stdlib.h>
+
+#include <cerrno>
 #include <memory>
 #include <ostream>
+#include <set>
+#include <string>
 #include <string_view>
+#include <utility>
 
 #include <absl/container/flat_hash_map.h>
 #include <absl/log/log.h>
 #include <absl/status/status.h>
+#include <sandboxed_api/sandbox2/policy.h>
 #include <sandboxed_api/sandbox2/policybuilder.h>
+#include <sandboxed_api/util/fileops.h>
+#include <sandboxed_api/util/path.h>
 
-#include "host/commands/process_sandboxer/filesystem.h"
 #include "host/commands/process_sandboxer/proxy_common.h"
 
 namespace cuttlefish::process_sandboxer {
+
+using sapi::file::JoinPath;
+using sapi::file_util::fileops::CreateDirectoryRecursively;
 
 absl::Status HostInfo::EnsureOutputDirectoriesExist() {
   if (!CreateDirectoryRecursively(assembly_dir, 0700)) {
@@ -50,6 +61,9 @@ absl::Status HostInfo::EnsureOutputDirectoriesExist() {
   if (!CreateDirectoryRecursively(runtime_dir, 0700)) {
     return absl::ErrnoToStatus(errno, "Failed to create " + runtime_dir);
   }
+  if (!CreateDirectoryRecursively(vsock_device_dir, 0700)) {
+    return absl::ErrnoToStatus(errno, "Failed to create " + runtime_dir);
+  }
   return absl::OkStatus();
 }
 
@@ -62,6 +76,7 @@ std::ostream& operator<<(std::ostream& out, const HostInfo& host) {
   out << "\tassembly_dir: \"" << host.assembly_dir << "\"\n";
   out << "\tcuttlefish_config_path: \"" << host.cuttlefish_config_path
       << "\"\n";
+  out << "\tearly_tmp_dir: \"" << host.early_tmp_dir << "\"\n";
   out << "\tenvironments_dir: \"" << host.environments_dir << "\"\n";
   out << "\tenvironments_uds_dir: " << host.environments_uds_dir << "\"\n";
   out << "\tguest_image_path: " << host.guest_image_path << "\t\n";
