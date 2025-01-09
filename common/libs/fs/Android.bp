@@ -26,6 +26,7 @@ cc_library {
     ],
     shared_libs: [
         "libbase",
+        "libcuttlefish_utils_environment",
         "libcuttlefish_utils_result",
         "liblog",
     ],
@@ -69,8 +70,8 @@ cc_test {
         "shared_fd_test.cpp",
     ],
     shared_libs: [
-        "libcuttlefish_fs",
         "libbase",
+        "libcuttlefish_fs",
     ],
     static_libs: [
         "libgmock",

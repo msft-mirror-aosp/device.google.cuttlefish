@@ -28,7 +28,7 @@
 
 #include <fmt/ostream.h>
 
-#include "common/libs/utils/environment.h"
+#include "common/libs/utils/architecture.h"
 #include "common/libs/utils/result.h"
 #include "host/libs/config/config_constants.h"
 #include "host/libs/config/config_fragment.h"
@@ -577,6 +577,7 @@ class CuttlefishConfig {
     std::string boot_slot() const;
     bool fail_fast() const;
     bool vhost_user_block() const;
+    std::string ti50_emulator() const;
 
     // Kernel and bootloader logging
     bool enable_kernel_log() const;
@@ -801,6 +802,7 @@ class CuttlefishConfig {
     void set_grpc_socket_path(const std::string& sockets);
     void set_fail_fast(bool fail_fast);
     void set_vhost_user_block(bool qemu_vhost_user_block);
+    void set_ti50_emulator(const std::string& ti50_emulator);
 
     // Kernel and bootloader logging
     void set_enable_kernel_log(bool enable_kernel_log);

@@ -34,9 +34,10 @@
 #include <json/json.h>
 #include <vulkan/vulkan.h>
 
-#include "common/libs/utils/environment.h"
+#include "common/libs/utils/architecture.h"
 #include "common/libs/utils/files.h"
 #include "common/libs/utils/json.h"
+#include "common/libs/utils/known_paths.h"
 #include "common/libs/utils/network.h"
 #include "common/libs/utils/result.h"
 #include "common/libs/utils/subprocess.h"
@@ -72,7 +73,7 @@ CrosvmManager::ConfigureGraphics(
 
   if (instance.gpu_mode() == kGpuModeGuestSwiftshader) {
     bootconfig_args = {
-        {"androidboot.cpuvulkan.version", std::to_string(VK_API_VERSION_1_2)},
+        {"androidboot.cpuvulkan.version", std::to_string(VK_API_VERSION_1_3)},
         {"androidboot.hardware.gralloc", "minigbm"},
         {"androidboot.hardware.hwcomposer", instance.hwcomposer()},
         {"androidboot.hardware.hwcomposer.display_finder_mode", "drm"},
@@ -682,9 +683,9 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
 
   if (instance.vsock_guest_cid() >= 2) {
     if (instance.vhost_user_vsock()) {
-      auto param =
-          fmt::format("/tmp/vsock_{}_{}/vhost.socket,max-queue-size=256",
-                      instance.vsock_guest_cid(), std::to_string(getuid()));
+      std::string param = fmt::format(
+          "{}/vsock_{}_{}/vhost.socket,max-queue-size=256", TempDir(),
+          instance.vsock_guest_cid(), std::to_string(getuid()));
       crosvm_cmd.Cmd().AddParameter("--vhost-user=vsock,socket=", param);
     } else {
       crosvm_cmd.Cmd().AddParameter("--cid=", instance.vsock_guest_cid());
@@ -842,6 +843,13 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
     auto path = instance.PerInstanceInternalPath("mcu");
     path += "/" + instance.mcu()["uart0"]["path"].asString();
     crosvm_cmd.AddHvcReadWrite(path, path);
+  } else {
+    crosvm_cmd.AddHvcSink();
+  }
+
+  // /dev/hvc16 = Ti50 TPM FIFO
+  if (!instance.ti50_emulator().empty()) {
+    crosvm_cmd.AddHvcSocket(instance.PerInstancePath("direct_tpm_fifo"));
   } else {
     crosvm_cmd.AddHvcSink();
   }

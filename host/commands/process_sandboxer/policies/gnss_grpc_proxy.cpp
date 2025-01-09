@@ -18,6 +18,7 @@
 
 #include <errno.h>
 #include <sys/mman.h>
+#include <sys/socket.h>
 #include <sys/syscall.h>
 
 #include <sandboxed_api/sandbox2/policybuilder.h>
@@ -27,7 +28,7 @@ namespace cuttlefish::process_sandboxer {
 
 sandbox2::PolicyBuilder GnssGrpcProxyPolicy(const HostInfo& host) {
   return BaselinePolicy(host, host.HostToolExe("gnss_grpc_proxy"))
-      .AddDirectory(host.instance_uds_dir, /* is_ro= */ false)
+      .AddDirectory(host.InstanceUdsDir(), /* is_ro= */ false)
       .AddDirectory(host.log_dir, /* is_ro= */ false)
       .AddFile("/dev/urandom")  // For gRPC
       .AddFile(host.cuttlefish_config_path)

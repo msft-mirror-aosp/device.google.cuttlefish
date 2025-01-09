@@ -16,25 +16,30 @@
 
 #include "host/commands/process_sandboxer/policies.h"
 
+#include <linux/filter.h>
+#include <linux/prctl.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <sys/mman.h>
-#include <sys/prctl.h>
 #include <sys/socket.h>
 #include <syscall.h>
+
+#include <vector>
 
 #include <sandboxed_api/sandbox2/allow_unrestricted_networking.h>
 #include <sandboxed_api/sandbox2/policybuilder.h>
 #include <sandboxed_api/sandbox2/util/bpf_helper.h>
-
-#include "host/commands/process_sandboxer/filesystem.h"
+#include <sandboxed_api/util/path.h>
 
 namespace cuttlefish::process_sandboxer {
+
+using sapi::file::JoinPath;
 
 sandbox2::PolicyBuilder NetsimdPolicy(const HostInfo& host) {
   return BaselinePolicy(host, host.HostToolExe("netsimd"))
       .AddDirectory(JoinPath(host.host_artifacts_path, "bin", "netsim-ui"))
       .AddDirectory(JoinPath(host.runtime_dir, "internal"), /* is_ro= */ false)
+      .AddDirectory(host.tmp_dir, /* is_ro= */ false)
       .AddFile("/dev/urandom")  // For gRPC
       .AddPolicyOnSyscalls(
           {__NR_getsockopt, __NR_setsockopt},

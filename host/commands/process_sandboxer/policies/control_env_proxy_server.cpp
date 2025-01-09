@@ -16,18 +16,21 @@
 
 #include "host/commands/process_sandboxer/policies.h"
 
+#include <linux/filter.h>
 #include <sys/mman.h>
 #include <sys/socket.h>
 #include <syscall.h>
 
+#include <cerrno>
+#include <vector>
+
 #include <sandboxed_api/sandbox2/policybuilder.h>
 #include <sandboxed_api/sandbox2/util/bpf_helper.h>
-
 namespace cuttlefish::process_sandboxer {
 
 sandbox2::PolicyBuilder ControlEnvProxyServerPolicy(const HostInfo& host) {
   return BaselinePolicy(host, host.HostToolExe("control_env_proxy_server"))
-      .AddDirectory(host.instance_uds_dir, /* is_ro= */ false)
+      .AddDirectory(host.InstanceUdsDir(), /* is_ro= */ false)
       .AddFile("/dev/urandom")  // For gRPC
       .AddPolicyOnSyscall(__NR_madvise,
                           {ARG_32(2), JEQ32(MADV_DONTNEED, ALLOW)})

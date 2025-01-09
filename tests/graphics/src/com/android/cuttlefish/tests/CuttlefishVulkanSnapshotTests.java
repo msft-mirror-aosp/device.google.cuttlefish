@@ -17,25 +17,29 @@ package com.android.cuttlefish.tests;
 
 import static com.google.common.truth.Truth.assertThat;
 
+import com.android.cuttlefish.tests.utils.CuttlefishHostTest;
+import com.android.cuttlefish.tests.utils.UnlockScreenRule;
 import com.android.tradefed.config.Option;
 import com.android.tradefed.device.internal.DeviceResetHandler;
 import com.android.tradefed.device.internal.DeviceSnapshotHandler;
 import com.android.tradefed.log.LogUtil.CLog;
-import com.android.tradefed.result.InputStreamSource;
 import com.android.tradefed.testtype.DeviceJUnit4ClassRunner;
+import com.android.tradefed.testtype.DeviceJUnit4ClassRunner.TestLogData;
 import com.android.tradefed.testtype.junit4.BaseHostJUnit4Test;
-import com.google.auto.value.AutoValue;
 import java.awt.Color;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
+import javax.annotation.Nullable;
 import javax.imageio.ImageIO;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.TestRule;
 import org.junit.runner.RunWith;
 
 /**
@@ -48,7 +52,7 @@ import org.junit.runner.RunWith;
  * setup.
  */
 @RunWith(DeviceJUnit4ClassRunner.class)
-public class CuttlefishVulkanSnapshotTests extends BaseHostJUnit4Test {
+public class CuttlefishVulkanSnapshotTests extends CuttlefishHostTest {
     private static final String VK_SAMPLES_MAIN_ACTIVITY = "android.app.NativeActivity";
 
     private static final String VK_SAMPLES_FULLSCREEN_COLOR_APK =
@@ -61,14 +65,26 @@ public class CuttlefishVulkanSnapshotTests extends BaseHostJUnit4Test {
     private static final String VK_SAMPLES_FULLSCREEN_TEXTURE_PKG =
         "com.android.cuttlefish.vulkan_samples.fullscreen_texture";
 
+    private static final String VK_SAMPLES_SECONDARY_COMMAND_BUFFER_APK =
+        "CuttlefishVulkanSamplesSecondaryCommandBuffer.apk";
+    private static final String VK_SAMPLES_SECONDARY_COMMAND_BUFFER_PKG =
+        "com.android.cuttlefish.vulkan_samples.secondary_command_buffer";
+
     private static final List<String> VK_SAMPLE_APKS =
-        Arrays.asList(VK_SAMPLES_FULLSCREEN_COLOR_APK, VK_SAMPLES_FULLSCREEN_TEXTURE_APK);
+        Arrays.asList(VK_SAMPLES_FULLSCREEN_COLOR_APK, //
+            VK_SAMPLES_FULLSCREEN_TEXTURE_APK, //
+            VK_SAMPLES_SECONDARY_COMMAND_BUFFER_APK);
+
     private static final List<String> VK_SAMPLE_PKGS =
-        Arrays.asList(VK_SAMPLES_FULLSCREEN_COLOR_PKG, VK_SAMPLES_FULLSCREEN_TEXTURE_PKG);
+        Arrays.asList(VK_SAMPLES_FULLSCREEN_COLOR_PKG, //
+            VK_SAMPLES_FULLSCREEN_TEXTURE_PKG, //
+            VK_SAMPLES_SECONDARY_COMMAND_BUFFER_PKG);
 
-    private static final int SCREENSHOT_CHECK_ATTEMPTS = 5;
+    @Rule
+    public TestLogData mLogs = new TestLogData();
 
-    private static final int SCREENSHOT_CHECK_TIMEOUT_MILLISECONDS = 1000;
+    @Rule
+    public final UnlockScreenRule mUnlockScreenRule = new UnlockScreenRule(this);
 
     @Before
     public void setUp() throws Exception {
@@ -87,86 +103,6 @@ public class CuttlefishVulkanSnapshotTests extends BaseHostJUnit4Test {
         }
     }
 
-    private BufferedImage getScreenshot() throws Exception {
-        InputStreamSource screenshotStream = getDevice().getScreenshot();
-
-        assertThat(screenshotStream).isNotNull();
-
-        return ImageIO.read(screenshotStream.createInputStream());
-    }
-
-    // Vulkan implementations can support different levels of precision which can
-    // result in slight pixel differences. This threshold should be small but was
-    // otherwise chosen arbitrarily to allow for small differences.
-    private static final int PIXEL_DIFFERENCE_THRESHOLD = 16;
-
-    private boolean isApproximatelyEqual(Color actual, Color expected) {
-        int diff = Math.abs(actual.getRed() - expected.getRed())
-            + Math.abs(actual.getGreen() - expected.getGreen())
-            + Math.abs(actual.getBlue() - expected.getBlue());
-        return diff <= PIXEL_DIFFERENCE_THRESHOLD;
-    }
-
-    @AutoValue
-    public static abstract class ExpectedColor {
-        static ExpectedColor create(float u, float v, Color color) {
-            return new AutoValue_CuttlefishVulkanSnapshotTests_ExpectedColor(u, v, color);
-        }
-
-        abstract float u();
-        abstract float v();
-        abstract Color color();
-    }
-
-    private boolean waitForColors(List<ExpectedColor> expectedColors) throws Exception {
-        assertThat(expectedColors).isNotEmpty();
-
-        for (int attempt = 0; attempt < SCREENSHOT_CHECK_ATTEMPTS; attempt++) {
-            CLog.i("Grabbing screenshot (attempt %d of %d)", attempt, SCREENSHOT_CHECK_ATTEMPTS);
-
-            BufferedImage screenshot = getScreenshot();
-
-            final int screenshotW = screenshot.getWidth();
-            final int screenshotH = screenshot.getHeight();
-
-            boolean foundAllExpectedColors = true;
-            for (ExpectedColor expected : expectedColors) {
-                final float sampleU = expected.u();
-
-                // Images from `getDevice().getScreenshot()` seem to use the top left as the
-                // the origin. Flip-y here for what is (subjectively) the more natural origin.
-                final float sampleV = 1.0f - expected.v();
-
-                final int sampleX = (int) (sampleU * (float) screenshotW);
-                final int sampleY = (int) (sampleV * (float) screenshotH);
-
-                final Color sampledColor = new Color(screenshot.getRGB(sampleX, sampleY));
-                final Color expectedColor = expected.color();
-
-                if (!isApproximatelyEqual(sampledColor, expectedColor)) {
-                    CLog.i("Screenshot check %d failed at u:%f v:%f (x:%d y:%d with w:%d h:%d) "
-                            + "expected:%s actual:%s",
-                        attempt, sampleU, sampleV, sampleX, sampleY, screenshotW, screenshotH,
-                        expectedColor, sampledColor);
-                    foundAllExpectedColors = false;
-                }
-            }
-
-            if (foundAllExpectedColors) {
-                CLog.i("Screenshot attempt %d found all expected colors.", attempt);
-                return true;
-            }
-
-            CLog.i("Screenshot attempt %d did not find all expected colors. Sleeping for %d ms and "
-                    + "trying again.",
-                attempt, SCREENSHOT_CHECK_TIMEOUT_MILLISECONDS);
-
-            Thread.sleep(SCREENSHOT_CHECK_TIMEOUT_MILLISECONDS);
-        }
-
-        return false;
-    }
-
     private void runOneSnapshotTest(String pkg, List<ExpectedColor> expectedColors)
         throws Exception {
         final String snapshotId = "snapshot_" + UUID.randomUUID().toString();
@@ -174,11 +110,17 @@ public class CuttlefishVulkanSnapshotTests extends BaseHostJUnit4Test {
         // Reboot to make sure device isn't dirty from previous tests.
         getDevice().reboot();
 
+        mUnlockScreenRule.unlockDevice();
+
         getDevice().executeShellCommand(
             String.format("am start -n %s/%s", pkg, VK_SAMPLES_MAIN_ACTIVITY));
 
-        final boolean foundExpectedColorsBeforeSnapshot = waitForColors(expectedColors);
-        assertThat(foundExpectedColorsBeforeSnapshot).isTrue();
+        final WaitForColorsResult beforeSnapshotResult = waitForColors(expectedColors);
+        if (!beforeSnapshotResult.succeeded()) {
+            saveScreenshotToTestResults(
+                "before_snapshot_restore_screenshot", beforeSnapshotResult.failureImage(), mLogs);
+        }
+        assertThat(beforeSnapshotResult.succeeded()).isTrue();
 
         // Snapshot the device
         new DeviceSnapshotHandler().snapshotDevice(getDevice(), snapshotId);
@@ -189,8 +131,12 @@ public class CuttlefishVulkanSnapshotTests extends BaseHostJUnit4Test {
             new DeviceSnapshotHandler().deleteSnapshot(getDevice(), snapshotId);
         }
 
-        final boolean foundExpectedColorsAfterSnapshotRestore = waitForColors(expectedColors);
-        assertThat(foundExpectedColorsAfterSnapshotRestore).isTrue();
+        final WaitForColorsResult afterSnapshotRestoreResult = waitForColors(expectedColors);
+        if (!afterSnapshotRestoreResult.succeeded()) {
+            saveScreenshotToTestResults(
+                "after_snapshot_restore_screenshot", afterSnapshotRestoreResult.failureImage(), mLogs);
+        }
+        assertThat(afterSnapshotRestoreResult.succeeded()).isTrue();
     }
 
     @Test
@@ -211,5 +157,15 @@ public class CuttlefishVulkanSnapshotTests extends BaseHostJUnit4Test {
             // clang-format on
         );
         runOneSnapshotTest(VK_SAMPLES_FULLSCREEN_TEXTURE_PKG, expectedColors);
+    }
+
+    @Test
+    public void testSecondaryCommandBufferSample() throws Exception {
+        final List<ExpectedColor> expectedColors = Arrays.asList(
+            // clang-format off
+                ExpectedColor.create(0.5f, 0.5f, Color.RED)
+            // clang-format on
+        );
+        runOneSnapshotTest(VK_SAMPLES_SECONDARY_COMMAND_BUFFER_PKG, expectedColors);
     }
 }

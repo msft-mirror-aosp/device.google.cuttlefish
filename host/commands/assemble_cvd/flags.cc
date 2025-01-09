@@ -38,12 +38,16 @@
 #include <json/json.h>
 #include <json/writer.h>
 
+#include "common/libs/utils/architecture.h"
 #include "common/libs/utils/base64.h"
+#include "common/libs/utils/container.h"
 #include "common/libs/utils/contains.h"
+#include "common/libs/utils/environment.h"
 #include "common/libs/utils/files.h"
 #include "common/libs/utils/flag_parser.h"
 #include "common/libs/utils/in_sandbox.h"
 #include "common/libs/utils/json.h"
+#include "common/libs/utils/known_paths.h"
 #include "common/libs/utils/network.h"
 #include "host/commands/assemble_cvd/alloc.h"
 #include "host/commands/assemble_cvd/boot_config.h"
@@ -72,7 +76,7 @@
 
 using cuttlefish::DefaultHostArtifactsPath;
 using cuttlefish::HostBinaryPath;
-using cuttlefish::StringFromEnv;
+using cuttlefish::TempDir;
 using cuttlefish::vm_manager::CrosvmManager;
 using google::FlagSettingMode::SET_FLAGS_DEFAULT;
 using google::FlagSettingMode::SET_FLAGS_VALUE;
@@ -521,7 +525,7 @@ DEFINE_vec(
 DEFINE_vec(vhost_user_block, CF_DEFAULTS_VHOST_USER_BLOCK ? "true" : "false",
            "(experimental) use crosvm vhost-user block device implementation ");
 
-DEFINE_string(early_tmp_dir, cuttlefish::StringFromEnv("TEMP", "/tmp"),
+DEFINE_string(early_tmp_dir, TempDir(),
               "Parent directory to use for temporary files in early startup");
 
 DECLARE_string(assembly_dir);
@@ -719,6 +723,10 @@ Result<std::vector<GuestConfig>> ReadGuestConfig() {
         instance_android_info_txt, "prefer_drm_virgl_when_supported");
     guest_config.prefer_drm_virgl_when_supported =
         res_prefer_drm_virgl_when_supported.value_or("") == "true";
+
+    auto res_ti50_emulator =
+        GetAndroidInfoConfig(instance_android_info_txt, "ti50_emulator");
+    guest_config.ti50_emulator = res_ti50_emulator.value_or("");
 
     guest_configs.push_back(guest_config);
   }
@@ -973,7 +981,8 @@ Result<void> CheckSnapshotCompatible(
 }
 
 std::optional<std::string> EnvironmentUdsDir() {
-  auto environments_uds_dir = "/tmp/cf_env_" + std::to_string(getuid());
+  std::string environments_uds_dir =
+      fmt::format("{}/cf_env_{}", TempDir(), getuid());
   if (DirectoryExists(environments_uds_dir) &&
       !CanAccess(environments_uds_dir, R_OK | W_OK | X_OK)) {
     return std::nullopt;
@@ -982,7 +991,8 @@ std::optional<std::string> EnvironmentUdsDir() {
 }
 
 std::optional<std::string> InstancesUdsDir() {
-  auto instances_uds_dir = "/tmp/cf_avd_" + std::to_string(getuid());
+  std::string instances_uds_dir =
+      fmt::format("{}/cf_avd_{}", TempDir(), getuid());
   if (DirectoryExists(instances_uds_dir) &&
       !CanAccess(instances_uds_dir, R_OK | W_OK | X_OK)) {
     return std::nullopt;
@@ -1890,6 +1900,14 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
       instance.set_vcpu_config_path(AbsolutePath(vcpu_cfg_path));
     }
 
+    if (!guest_configs[instance_index].ti50_emulator.empty()) {
+      auto ti50_emulator =
+          DefaultHostArtifactsPath(guest_configs[instance_index].ti50_emulator);
+      CF_EXPECT(FileExists(ti50_emulator),
+                "ti50 emulator binary does not exist");
+      instance.set_ti50_emulator(ti50_emulator);
+    }
+
     instance_index++;
   }  // end of num_instances loop
 
@@ -2236,9 +2254,8 @@ std::string GetConfigFilePath(const CuttlefishConfig& config) {
 }
 
 std::string GetSeccompPolicyDir() {
-  static const std::string kSeccompDir = std::string("usr/share/crosvm/") +
-                                         cuttlefish::HostArchStr() +
-                                         "-linux-gnu/seccomp";
+  std::string kSeccompDir =
+      "usr/share/crosvm/" + HostArchStr() + "-linux-gnu/seccomp";
   return DefaultHostArtifactsPath(kSeccompDir);
 }
 

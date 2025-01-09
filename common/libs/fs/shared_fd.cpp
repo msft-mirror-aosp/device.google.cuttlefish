@@ -38,6 +38,7 @@
 
 #include "common/libs/fs/shared_buf.h"
 #include "common/libs/fs/shared_select.h"
+#include "common/libs/utils/known_paths.h"
 #include "common/libs/utils/result.h"
 
 // #define ENABLE_GCE_SHARED_FD_LOGGING 1
@@ -80,24 +81,6 @@ void CheckMarked(fd_set* in_out_mask, SharedFDSet* in_out_set) {
     }
   }
 }
-
-/*
- * Android currently has host prebuilts of glibc 2.15 and 2.17, but
- * memfd_create was only added in glibc 2.27. It was defined in Linux 3.17,
- * so we consider it safe to use the low-level arbitrary syscall wrapper.
- */
-#ifndef __NR_memfd_create
-# if defined(__x86_64__)
-#  define __NR_memfd_create 319
-# elif defined(__i386__)
-#  define __NR_memfd_create 356
-# elif defined(__aarch64__)
-#  define __NR_memfd_create 279
-# else
-/* No interest in other architectures. */
-#  error "Unknown architecture."
-# endif
-#endif
 
 int memfd_create_wrapper(const char* name, unsigned int flags) {
 #ifdef __linux__
@@ -759,8 +742,7 @@ std::string SharedFD::GetVhostUserVsockServerAddr(
 
 std::string SharedFD::GetVhostUserVsockClientAddr(int cid) {
   // TODO(b/277909042): better path than /tmp/vsock_{}/vm.vsock_{}
-  return fmt::format("/tmp/vsock_{}_{}/vm.vsock", cid,
-                     std::to_string(getuid()));
+  return fmt::format("{}/vsock_{}_{}/vm.vsock", TempDir(), cid, getuid());
 }
 
 SharedFD SharedFD::VsockClient(unsigned int cid, unsigned int port, int type,
@@ -903,7 +885,8 @@ int FileInstance::LinkAtCwd(const std::string& path) {
 
   std::string name = "/proc/self/fd/";
   name += std::to_string(fd_);
-  return linkat(-1, name.c_str(), AT_FDCWD, path.c_str(), AT_SYMLINK_FOLLOW);
+  return linkat(AT_FDCWD, name.c_str(), AT_FDCWD, path.c_str(),
+                AT_SYMLINK_FOLLOW);
 }
 
 int FileInstance::Listen(int backlog) {

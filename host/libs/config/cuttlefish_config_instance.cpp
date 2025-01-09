@@ -17,6 +17,7 @@
 #include "cuttlefish_config.h"
 #include "host/libs/config/cuttlefish_config.h"
 
+#include <string>
 #include <string_view>
 
 #include <android-base/logging.h>
@@ -1012,6 +1013,15 @@ bool CuttlefishConfig::InstanceSpecific::vhost_user_block() const {
   return (*Dictionary())[kVhostUserBlock].asBool();
 }
 
+static constexpr char kTi50[] = "ti50";
+void CuttlefishConfig::MutableInstanceSpecific::set_ti50_emulator(
+    const std::string& ti50) {
+  (*Dictionary())[kTi50] = ti50;
+}
+std::string CuttlefishConfig::InstanceSpecific::ti50_emulator() const {
+  return (*Dictionary())[kTi50].asString();
+}
+
 static constexpr char kEnableWebRTC[] = "enable_webrtc";
 void CuttlefishConfig::MutableInstanceSpecific::set_enable_webrtc(bool enable_webrtc) {
   (*Dictionary())[kEnableWebRTC] = enable_webrtc;
@@ -1864,11 +1874,11 @@ std::string CuttlefishConfig::InstanceSpecific::touch_socket_path(
 }
 
 std::string CuttlefishConfig::InstanceSpecific::mouse_socket_path() const {
-  return PerInstanceInternalPath("mouse.sock");
+  return PerInstanceInternalUdsPath("mouse.sock");
 }
 
 std::string CuttlefishConfig::InstanceSpecific::rotary_socket_path() const {
-  return PerInstanceInternalPath("rotary.sock");
+  return PerInstanceInternalUdsPath("rotary.sock");
 }
 
 std::string CuttlefishConfig::InstanceSpecific::keyboard_socket_path() const {
