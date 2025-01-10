@@ -38,6 +38,7 @@
 
 #include "common/libs/fs/shared_buf.h"
 #include "common/libs/fs/shared_select.h"
+#include "common/libs/utils/known_paths.h"
 #include "common/libs/utils/result.h"
 
 // #define ENABLE_GCE_SHARED_FD_LOGGING 1
@@ -741,8 +742,7 @@ std::string SharedFD::GetVhostUserVsockServerAddr(
 
 std::string SharedFD::GetVhostUserVsockClientAddr(int cid) {
   // TODO(b/277909042): better path than /tmp/vsock_{}/vm.vsock_{}
-  return fmt::format("/tmp/vsock_{}_{}/vm.vsock", cid,
-                     std::to_string(getuid()));
+  return fmt::format("{}/vsock_{}_{}/vm.vsock", TempDir(), cid, getuid());
 }
 
 SharedFD SharedFD::VsockClient(unsigned int cid, unsigned int port, int type,
@@ -885,7 +885,8 @@ int FileInstance::LinkAtCwd(const std::string& path) {
 
   std::string name = "/proc/self/fd/";
   name += std::to_string(fd_);
-  return linkat(-1, name.c_str(), AT_FDCWD, path.c_str(), AT_SYMLINK_FOLLOW);
+  return linkat(AT_FDCWD, name.c_str(), AT_FDCWD, path.c_str(),
+                AT_SYMLINK_FOLLOW);
 }
 
 int FileInstance::Listen(int backlog) {

@@ -16,9 +16,13 @@
 
 #include "host/commands/process_sandboxer/policies.h"
 
+#include <linux/filter.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
+#include <sys/socket.h>
 #include <syscall.h>
+
+#include <vector>
 
 #include <sandboxed_api/sandbox2/policybuilder.h>
 #include <sandboxed_api/sandbox2/util/bpf_helper.h>
@@ -27,7 +31,7 @@ namespace cuttlefish::process_sandboxer {
 
 sandbox2::PolicyBuilder VhostDeviceVsockPolicy(const HostInfo& host) {
   return BaselinePolicy(host, host.HostToolExe("vhost_device_vsock"))
-      .AddDirectory(host.vsock_device_dir, /* is_ro= */ false)
+      .AddDirectory(host.VsockDeviceDir(), /* is_ro= */ false)
       .AddPolicyOnMmap([](bpf_labels& labels) -> std::vector<sock_filter> {
         return {
             ARG_32(2),  // prot

@@ -15,11 +15,18 @@
  */
 #include "host/commands/process_sandboxer/policies.h"
 
+#include <linux/bpf_common.h>
+#include <linux/filter.h>
+#include <linux/prctl.h>
 #include <sys/mman.h>
-#include <sys/prctl.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <syscall.h>
+#include <unistd.h>
+
+#include <cstdint>
+#include <string>
+#include <vector>
 
 #include <absl/strings/str_cat.h>
 #include <absl/strings/str_replace.h>
@@ -58,18 +65,18 @@ sandbox2::PolicyBuilder RunCvdPolicy(const HostInfo& host) {
       .AddFileAt(sandboxer_proxy, host.HostToolExe("wmediumd"))
       .AddFileAt(sandboxer_proxy, host.HostToolExe("wmediumd_gen_config"))
       .AddDirectory(host.environments_dir)
-      .AddDirectory(host.environments_uds_dir, /* is_ro= */ false)
-      .AddDirectory(host.instance_uds_dir, /* is_ro= */ false)
-      .AddDirectory(host.vsock_device_dir, /* is_ro= */ false)
+      .AddDirectory(host.EnvironmentsUdsDir(), /* is_ro= */ false)
+      .AddDirectory(host.InstanceUdsDir(), /* is_ro= */ false)
+      .AddDirectory(host.VsockDeviceDir(), /* is_ro= */ false)
       // The UID inside the sandbox2 namespaces is always 1000.
-      .AddDirectoryAt(host.environments_uds_dir,
+      .AddDirectoryAt(host.EnvironmentsUdsDir(),
                       absl::StrReplaceAll(
-                          host.environments_uds_dir,
+                          host.EnvironmentsUdsDir(),
                           {{absl::StrCat("cf_env_", getuid()), "cf_env_1000"}}),
                       false)
-      .AddDirectoryAt(host.instance_uds_dir,
+      .AddDirectoryAt(host.InstanceUdsDir(),
                       absl::StrReplaceAll(
-                          host.instance_uds_dir,
+                          host.InstanceUdsDir(),
                           {{absl::StrCat("cf_avd_", getuid()), "cf_avd_1000"}}),
                       false)
       .AddPolicyOnSyscall(__NR_madvise,

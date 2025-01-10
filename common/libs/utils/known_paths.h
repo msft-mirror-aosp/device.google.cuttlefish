@@ -13,32 +13,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef ANDROID_DEVICE_GOOGLE_CUTTLEFISH_HOST_COMMANDS_PROCESS_SANDBOXER_UNIQUE_FD_H
-#define ANDROID_DEVICE_GOOGLE_CUTTLEFISH_HOST_COMMANDS_PROCESS_SANDBOXER_UNIQUE_FD_H
+#pragma once
+
+#include <string>
 
 namespace cuttlefish {
-namespace process_sandboxer {
 
-class UniqueFd {
- public:
-  UniqueFd() = default;
-  explicit UniqueFd(int fd);
-  UniqueFd(UniqueFd&&);
-  UniqueFd(UniqueFd&) = delete;
-  ~UniqueFd();
-  UniqueFd& operator=(UniqueFd&&);
+std::string TempDir();
 
-  int Get() const;
-  int Release();
-  void Reset(int fd);
-
- private:
-  void Close();
-
-  int fd_ = -1;
-};
-
-}  // namespace process_sandboxer
 }  // namespace cuttlefish
-
-#endif

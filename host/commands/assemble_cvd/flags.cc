@@ -38,12 +38,16 @@
 #include <json/json.h>
 #include <json/writer.h>
 
+#include "common/libs/utils/architecture.h"
 #include "common/libs/utils/base64.h"
+#include "common/libs/utils/container.h"
 #include "common/libs/utils/contains.h"
+#include "common/libs/utils/environment.h"
 #include "common/libs/utils/files.h"
 #include "common/libs/utils/flag_parser.h"
 #include "common/libs/utils/in_sandbox.h"
 #include "common/libs/utils/json.h"
+#include "common/libs/utils/known_paths.h"
 #include "common/libs/utils/network.h"
 #include "host/commands/assemble_cvd/alloc.h"
 #include "host/commands/assemble_cvd/boot_config.h"
@@ -72,7 +76,7 @@
 
 using cuttlefish::DefaultHostArtifactsPath;
 using cuttlefish::HostBinaryPath;
-using cuttlefish::StringFromEnv;
+using cuttlefish::TempDir;
 using cuttlefish::vm_manager::CrosvmManager;
 using google::FlagSettingMode::SET_FLAGS_DEFAULT;
 using google::FlagSettingMode::SET_FLAGS_VALUE;
@@ -521,7 +525,7 @@ DEFINE_vec(
 DEFINE_vec(vhost_user_block, CF_DEFAULTS_VHOST_USER_BLOCK ? "true" : "false",
            "(experimental) use crosvm vhost-user block device implementation ");
 
-DEFINE_string(early_tmp_dir, cuttlefish::StringFromEnv("TEMP", "/tmp"),
+DEFINE_string(early_tmp_dir, TempDir(),
               "Parent directory to use for temporary files in early startup");
 
 DECLARE_string(assembly_dir);
@@ -977,7 +981,8 @@ Result<void> CheckSnapshotCompatible(
 }
 
 std::optional<std::string> EnvironmentUdsDir() {
-  auto environments_uds_dir = "/tmp/cf_env_" + std::to_string(getuid());
+  std::string environments_uds_dir =
+      fmt::format("{}/cf_env_{}", TempDir(), getuid());
   if (DirectoryExists(environments_uds_dir) &&
       !CanAccess(environments_uds_dir, R_OK | W_OK | X_OK)) {
     return std::nullopt;
@@ -986,7 +991,8 @@ std::optional<std::string> EnvironmentUdsDir() {
 }
 
 std::optional<std::string> InstancesUdsDir() {
-  auto instances_uds_dir = "/tmp/cf_avd_" + std::to_string(getuid());
+  std::string instances_uds_dir =
+      fmt::format("{}/cf_avd_{}", TempDir(), getuid());
   if (DirectoryExists(instances_uds_dir) &&
       !CanAccess(instances_uds_dir, R_OK | W_OK | X_OK)) {
     return std::nullopt;
@@ -1957,7 +1963,7 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
 }
 
 Result<void> SetDefaultFlagsForQemu(
-    const std::vector<GuestConfig>& guest_configs,
+    Arch target_arch,
     std::map<std::string, std::string>& name_to_default_value) {
   auto instance_nums =
       CF_EXPECT(InstanceNumsCalculator().FromGlobalGflags().Calculate());
@@ -1968,36 +1974,12 @@ Result<void> SetDefaultFlagsForQemu(
       CF_EXPECT(GET_FLAG_BOOL_VALUE(start_webrtc));
   std::vector<std::string> system_image_dir =
       CF_EXPECT(GET_FLAG_STR_VALUE(system_image_dir));
-  std::string curr_bootloader = "";
   std::string curr_android_efi_loader = "";
-  std::string default_bootloader = "";
   std::string default_android_efi_loader = "";
   std::string default_start_webrtc = "";
 
   for (int instance_index = 0; instance_index < instance_nums.size();
        instance_index++) {
-    if (guest_configs[instance_index].android_version_number == "11.0.0") {
-      curr_bootloader = DefaultHostArtifactsPath("etc/bootloader_");
-      auto target_arch = guest_configs[instance_index].target_arch;
-      if (target_arch == Arch::Arm) {
-        curr_bootloader += "arm";
-      } else if (target_arch == Arch::Arm64) {
-        curr_bootloader += "aarch64";
-      } else if (target_arch == Arch::RiscV64) {
-        curr_bootloader += "riscv64";
-      } else {
-        curr_bootloader += "x86_64";
-      }
-      curr_bootloader += "/bootloader.qemu";
-    } else {
-      if (instance_index >= system_image_dir.size()) {
-        curr_bootloader = system_image_dir[0];
-      } else {
-        curr_bootloader = system_image_dir[instance_index];
-      }
-      curr_bootloader += "/bootloader";
-    }
-
     if (instance_index >= system_image_dir.size()) {
       curr_android_efi_loader = system_image_dir[0];
     } else {
@@ -2006,12 +1988,10 @@ Result<void> SetDefaultFlagsForQemu(
     curr_android_efi_loader += "/android_efi_loader.efi";
 
     if (instance_index > 0) {
-      default_bootloader += ",";
       default_android_efi_loader += ",";
       default_start_webrtc += ",";
     }
 
-    default_bootloader += curr_bootloader;
     default_android_efi_loader += curr_android_efi_loader;
     if (gpu_mode_vec[instance_index] == kGpuModeGuestSwiftshader &&
         !start_webrtc_vec[instance_index]) {
@@ -2029,10 +2009,19 @@ Result<void> SetDefaultFlagsForQemu(
   SetCommandLineOptionWithMode("start_webrtc", default_start_webrtc.c_str(),
                                SET_FLAGS_DEFAULT);
 
-  if (guest_configs[0].target_arch == Arch::Arm) {
+  std::string default_bootloader = DefaultHostArtifactsPath("etc/bootloader_");
+  if (target_arch == Arch::Arm) {
     // Bootloader is unstable >512MB RAM on 32-bit ARM
     SetCommandLineOptionWithMode("memory_mb", "512", SET_FLAGS_VALUE);
+    default_bootloader += "arm";
+  } else if (target_arch == Arch::Arm64) {
+    default_bootloader += "aarch64";
+  } else if (target_arch == Arch::RiscV64) {
+    default_bootloader += "riscv64";
+  } else {
+    default_bootloader += "x86_64";
   }
+  default_bootloader += "/bootloader.qemu";
   SetCommandLineOptionWithMode("bootloader", default_bootloader.c_str(),
                                SET_FLAGS_DEFAULT);
   // EFI loader isn't presented in the output folder by default and can be only
@@ -2213,7 +2202,7 @@ Result<std::vector<GuestConfig>> GetGuestConfigAndSetDefaults() {
   auto name_to_default_value = CurrentFlagsToDefaultValue();
 
   if (vmm == VmmMode::kQemu) {
-    CF_EXPECT(SetDefaultFlagsForQemu(guest_configs, name_to_default_value));
+    CF_EXPECT(SetDefaultFlagsForQemu(guest_configs[0].target_arch, name_to_default_value));
   } else if (vmm == VmmMode::kCrosvm) {
     CF_EXPECT(SetDefaultFlagsForCrosvm(guest_configs, name_to_default_value));
   } else if (vmm == VmmMode::kGem5) {
@@ -2265,9 +2254,8 @@ std::string GetConfigFilePath(const CuttlefishConfig& config) {
 }
 
 std::string GetSeccompPolicyDir() {
-  static const std::string kSeccompDir = std::string("usr/share/crosvm/") +
-                                         cuttlefish::HostArchStr() +
-                                         "-linux-gnu/seccomp";
+  std::string kSeccompDir =
+      "usr/share/crosvm/" + HostArchStr() + "-linux-gnu/seccomp";
   return DefaultHostArtifactsPath(kSeccompDir);
 }
 

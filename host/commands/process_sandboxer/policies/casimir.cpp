@@ -16,11 +16,14 @@
 
 #include "host/commands/process_sandboxer/policies.h"
 
+#include <linux/filter.h>
 #include <netinet/ip_icmp.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
-#include <sys/prctl.h>
+#include <sys/socket.h>
 #include <sys/syscall.h>
+
+#include <vector>
 
 #include <sandboxed_api/sandbox2/policybuilder.h>
 #include <sandboxed_api/sandbox2/util/bpf_helper.h>
@@ -32,7 +35,7 @@ sandbox2::PolicyBuilder CasimirPolicy(const HostInfo& host) {
       // `librustutils::inherited_fd` scans `/proc/self/fd` for open FDs.
       // Mounting a subset of `/proc/` is invalid.
       .AddDirectory("/proc", /* is_ro = */ false)
-      .AddDirectory(host.environments_uds_dir, /* is_ro= */ false)
+      .AddDirectory(host.EnvironmentsUdsDir(), /* is_ro= */ false)
       .AddPolicyOnMmap([](bpf_labels& labels) -> std::vector<sock_filter> {
         return {
             ARG_32(2),  // prot
@@ -70,7 +73,8 @@ sandbox2::PolicyBuilder CasimirPolicy(const HostInfo& host) {
       .AllowSyscall(__NR_getrandom)
       .AllowSyscall(__NR_recvfrom)
       .AllowSyscall(__NR_sendto)
-      .AllowSyscall(__NR_shutdown);
+      .AllowSyscall(__NR_shutdown)
+      .AllowSyscall(__NR_statx);  // Not covered by AllowStat
 }
 
 }  // namespace cuttlefish::process_sandboxer

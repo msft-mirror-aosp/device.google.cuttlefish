@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2023 The Android Open Source Project
+ * Copyright (C) 2018 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,20 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 #pragma once
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-#include <libradiocompat/RadioConfig.h>
-#pragma clang diagnostic pop
+namespace cuttlefish {
 
-namespace cf::ril {
+bool IsRunningInContainer();
 
-class RefRadioConfig : public android::hardware::radio::compat::RadioConfig {
-  public:
-    using android::hardware::radio::compat::RadioConfig::RadioConfig;
-
-    ::ndk::ScopedAStatus getSimultaneousCallingSupport(int32_t serial) override;
-};
-}  // namespace cf::ril
+}  // namespace cuttlefish
