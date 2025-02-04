@@ -201,6 +201,7 @@ PRODUCT_PACKAGES += \
     cuttlefish_overlay_nfc \
     cuttlefish_overlay_settings_provider \
     cuttlefish_overlay_uwb \
+    cuttlefish_overlay_uwb_gsi \
 
 #
 # Satellite vendor service for CF
