@@ -114,7 +114,6 @@ class CuttlefishConfig {
     int height;
     int dpi;
     int refresh_rate_hz;
-    std::string overlays;
   };
 
   struct TouchpadConfig {
@@ -235,9 +234,6 @@ class CuttlefishConfig {
   void set_sig_server_strict(bool strict);
   bool sig_server_strict() const;
 
-  // Whether display composition is enabled for one or more displays
-  bool OverlaysEnabled() const;
-
   void set_host_tools_version(const std::map<std::string, uint32_t>&);
   std::map<std::string, uint32_t> host_tools_version() const;
 
@@ -309,10 +305,6 @@ class CuttlefishConfig {
     const Json::Value* Dictionary() const;
   public:
     std::string serial_number() const;
-
-    // Index of this instance within current configured group of VMs
-    int index() const;
-
     // If any of the following port numbers is 0, the relevant service is not
     // running on the guest.
 
@@ -457,6 +449,25 @@ class CuttlefishConfig {
     };
 
     BootFlow boot_flow() const;
+
+    enum class GuestOs { Android, ChromeOs, Linux, Fuchsia };
+
+    GuestOs guest_os() const {
+      switch (boot_flow()) {
+        case BootFlow::Android:
+        case BootFlow::AndroidEfiLoader:
+          return GuestOs::Android;
+        case BootFlow::ChromeOs:
+        case BootFlow::ChromeOsDisk:
+          return GuestOs::ChromeOs;
+        case BootFlow::Linux:
+          return GuestOs::Linux;
+        case BootFlow::Fuchsia:
+          return GuestOs::Fuchsia;
+          // Don't include a default case, this needs to fail when not all cases
+          // are covered.
+      }
+    }
 
     // modem simulator related
     std::string modem_simulator_ports() const;
@@ -983,7 +994,6 @@ class CuttlefishConfig {
     std::string wmediumd_api_server_socket() const;
     std::string wmediumd_config() const;
     int wmediumd_mac_prefix() const;
-    int group_uuid() const;
   };
 
   class MutableEnvironmentSpecific {
@@ -1008,8 +1018,6 @@ class CuttlefishConfig {
     void set_wmediumd_api_server_socket(const std::string& path);
     void set_wmediumd_config(const std::string& path);
     void set_wmediumd_mac_prefix(int mac_prefix);
-
-    void set_group_uuid(const int group_uuid);
   };
 
  private:
