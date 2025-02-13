@@ -450,6 +450,25 @@ class CuttlefishConfig {
 
     BootFlow boot_flow() const;
 
+    enum class GuestOs { Android, ChromeOs, Linux, Fuchsia };
+
+    GuestOs guest_os() const {
+      switch (boot_flow()) {
+        case BootFlow::Android:
+        case BootFlow::AndroidEfiLoader:
+          return GuestOs::Android;
+        case BootFlow::ChromeOs:
+        case BootFlow::ChromeOsDisk:
+          return GuestOs::ChromeOs;
+        case BootFlow::Linux:
+          return GuestOs::Linux;
+        case BootFlow::Fuchsia:
+          return GuestOs::Fuchsia;
+          // Don't include a default case, this needs to fail when not all cases
+          // are covered.
+      }
+    }
+
     // modem simulator related
     std::string modem_simulator_ports() const;
 
@@ -695,6 +714,8 @@ class CuttlefishConfig {
     ExternalNetworkMode external_network_mode() const;
 
     bool start_vhal_proxy_server() const;
+
+    int audio_output_streams_count() const;
   };
 
   // A view into an existing CuttlefishConfig object for a particular instance.
@@ -917,6 +938,8 @@ class CuttlefishConfig {
     // Whether we should start vhal_proxy_server for the guest-side VHAL to
     // connect to.
     void set_start_vhal_proxy_server(bool enable_vhal_proxy_server);
+
+    void set_audio_output_streams_count(int count);
 
    private:
     void SetPath(const std::string& key, const std::string& path);

@@ -164,15 +164,6 @@ class DeviceControlApp {
     createToggleControl(
         document.getElementById('record_video_btn'),
         enabled => this.#onVideoCaptureToggle(enabled));
-    const audioElm = document.getElementById('device-audio');
-
-    let audioPlaybackCtrl = createToggleControl(
-        document.getElementById('volume_off_btn'),
-        enabled => this.#onAudioPlaybackToggle(enabled), !audioElm.paused);
-    // The audio element may start or stop playing at any time, this ensures the
-    // audio control always show the right state.
-    audioElm.onplay = () => audioPlaybackCtrl.Set(true);
-    audioElm.onpause = () => audioPlaybackCtrl.Set(false);
 
     // Enable non-ADB buttons, these buttons use data channels to communicate
     // with the host, so they're ready to go as soon as the webrtc connection is
@@ -182,6 +173,25 @@ class DeviceControlApp {
         .forEach(b => b.disabled = false);
 
     this.#showDeviceUI();
+  }
+
+  #addAudioStream(stream_id, audioPlaybackCtrl) {
+    const audioId = `device-${stream_id}`;
+    if (document.getElementById(audioId)) {
+      console.warning(`Audio element with ID ${audioId} exists`);
+      return;
+    }
+    const deviceConnection = document.getElementById('device-connection');
+    const audioElm = document.createElement('audio');
+    audioElm.id = audioId;
+    audioElm.classList.add('device-audio');
+    deviceConnection.appendChild(audioElm);
+
+    // The audio element may start or stop playing at any time, this ensures the
+    // audio control always show the right state.
+    audioElm.onplay = () => audioPlaybackCtrl.Set(true);
+    audioElm.onpause = () => audioPlaybackCtrl.Set(false);
+    deviceConnection.appendChild(audioElm);
   }
 
   #showDeviceUI() {
@@ -350,11 +360,18 @@ class DeviceControlApp {
     this.#deviceConnection.onStreamChange(stream => this.#onStreamChange(stream));
 
     // Set up audio
-    const deviceAudio = document.getElementById('device-audio');
+    let audioPlaybackCtrl = createToggleControl(
+        document.getElementById('volume_off_btn'),
+        enabled => this.#onAudioPlaybackToggle(enabled));
     for (const audio_desc of this.#deviceConnection.description.audio_streams) {
       let stream_id = audio_desc.stream_id;
+      this.#addAudioStream(stream_id, audioPlaybackCtrl);
       this.#deviceConnection.onStream(stream_id)
           .then(stream => {
+            const deviceAudio = document.getElementById(`device-${stream_id}`);
+            if (!deviceAudio) {
+              throw `Element with id device-${stream_id} not found`;
+            }
             deviceAudio.srcObject = stream;
             deviceAudio.play();
           })
@@ -464,7 +481,10 @@ class DeviceControlApp {
 
     // Get sensor values from message.
     var sensor_vals = message.split(" ");
-    sensor_vals = sensor_vals.map((val) => parseFloat(val).toFixed(3));
+    var acc_update = sensor_vals[0].split(":").map((val) => parseFloat(val).toFixed(3));
+    var gyro_update = sensor_vals[1].split(":").map((val) => parseFloat(val).toFixed(3));
+    var mgn_update = sensor_vals[2].split(":").map((val) => parseFloat(val).toFixed(3));
+    var xyz_update = sensor_vals[3].split(":").map((val) => parseFloat(val).toFixed(3));
 
     const acc_val = document.getElementById('accelerometer-value');
     const mgn_val = document.getElementById('magnetometer-value');
@@ -474,19 +494,19 @@ class DeviceControlApp {
 
     // TODO: move to webrtc backend.
     // Inject sensors with new values.
-    adbShell(`/vendor/bin/cuttlefish_sensor_injection motion ${sensor_vals[3]} ${sensor_vals[4]} ${sensor_vals[5]} ${sensor_vals[6]} ${sensor_vals[7]} ${sensor_vals[8]} ${sensor_vals[9]} ${sensor_vals[10]} ${sensor_vals[11]}`);
+    adbShell(`/vendor/bin/cuttlefish_sensor_injection motion ${acc_update[0]} ${acc_update[1]} ${acc_update[2]} ${mgn_update[0]} ${mgn_update[1]} ${mgn_update[2]} ${gyro_update[0]} ${gyro_update[1]} ${gyro_update[2]}`);
 
     // Display new sensor values after injection.
-    acc_val.textContent = `${sensor_vals[3]} ${sensor_vals[4]} ${sensor_vals[5]}`;
-    mgn_val.textContent = `${sensor_vals[6]} ${sensor_vals[7]} ${sensor_vals[8]}`;
-    gyro_val.textContent = `${sensor_vals[9]} ${sensor_vals[10]} ${sensor_vals[11]}`;
+    acc_val.textContent = `${acc_update[0]} ${acc_update[1]} ${acc_update[2]}`;
+    mgn_val.textContent = `${mgn_update[0]} ${mgn_update[1]} ${mgn_update[2]}`;
+    gyro_val.textContent = `${gyro_update[0]} ${gyro_update[1]} ${gyro_update[2]}`;
 
     // Update xyz sliders with backend values.
     // This is needed for preserving device's state when display is turned on
     // and off, and for having the same state for multiple clients.
     for(let i = 0; i < 3; i++) {
-      xyz_val[i].textContent = sensor_vals[i];
-      xyz_range[i].value = sensor_vals[i];
+      xyz_val[i].textContent = xyz_update[i];
+      xyz_range[i].value = xyz_update[i];
     }
   }
 
@@ -1124,11 +1144,14 @@ class DeviceControlApp {
   }
 
   #onAudioPlaybackToggle(enabled) {
-    const audioElem = document.getElementById('device-audio');
-    if (enabled) {
-      audioElem.play();
-    } else {
-      audioElem.pause();
+    const audioElements = document.getElementsByClassName('device-audio');
+    for (let i = 0; i < audioElements.length; i++) {
+      const audioElem = audioElements[i];
+      if (enabled) {
+        audioElem.play();
+      } else {
+        audioElem.pause();
+      }
     }
   }
 
