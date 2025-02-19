@@ -61,6 +61,25 @@ enum class ExternalNetworkMode {
 std::ostream& operator<<(std::ostream&, ExternalNetworkMode);
 Result<ExternalNetworkMode> ParseExternalNetworkMode(std::string_view);
 
+enum class GuestHwuiRenderer {
+  kUnknown,
+  kSkiaGl,
+  kSkiaVk,
+};
+std::ostream& operator<<(std::ostream&, GuestHwuiRenderer);
+std::string ToString(GuestHwuiRenderer renderer);
+Result<GuestHwuiRenderer> ParseGuestHwuiRenderer(std::string_view);
+
+enum class GuestRendererPreload {
+  kAuto,
+  kGuestDefault,
+  kEnabled,
+  kDisabled,
+};
+std::ostream& operator<<(std::ostream&, GuestRendererPreload);
+std::string ToString(GuestRendererPreload);
+Result<GuestRendererPreload> ParseGuestRendererPreload(std::string_view);
+
 // Holds the configuration of the cuttlefish instances.
 class CuttlefishConfig {
  public:
@@ -640,6 +659,8 @@ class CuttlefishConfig {
     std::string gpu_gfxstream_transport() const;
     std::string gpu_renderer_features() const;
     std::string gpu_context_types() const;
+    GuestHwuiRenderer guest_hwui_renderer() const;
+    GuestRendererPreload guest_renderer_preload() const;
     std::string guest_vulkan_driver() const;
     bool guest_uses_bgra_framebuffers() const;
     std::string frames_socket_path() const;
@@ -714,6 +735,8 @@ class CuttlefishConfig {
     ExternalNetworkMode external_network_mode() const;
 
     bool start_vhal_proxy_server() const;
+
+    int audio_output_streams_count() const;
   };
 
   // A view into an existing CuttlefishConfig object for a particular instance.
@@ -871,6 +894,8 @@ class CuttlefishConfig {
     void set_gpu_gfxstream_transport(const std::string& transport);
     void set_gpu_renderer_features(const std::string& features);
     void set_gpu_context_types(const std::string& context_types);
+    void set_guest_hwui_renderer(GuestHwuiRenderer renderer);
+    void set_guest_renderer_preload(GuestRendererPreload preload);
     void set_guest_vulkan_driver(const std::string& driver);
     void set_guest_uses_bgra_framebuffers(bool uses_bgra);
     void set_frames_socket_path(const std::string& driver);
@@ -936,6 +961,8 @@ class CuttlefishConfig {
     // Whether we should start vhal_proxy_server for the guest-side VHAL to
     // connect to.
     void set_start_vhal_proxy_server(bool enable_vhal_proxy_server);
+
+    void set_audio_output_streams_count(int count);
 
    private:
     void SetPath(const std::string& key, const std::string& path);
