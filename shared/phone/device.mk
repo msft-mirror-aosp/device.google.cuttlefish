@@ -41,3 +41,6 @@ PRODUCT_COPY_FILES += \
 # These flags are important for the GSI, but break auto
 # These are used by aosp_cf_x86_go_phone targets
 PRODUCT_ENFORCE_RRO_TARGETS := framework-res
+
+$(call inherit-product, vendor/partner_modules/build/mainline_modules.mk)
+
