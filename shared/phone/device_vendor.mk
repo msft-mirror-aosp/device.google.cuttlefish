@@ -73,3 +73,5 @@ TARGET_BOARD_INFO_FILE ?= device/google/cuttlefish/shared/phone/android-info.txt
 # Storage: for factory reset protection feature
 PRODUCT_VENDOR_PROPERTIES += \
     ro.frp.pst=/dev/block/by-name/frp
+
+$(call inherit-product, vendor/partner_modules/build/mainline_modules.mk)
