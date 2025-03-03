@@ -61,6 +61,25 @@ enum class ExternalNetworkMode {
 std::ostream& operator<<(std::ostream&, ExternalNetworkMode);
 Result<ExternalNetworkMode> ParseExternalNetworkMode(std::string_view);
 
+enum class GuestHwuiRenderer {
+  kUnknown,
+  kSkiaGl,
+  kSkiaVk,
+};
+std::ostream& operator<<(std::ostream&, GuestHwuiRenderer);
+std::string ToString(GuestHwuiRenderer renderer);
+Result<GuestHwuiRenderer> ParseGuestHwuiRenderer(std::string_view);
+
+enum class GuestRendererPreload {
+  kAuto,
+  kGuestDefault,
+  kEnabled,
+  kDisabled,
+};
+std::ostream& operator<<(std::ostream&, GuestRendererPreload);
+std::string ToString(GuestRendererPreload);
+Result<GuestRendererPreload> ParseGuestRendererPreload(std::string_view);
+
 // Holds the configuration of the cuttlefish instances.
 class CuttlefishConfig {
  public:
@@ -114,6 +133,7 @@ class CuttlefishConfig {
     int height;
     int dpi;
     int refresh_rate_hz;
+    std::string overlays;
   };
 
   struct TouchpadConfig {
@@ -234,6 +254,9 @@ class CuttlefishConfig {
   void set_sig_server_strict(bool strict);
   bool sig_server_strict() const;
 
+  // Whether display composition is enabled for one or more displays
+  bool OverlaysEnabled() const;
+
   void set_host_tools_version(const std::map<std::string, uint32_t>&);
   std::map<std::string, uint32_t> host_tools_version() const;
 
@@ -305,6 +328,10 @@ class CuttlefishConfig {
     const Json::Value* Dictionary() const;
   public:
     std::string serial_number() const;
+
+    // Index of this instance within current configured group of VMs
+    int index() const;
+
     // If any of the following port numbers is 0, the relevant service is not
     // running on the guest.
 
@@ -640,6 +667,8 @@ class CuttlefishConfig {
     std::string gpu_gfxstream_transport() const;
     std::string gpu_renderer_features() const;
     std::string gpu_context_types() const;
+    GuestHwuiRenderer guest_hwui_renderer() const;
+    GuestRendererPreload guest_renderer_preload() const;
     std::string guest_vulkan_driver() const;
     bool guest_uses_bgra_framebuffers() const;
     std::string frames_socket_path() const;
@@ -873,6 +902,8 @@ class CuttlefishConfig {
     void set_gpu_gfxstream_transport(const std::string& transport);
     void set_gpu_renderer_features(const std::string& features);
     void set_gpu_context_types(const std::string& context_types);
+    void set_guest_hwui_renderer(GuestHwuiRenderer renderer);
+    void set_guest_renderer_preload(GuestRendererPreload preload);
     void set_guest_vulkan_driver(const std::string& driver);
     void set_guest_uses_bgra_framebuffers(bool uses_bgra);
     void set_frames_socket_path(const std::string& driver);
@@ -998,6 +1029,7 @@ class CuttlefishConfig {
     std::string wmediumd_api_server_socket() const;
     std::string wmediumd_config() const;
     int wmediumd_mac_prefix() const;
+    int group_uuid() const;
   };
 
   class MutableEnvironmentSpecific {
@@ -1022,6 +1054,8 @@ class CuttlefishConfig {
     void set_wmediumd_api_server_socket(const std::string& path);
     void set_wmediumd_config(const std::string& path);
     void set_wmediumd_mac_prefix(int mac_prefix);
+
+    void set_group_uuid(const int group_uuid);
   };
 
  private:

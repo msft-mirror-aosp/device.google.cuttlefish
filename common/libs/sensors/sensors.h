@@ -15,9 +15,6 @@
  */
 #pragma once
 
-#include "common/libs/fs/shared_fd.h"
-#include "common/libs/transport/channel_sharedfd.h"
-
 namespace cuttlefish {
 namespace sensors {
 /*
@@ -48,6 +45,12 @@ using SensorsMask = int;
 
 inline constexpr char INNER_DELIM = ':';
 inline constexpr char OUTER_DELIM = ' ';
+
+/* Sensors Commands */
+inline constexpr int kUpdateRotationVec = 0;
+inline constexpr int kGetSensorsData = 1;
+
+using SensorsCmd = int;
 
 }  // namespace sensors
 }  // namespace cuttlefish

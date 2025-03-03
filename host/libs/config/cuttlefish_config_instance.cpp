@@ -94,6 +94,68 @@ Result<VmmMode> ParseVmm(std::string_view str) {
   }
 }
 
+std::ostream& operator<<(std::ostream& out, GuestHwuiRenderer renderer) {
+  return out << ToString(renderer);
+}
+
+std::string ToString(GuestHwuiRenderer renderer) {
+  switch (renderer) {
+    case GuestHwuiRenderer::kUnknown:
+      return "unknown";
+    case GuestHwuiRenderer::kSkiaGl:
+      return "skiagl";
+    case GuestHwuiRenderer::kSkiaVk:
+      return "skiavk";
+  }
+}
+
+Result<GuestHwuiRenderer> ParseGuestHwuiRenderer(std::string_view str) {
+  if (android::base::EqualsIgnoreCase(str, "unknown")) {
+    return GuestHwuiRenderer::kUnknown;
+  } else if (android::base::EqualsIgnoreCase(str, "skiagl")) {
+    return GuestHwuiRenderer::kSkiaGl;
+  } else if (android::base::EqualsIgnoreCase(str, "skiavk")) {
+    return GuestHwuiRenderer::kSkiaVk;
+  } else {
+    return CF_ERRF("\"{}\" is not a valid HWUI renderer.", str);
+  }
+}
+
+std::ostream& operator<<(std::ostream& out, GuestRendererPreload preload) {
+  return out << ToString(preload);
+}
+
+std::string ToString(GuestRendererPreload preload) {
+  switch (preload) {
+    case GuestRendererPreload::kAuto:
+      return "auto";
+    case GuestRendererPreload::kGuestDefault:
+      return "default";
+    case GuestRendererPreload::kEnabled:
+      return "enabled";
+    case GuestRendererPreload::kDisabled:
+      return "disabled";
+  }
+}
+
+Result<GuestRendererPreload> ParseGuestRendererPreload(std::string_view str) {
+  if (android::base::EqualsIgnoreCase(str, "auto")) {
+    return GuestRendererPreload::kAuto;
+  } else if (android::base::EqualsIgnoreCase(str, "default")) {
+    return GuestRendererPreload::kGuestDefault;
+  } else if (android::base::EqualsIgnoreCase(str, "enabled")) {
+    return GuestRendererPreload::kEnabled;
+  } else if (android::base::EqualsIgnoreCase(str, "disabled")) {
+    return GuestRendererPreload::kDisabled;
+  } else {
+    return CF_ERRF("\"{}\" is not a valid renderer preload.", str);
+  }
+}
+
+std::ostream& operator<<(std::ostream&, GuestRendererPreload);
+std::string ToString(GuestRendererPreload);
+Result<GuestRendererPreload> ParseGuestRendererPreload(std::string_view);
+
 static constexpr char kInstanceDir[] = "instance_dir";
 CuttlefishConfig::MutableInstanceSpecific::MutableInstanceSpecific(
     CuttlefishConfig* config, const std::string& id)
@@ -460,6 +522,17 @@ void CuttlefishConfig::MutableInstanceSpecific::set_serial_number(
   (*Dictionary())[kSerialNumber] = serial_number;
 }
 
+int CuttlefishConfig::InstanceSpecific::index() const {
+  int instance_index = 0;
+  for (const auto& i : config_->Instances()) {
+    if (i.serial_number() == serial_number()) {
+      break;
+    }
+    instance_index++;
+  }
+  return instance_index;
+}
+
 static constexpr char kVirtualDiskPaths[] = "virtual_disk_paths";
 std::vector<std::string> CuttlefishConfig::InstanceSpecific::virtual_disk_paths() const {
   std::vector<std::string> virtual_disks;
@@ -814,6 +887,28 @@ std::string CuttlefishConfig::InstanceSpecific::gpu_context_types() const {
 void CuttlefishConfig::MutableInstanceSpecific::set_gpu_context_types(
     const std::string& context_types) {
   (*Dictionary())[kGpuContextTypes] = context_types;
+}
+
+static constexpr char kGuestHwuiRenderer[] = "guest_hwui_renderer";
+GuestHwuiRenderer CuttlefishConfig::InstanceSpecific::guest_hwui_renderer()
+    const {
+  auto str = (*Dictionary())[kGuestHwuiRenderer].asString();
+  return ParseGuestHwuiRenderer(str).value_or(GuestHwuiRenderer::kUnknown);
+}
+void CuttlefishConfig::MutableInstanceSpecific::set_guest_hwui_renderer(
+    GuestHwuiRenderer renderer) {
+  (*Dictionary())[kGuestHwuiRenderer] = ToString(renderer);
+}
+
+static constexpr char kGuestRendererPreload[] = "guest_renderer_preload";
+GuestRendererPreload
+CuttlefishConfig::InstanceSpecific::guest_renderer_preload() const {
+  auto str = (*Dictionary())[kGuestRendererPreload].asString();
+  return ParseGuestRendererPreload(str).value_or(GuestRendererPreload::kAuto);
+}
+void CuttlefishConfig::MutableInstanceSpecific::set_guest_renderer_preload(
+    GuestRendererPreload preload) {
+  (*Dictionary())[kGuestRendererPreload] = ToString(preload);
 }
 
 static constexpr char kVulkanDriver[] = "guest_vulkan_driver";
@@ -1231,6 +1326,7 @@ static constexpr char kXRes[] = "x_res";
 static constexpr char kYRes[] = "y_res";
 static constexpr char kDpi[] = "dpi";
 static constexpr char kRefreshRateHz[] = "refresh_rate_hz";
+static constexpr char kOverlays[] = "overlays";
 std::vector<CuttlefishConfig::DisplayConfig>
 CuttlefishConfig::InstanceSpecific::display_configs() const {
   std::vector<DisplayConfig> display_configs;
@@ -1241,6 +1337,7 @@ CuttlefishConfig::InstanceSpecific::display_configs() const {
     display_config.dpi = display_config_json[kDpi].asInt();
     display_config.refresh_rate_hz =
         display_config_json[kRefreshRateHz].asInt();
+    display_config.overlays = display_config_json[kOverlays].asString();
     display_configs.emplace_back(display_config);
   }
   return display_configs;
@@ -1255,6 +1352,7 @@ void CuttlefishConfig::MutableInstanceSpecific::set_display_configs(
     display_config_json[kYRes] = display_configs.height;
     display_config_json[kDpi] = display_configs.dpi;
     display_config_json[kRefreshRateHz] = display_configs.refresh_rate_hz;
+    display_config_json[kOverlays] = display_configs.overlays;
     display_configs_json.append(display_config_json);
   }
 
