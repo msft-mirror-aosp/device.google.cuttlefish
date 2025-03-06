@@ -147,7 +147,8 @@ DEFINE_vec(vm_manager, CF_DEFAULTS_VM_MANAGER,
 DEFINE_vec(gpu_mode, CF_DEFAULTS_GPU_MODE,
            "What gpu configuration to use, one of {auto, custom, drm_virgl, "
            "gfxstream, gfxstream_guest_angle, "
-           "gfxstream_guest_angle_host_swiftshader, guest_swiftshader}");
+           "gfxstream_guest_angle_host_swiftshader, "
+           "gfxstream_guest_angle_host_lavapipe, guest_swiftshader}");
 DEFINE_vec(gpu_vhost_user_mode,
            fmt::format("{}", CF_DEFAULTS_GPU_VHOST_USER_MODE),
            "Whether or not to run the Virtio GPU worker in a separate"
@@ -540,6 +541,10 @@ DEFINE_vec(vhost_user_block, CF_DEFAULTS_VHOST_USER_BLOCK ? "true" : "false",
 DEFINE_string(early_tmp_dir, TempDir(),
               "Parent directory to use for temporary files in early startup");
 
+DEFINE_vec(enable_tap_devices, "true",
+           "TAP devices are used on linux for connecting to the network "
+           "outside the current machine.");
+
 DECLARE_string(assembly_dir);
 DECLARE_string(boot_image);
 DECLARE_string(system_image_dir);
@@ -547,6 +552,13 @@ DECLARE_string(snapshot_path);
 
 DEFINE_vec(vcpu_config_path, CF_DEFAULTS_VCPU_CONFIG_PATH,
            "configuration file for Virtual Cpufreq");
+
+DEFINE_string(kvm_path, "",
+              "Device node file used to create VMs. Uses a default if empty.");
+
+DEFINE_string(vhost_vsock_path, "",
+              "Device node file for the kernel vhost-vsock implementation. "
+              "Uses a default if empty. Ignored for QEMU.");
 
 namespace cuttlefish {
 using vm_manager::QemuManager;
@@ -1362,6 +1374,9 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
   std::vector<std::string> vcpu_config_vec =
       CF_EXPECT(GET_FLAG_STR_VALUE(vcpu_config_path));
 
+  std::vector<bool> enable_tap_devices_vec =
+      CF_EXPECT(GET_FLAG_BOOL_VALUE(enable_tap_devices));
+
   std::string default_enable_sandbox = "";
   std::string default_enable_virtiofs = "";
   std::string comma_str = "";
@@ -1436,6 +1451,9 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
   LOG(DEBUG) << "launch vhal proxy server: "
              << (FLAGS_enable_vhal_proxy_server &&
                  vhal_proxy_server_instance_num <= 0);
+
+  tmp_config_obj.set_kvm_path(FLAGS_kvm_path);
+  tmp_config_obj.set_vhost_vsock_path(FLAGS_vhost_vsock_path);
 
   // Environment specific configs
   // Currently just setting for the default environment
@@ -1994,6 +2012,8 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
                 "ti50 emulator binary does not exist");
       instance.set_ti50_emulator(ti50_emulator);
     }
+
+    instance.set_enable_tap_devices(enable_tap_devices_vec[instance_index]);
 
     instance_index++;
   }  // end of num_instances loop
