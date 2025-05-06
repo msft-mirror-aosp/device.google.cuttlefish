@@ -29,6 +29,7 @@ PRODUCT_ENFORCE_ARTIFACT_PATH_REQUIREMENTS := true
 # Telephony: Use Minradio RIL instead of Cuttlefish RIL
 TARGET_USES_CF_RILD := false
 PRODUCT_PACKAGES += com.android.hardware.radio.minradio.virtual
+PRODUCT_PACKAGES += ConnectivityOverlayMinradio
 
 # Disable thread network
 CF_VENDOR_NO_THREADNETWORK := true
