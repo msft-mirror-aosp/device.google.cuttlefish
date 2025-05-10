@@ -66,6 +66,11 @@ symlinks {
 }
 
 symlinks {
+  target: "/usr/lib/cuttlefish-common/bin/extract-ikconfig"
+  link_name: "bin/extract-ikconfig"
+}
+
+symlinks {
   target: "/usr/lib/cuttlefish-common/bin/extract-vmlinux"
   link_name: "bin/extract-vmlinux"
 }
@@ -96,8 +101,18 @@ symlinks {
 }
 
 symlinks {
+  target: "/usr/lib/cuttlefish-common/bin/metrics_launcher"
+  link_name: "bin/metrics_launcher"
+}
+
+symlinks {
   target: "/usr/lib/cuttlefish-common/bin/mkenvimage_slim"
   link_name: "bin/mkenvimage_slim"
+}
+
+symlinks {
+  target: "/usr/lib/cuttlefish-common/bin/modem_simulator"
+  link_name: "bin/modem_simulator"
 }
 
 symlinks {
@@ -133,4 +148,54 @@ symlinks: {
 symlinks: {
   target: "/usr/lib/cuttlefish-common/bin/restart_cvd"
   link_name: "bin/restart_cvd"
+}
+
+symlinks: {
+  target: "/usr/lib/cuttlefish-common/bin/run_cvd"
+  link_name: "bin/run_cvd"
+}
+
+symlinks: {
+  target: "/usr/lib/cuttlefish-common/bin/screen_recording_server"
+  link_name: "bin/screen_recording_server"
+}
+
+symlinks: {
+  target: "/usr/lib/cuttlefish-common/bin/sensors_simulator"
+  link_name: "bin/sensors_simulator"
+}
+
+symlinks: {
+  target: "/usr/lib/cuttlefish-common/bin/simg2img"
+  link_name: "bin/simg2img"
+}
+
+symlinks: {
+  target: "/usr/lib/cuttlefish-common/bin/snapshot_util_cvd"
+  link_name: "bin/snapshot_util_cvd"
+}
+
+symlinks: {
+  target: "/usr/lib/cuttlefish-common/bin/tcp_connector"
+  link_name: "bin/tcp_connector"
+}
+
+symlinks: {
+  target: "/usr/lib/cuttlefish-common/bin/tombstone_receiver"
+  link_name: "bin/tombstone_receiver"
+}
+
+symlinks: {
+  target: "/usr/lib/cuttlefish-common/etc/modem_simulator/files/iccprofile_for_sim0_for_CtsCarrierApiTestCases.xml"
+  link_name: "etc/modem_simulator/files/iccprofile_for_sim0_for_CtsCarrierApiTestCases.xml"
+}
+
+symlinks: {
+  target: "/usr/lib/cuttlefish-common/etc/modem_simulator/files/iccprofile_for_sim0.xml"
+  link_name: "etc/modem_simulator/files/iccprofile_for_sim0.xml"
+}
+
+symlinks: {
+  target: "/usr/lib/cuttlefish-common/etc/modem_simulator/files/numeric_operator.xml"
+  link_name: "etc/modem_simulator/files/numeric_operator.xml"
 }
