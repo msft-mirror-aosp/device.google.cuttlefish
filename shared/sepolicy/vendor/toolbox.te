@@ -1,0 +1,4 @@
+# Required for ifconfig command
+allow toolbox toolbox:capability { net_admin sys_module };
+allow toolbox toolbox:udp_socket { create ioctl };
+allowxperm toolbox toolbox:udp_socket ioctl priv_sock_ioctls;
