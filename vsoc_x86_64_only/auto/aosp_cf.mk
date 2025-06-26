@@ -30,6 +30,9 @@ PRODUCT_ENFORCE_ARTIFACT_PATH_REQUIREMENTS := true
 # TODO(b/283853205): Properly disable telephony using per-partition makefile.
 TARGET_NO_TELEPHONY := true
 
+# Disable thread network
+CF_VENDOR_NO_THREADNETWORK := true
+
 #
 # All components inherited here go to system_ext image
 #
