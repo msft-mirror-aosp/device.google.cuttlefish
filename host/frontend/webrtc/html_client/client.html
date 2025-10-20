@@ -21,17 +21,18 @@
         <link rel="stylesheet" type="text/css" href="custom.css" >
         <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined">
         <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Google+Symbols">
         <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
     </head>
     <body>
       <div id="loader"></div>
       <div id="error-message-div">
         <h3 id="error-message" class="hidden">
-          <span class="material-icons close-btn">close</span>
+          <button class="material-icons close-btn">close</button>
         </h3>
       </div>
       <section id="device-connection">
-        <div id='controls-and-displays'>
+        <div id='controls-and-displays' class='single-row'>
           <div id='control-panel-default-buttons' class='control-panel-column'>
             <button id='power_btn' title='Power' disabled='true' class='material-icons'>power_settings_new</button>
             <button id='bluetooth-modal-button' title='Bluetooth console' class='material-icons'>
@@ -62,7 +63,13 @@
             <div id='device-displays' tabindex="-1">
             </div>
           </div>
-          <button id='display-add-modal-button' title='Add display' class='material-icons'>add_to_queue</button>
+          <div class='display-control-buttons'>
+            <button id='display-add-modal-button' title='Add display' class='material-icons'>add_to_queue</button>
+            <div id='layout-toggle-button-container'>
+              <button id='display-single-row-button' title='Switch to Stacking' class='google-symbols'>flex_no_wrap</button>
+              <button id='display-vertical-stacking-button' title='Switch to Single Row' class='google-symbols'>flex_direction</button>
+            </div>
+          </div>
         </div>
         <!-- Audio tags of id with a prefix of "device-audio" will be inserted here dynamically
         based on the number of audio streams.-->
@@ -293,6 +300,15 @@
           <button id='display-add-confirm' title='Add a new display' class='modal-button'>Add</button>
         </div>
       </div>
+      <div id='display-remove-modal' class='modal' data-removal_display_id='0'>
+        <div id='display-remove-modal-header' class='modal-header'>
+          <h2 id='display-remove-text'></h2>
+        </div>
+        <div class='display-remove-buttons'>
+          <button id='display-remove-modal-confirm' title='Confirm' class='modal-button'>Confirm</button>
+          <button id='display-remove-modal-cancel' title='Cancel' class='modal-button '>Cancel</button>
+        </div>
+      </div>
       <script src="js/adb.js"></script>
       <script src="js/location.js"></script>
       <script src="js/keyboard.js"></script>
@@ -307,7 +323,7 @@
         <div class="device-display">
           <div class="device-display-info">
             <div class="device-display-info-text"></div>
-            <button class="material-icons device-display-remove-button" title="Remove display">delete</button>
+            <button class="material-icons device-display-remove-modal-button" title="Remove display">delete</button>
           </div>
           <div class="device-video-container">
             <video autoplay muted playsinline src="/" class="device-display-video"></video>

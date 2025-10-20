@@ -132,7 +132,6 @@ body {
 }
 #error-message .close-btn {
   float: right;
-  cursor: pointer;
 }
 #error-message.hidden {
   display: none;
@@ -148,6 +147,14 @@ body {
 }
 /* Control panel buttons and device screen(s). */
 
+button{
+  background-color: transparent;
+  border: none;
+  cursor: pointer;
+  outline: none;
+  appearance: none;
+}
+
 #controls-and-displays {
   height: 100%;
 
@@ -155,6 +162,29 @@ body {
   display: flex;
 }
 
+/*
+ * Add a layout class to #controls-and-displays.
+ * This enables managing both the display layout status,
+ * and the layout button state.
+ */
+.single-row #device-displays {
+  flex-direction: row;
+}
+.single-row .device-display-video {
+  max-height: 100%;
+}
+.single-row.multiple-displays #display-single-row-button {
+  display: block;
+}
+.vertical-stacking #device-displays {
+  flex-wrap: wrap;
+}
+.vertical-stacking .device-display-video {
+  max-height: 80vh;
+}
+.vertical-stacking.multiple-displays #display-vertical-stacking-button {
+  display: block;
+}
 #controls-and-displays > div {
   margin-left: 5px;
   margin-right: 5px;
@@ -181,9 +211,6 @@ body {
 }
 .modal-close {
   color: var(--main-fg);
-  border: none;
-  outline: none;
-  background-color: transparent;
 }
 .modal-button, .modal-button-highlight {
   border-radius: 10px;
@@ -193,7 +220,6 @@ body {
   display:       inline-block;
   font:          normal bold 14px/1 "Open Sans", sans-serif;
   text-align:    center;
-  cursor:        pointer;
 }
 .modal-button {
   background: var(--modal-button-bg);
@@ -275,20 +301,34 @@ body {
 .location-button {
   text-align: center;
 }
-#display-add-modal-button {
+
+.display-control-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
   margin-top: 10px;
   margin-right: 10px;
+}
+#display-add-modal-button {
   height: 40px;
   font-size: 32px;
   color: var(--button-fg);
-  border: none;
   border-radius: 10px;
-  outline: none;
   background-color: var(--button-bg);
 }
 #display-add-modal-button.modal-button-opened {
   background-color: var(--modal-bg);
 }
+
+#layout-toggle-button-container button {
+  display: none;
+  height: 40px;
+  font-size: 32px;
+  color: var(--button-fg);
+  border-radius: 10px;
+  background-color: var(--modal-bg);
+}
+
 .display-spec-form {
   margin: 16px 0px;
   display: flex;
@@ -336,9 +376,7 @@ body {
   font-size: 32px;
 
   color: var(--button-fg);
-  border: none;
   border-radius: 10px;
-  outline: none;
   background-color: var(--button-bg);
 }
 
@@ -349,10 +387,6 @@ body {
 .control-panel-column button:disabled {
   color: var(--button-disabled-fg);
   cursor: not-allowed;
-}
-
-.control-panel-column button:enabled {
-  cursor: pointer;
 }
 
 .control-panel-column button:active {
@@ -369,7 +403,6 @@ body {
   /* Allows child elements to be positioned relative to this element. */
   position: relative;
   display: flex;
-  flex-direction: row;
   /* Don't show an outline when using the keyboard */
   outline: 0px solid transparent;
 }
@@ -383,7 +416,6 @@ body {
   position: relative;
   display: flex;
   flex-direction: column;
-  flex-grow: 1;
   margin: 10px;
   visibility: hidden;
 }
@@ -410,24 +442,23 @@ body {
   align-items: center;
 }
 
-.device-display-remove-button {
-  color: var(--main-fg);
-  background: none;
-  border: none;
-  outline: none;
-  padding: 0;
-  cursor: pointer;
+.device-display-remove-modal-button {
+  color: #fafafa;
+}
+
+.display-remove-buttons {
+  display: flex;
+  margin: 5px;
+  justify-content: space-between;
 }
 
 /* The actual <video> element for each display. */
 .device-display-video {
   position: relative;
   max-width: 100%;
-  max-height: 100%;
   touch-action: none;
   border: var(--display-border);
 }
-
 #touchpad-modal {
   /* Disable select to avoid weird behavior when dragging mouse while
   interacting with touchpads */
@@ -475,10 +506,6 @@ body {
 
 #touchpad-list .selectors button {
   color: var(--main-fg);
-  background: transparent;
-  border: none;
-  outline: none;
-  cursor: pointer;
 }
 
 #touchpad-list .selectors button:hover {

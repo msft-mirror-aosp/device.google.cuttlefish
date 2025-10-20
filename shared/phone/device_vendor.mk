@@ -45,7 +45,7 @@ $(call inherit-product, device/google/cuttlefish/shared/camera/device_vendor.mk)
 $(call inherit-product, device/google/cuttlefish/shared/camera/config/standard.mk)
 
 # Support mixing CF system onto previous versions of vendor
-PRODUCT_EXTRA_VNDK_VERSIONS := 30 31 32 33 34
+PRODUCT_EXTRA_VNDK_VERSIONS := 31 32 33 34
 
 TARGET_PRODUCT_PROP := $(LOCAL_PATH)/product.prop
 TARGET_VENDOR_PROP := $(LOCAL_PATH)/vendor.prop
@@ -73,3 +73,7 @@ TARGET_BOARD_INFO_FILE ?= device/google/cuttlefish/shared/phone/android-info.txt
 # Storage: for factory reset protection feature
 PRODUCT_VENDOR_PROPERTIES += \
     ro.frp.pst=/dev/block/by-name/frp
+
+# Cuttlefish doesn't support protected VMs, run AppSearch in non-protected mode
+PRODUCT_PRODUCT_PROPERTIES += ro.appsearch.feature.enable_isolated_storage=true
+PRODUCT_PRODUCT_PROPERTIES += ro.enable.nonprotected_appsearch_vm=true

@@ -573,7 +573,7 @@ Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
   // /dev/hvc4 = gatekeeper
   add_hvc(instance.PerInstanceInternalPath("gatekeeper_fifo_vm"));
   // /dev/hvc5 = bt
-  if (config.enable_host_bluetooth()) {
+  if (instance.has_bluetooth()) {
     add_hvc(instance.PerInstanceInternalPath("bt_fifo_vm"));
   } else {
     add_hvc_sink();
@@ -624,8 +624,8 @@ Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
     add_hvc_sink();
   }
 
-  // /dev/hvc13 = sensors
-  add_hvc(instance.PerInstanceInternalPath("sensors_fifo_vm"));
+  // /dev/hvc13 is vacant, feel free to use
+  add_hvc_sink();
 
   // /dev/hvc14 = MCU CONTROL
   if (instance.mcu()["control"]["type"].asString() == "serial") {
@@ -660,6 +660,12 @@ Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
   } else {
     add_hvc_sink();
   }
+
+  // /dev/hvc18 = sensors control
+  add_hvc(instance.PerInstanceInternalPath("sensors_control_fifo_vm"));
+
+  // /dev/hvc19 = sensors data
+  add_hvc(instance.PerInstanceInternalPath("sensors_data_fifo_vm"));
 
   auto disk_num = instance.virtual_disk_paths().size();
 
@@ -861,7 +867,8 @@ Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
     qemu_cmd.AddParameter("-cpu");
     qemu_cmd.AddParameter("rv64",
                           ",v=true,elen=64,vlen=128",
-                          ",zba=true,zbb=true,zbs=true");
+                          ",zba=true,zbb=true,zbs=true",
+                          ",zacas=true");
   }
 
   qemu_cmd.AddParameter("-msg");
@@ -916,5 +923,5 @@ Result<std::vector<MonitorCommand>> QemuManager::StartCommands(
   return commands;
 }
 
-} // namespace vm_manager
+}  // namespace vm_manager
 }  // namespace cuttlefish

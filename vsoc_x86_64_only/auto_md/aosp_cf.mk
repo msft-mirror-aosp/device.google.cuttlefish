@@ -33,7 +33,8 @@ PRODUCT_PACKAGES += \
     CarServiceOverlayEmulatorOsDouble \
     CarServiceOverlayMdEmulatorOsDouble \
     MultiDisplayTest \
-    AAECarControlCenterApp
+    AAECarControlCenterApp \
+    CarFrameworkResConfigMultiDisplayRRO
 
 PRODUCT_SYSTEM_DEFAULT_PROPERTIES += \
     com.android.car.internal.debug.num_auto_populated_users=1 # 1 passenger only (so 2nd display shows user picker)
@@ -67,4 +68,9 @@ PRODUCT_MODEL := Cuttlefish x86_64 auto 64-bit only multi-displays
 
 ifeq ($(PRODUCT_NAME),$(TARGET_PRODUCT))  # Show warning only when this is the final target product.
 $(warning ${PRODUCT_NAME} is for development purposes only.)
+endif
+
+# Soong-only configuration for aosp_cf_x86_64_auto_md
+ifeq ($(TARGET_PRODUCT),aosp_cf_x86_64_auto_md)
+PRODUCT_SOONG_ONLY := $(RELEASE_SOONG_ONLY_CUTTLEFISH)
 endif
