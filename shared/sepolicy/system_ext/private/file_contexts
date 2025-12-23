@@ -32,3 +32,4 @@ is_flag_enabled(RELEASE_AVF_ENABLE_EARLY_VM, `
 /data/secure_storage_system(/.*)?        u:object_r:secure_storage_system_file:s0
 /data/secure_storage_test_system(/.*)?        u:object_r:secure_storage_system_file:s0
 /data/secure_storage_wv_system(/.*)?        u:object_r:secure_storage_system_file:s0
+/data/nfc(/.*)?                                  u:object_r:nfc_data_file:s0
