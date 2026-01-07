@@ -496,3 +496,5 @@ endif
 ifneq ($(PRODUCT_BUILD_VBMETA_IMAGE), false)
 AB_OTA_PARTITIONS += vbmeta
 endif
+
+BOARD_CUSTOMIMAGES_PARTITION_LIST += cuttlefish_example_custom
