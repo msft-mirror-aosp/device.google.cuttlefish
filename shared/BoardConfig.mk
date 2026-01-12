@@ -499,4 +499,10 @@ endif
 
 BOARD_CUSTOMIMAGES_PARTITION_LIST += cuttlefish_example_custom
 
-BOARD_CUTTLEFISH_EXAMPLE_CUSTOM_IMAGE_LIST := $(OUT_DIR)/soong/.intermediates/device/google/cuttlefish/custom_partition/cuttlefish_example_custom/android_common/cuttlefish_example_custom.img
+ifeq ($(CLANG_COVERAGE),true)
+  VARIANT_DIR = android_common_cov
+else
+  VARIANT_DIR = android_common
+endif
+
+BOARD_CUTTLEFISH_EXAMPLE_CUSTOM_IMAGE_LIST := $(OUT_DIR)/soong/.intermediates/device/google/cuttlefish/custom_partition/cuttlefish_example_custom/$(VARIANT_DIR)/cuttlefish_example_custom.img
