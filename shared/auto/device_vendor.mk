@@ -133,7 +133,10 @@ include packages/services/Car/car_product/occupant_awareness/OccupantAwareness.m
 BOARD_SEPOLICY_DIRS += packages/services/Car/car_product/occupant_awareness/sepolicy
 
 ENABLE_CARTELEMETRY_SERVICE ?= true
-USE_EMULATED_CAMERA2_HAL ?= false
+USE_EMULATED_CAMERA2_HAL_AUTO ?= false
+
+$(call add_soong_config_namespace,emulated_camera)
+$(call soong_config_set_bool,emulated_camera,use_emulated_camera2_hal_auto,$(USE_EMULATED_CAMERA2_HAL_AUTO))
 
 # Whether to use the External Camera Provider HAL, which is used to detect V4L2
 # camera devices visible to the guest from the host using virtio-media.
@@ -141,7 +144,7 @@ USE_EMULATED_CAMERA2_HAL ?= false
 # enabled.
 USE_CAMERA2_V4L2_HAL ?= false
 
-ifeq ($(USE_EMULATED_CAMERA2_HAL), true)
+ifeq ($(USE_EMULATED_CAMERA2_HAL_AUTO), true)
 ENABLE_CAMERA_SERVICE := true
 PRODUCT_SOONG_NAMESPACES += hardware/google/camera/devices/EmulatedCamera
 PRODUCT_PACKAGES += com.google.emulated.camera.provider.hal
