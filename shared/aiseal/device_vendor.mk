@@ -19,6 +19,7 @@
 ifeq ($(RELEASE_AISEAL_FRAMEWORK),true)
 PRODUCT_PACKAGES += android.software.aiseal.prebuilt.xml
 
+ifeq ($(RELEASE_AISEAL_WITH_APPSEARCH),true)
 # Enable AiSeal with AppSearch.
 PRODUCT_PRODUCT_PROPERTIES += \
 	ro.appsearch.feature.enable_aiseal=1 \
@@ -26,7 +27,8 @@ PRODUCT_PRODUCT_PROPERTIES += \
 	service.aiseal.tenant_config_package=com.android.appsearch.aiseal.config \
 	service.aiseal.tenant_config_path=assets/vm_config.json \
 	service.aiseal.aiseal_config_path=assets/aiseal_config.json
+endif  # RELEASE_AISEAL_WITH_APPSEARCH
 
 # Protected VM is not supported in Cuttlefish, use nonprotected VM instead.
 PRODUCT_PRODUCT_PROPERTIES += service.aiseal.protected_vm=0
-endif
+endif  # RELEASE_AISEAL_FRAMEWORK
