@@ -27,10 +27,7 @@ import (
 
 //go:generate go run ../../../../build/blueprint/gobtools/codegen
 
-var pctx = android.NewPackageContext("android/soong/cuttlefish")
-
 func init() {
-	pctx.Import("android/soong/android")
 	android.RegisterModuleType("cvd_host_package", cvdHostPackageFactory)
 	android.RegisterParallelSingletonType("cvd_host_package_singleton", cvdHostPackageSingletonFactory)
 }
@@ -39,6 +36,8 @@ type cvdHostPackage struct {
 	android.ModuleBase
 	android.PackagingBase
 	blueprint.ModuleUsesIncrementalWalkDeps
+	tarballFile android.InstallPath
+	stampFile   android.InstallPath
 }
 
 // We need to implement IsNativeCoverageNeeded so that in coverage builds we don't get packaging
@@ -55,6 +54,14 @@ func cvdHostPackageFactory() android.Module {
 	android.InitAndroidArchModule(module, android.HostSupported, android.MultilibFirst)
 	module.IgnoreMissingDependencies = true
 	return module
+}
+
+type cvdHostPackageSingleton struct {
+	tarballPaths android.Paths
+}
+
+func cvdHostPackageSingletonFactory() android.Singleton {
+	return &cvdHostPackageSingleton{}
 }
 
 type dependencyTag struct {
@@ -114,71 +121,53 @@ func (c *cvdHostPackage) DepsMutator(ctx android.BottomUpMutatorContext) {
 	ctx.AddVariationDependencies(variations, cvdHostPackageDependencyTag, custom_style)
 }
 
+var pctx = android.NewPackageContext("android/soong/cuttlefish")
+
 func (c *cvdHostPackage) GenerateAndroidBuildActions(ctx android.ModuleContext) {
-	sboxDir := android.PathForModuleOut(ctx, "sbox")
-	sboxManifest := android.PathForModuleOut(ctx, "sbox.manifest")
-	packageDir := sboxDir.Join(ctx, "staging_dir")
-	tarball := sboxDir.Join(ctx, c.BaseModuleName()+".tar.gz")
+	packageDir := android.PathForModuleInstall(ctx, c.BaseModuleName())
 
-	builder := android.NewRuleBuilder(pctx, ctx).
-		Sbox(sboxDir, sboxManifest).
-		SandboxDisabled()
-	builder.Command().Text("rm").Flag("-rf").Text(packageDir.String())
-	builder.Command().Text("mkdir").Flag("-p").Text(packageDir.String())
-	specs := c.GatherPackagingSpecs(ctx)
-	c.CopySpecsToDir(ctx, builder, specs, packageDir)
+	stamp := android.PathForModuleOut(ctx, "package.stamp")
+	dirBuilder := android.NewRuleBuilder(pctx, ctx)
+	dirBuilder.SandboxDisabled()
+	dirBuilder.Command().Text("rm").Flag("-rf").Text(packageDir.String())
+	dirBuilder.Command().Text("mkdir").Flag("-p").Text(packageDir.String())
+	c.CopySpecsToDir(ctx, dirBuilder, c.GatherPackagingSpecs(ctx), packageDir)
+	dirBuilder.Command().Text("touch").Output(stamp)
+	dirBuilder.Build("cvd_host_package", fmt.Sprintf("Packaging %s", c.BaseModuleName()))
+	ctx.InstallFile(android.PathForModuleInstall(ctx), c.BaseModuleName()+".stamp", stamp)
+	c.stampFile = android.PathForModuleInPartitionInstall(ctx, c.BaseModuleName()+".stamp")
 
-	builder.Command().Text("tar Scfz").
+	tarball := android.PathForModuleOut(ctx, "package.tar.gz")
+	tarballBuilder := android.NewRuleBuilder(pctx, ctx)
+	tarballBuilder.SandboxDisabled()
+	tarballBuilder.Command().Text("tar Scfz").
 		Output(tarball).
 		Flag("-C").
 		Text(packageDir.String()).
+		Implicit(stamp).
 		Flag("--mtime='2020-01-01'"). // to have reproducible builds
 		Text(".")
-	builder.Build("cvd_host_tarball", fmt.Sprintf("Creating tarball for %s", c.BaseModuleName()))
-
-	// The inputs to the cvd-host-package are load bearing. They need to be built in order
-	// to run `launch_cvd` locally. Create a stamp file that we will add to the deps of droid,
-	// so that after you build droid you can run `launch_cvd`.
-	inputsStamp := android.PathForModuleOut(ctx, "inputs.stamp")
-	allInputs := make(android.Paths, 0, len(specs))
-	for _, k := range android.SortedKeys(specs) {
-		ps := specs[k]
-		if ps.SrcPath() != nil {
-			allInputs = append(allInputs, ps.SrcPath())
-		}
-	}
-	ctx.Build(pctx, android.BuildParams {
-		Rule: android.TouchRule,
-		Output: inputsStamp,
-		Implicits: allInputs,
-	})
+	tarballBuilder.Build("cvd_host_tarball", fmt.Sprintf("Creating tarball for %s", c.BaseModuleName()))
+	ctx.InstallFile(android.PathForModuleInstall(ctx), c.BaseModuleName()+".tar.gz", tarball)
+	c.tarballFile = android.PathForModuleInstall(ctx, c.BaseModuleName()+".tar.gz")
 
 	android.SetProvider(ctx, CvdHostPackageMetadataInfoProvider, CvdHostPackageMetadataInfo{
-		TarballMetadata: tarball,
-		InputsStamp: inputsStamp,
-		IsLinuxX8664: ctx.Os().Linux() && ctx.Arch().ArchType == android.X86_64,
+		TarballMetadata: c.tarballFile,
+		StampMetadata:   c.stampFile,
 	})
-
-	ctx.ModulePhonyFiles(tarball)
 }
-
 // @auto-generate: gob
 type CvdHostPackageMetadataInfo struct {
 	TarballMetadata android.Path
-	InputsStamp android.Path
-	IsLinuxX8664 bool
+	StampMetadata   android.Path
 }
 var CvdHostPackageMetadataInfoProvider = blueprint.NewProvider[CvdHostPackageMetadataInfo]()
 
-type cvdHostPackageSingleton struct {}
-
-func cvdHostPackageSingletonFactory() android.Singleton {
-	return &cvdHostPackageSingleton{}
-}
-
 // Create "hosttar" phony target with "cvd-host_package.tar.gz" path.
+// Add stamp files into "droidcore" dependency.
 func (p *cvdHostPackageSingleton) GenerateBuildActions(ctx android.SingletonContext) {
-	var cvdHostPackageMetadata []CvdHostPackageMetadataInfo
+	var cvdHostPackageTarball android.Paths
+	var cvdHostPackageStamp android.Paths
 
 	ctx.VisitAllModuleProxies(func(module android.ModuleProxy) {
 		if !android.OtherModulePointerProviderOrDefault(ctx, module, android.CommonModuleInfoProvider).Enabled {
@@ -188,20 +177,30 @@ func (p *cvdHostPackageSingleton) GenerateBuildActions(ctx android.SingletonCont
 			if !android.IsModulePreferredProxy(ctx, module) {
 				return
 			}
-			cvdHostPackageMetadata = append(cvdHostPackageMetadata, c)
+			cvdHostPackageTarball = append(cvdHostPackageTarball, c.TarballMetadata)
+			cvdHostPackageStamp = append(cvdHostPackageStamp, c.StampMetadata)
 		}
 	})
 
+	if cvdHostPackageTarball == nil {
+		// nothing to do.
+		return
+	}
+
 	board_platform := proptools.String(ctx.Config().ProductVariables().BoardPlatform)
 	if (board_platform == "vsoc_arm") || (board_platform == "vsoc_arm64") || (board_platform == "vsoc_riscv64") || (board_platform == "vsoc_x86") || (board_platform == "vsoc_x86_64") {
-		for _, info := range cvdHostPackageMetadata {
-			ctx.Phony("hosttar", info.TarballMetadata)
-			ctx.Phony("droidcore", info.InputsStamp)
+		p.tarballPaths = cvdHostPackageTarball
+		ctx.Phony("hosttar", cvdHostPackageTarball...)
+		ctx.Phony("droidcore", cvdHostPackageStamp...)
+	}
+
+	if p.tarballPaths != nil {
+		for _, path := range p.tarballPaths {
 			// The riscv64 cuttlefish builds can be run on qemu on an x86_64 or arm64 host. Dist both sets of host packages.
-			if len(cvdHostPackageMetadata) > 1 && info.IsLinuxX8664 {
-				ctx.DistForGoalWithFilename("dist_files", info.TarballMetadata, "cvd-host_package-x86_64.tar.gz")
+			if len(p.tarballPaths) > 1 && strings.Contains(path.String(), "linux-x86") {
+				ctx.DistForGoalWithFilename("dist_files", path, "cvd-host_package-x86_64.tar.gz")
 			} else {
-				ctx.DistForGoal("dist_files", info.TarballMetadata)
+				ctx.DistForGoal("dist_files", path)
 			}
 		}
 	}
