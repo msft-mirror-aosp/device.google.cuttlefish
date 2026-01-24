@@ -136,26 +136,17 @@ func (c *cvdHostPackage) GenerateAndroidBuildActions(ctx android.ModuleContext) 
 		Text(".")
 	builder.Build("cvd_host_tarball", fmt.Sprintf("Creating tarball for %s", c.BaseModuleName()))
 
-	// The inputs to the cvd-host-package are load bearing. They need to be built in order
-	// to run `launch_cvd` locally. Create a stamp file that we will add to the deps of droid,
-	// so that after you build droid you can run `launch_cvd`.
-	inputsStamp := android.PathForModuleOut(ctx, "inputs.stamp")
-	allInputs := make(android.Paths, 0, len(specs))
-	for _, k := range android.SortedKeys(specs) {
-		ps := specs[k]
-		if ps.SrcPath() != nil {
-			allInputs = append(allInputs, ps.SrcPath())
-		}
-	}
-	ctx.Build(pctx, android.BuildParams {
-		Rule: android.TouchRule,
-		Output: inputsStamp,
-		Implicits: allInputs,
-	})
+	// The installed inputs to the cvd-host-package are load bearing. They need to be built in order
+	// to run `launch_cvd` locally. This code takes advantage of a very subtle behavior in soong:
+	// installed files also depend on all of the current module's transitive installed files.
+	// So we install an empty file just so all the installed files of our deps get built.
+	stampFile := android.PathForModuleOut(ctx, "inputs.stamp")
+	android.WriteFileRule(ctx, stampFile, "")
+	installedStamp := ctx.InstallFile(android.PathForModuleInstall(ctx), c.BaseModuleName()+".stamp", stampFile)
 
 	android.SetProvider(ctx, CvdHostPackageMetadataInfoProvider, CvdHostPackageMetadataInfo{
 		TarballMetadata: tarball,
-		InputsStamp: inputsStamp,
+		InputsStamp: installedStamp,
 		IsLinuxX8664: ctx.Os().Linux() && ctx.Arch().ArchType == android.X86_64,
 	})
 
