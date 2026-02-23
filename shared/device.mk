@@ -170,7 +170,6 @@ PRODUCT_PACKAGES += \
     ip \
     sleep \
     tcpdump \
-    wificond \
 
 #
 # Package for AOSP QNS
