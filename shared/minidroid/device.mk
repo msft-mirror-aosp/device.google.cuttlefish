@@ -92,13 +92,28 @@ PRODUCT_PACKAGES += \
     client_minidroid_rust \
     vsock-test
 
-# Additional packages
+# Bionic
+ifeq ($(RELEASE_DEPRECATE_RUNTIME_APEX),true)
+PRODUCT_PACKAGES += \
+    libc \
+    libdl \
+    libdl_android \
+    libm \
+    linkerconfig \
+    crash_dump \
+
+else
 PRODUCT_PACKAGES += \
     com.android.runtime \
     libc.bootstrap \
     libdl.bootstrap \
     libdl_android.bootstrap \
     libm.bootstrap \
+
+endif # RELEASE_DEPRECATE_RUNTIME_APEX
+
+# Additional packages
+PRODUCT_PACKAGES += \
     selinux_policy \
     com.android.adbd \
     mdnsd \
