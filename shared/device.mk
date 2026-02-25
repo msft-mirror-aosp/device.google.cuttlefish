@@ -305,10 +305,6 @@ PRODUCT_PRODUCT_PROPERTIES += \
     aaudio.hw_burst_min_usec=2000
 endif
 
-# Enable Bluetooth Audio Managed SCO
-PRODUCT_PRODUCT_PROPERTIES += \
-    bluetooth.sco.managed_by_audio=true
-
 ifneq ($(LOCAL_USE_VENDOR_AUDIO_CONFIGURATION),true)
 ifndef LOCAL_AUDIO_PRODUCT_COPY_FILES
 PRODUCT_PACKAGES += device_google_cuttlefish_shared_config_audio_policy
