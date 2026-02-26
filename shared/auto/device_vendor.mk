@@ -71,9 +71,9 @@ PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/auto/preinstalled-packages-product-car-cuttlefish.xml:$(TARGET_COPY_OUT_PRODUCT)/etc/sysconfig/preinstalled-packages-product-car-cuttlefish.xml
 
 # Install automotive specific battery health HAL
-PRODUCT_PACKAGES += \
+LOCAL_HEALTH_PRODUCT_PACKAGE := \
     android.hardware.health-service.automotive \
-    android.hardware.health-service.automotive_recovery \
+    android.hardware.health-service.automotive_recovery
 
 # Include display settings for an auto device.
 PRODUCT_COPY_FILES += \
@@ -140,9 +140,7 @@ $(call soong_config_set_bool,emulated_camera,use_emulated_camera2_hal_auto,$(USE
 
 # Whether to use the External Camera Provider HAL, which is used to detect V4L2
 # camera devices visible to the guest from the host using virtio-media.
-# Note that the emulated Camera2 HAL takes precedence over this one if both are
-# enabled.
-USE_CAMERA2_V4L2_HAL ?= true
+USE_CAMERA2_V4L2_HAL ?= false
 
 ifeq ($(USE_EMULATED_CAMERA2_HAL_AUTO), true)
 ENABLE_CAMERA_SERVICE := true
