@@ -170,7 +170,6 @@ PRODUCT_PACKAGES += \
     ip \
     sleep \
     tcpdump \
-    wificond \
 
 #
 # Package for AOSP QNS
@@ -215,7 +214,7 @@ ifeq ($(RELEASE_AIDL_USE_UNFROZEN),true)
 PRODUCT_SHIPPING_API_LEVEL := 37
 LOCAL_DEVICE_FCM_MANIFEST_FILE ?= device/google/cuttlefish/shared/config/manifest.xml
 else
-PRODUCT_SHIPPING_API_LEVEL := 36
+PRODUCT_SHIPPING_API_LEVEL := 37
 LOCAL_DEVICE_FCM_MANIFEST_FILE ?= device/google/cuttlefish/shared/config/previous_manifest.xml
 endif
 DEVICE_MANIFEST_FILE += $(LOCAL_DEVICE_FCM_MANIFEST_FILE)
@@ -305,6 +304,10 @@ PRODUCT_PRODUCT_PROPERTIES += \
     aaudio.mmap_exclusive_policy=2 \
     aaudio.hw_burst_min_usec=2000
 endif
+
+# Enable Bluetooth Audio Managed SCO
+PRODUCT_PRODUCT_PROPERTIES += \
+    bluetooth.sco.managed_by_audio=true
 
 ifneq ($(LOCAL_USE_VENDOR_AUDIO_CONFIGURATION),true)
 ifndef LOCAL_AUDIO_PRODUCT_COPY_FILES
