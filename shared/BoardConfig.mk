@@ -24,10 +24,7 @@
 
 DEFAULT_TARGET_KERNEL_USE := 6.18
 
-# b/489156340
-ifneq (,$(findstring _auto_,$(PRODUCT_NAME)))
-TARGET_KERNEL_USE ?= 6.12
-else ifneq (,$(findstring cf_gwear_arm,$(PRODUCT_NAME)))
+ifneq (,$(findstring cf_gwear_arm,$(PRODUCT_NAME)))
 TARGET_KERNEL_USE ?= 6.6
 else ifeq (true,$(CLOCKWORK_EMULATOR_PRODUCT))
 TARGET_KERNEL_USE ?= 6.1
