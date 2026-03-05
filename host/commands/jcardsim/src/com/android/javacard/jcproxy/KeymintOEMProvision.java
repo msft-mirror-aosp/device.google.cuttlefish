@@ -18,6 +18,8 @@ package com.android.javacard.jcproxy;
 
 import com.licel.jcardsim.smartcardio.CardSimulator;
 
+import java.util.HexFormat;
+
 /**
  * This class provisions the KeyMint Applet with OEM Root key and secure boot flag. The attest ids
  * and preshared key are sent from the cuttlefish guest.
@@ -64,7 +66,7 @@ public class KeymintOEMProvision extends KeymintProvision {
     }
 
     public void provisionOemRootKey() {
-        byte[] apdu = ByteArrayConverter.hexStringToByteArray(OEM_ROOT_KEY);
+        byte[] apdu = HexFormat.of().parseHex(OEM_ROOT_KEY);
         transmit(INS_PROVISION_OEM_ROOT_PUBLIC_KEY_CMD, apdu);
     }
 
