@@ -717,6 +717,19 @@ Result<void> ParseGuestConfigTxt(const std::string& guest_config_path,
   guest_config.gfxstream_gl_program_binary_link_status_supported =
       res.ok() && res.value() == "supported";
 
+  res = GetAndroidInfoConfig(guest_config_path, "gpu_mode_candidates");
+  if (res.ok()) {
+    const std::string& gpu_mode_candidates_str = res.value();
+    for (const std::string& candidate_str :
+         android::base::Split(gpu_mode_candidates_str, ",")) {
+      const GpuMode candidate =
+          CF_EXPECTF(GpuModeFromString(candidate_str),
+                     "Failed to parse GPU modes from `gpu_mode_candidates`: {}",
+                     gpu_mode_candidates_str);
+      guest_config.gpu_mode_candidates.push_back(candidate);
+    }
+  }
+
   auto res_mouse_support = GetAndroidInfoConfig(guest_config_path, "mouse");
   guest_config.mouse_supported =
       res_mouse_support.ok() && res_mouse_support.value() == "supported";
