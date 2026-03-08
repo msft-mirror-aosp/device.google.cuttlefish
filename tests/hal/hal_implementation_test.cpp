@@ -66,6 +66,7 @@ static const std::set<std::string> kAutomotiveOnlyAidl = {
     "android.frameworks.automotive.telemetry",
     "android.hardware.automotive.audiocontrol",
     "android.hardware.automotive.can",
+    "android.hardware.automotive.evs",
     "android.hardware.broadcastradio",
     "android.hardware.automotive.occupant_awareness",
     "android.hardware.automotive.remoteaccess",
@@ -169,7 +170,6 @@ static const std::vector<VersionedAidlPackage> kKnownMissingAidl = {
 
     {"android.automotive.computepipe.registry.", 2, 273549907},
     {"android.automotive.computepipe.runner.", 2, 273549907},
-    {"android.hardware.automotive.evs.", 2, 274162534},
     {"android.hardware.security.see.authmgr.", 1, 379940224},
     // TODO(b/466983803): Remove this after implementing Trusted Hals on CF.
     {"android.hardware.security.see.devicestate.", 1, 466983803},
