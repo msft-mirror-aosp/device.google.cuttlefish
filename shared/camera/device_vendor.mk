@@ -51,5 +51,6 @@ DEVICE_MANIFEST_FILE += \
 else
 PRODUCT_PACKAGES += \
     com.google.emulated.camera.provider.hal \
+    com.google.emulated.camera.provider.hal.fastscenecycle \
     com.google.emulated.camera.provider.hal.v4l2
 endif
