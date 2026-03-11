@@ -302,8 +302,9 @@ TEST(Hal, AllAidlInterfacesAreInAosp) {
   if (!kAidlUseUnfrozen) {
     GTEST_SKIP() << "Not valid in 'next' configuration";
   }
-  if (getDeviceType() != DeviceType::PHONE) {
-    GTEST_SKIP() << "Test only supports phones right now";
+  if (getDeviceType() != DeviceType::PHONE &&
+      getDeviceType() != DeviceType::AUTOMOTIVE) {
+    GTEST_SKIP() << "Test only supports phones and automotive right now";
   }
   for (const auto& package : allAidlManifestInterfaces()) {
     EXPECT_TRUE(isAospAidlInterface(package.name))
@@ -316,8 +317,9 @@ TEST(Hal, NoExtensionsOnAospInterfaces) {
   if (!kAidlUseUnfrozen) {
     GTEST_SKIP() << "Not valid in 'next' configuration";
   }
-  if (getDeviceType() != DeviceType::PHONE) {
-    GTEST_SKIP() << "Test only supports phones right now";
+  if (getDeviceType() != DeviceType::PHONE &&
+      getDeviceType() != DeviceType::AUTOMOTIVE) {
+    GTEST_SKIP() << "Test only supports phones and automotive right now";
   }
   for (const auto& package : allAidlManifestInterfaces()) {
     if (isAospAidlInterface(package.name)) {
