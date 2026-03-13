@@ -1,4 +1,4 @@
 {
-    "name": "com.google.emulated.camera.provider.hal",
+    "name": "com.google.emulated.camera.provider.hal.v4l2",
     "version": 1
 }
