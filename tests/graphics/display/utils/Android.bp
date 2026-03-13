@@ -18,10 +18,10 @@ java_library_host {
         "cuttlefish_host_test_utils_defaults",
     ],
     srcs: [
-        "CfVkmsEdidHelper.java",
         "CfVkmsTester.java",
     ],
     libs: [
         "tradefed",
+        "junit",
     ],
 }

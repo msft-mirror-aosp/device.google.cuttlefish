@@ -129,7 +129,6 @@ java_test_host {
     ],
     plugins: [
         "auto_annotation_plugin",
-        "auto_value_plugin",
     ],
     test_config_template: "display_config_template.xml",
 }

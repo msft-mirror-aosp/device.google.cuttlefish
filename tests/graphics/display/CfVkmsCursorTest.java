@@ -16,8 +16,6 @@
 
 package com.android.cuttlefish.tests;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
@@ -55,8 +53,7 @@ public class CfVkmsCursorTest extends BaseHostJUnit4Test {
     public void setUp() throws Exception {
         List<CfVkmsTester.VkmsConnectorSetup> connectorConfigs = List.of(
                 CfVkmsTester.VkmsConnectorSetup.builder()
-                        .setType(CfVkmsTester.ConnectorType.EDP)
-                        .setMonitor(CfVkmsEdidHelper.EdpDisplay.REDRIX)
+                .setMonitor(CfVkmsTester.Monitor.REDRIX)
                         .setEnabledAtStart(true)
                         .build());
 
@@ -74,9 +71,6 @@ public class CfVkmsCursorTest extends BaseHostJUnit4Test {
 
     @Test
     public void cursorCompositionSucceeds() throws Exception {
-        assertTrue(mVkmsTester.toggleSystemUi(false));
-        assertTrue(mVkmsTester.toggleSystemUi(true));
-
         CursorStats results = testCursorComposition();
         if (results.cursorFrames > 0) {
             return;

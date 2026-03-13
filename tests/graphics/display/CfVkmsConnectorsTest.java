@@ -51,34 +51,30 @@ public class CfVkmsConnectorsTest extends BaseHostJUnit4Test {
     public void setUp() throws Exception {
         List<CfVkmsTester.VkmsConnectorSetup> mConnectorConfigs = new ArrayList<>();
         mConnectorConfigs.add(CfVkmsTester.VkmsConnectorSetup.builder()
-                .setType(CfVkmsTester.ConnectorType.EDP)
-                .setMonitor(CfVkmsEdidHelper.EdpDisplay.REDRIX)
+                .setMonitor(CfVkmsTester.Monitor.REDRIX)
                 .setEnabledAtStart(true)
                 .build());
         mConnectorConfigs.add(CfVkmsTester.VkmsConnectorSetup.builder()
-                .setType(CfVkmsTester.ConnectorType.DISPLAY_PORT)
-                .setEnabledAtStart(true)
+                .setMonitor(CfVkmsTester.Monitor.HP_SPECTRE32_4K_DP)
                 .setAdditionalOverlayPlanes(1)
-                .setMonitor(CfVkmsEdidHelper.DpMonitor.HP_SPECTRE32_4K_DP)
+                .setEnabledAtStart(true)
                 .build());
         mConnectorConfigs.add(CfVkmsTester.VkmsConnectorSetup.builder()
-                .setType(CfVkmsTester.ConnectorType.HDMI_A)
-                .setEnabledAtStart(true)
+                .setMonitor(CfVkmsTester.Monitor.ACI_9155_ASUS_VH238_HDMI)
                 .setAdditionalOverlayPlanes(2)
-                .setMonitor(CfVkmsEdidHelper.HdmiMonitor.ACI_9155_ASUS_VH238_HDMI)
+                .setEnabledAtStart(true)
                 .build());
         mConnectorConfigs.add(CfVkmsTester.VkmsConnectorSetup.builder()
-                .setType(CfVkmsTester.ConnectorType.HDMI_A)
-                .setEnabledAtStart(true)
+                .setMonitor(CfVkmsTester.Monitor.HWP_12447_HP_Z24i_HDMI)
                 .setAdditionalOverlayPlanes(3)
-                .setMonitor(CfVkmsEdidHelper.HdmiMonitor.HWP_12447_HP_Z24i_HDMI)
+                .setEnabledAtStart(true)
                 .build());
         mConnectorConfigs.add(CfVkmsTester.VkmsConnectorSetup.builder()
-                .setType(CfVkmsTester.ConnectorType.DISPLAY_PORT)
-                .setEnabledAtStart(true)
+                .setMonitor(CfVkmsTester.Monitor.DEL_61463_DELL_U2410_DP)
                 .setAdditionalOverlayPlanes(4)
-                .setMonitor(CfVkmsEdidHelper.DpMonitor.DEL_61463_DELL_U2410_DP)
+                .setEnabledAtStart(true)
                 .build());
+
         mExpectedDisplayCount = mConnectorConfigs.size();
 
         // Initialize VKMS with our configuration
@@ -130,7 +126,7 @@ public class CfVkmsConnectorsTest extends BaseHostJUnit4Test {
     public void testConnectorDisplayNamesCheck() throws Exception {
         // Define expected display names based on the configured monitors
         Set<String> expectedDisplayNames = new HashSet<>();
-        // No name present in CfVkmsEdidHelper.EdpDisplay.REDRIX's EDID
+        // No name present in REDRIX's EDID
         expectedDisplayNames.add("");
         expectedDisplayNames.add("HP Spectre 32");
         expectedDisplayNames.add("ASUS VH238");

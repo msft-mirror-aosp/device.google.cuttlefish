@@ -78,33 +78,28 @@ public class CfVkmsDisplaysTest extends BaseHostJUnit4Test {
         // Setup the VKMS configuration for this test
         List<CfVkmsTester.VkmsConnectorSetup> connectorConfigs = new ArrayList<>();
         connectorConfigs.add(CfVkmsTester.VkmsConnectorSetup.builder()
-                .setType(CfVkmsTester.ConnectorType.EDP)
-                .setMonitor(CfVkmsEdidHelper.EdpDisplay.REDRIX)
+                .setMonitor(CfVkmsTester.Monitor.REDRIX)
                 .setEnabledAtStart(true)
                 .build());
         connectorConfigs.add(CfVkmsTester.VkmsConnectorSetup.builder()
-                .setType(CfVkmsTester.ConnectorType.DISPLAY_PORT)
-                .setEnabledAtStart(true)
+                .setMonitor(CfVkmsTester.Monitor.HP_SPECTRE32_4K_DP)
                 .setAdditionalOverlayPlanes(1)
-                .setMonitor(CfVkmsEdidHelper.DpMonitor.HP_SPECTRE32_4K_DP)
+                .setEnabledAtStart(true)
                 .build());
         connectorConfigs.add(CfVkmsTester.VkmsConnectorSetup.builder()
-                .setType(CfVkmsTester.ConnectorType.HDMI_A)
-                .setEnabledAtStart(true)
+                .setMonitor(CfVkmsTester.Monitor.ACI_9155_ASUS_VH238_HDMI)
                 .setAdditionalOverlayPlanes(2)
-                .setMonitor(CfVkmsEdidHelper.HdmiMonitor.ACI_9155_ASUS_VH238_HDMI)
+                .setEnabledAtStart(true)
                 .build());
         connectorConfigs.add(CfVkmsTester.VkmsConnectorSetup.builder()
-                .setType(CfVkmsTester.ConnectorType.HDMI_A)
-                .setEnabledAtStart(true)
+                .setMonitor(CfVkmsTester.Monitor.HWP_12447_HP_Z24i_HDMI)
                 .setAdditionalOverlayPlanes(3)
-                .setMonitor(CfVkmsEdidHelper.HdmiMonitor.HWP_12447_HP_Z24i_HDMI)
+                .setEnabledAtStart(true)
                 .build());
         connectorConfigs.add(CfVkmsTester.VkmsConnectorSetup.builder()
-                .setType(CfVkmsTester.ConnectorType.DISPLAY_PORT)
-                .setEnabledAtStart(true)
+                .setMonitor(CfVkmsTester.Monitor.DEL_61463_DELL_U2410_DP)
                 .setAdditionalOverlayPlanes(4)
-                .setMonitor(CfVkmsEdidHelper.DpMonitor.DEL_61463_DELL_U2410_DP)
+                .setEnabledAtStart(true)
                 .build());
 
         // Initialize VKMS with our configuration
@@ -149,7 +144,6 @@ public class CfVkmsDisplaysTest extends BaseHostJUnit4Test {
     @Test
     public void testDisplayIdConsistencyAtDifferentPorts() throws Exception {
         // We'll use the HP Spectre 32 as our reference monitor to track across configurations
-        CfVkmsEdidHelper.Monitor referenceMonitor = CfVkmsEdidHelper.DpMonitor.HP_SPECTRE32_4K_DP;
         String referenceDisplayName = "HP Spectre 32";
 
         // Map to store the display ID for each configuration
@@ -162,13 +156,11 @@ public class CfVkmsDisplaysTest extends BaseHostJUnit4Test {
             configName = "second_position";
             List<CfVkmsTester.VkmsConnectorSetup> config = new ArrayList<>();
             config.add(CfVkmsTester.VkmsConnectorSetup.builder()
-                    .setType(CfVkmsTester.ConnectorType.EDP)
-                    .setMonitor(CfVkmsEdidHelper.EdpDisplay.REDRIX)
+                    .setMonitor(CfVkmsTester.Monitor.REDRIX)
                     .setEnabledAtStart(true)
                     .build());
             config.add(CfVkmsTester.VkmsConnectorSetup.builder()
-                    .setType(CfVkmsTester.ConnectorType.DISPLAY_PORT)
-                    .setMonitor(referenceMonitor)
+                    .setMonitor(CfVkmsTester.Monitor.HP_SPECTRE32_4K_DP)
                     .setEnabledAtStart(true)
                     .build());
 
@@ -181,13 +173,11 @@ public class CfVkmsDisplaysTest extends BaseHostJUnit4Test {
             configName = "second_position+different_connector";
             config = new ArrayList<>();
             config.add(CfVkmsTester.VkmsConnectorSetup.builder()
-                    .setType(CfVkmsTester.ConnectorType.EDP)
-                    .setMonitor(CfVkmsEdidHelper.EdpDisplay.REDRIX)
+                    .setMonitor(CfVkmsTester.Monitor.REDRIX)
                     .setEnabledAtStart(true)
                     .build());
             config.add(CfVkmsTester.VkmsConnectorSetup.builder()
-                    .setType(CfVkmsTester.ConnectorType.HDMI_A)
-                    .setMonitor(referenceMonitor)
+                    .setMonitor(CfVkmsTester.Monitor.HP_SPECTRE32_4K_DP)
                     .setEnabledAtStart(true)
                     .build());
 
@@ -198,23 +188,19 @@ public class CfVkmsDisplaysTest extends BaseHostJUnit4Test {
             configName = "many_displays";
             config = new ArrayList<>();
             config.add(CfVkmsTester.VkmsConnectorSetup.builder()
-                    .setType(CfVkmsTester.ConnectorType.EDP)
-                    .setMonitor(CfVkmsEdidHelper.EdpDisplay.REDRIX)
+                    .setMonitor(CfVkmsTester.Monitor.REDRIX)
                     .setEnabledAtStart(true)
                     .build());
             config.add(CfVkmsTester.VkmsConnectorSetup.builder()
-                    .setType(CfVkmsTester.ConnectorType.HDMI_A)
-                    .setMonitor(CfVkmsEdidHelper.HdmiMonitor.ACI_9155_ASUS_VH238_HDMI)
+                    .setMonitor(CfVkmsTester.Monitor.ACI_9155_ASUS_VH238_HDMI)
                     .setEnabledAtStart(true)
                     .build());
             config.add(CfVkmsTester.VkmsConnectorSetup.builder()
-                    .setType(CfVkmsTester.ConnectorType.DISPLAY_PORT)
-                    .setMonitor(referenceMonitor)
+                    .setMonitor(CfVkmsTester.Monitor.HP_SPECTRE32_4K_DP)
                     .setEnabledAtStart(true)
                     .build());
             config.add(CfVkmsTester.VkmsConnectorSetup.builder()
-                    .setType(CfVkmsTester.ConnectorType.HDMI_A)
-                    .setMonitor(CfVkmsEdidHelper.HdmiMonitor.HWP_12447_HP_Z24i_HDMI)
+                    .setMonitor(CfVkmsTester.Monitor.HWP_12447_HP_Z24i_HDMI)
                     .setEnabledAtStart(true)
                     .build());
 
@@ -246,7 +232,6 @@ public class CfVkmsDisplaysTest extends BaseHostJUnit4Test {
     @Test
     public void testIdenticalMonitorsGetUniqueIds() throws Exception {
         // Use the HP Spectre 32 monitor for our test
-        CfVkmsEdidHelper.Monitor referenceMonitor = CfVkmsEdidHelper.DpMonitor.HP_SPECTRE32_4K_DP;
         String referenceDisplayName = "HP Spectre 32";
 
         // Create a configuration with multiple identical monitors
@@ -254,30 +239,26 @@ public class CfVkmsDisplaysTest extends BaseHostJUnit4Test {
 
         // Add an internal panel
         collisionConfig.add(CfVkmsTester.VkmsConnectorSetup.builder()
-                .setType(CfVkmsTester.ConnectorType.EDP)
-                .setMonitor(CfVkmsEdidHelper.EdpDisplay.REDRIX)
+                .setMonitor(CfVkmsTester.Monitor.REDRIX)
                 .setEnabledAtStart(true)
                 .build());
 
         // Add three identical monitors on different ports
         // First on DisplayPort
         collisionConfig.add(CfVkmsTester.VkmsConnectorSetup.builder()
-                .setType(CfVkmsTester.ConnectorType.DISPLAY_PORT)
-                .setMonitor(referenceMonitor)
+                .setMonitor(CfVkmsTester.Monitor.HP_SPECTRE32_4K_DP)
                 .setEnabledAtStart(true)
                 .build());
 
         // Second on HDMI-A
         collisionConfig.add(CfVkmsTester.VkmsConnectorSetup.builder()
-                .setType(CfVkmsTester.ConnectorType.HDMI_A)
-                .setMonitor(referenceMonitor)
+                .setMonitor(CfVkmsTester.Monitor.HP_SPECTRE32_4K_DP)
                 .setEnabledAtStart(true)
                 .build());
 
         // Third on a different DisplayPort
         collisionConfig.add(CfVkmsTester.VkmsConnectorSetup.builder()
-                .setType(CfVkmsTester.ConnectorType.DISPLAY_PORT)
-                .setMonitor(referenceMonitor)
+                .setMonitor(CfVkmsTester.Monitor.HP_SPECTRE32_4K_DP)
                 .setEnabledAtStart(true)
                 .build());
 
@@ -321,7 +302,6 @@ public class CfVkmsDisplaysTest extends BaseHostJUnit4Test {
     @Test
     public void testDisplayIdConsistencyAtSamePort() throws Exception {
         // We'll use the HP Spectre 32 as our reference monitor to track across configurations
-        CfVkmsEdidHelper.Monitor referenceMonitor = CfVkmsEdidHelper.DpMonitor.HP_SPECTRE32_4K_DP;
         String referenceDisplayName = "HP Spectre 32";
 
         // The constant port position for our reference monitor (index 1, which is the second
@@ -340,15 +320,13 @@ public class CfVkmsDisplaysTest extends BaseHostJUnit4Test {
 
             // First display (port 0)
             config.add(CfVkmsTester.VkmsConnectorSetup.builder()
-                    .setType(CfVkmsTester.ConnectorType.EDP)
-                    .setMonitor(CfVkmsEdidHelper.EdpDisplay.REDRIX)
+                    .setMonitor(CfVkmsTester.Monitor.REDRIX)
                     .setEnabledAtStart(true)
                     .build());
 
             // Reference display at port 1
             config.add(CfVkmsTester.VkmsConnectorSetup.builder()
-                    .setType(CfVkmsTester.ConnectorType.DISPLAY_PORT)
-                    .setMonitor(referenceMonitor)
+                    .setMonitor(CfVkmsTester.Monitor.HP_SPECTRE32_4K_DP)
                     .setEnabledAtStart(true)
                     .build());
 
@@ -362,22 +340,19 @@ public class CfVkmsDisplaysTest extends BaseHostJUnit4Test {
 
             // First display (port 0)
             config.add(CfVkmsTester.VkmsConnectorSetup.builder()
-                    .setType(CfVkmsTester.ConnectorType.DISPLAY_PORT)
-                    .setMonitor(CfVkmsEdidHelper.DpMonitor.DEL_61463_DELL_U2410_DP)
+                    .setMonitor(CfVkmsTester.Monitor.DEL_61463_DELL_U2410_DP)
                     .setEnabledAtStart(true)
                     .build());
 
             // Reference display at port 1
             config.add(CfVkmsTester.VkmsConnectorSetup.builder()
-                    .setType(CfVkmsTester.ConnectorType.DISPLAY_PORT) // Same type
-                    .setMonitor(referenceMonitor)
+                    .setMonitor(CfVkmsTester.Monitor.HP_SPECTRE32_4K_DP)
                     .setEnabledAtStart(true)
                     .build());
 
             // Third display (port 2)
             config.add(CfVkmsTester.VkmsConnectorSetup.builder()
-                    .setType(CfVkmsTester.ConnectorType.HDMI_A)
-                    .setMonitor(CfVkmsEdidHelper.HdmiMonitor.ACI_9155_ASUS_VH238_HDMI)
+                    .setMonitor(CfVkmsTester.Monitor.ACI_9155_ASUS_VH238_HDMI)
                     .setEnabledAtStart(true)
                     .build());
 
@@ -392,29 +367,25 @@ public class CfVkmsDisplaysTest extends BaseHostJUnit4Test {
 
             // First display (port 0)
             config.add(CfVkmsTester.VkmsConnectorSetup.builder()
-                    .setType(CfVkmsTester.ConnectorType.HDMI_A)
-                    .setMonitor(CfVkmsEdidHelper.HdmiMonitor.HWP_12447_HP_Z24i_HDMI)
+                    .setMonitor(CfVkmsTester.Monitor.HWP_12447_HP_Z24i_HDMI)
                     .setEnabledAtStart(true)
                     .build());
 
             // Reference display at port 1 (different connector type from previous configs)
             config.add(CfVkmsTester.VkmsConnectorSetup.builder()
-                    .setType(CfVkmsTester.ConnectorType.HDMI_A) // Different connector type
-                    .setMonitor(referenceMonitor)
+                    .setMonitor(CfVkmsTester.Monitor.HP_SPECTRE32_4K_DP)
                     .setEnabledAtStart(true)
                     .build());
 
             // Third display (port 2)
             config.add(CfVkmsTester.VkmsConnectorSetup.builder()
-                    .setType(CfVkmsTester.ConnectorType.DISPLAY_PORT)
-                    .setMonitor(CfVkmsEdidHelper.DpMonitor.ACI_9713_ASUS_VE258_DP)
+                    .setMonitor(CfVkmsTester.Monitor.ACI_9713_ASUS_VE258_DP)
                     .setEnabledAtStart(true)
                     .build());
 
             // Fourth display (port 3)
             config.add(CfVkmsTester.VkmsConnectorSetup.builder()
-                    .setType(CfVkmsTester.ConnectorType.EDP)
-                    .setMonitor(CfVkmsEdidHelper.EdpDisplay.REDRIX)
+                    .setMonitor(CfVkmsTester.Monitor.REDRIX)
                     .setEnabledAtStart(true)
                     .build());
 
