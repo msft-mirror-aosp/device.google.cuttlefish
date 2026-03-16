@@ -138,8 +138,7 @@ AB_OTA_POSTINSTALL_CONFIG += \
 
 # Userdata Checkpointing OTA GC
 PRODUCT_PACKAGES += \
-    checkpoint_gc \
-    vkms_controller \
+    checkpoint_gc
 
 # DRM service opt-in
 PRODUCT_VENDOR_PROPERTIES += drm.service.enabled=true

@@ -66,7 +66,6 @@ else
     PRODUCT_PACKAGES += \
         Telecom \
         TelecomUi \
-        TelecomServiceResources \
 
     PRODUCT_SYSTEM_SERVER_APPS += \
         Telecom \
