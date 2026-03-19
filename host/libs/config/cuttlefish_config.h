@@ -34,6 +34,7 @@
 #include "host/libs/config/config_constants.h"
 #include "host/libs/config/config_fragment.h"
 #include "host/libs/config/config_utils.h"
+#include "host/libs/config/gpu_mode.h"
 #include "host/libs/config/secure_hals.h"
 
 #include "guest_config.pb.h"
@@ -146,6 +147,16 @@ class CuttlefishConfig {
     static Json::Value Serialize(
         const CuttlefishConfig::TouchpadConfig& config);
     static TouchpadConfig Deserialize(const Json::Value& config_json);
+  };
+
+  enum class CameraType {
+    kUnknown = 0,
+    kV4l2Emulated,
+    kV4l2Proxy,
+  };
+
+  struct CameraConfig {
+    CameraType type;
   };
 
   void set_secure_hals(const std::set<SecureHal>&);
@@ -669,7 +680,8 @@ class CuttlefishConfig {
     int modem_simulator_instance_number() const;
     int modem_simulator_sim_type() const;
 
-    std::string gpu_mode() const;
+    GpuMode gpu_mode() const;
+    std::vector<GpuMode> gpu_mode_candidates() const;
     std::string gpu_angle_feature_overrides_enabled() const;
     std::string gpu_angle_feature_overrides_disabled() const;
     std::string gpu_capture_binary() const;
@@ -759,6 +771,8 @@ class CuttlefishConfig {
     std::optional<::cuttlefish::config::Audio> audio_settings() const;
 
     bool enable_tap_devices() const;
+
+    std::vector<CameraConfig> camera_configs() const;
   };
 
   // A view into an existing CuttlefishConfig object for a particular instance.
@@ -919,7 +933,8 @@ class CuttlefishConfig {
     void set_modem_simulator_instance_number(int instance_numbers);
     void set_modem_simulator_sim_type(int sim_type);
 
-    void set_gpu_mode(const std::string& name);
+    void set_gpu_mode(GpuMode mode);
+    void set_gpu_mode_candidates(const std::vector<GpuMode>& candidates);
     void set_gpu_angle_feature_overrides_enabled(const std::string& overrides);
     void set_gpu_angle_feature_overrides_disabled(const std::string& overrides);
     void set_gpu_capture_binary(const std::string&);
@@ -998,6 +1013,8 @@ class CuttlefishConfig {
     void set_audio_settings(const ::cuttlefish::config::Audio& audio_settings);
 
     void set_enable_tap_devices(bool);
+
+    void set_camera_configs(const std::vector<CameraConfig>& configs);
 
    private:
     void SetPath(const std::string& key, const std::string& path);
@@ -1110,17 +1127,6 @@ bool IsRestoring(const CuttlefishConfig&);
 extern const char* const kVhostUserVsockModeAuto;
 extern const char* const kVhostUserVsockModeTrue;
 extern const char* const kVhostUserVsockModeFalse;
-
-// GPU modes
-extern const char* const kGpuModeAuto;
-extern const char* const kGpuModeCustom;
-extern const char* const kGpuModeDrmVirgl;
-extern const char* const kGpuModeGfxstream;
-extern const char* const kGpuModeGfxstreamGuestAngle;
-extern const char* const kGpuModeGfxstreamGuestAngleHostSwiftShader;
-extern const char* const kGpuModeGfxstreamGuestAngleHostLavapipe;
-extern const char* const kGpuModeGuestSwiftshader;
-extern const char* const kGpuModeNone;
 
 // GPU vhost user modes
 extern const char* const kGpuVhostUserModeAuto;
