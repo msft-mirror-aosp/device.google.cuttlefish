@@ -832,11 +832,43 @@ int CuttlefishConfig::InstanceSpecific::modem_simulator_sim_type() const {
 }
 
 static constexpr char kGpuMode[] = "gpu_mode";
-std::string CuttlefishConfig::InstanceSpecific::gpu_mode() const {
-  return (*Dictionary())[kGpuMode].asString();
+GpuMode CuttlefishConfig::InstanceSpecific::gpu_mode() const {
+  Result<GpuMode> gpu_mode_result =
+      GpuModeFromString((*Dictionary())[kGpuMode].asString());
+  // The value should be already be validated via `set_gpu_mode` and is only a
+  // string internally.  No need for a `Result` on every getter call
+  CHECK(gpu_mode_result.ok());
+  return *gpu_mode_result;
 }
-void CuttlefishConfig::MutableInstanceSpecific::set_gpu_mode(const std::string& name) {
-  (*Dictionary())[kGpuMode] = name;
+void CuttlefishConfig::MutableInstanceSpecific::set_gpu_mode(GpuMode mode) {
+  (*Dictionary())[kGpuMode] = GpuModeString(mode);
+}
+
+static constexpr char kGpuModeCandidates[] = "gpu_mode_candidates";
+std::vector<GpuMode> CuttlefishConfig::InstanceSpecific::gpu_mode_candidates()
+    const {
+  auto json_candidates = (*Dictionary())[kGpuModeCandidates];
+  CHECK(json_candidates.isArray())
+      << "Unexpected type for 'gpu_mode_candidates'.";
+
+  std::vector<GpuMode> candidates;
+
+  for (auto& json_candidate : json_candidates) {
+    CHECK(json_candidate.isString())
+        << "Unexpected type for 'gpu_mode_candidate'.";
+    Result<GpuMode> candidate = GpuModeFromString(json_candidate.asString());
+    CHECK(candidate.ok());
+    candidates.push_back(*candidate);
+  }
+  return candidates;
+}
+void CuttlefishConfig::MutableInstanceSpecific::set_gpu_mode_candidates(
+    const std::vector<GpuMode>& candidates) {
+  Json::Value json_candidates(Json::arrayValue);
+  for (GpuMode candidate : candidates) {
+    json_candidates.append(Json::Value(GpuModeString(candidate)));
+  }
+  (*Dictionary())[kGpuModeCandidates] = json_candidates;
 }
 
 static constexpr char kGpuAngleFeatureOverridesEnabled[] =
@@ -2187,6 +2219,33 @@ CuttlefishConfig::InstanceSpecific::audio_settings() const {
   CHECK(google::protobuf::TextFormat::ParseFromString(
       (*Dictionary())[kAudioSettingsTextProto].asString(), &audio_settings));
   return audio_settings;
+}
+
+static constexpr char kCameraConfigs[] = "camera_configs";
+static constexpr char kCameraType[] = "type";
+std::vector<CuttlefishConfig::CameraConfig>
+CuttlefishConfig::InstanceSpecific::camera_configs() const {
+  std::vector<CameraConfig> configs;
+  for (auto& json : (*Dictionary())[kCameraConfigs]) {
+    CameraConfig config = {};
+    config.type =
+        static_cast<CuttlefishConfig::CameraType>(json[kCameraType].asInt());
+    configs.emplace_back(config);
+  }
+  return configs;
+}
+
+void CuttlefishConfig::MutableInstanceSpecific::set_camera_configs(
+    const std::vector<CameraConfig>& configs) {
+  Json::Value configs_json(Json::arrayValue);
+
+  for (const CameraConfig& config : configs) {
+    Json::Value json(Json::objectValue);
+    json[kCameraType] = static_cast<int>(config.type);
+    configs_json.append(json);
+  }
+
+  (*Dictionary())[kCameraConfigs] = configs_json;
 }
 
 std::string CuttlefishConfig::InstanceSpecific::factory_reset_protected_path() const {
