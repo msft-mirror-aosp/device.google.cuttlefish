@@ -1297,9 +1297,9 @@ void NetworkService::KeepSignalStrengthChangingLoop::
     network_service_.signal_strength_percent_ -= 5;
     // With "close to 0" values, the signal strength bar on the Android UI will
     // be shown empty, this also represents that theres's no connectivity which
-    // is misleading as the connectivity continues, so a lower bound of 10 will
-    // be used so the signal strength bar is never emptied
-    if (network_service_.signal_strength_percent_ <= 10) {
+    // is misleading as the connectivity continues, so a lower bound of 35 will
+    // be used so the signal strength bar is never emptied for NR.
+    if (network_service_.signal_strength_percent_ <= 35) {
       network_service_.signal_strength_percent_ = 100;
     }
     network_service_.OnSignalStrengthChanged();
