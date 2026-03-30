@@ -349,6 +349,11 @@ ifeq ($(RELEASE_WIDEVINE_CUTTLEFISH_L1),true)
     endif
 endif
 
+ifeq ($(RELEASE_WIDEVINE_OEMCRYPTO_AIDL),true)
+    PRODUCT_SOONG_NAMESPACES += vendor/google_shared/widevine/oemcrypto/oemcrypto/aidl
+    PRODUCT_PACKAGES += android.hardware.oemcrypto-service.default
+endif
+
 endif
 
 #
