@@ -55,10 +55,6 @@ PRODUCT_COPY_FILES += \
 PRODUCT_PRODUCT_PROPERTIES += \
     ro.boot.uwbcountrycode=US
 
-PRODUCT_PRODUCT_PROPERTIES += \
-    ro.sys.hibernate_enabled=1 \
-    ro.sys.swap_storage_device=/dev/block/vda19
-
 PRODUCT_COPY_FILES += \
     frameworks/native/data/etc/car_core_hardware.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/car_core_hardware.xml \
     frameworks/native/data/etc/android.hardware.broadcastradio.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.broadcastradio.xml \
@@ -79,9 +75,18 @@ LOCAL_HEALTH_PRODUCT_PACKAGE := \
 PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/auto/display_settings.xml:$(TARGET_COPY_OUT_VENDOR)/etc/display_settings.xml
 
-# Include the fstab needed for suspend to disk
+ENABLE_HIBERNATION_SWAP ?= false
+ifeq ($(ENABLE_HIBERNATION_SWAP), true)
+PRODUCT_PRODUCT_PROPERTIES += \
+    ro.sys.hibernate_enabled=1 \
+    ro.sys.swap_storage_device=/dev/block/vda19
+
 PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/auto/hibernation_swap/fstab.hibernationswap:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.hibernationswap
+
+# Ensure the hibernation swap image is built
+droidcore: $(PRODUCT_OUT)/hibernation_swap.img
+endif
 
 # vehicle HAL
 ifeq ($(LOCAL_VHAL_PRODUCT_PACKAGE),)
