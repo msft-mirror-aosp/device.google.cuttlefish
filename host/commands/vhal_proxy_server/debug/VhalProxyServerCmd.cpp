@@ -14,6 +14,11 @@
  * limitations under the License.
  */
 
+// Workaround for enum value conflicting with a macro in system header.
+// See b/427539387 for more information.
+#include <netdb.h>
+#undef TRY_AGAIN
+
 #include "VehicleServer.grpc.pb.h"
 #include "VehicleServer.pb.h"
 
