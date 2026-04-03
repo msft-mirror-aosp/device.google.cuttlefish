@@ -344,8 +344,10 @@ ifeq ($(LOCAL_ENABLE_WIDEVINE),true)
 
 ifeq ($(RELEASE_WIDEVINE_CUTTLEFISH_L1),true)
     ifndef TARGET_BUILD_WIDEVINE_BUILD_CONFIG
-        PRODUCT_SOONG_NAMESPACES += vendor/google/widevine/cdm
-        PRODUCT_PACKAGES += liboemcrypto_no_ipc_test_only
+        ifneq ($(PRODUCT_IS_ATV),true)
+            PRODUCT_SOONG_NAMESPACES += vendor/google/widevine/cdm
+            PRODUCT_PACKAGES += liboemcrypto_no_ipc_test_only
+        endif
     endif
 endif
 
