@@ -34,7 +34,7 @@ apex {
     key: "com.android.hardware.automotive.vehicle.test.key",
     file_contexts: "file_contexts",
     updatable: false,
-    soc_specific: true,
+    device_specific: true,
     binaries: [
         "android.hardware.automotive.vehicle@V4-cf-service",
     ],
