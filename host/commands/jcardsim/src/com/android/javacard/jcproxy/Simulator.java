@@ -40,10 +40,4 @@ public interface Simulator {
      * @return apdu response
      */
     byte[] executeApdu(byte[] apdu) throws Exception;
-
-    /*
-     * Formats the return response.
-     * @return formatted response
-     */
-    byte[] formatApduResponse();
 }

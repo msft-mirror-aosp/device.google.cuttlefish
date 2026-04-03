@@ -36,8 +36,7 @@ public class JCardSimProxy {
 
     public byte[] transmit(byte[] apdu) {
         try {
-            jcardSimulator.executeApdu(apdu);
-            return jcardSimulator.formatApduResponse();
+            return jcardSimulator.executeApdu(apdu);
         } catch (Exception e) {
             e.printStackTrace();
         }
