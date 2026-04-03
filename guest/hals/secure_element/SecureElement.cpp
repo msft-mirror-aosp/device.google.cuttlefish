@@ -16,13 +16,21 @@
 
 #include "SecureElement.h"
 
+#include <fmt/core.h>
 #include <string>
+
+#define LOG_TAG "jcardsim"
 
 #include <android-base/logging.h>
 
 namespace aidl::android::hardware::secure_element {
 constexpr const int kUnusedCommandField = 0;
 constexpr int32_t kSuccess = 0x9000;
+constexpr int32_t kMaxAidLen = 16;
+constexpr uint8_t kSelectIns = 0xA4;
+constexpr uint8_t kP1SelectByAid = 0x04;
+constexpr uint8_t kP1ManageChannelClose = 0x80;
+constexpr uint8_t kManageChannelIns = 0x70;
 
 namespace {
 using cuttlefish::ErrorFromType;
@@ -36,6 +44,16 @@ Result<void> ResponseOK(const std::vector<uint8_t>& response) {
     CF_EXPECT(((response[size - 2] << 8) | response[size - 1]) == kSuccess,
               "Status Code: " << (response[size - 2] << 8 | response[size - 1]));
     return {};
+}
+
+std::string toHexString(const std::vector<uint8_t>& data) {
+    std::string hexStr;
+    hexStr.reserve(data.size() * 2);
+
+    for (auto ch : data) {
+        hexStr += fmt::format("{:02X}", ch);
+    }
+    return hexStr;
 }
 
 }  // namespace
@@ -61,11 +79,13 @@ Result<std::vector<uint8_t>> SecureElement::fromMessage(ManagedMessage& message)
 Result<void> SecureElement::forwardCommand(const std::vector<uint8_t>& req,
                                            std::vector<uint8_t>& res) {
     auto msg = CF_EXPECT(toMessage(req), "Failed to create message from the request");
+    LOG(DEBUG) << "Request:" << toHexString(req);
     CF_EXPECT(channel_->SendRequest(*msg), "Failed to send request");
     CF_EXPECT(channel_->WaitForMessage(), "Failed to wait for command response");
     auto response = CF_EXPECT(channel_->ReceiveMessage(), "Failed to receive response");
     auto result = CF_EXPECT(fromMessage(response), "Failed to read from Message");
     res = std::move(result);
+    LOG(DEBUG) << "Response:" << toHexString(res);
     return {};
 }
 
@@ -124,86 +144,49 @@ ScopedAStatus SecureElement::openLogicalChannel(
     if (callback_ == nullptr) {
         return ScopedAStatus::fromExceptionCode(EX_ILLEGAL_STATE);
     }
-    std::vector<uint8_t> resApduBuff;
-    std::vector<uint8_t> manageChannelCommand = {0x00, 0x70, 0x00, 0x00, 0x01};
 
-    // send manage command (optional) but will need in FiRa multi-channel
-    // implementation
-    if (!forwardCommand(manageChannelCommand, resApduBuff).ok()) {
-        LOG(ERROR) << "Failed to send ManageChannel request";
-        return ScopedAStatus::fromServiceSpecificError(IOERROR);
-    }
-    auto result = ResponseOK(resApduBuff);
-    if (!result.ok()) {
-        LOG(ERROR) << "Failed in ManageChannelCommand - " << result.error().Message();
+    // Execute MANAGE CHANNEL. According to GlobalPlatform Card Specification, Section:11.7.3,
+    // the assigned channel number is returned upon success.
+    auto manageChannelRes = executeManageChannel(0 /* CLA */, 0 /* p1 */, 0 /* p2 */, 1 /* le */);
+    if (!manageChannelRes.ok()) {
+        LOG(ERROR) << "Failed in ManageChannelCommand - " << manageChannelRes.error().Message();
         return ScopedAStatus::fromServiceSpecificError(IOERROR);
     }
 
-    std::vector<uint8_t> selectCmd;
-    size_t channelNumber = 1;
-    if ((resApduBuff[0] > 0x03) && (resApduBuff[0] < 0x14)) {
+    uint8_t cla;
+    uint8_t channelNumber = (*manageChannelRes)[0];
+    if ((channelNumber > 0x03) && (channelNumber < 0x14)) {
         /* update CLA byte according to GP spec Table 11-12*/
-        selectCmd.push_back(0x40 + (resApduBuff[0] - 4)); /* Class of instruction */
-    } else if ((resApduBuff[0] > 0x00) && (resApduBuff[0] < 0x04)) {
+        cla = 0x40 + (channelNumber - 4); /* Class of instruction */
+    } else if ((channelNumber > 0x00) && (channelNumber < 0x04)) {
         /* update CLA byte according to GP spec Table 11-11*/
-        selectCmd.push_back((uint8_t)resApduBuff[0]); /* Class of instruction */
+        cla = channelNumber; /* Class of instruction */
     } else {
-        LOG(ERROR) << "Invalid Channel " << resApduBuff[0];
-        resApduBuff[0] = 0xff;
-        return ScopedAStatus::fromServiceSpecificError(IOERROR);
-    }
-    channelNumber = selectCmd[0];
-
-    // send select command
-    selectCmd.push_back((uint8_t)0xA4);        /* Instruction code */
-    selectCmd.push_back((uint8_t)0x04);        /* Instruction parameter 1 */
-    selectCmd.push_back(p2);                   /* Instruction parameter 2 */
-    selectCmd.push_back((uint8_t)aid.size());  // should be fine as AID is always less than 128
-    selectCmd.insert(selectCmd.end(), aid.begin(), aid.end());
-    selectCmd.push_back((uint8_t)256);
-
-    resApduBuff.clear();
-    if (!forwardCommand(selectCmd, resApduBuff).ok()) {
-        LOG(ERROR) << "Failed to send openLogicalChannel request.";
+        LOG(ERROR) << "Invalid Channel " << channelNumber;
         return ScopedAStatus::fromServiceSpecificError(IOERROR);
     }
 
-    result = ResponseOK(resApduBuff);
-    if (!result.ok()) {
-        LOG(ERROR) << "Failed to open logical channel - " << result.error().Message();
+    auto selectResponse = executeSelect(cla, p2, aid);
+    if (!selectResponse.ok()) {
+        LOG(ERROR) << "Failed to open logical channel - " << selectResponse.error().Message();
         return ScopedAStatus::fromServiceSpecificError(IOERROR);
     }
 
-    aidl_return->channelNumber = static_cast<int8_t>(channelNumber);
-    aidl_return->selectResponse = std::move(resApduBuff);
+    aidl_return->channelNumber = channelNumber;
+    aidl_return->selectResponse = std::move(*selectResponse);
     return ScopedAStatus::ok();
 }
 
 ScopedAStatus SecureElement::openBasicChannel(const std::vector<uint8_t>& aid, int8_t p2,
                                               std::vector<uint8_t>* aidl_return) {
-    // send select command
-    std::vector<uint8_t> selectCmd;
-    std::vector<uint8_t> resApduBuff;
 
-    selectCmd.push_back((uint8_t)0x00);        /* CLA - Basic Channel 0 */
-    selectCmd.push_back((uint8_t)0xA4);        /* Instruction code */
-    selectCmd.push_back((uint8_t)0x04);        /* Instruction parameter 1 */
-    selectCmd.push_back(p2);                   /* Instruction parameter 2 */
-    selectCmd.push_back((uint8_t)aid.size());  // should be fine as AID is always less than 128
-    selectCmd.insert(selectCmd.end(), aid.begin(), aid.end());
-    selectCmd.push_back((uint8_t)256);
-
-    if (!forwardCommand(selectCmd, resApduBuff).ok()) {
-        LOG(ERROR) << "Failed to send openBasicChannel request.";
-        return ScopedAStatus::fromServiceSpecificError(IOERROR);
-    }
-    auto result = ResponseOK(resApduBuff);
-    if (!result.ok()) {
-        LOG(ERROR) << "Failed to open basic channel - " << result.error().Message();
+    auto selectResponse = executeSelect(0 /* CLA */, p2, aid);
+    if (!selectResponse.ok()) {
+        LOG(ERROR) << "Failed to open basic channel - " << selectResponse.error().Message();
         return ScopedAStatus::fromServiceSpecificError(IOERROR);
     }
 
-    *aidl_return = resApduBuff;
+    *aidl_return = std::move(*selectResponse);
     return ScopedAStatus::ok();
 }
 
@@ -211,30 +194,65 @@ ScopedAStatus SecureElement::closeChannel(int8_t channelNumber) {
     if (callback_ == nullptr) {
         return ScopedAStatus::fromExceptionCode(EX_ILLEGAL_STATE);
     }
-    std::vector<uint8_t> manageChannelCommand = {0x00, 0x70, 0x80, 0x00, 0x00};
-    std::vector<uint8_t> resApduBuff;
 
-    // change class of instruction & p2 parameter
-    manageChannelCommand[0] = channelNumber;
+    uint8_t cla = channelNumber;
     // For Supplementary Channel update CLA byte according to GP
     if ((channelNumber > 0x03) && (channelNumber < 0x14)) {
         /* update CLA byte according to GP spec Table 11-12*/
-        manageChannelCommand[0] = 0x40 + (channelNumber - 4);
-    }
-    manageChannelCommand[3] = channelNumber; /* Instruction parameter 2 */
-
-    if (!forwardCommand(manageChannelCommand, resApduBuff).ok()) {
-        LOG(ERROR) << "Failed to send closeChannel request.";
-        return ScopedAStatus::fromServiceSpecificError(IOERROR);
+        cla = 0x40 + (channelNumber - 4);
     }
 
-    auto result = ResponseOK(resApduBuff);
+    auto result =
+        executeManageChannel(cla, kP1ManageChannelClose, channelNumber /* p2 */, 0 /* le */);
     if (!result.ok()) {
         LOG(ERROR) << "closeChannel failed - " << result.error().Message();
         return ScopedAStatus::fromServiceSpecificError(IOERROR);
     }
 
     return ScopedAStatus::ok();
+}
+
+Result<std::vector<uint8_t>> SecureElement::executeSelect(uint8_t cla, uint8_t p2,
+                                                          const std::vector<uint8_t>& aid) {
+    size_t aidLen = aid.size();
+    CF_EXPECT(aidLen <= kMaxAidLen,
+              "AID length " << aidLen << " exceeds maximum allowed length of " << kMaxAidLen);
+
+    // Command APDU encoding options:
+    //
+    // case 2s: |CLA|INS|P1 |P2 |LE |
+    // case 4s: |CLA|INS|P1 |P2 |LC |...BODY...|LE |
+    std::vector<uint8_t> selectCmd;
+    size_t cmdLengthValue = aid.empty() ? 0 : (1 + aidLen);
+    selectCmd.reserve(5 + cmdLengthValue);
+
+    selectCmd.push_back(cla);        /* CLA */
+    selectCmd.push_back(kSelectIns); /* Instruction code */
+    selectCmd.push_back(
+        kP1SelectByAid);     /* Instruction parameter 1 (Select by Dedicated File (DF) Name) */
+    selectCmd.push_back(p2); /* Instruction parameter 2 */
+    if (aidLen != 0) {
+        selectCmd.push_back(aidLen);
+        selectCmd.insert(selectCmd.end(), aid.begin(), aid.end());
+    }
+    selectCmd.push_back(0x00);
+
+    std::vector<uint8_t> resApduBuff;
+    CF_EXPECT(forwardCommand(selectCmd, resApduBuff), "select cmd failed.");
+    CF_EXPECT(ResponseOK(resApduBuff));
+
+    return resApduBuff;
+}
+
+Result<std::vector<uint8_t>> SecureElement::executeManageChannel(uint8_t cla, uint8_t p1,
+                                                                 uint8_t p2, uint8_t le) {
+    std::vector<uint8_t> manageChannelCommand = {cla, kManageChannelIns, p1, p2, le};
+
+    std::vector<uint8_t> resApduBuff;
+    CF_EXPECT(forwardCommand(manageChannelCommand, resApduBuff), "manage channel cmd failed.");
+    CF_EXPECT(ResponseOK(resApduBuff));
+
+    return resApduBuff;
 }
 
 }  // namespace aidl::android::hardware::secure_element

@@ -44,6 +44,10 @@ class SecureElement : public BnSecureElement {
                            std::vector<uint8_t>* aidl_return) override;
 
   private:
+    Result<std::vector<uint8_t>> executeSelect(uint8_t cla, uint8_t p2,
+                                               const std::vector<uint8_t>& aid);
+    Result<std::vector<uint8_t>> executeManageChannel(uint8_t cla, uint8_t p1, uint8_t p2,
+                                                      uint8_t le);
     Result<void> forwardCommand(const std::vector<uint8_t>& req, std::vector<uint8_t>& res);
     Result<ManagedMessage> toMessage(const std::vector<uint8_t>& message);
     Result<std::vector<uint8_t>> fromMessage(ManagedMessage& message);
