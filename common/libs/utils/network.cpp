@@ -100,65 +100,23 @@ bool NetworkInterfaceExists(const std::string& interface_name) {
 }
 
 #ifdef __linux__
-static std::optional<Command> GrepCommand() {
-  if (FileExists("/usr/bin/grep")) {
-    return Command("/usr/bin/grep");
-  } else if (FileExists("/bin/grep")) {
-    return Command("/bin/grep");
-  } else {
-    return {};
-  }
-}
+Result<void> ValidateTapInterfaceUnused(const std::string& interface_name) {
+  constexpr auto kTunTapDev = "/dev/net/tun";
 
-std::set<std::string> TapInterfacesInUse() {
-  std::vector<std::string> fdinfo_list;
+  auto tap_fd = SharedFD::Open(kTunTapDev, O_RDWR | O_NONBLOCK);
+  CF_EXPECTF(tap_fd->IsOpen(), "Unable to open tun device: {}",
+             tap_fd->StrError());
 
-  Result<std::vector<std::string>> processes = DirectoryContents("/proc");
-  if (!processes.ok()) {
-    LOG(ERROR) << "Failed to get contents of `/proc/`";
-    return {};
-  }
-  for (const std::string& process : *processes) {
-    std::string fdinfo_path = fmt::format("/proc/{}/fdinfo", process);
-    Result<std::vector<std::string>> fdinfos = DirectoryContents(fdinfo_path);
-    if (!fdinfos.ok()) {
-      LOG(VERBOSE) << "Failed to get contents of '" << fdinfo_path << "'";
-      continue;
-    }
-    for (const std::string& fdinfo : *fdinfos) {
-      std::string path = fmt::format("/proc/{}/fdinfo/{}", process, fdinfo);
-      fdinfo_list.emplace_back(std::move(path));
-    }
-  }
+  struct ifreq ifr;
+  memset(&ifr, 0, sizeof(ifr));
+  ifr.ifr_flags = IFF_TAP | IFF_NO_PI | IFF_VNET_HDR;
+  strncpy(ifr.ifr_name, interface_name.c_str(), IFNAMSIZ);
 
-  std::optional<Command> cmd = GrepCommand();
-  if (!cmd) {
-    LOG(WARNING) << "Unable to test TAP interface usage";
-    return {};
-  }
-  cmd->AddParameter("-E").AddParameter("-h").AddParameter("-e").AddParameter(
-      "^iff:.*");
+  int err = tap_fd->Ioctl(TUNSETIFF, &ifr);
+  CF_EXPECTF(err >= 0, "Unable to connect to {} tap interface: {}",
+             interface_name, tap_fd->StrError());
 
-  for (const std::string& fdinfo : fdinfo_list) {
-    cmd->AddParameter(fdinfo);
-  }
-
-  std::string stdout_str, stderr_str;
-  RunWithManagedStdio(std::move(*cmd), nullptr, &stdout_str, &stderr_str);
-
-  auto lines = android::base::Split(stdout_str, "\n");
-  std::set<std::string> tap_interfaces;
-  for (const auto& line : lines) {
-    if (line == "") {
-      continue;
-    }
-    if (!android::base::StartsWith(line, "iff:\t")) {
-      LOG(ERROR) << "Unexpected line \"" << line << "\"";
-      continue;
-    }
-    tap_interfaces.insert(line.substr(std::string("iff:\t").size()));
-  }
-  return tap_interfaces;
+  return {};
 }
 #endif
 
