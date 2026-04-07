@@ -4,3 +4,4 @@ gfxstream_gl_program_binary_link_status=supported
 vhost_user_vsock=true
 output_audio_streams_count=6
 lights_server_enabled=false
+gpu_mode_candidates=gfxstream,gfxstream_guest_angle_host_swiftshader,gfxstream_guest_angle,guest_swiftshader,none
