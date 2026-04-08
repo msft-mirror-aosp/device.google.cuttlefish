@@ -425,7 +425,6 @@ endif
 #
 ifeq ($(RELEASE_AVF_ENABLE_EARLY_VM),true)
   TRUSTY_KEYMINT_IMPL ?= rust
-  TRUSTY_SYSTEM_VM ?= enabled_with_placeholder_trusted_hal
 endif
 ifeq ($(TRUSTY_SYSTEM_VM), enabled_with_placeholder_trusted_hal)
     $(call soong_config_set_bool, trusty_system_vm, enabled, true)
