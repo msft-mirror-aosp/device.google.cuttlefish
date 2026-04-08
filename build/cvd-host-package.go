@@ -154,6 +154,11 @@ func (c *cvdHostPackage) GenerateAndroidBuildActions(ctx android.ModuleContext) 
 	ctx.ModulePhonyFiles(tarball)
 }
 
+// Always create all variants of cvd host packages (e.g. x86_64, arm, ...) for compatibility with acloud.
+func (c *cvdHostPackage) SplitAllVariants() bool {
+	return true
+}
+
 // @auto-generate: gob
 type CvdHostPackageMetadataInfo struct {
 	TarballMetadata android.Path
