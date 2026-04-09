@@ -19,13 +19,13 @@ package {
 vintf_fragment {
     name: "android.hardware.automotive.vehicle@V4-cf-service.xml",
     src: "android.hardware.automotive.vehicle@V4-cf-service.xml",
-    vendor: true,
+    device_specific: true,
 }
 
 cc_binary {
     name: "android.hardware.automotive.vehicle@V4-cf-service",
     defaults: ["VehicleHalDefaults"],
-    vendor: true,
+    device_specific: true,
     relative_install_path: "hw",
     srcs: [
         "VehicleService.cpp",

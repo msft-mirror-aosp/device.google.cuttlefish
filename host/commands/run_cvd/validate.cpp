@@ -35,13 +35,13 @@ static Result<void> TestTapDevices(
   if (InSandbox()) {
     return {};
   }
-  auto taps = TapInterfacesInUse();
   auto wifi = instance.wifi_tap_name();
-  CF_EXPECTF(taps.count(wifi) == 0, "Device \"{}\" in use", wifi);
+  CF_EXPECTF(ValidateTapInterfaceUnused(wifi), "Device \"{}\" in use", wifi);
   auto mobile = instance.mobile_tap_name();
-  CF_EXPECTF(taps.count(mobile) == 0, "Device \"{}\" in use", mobile);
+  CF_EXPECTF(ValidateTapInterfaceUnused(mobile), "Device \"{}\" in use",
+             mobile);
   auto eth = instance.ethernet_tap_name();
-  CF_EXPECTF(taps.count(eth) == 0, "Device \"{}\" in use", eth);
+  CF_EXPECTF(ValidateTapInterfaceUnused(eth), "Device \"{}\" in use", eth);
 #else
   (void)instance;
 #endif

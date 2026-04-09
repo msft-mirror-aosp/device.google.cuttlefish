@@ -23,7 +23,11 @@ func (r CvdHostPackageMetadataInfo) Encode(ctx gobtools.EncContext, buf *bytes.B
 		return err
 	}
 
-	if err = gobtools.EncodeBool(buf, r.IsLinuxX8664); err != nil {
+	if err = gobtools.EncodeBool(buf, r.IsStandardPackage); err != nil {
+		return err
+	}
+
+	if err = gobtools.EncodeBool(buf, r.IsDefaultArch); err != nil {
 		return err
 	}
 	return err
@@ -31,7 +35,7 @@ func (r CvdHostPackageMetadataInfo) Encode(ctx gobtools.EncContext, buf *bytes.B
 
 func (r CvdHostPackageMetadataInfo) CustomHash(hasher *proptools.Hasher) error {
 	hasher.WriteString(":cuttlefish.CvdHostPackageMetadataInfo")
-	hasher.WriteInt(2)
+	hasher.WriteInt(3)
 	hasher.WriteString(":cuttlefish.android.Path")
 	val1 := r.TarballMetadata == nil
 	if val1 {
@@ -58,7 +62,13 @@ func (r CvdHostPackageMetadataInfo) CustomHash(hasher *proptools.Hasher) error {
 		}
 	}
 	hasher.WriteString(":.bool")
-	if r.IsLinuxX8664 {
+	if r.IsStandardPackage {
+		hasher.WriteByte(1)
+	} else {
+		hasher.WriteByte(0)
+	}
+	hasher.WriteString(":.bool")
+	if r.IsDefaultArch {
 		hasher.WriteByte(1)
 	} else {
 		hasher.WriteByte(0)
@@ -77,7 +87,12 @@ func (r *CvdHostPackageMetadataInfo) Decode(ctx gobtools.EncContext, buf *bytes.
 		r.TarballMetadata = val2.(android.Path)
 	}
 
-	err = gobtools.DecodeBool(buf, &r.IsLinuxX8664)
+	err = gobtools.DecodeBool(buf, &r.IsStandardPackage)
+	if err != nil {
+		return err
+	}
+
+	err = gobtools.DecodeBool(buf, &r.IsDefaultArch)
 	if err != nil {
 		return err
 	}

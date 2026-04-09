@@ -15,6 +15,7 @@
  */
 #pragma once
 
+#include <common/libs/utils/result.h>
 #include <cstdint>
 #include <set>
 #include <string>
@@ -24,8 +25,7 @@ namespace cuttlefish {
 bool NetworkInterfaceExists(const std::string& interface_name);
 
 #ifdef __linux__
-// Returns a list of TAP devices that have open file descriptors
-std::set<std::string> TapInterfacesInUse();
+Result<void> ValidateTapInterfaceUnused(const std::string& interface_name);
 #endif
 
 void GenerateCorrespondingIpv6ForMac(const std::uint8_t mac[6], std::uint8_t out[16]);

@@ -344,14 +344,15 @@ ifeq ($(LOCAL_ENABLE_WIDEVINE),true)
 
 ifeq ($(RELEASE_WIDEVINE_CUTTLEFISH_L1),true)
     ifndef TARGET_BUILD_WIDEVINE_BUILD_CONFIG
-        PRODUCT_SOONG_NAMESPACES += vendor/google/widevine/cdm
-        PRODUCT_PACKAGES += liboemcrypto_no_ipc_test_only
+        ifneq ($(PRODUCT_IS_ATV),true)
+            PRODUCT_SOONG_NAMESPACES += vendor/google/widevine/cdm
+            PRODUCT_PACKAGES += liboemcrypto_no_ipc_test_only
+        endif
     endif
 endif
 
 ifeq ($(RELEASE_WIDEVINE_OEMCRYPTO_AIDL),true)
-    PRODUCT_SOONG_NAMESPACES += vendor/google_shared/widevine/oemcrypto/oemcrypto/aidl
-    PRODUCT_PACKAGES += android.hardware.oemcrypto-service.default
+    -include vendor/google_shared/widevine/oemcrypto/oemcrypto/aidl/device.mk
 endif
 
 endif
@@ -424,7 +425,6 @@ endif
 #
 ifeq ($(RELEASE_AVF_ENABLE_EARLY_VM),true)
   TRUSTY_KEYMINT_IMPL ?= rust
-  TRUSTY_SYSTEM_VM ?= enabled_with_placeholder_trusted_hal
 endif
 ifeq ($(TRUSTY_SYSTEM_VM), enabled_with_placeholder_trusted_hal)
     $(call soong_config_set_bool, trusty_system_vm, enabled, true)

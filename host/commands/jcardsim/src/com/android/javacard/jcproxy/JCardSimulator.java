@@ -16,6 +16,7 @@
 
 package com.android.javacard.jcproxy;
 
+import com.android.cts.omapi.test.CtsAndroidOmapiTestApplet;
 import com.android.javacard.keymaster.KM3Applet;
 
 import com.licel.jcardsim.smartcardio.CardSimulator;
@@ -25,6 +26,10 @@ import javacard.framework.AID;
 import javacard.framework.ISO7816;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.util.HexFormat;
+import java.util.Map;
+import java.util.TreeMap;
 import java.util.Vector;
 
 import javax.smartcardio.CommandAPDU;
@@ -38,22 +43,37 @@ public class JCardSimulator implements Simulator {
     public static final int MAX_LOGICAL_CHANNEL = 4;
     public static final byte INS_SELECT = (byte) 0xA4;
     public static final byte INS_MANAGE_CHANNEL = (byte) 0x70;
+    public static final byte BASIC_CHANNEL = (byte) 0;
+    public static final byte INVALID_CHANNEL = (byte) -1;
     // KeyMint Applet AID
     public static final String KEYMINT_AID = "A00000006203020C010101";
+    // OMAPI Test Applet AIDs
+    public static final String OMAPI_TEST_APPLET_AID_1 = "A000000476416E64726F696443545331";
+    public static final String OMAPI_TEST_APPLET_AID_2 = "A000000476416E64726F696443545332";
+
+    private static final Map<String, Class> CONFIGURATION_MAP;
+
+    static {
+        // Registry of applets to be installed in the simulator.
+        // TreeMap with case-insensitive ordering allows AIDs to be matched regardless
+        // of hexadecimal string casing during the selection process.
+        CONFIGURATION_MAP = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        CONFIGURATION_MAP.put(KEYMINT_AID, KM3Applet.class);
+        CONFIGURATION_MAP.put(OMAPI_TEST_APPLET_AID_1, CtsAndroidOmapiTestApplet.class);
+        CONFIGURATION_MAP.put(OMAPI_TEST_APPLET_AID_2, CtsAndroidOmapiTestApplet.class);
+    }
 
     private CardSimulator simulator;
-    private ResponseAPDU response;
     private Vector<String> channelAid;
     private int currentChannel;
 
     public JCardSimulator() {
         // Creating an empty Vector
         channelAid = new Vector<String>(MAX_LOGICAL_CHANNEL);
-        channelAid.add("ZeroChannelOccupied");
-        for (int ch = 1; ch < MAX_LOGICAL_CHANNEL; ch++) {
+        for (int ch = 0; ch < MAX_LOGICAL_CHANNEL; ch++) {
             channelAid.add(null);
         }
-        currentChannel = -1;
+        currentChannel = INVALID_CHANNEL;
     }
 
     @Override
@@ -64,30 +84,63 @@ public class JCardSimulator implements Simulator {
 
     @Override
     public void disconnectSimulator() throws Exception {
-        currentChannel = -1;
+        currentChannel = INVALID_CHANNEL;
     }
 
-    private void installKeyMint() throws Exception {
-        AID appletAID = AIDUtil.create(KEYMINT_AID);
-        simulator.installApplet(appletAID, KM3Applet.class);
+    private void provisionKeyMint() throws Exception {
         // Select applet
-        simulator.selectApplet(appletAID);
+        simulator.selectApplet(AIDUtil.create(KEYMINT_AID));
         // Provision
         new KeymintSEFactoryProvision(simulator).provision();
         new KeymintOEMProvision(simulator).provision();
+
+        // Deselect the Keymint applet.
+        simulator.reset();
     }
 
     @Override
     public void setupSimulator() throws Exception {
-        installKeyMint();
+        CONFIGURATION_MAP.forEach(
+                (aid, appletClass) -> {
+                    byte[] aidBytes = HexFormat.of().parseHex(aid);
+                    byte aidLength = (byte) aidBytes.length;
+
+                    // Installs the applet into the simulator with GlobalPlatform-compliant
+                    // parameters.
+                    // The install parameters follow the LV (Length-Value) format:
+                    // [Li][AID][Lc][ControlInfo][La][AppletData]
+                    // - Li: Instance AID Length
+                    // - Lc: Control Info Length (0x00 for this installation)
+                    // - La: Applet Data Length (0x00 for this installation)
+
+                    // Total length = 1 (Li) + aidLen + 1 (Lc) + 1 (La)
+                    short totalLen = (short) (1 + aidLength + 1 + 1);
+                    ByteBuffer inputParamBytes = ByteBuffer.allocate(totalLen);
+
+                    // Construction of the Installation Parameters (LV pairs)
+                    inputParamBytes.put(aidLength); // Li: Length of Instance AID
+                    inputParamBytes.put(aidBytes); // Instance AID bytes
+                    inputParamBytes.put((byte) 0); // Lc: Length of Control Info (Empty)
+                    inputParamBytes.put((byte) 0); // La: Length of Applet Data (Empty)
+
+                    AID appletAID = AIDUtil.create(aid);
+
+                    simulator.installApplet(
+                            appletAID,
+                            appletClass,
+                            inputParamBytes.array(),
+                            (short) 0,
+                            (byte) inputParamBytes.capacity());
+                });
+
+        provisionKeyMint();
     }
 
-    private final byte[] intToByteArray(int value) {
-        return new byte[] {(byte) (value >>> 8), (byte) value};
-    }
-
-    private byte getchannelNumber(byte cla) throws IOException {
+    private byte getChannelNumber(byte cla) throws IOException {
         byte ch = (byte) (cla & 0x03);
+        if (ch == BASIC_CHANNEL) {
+            return ch;
+        }
         boolean b7 = (cla & 0x40) == (byte) 0x40;
 
         // b7 = 1 indicates the inter-industry class byte coding
@@ -98,18 +151,18 @@ public class JCardSimulator implements Simulator {
         if (!(ch >= (byte) 0x00 && ch <= (byte) 0x14)) {
             throw new IOException("class byte error");
         }
-
         return ch;
     }
 
-    private ResponseAPDU processManageCommand(byte[] apdu) {
-        int firstAvailableSlot = -1;
+    private byte[] processManageCommand(byte[] apdu) {
+        int firstAvailableSlot = INVALID_CHANNEL;
         int numChannels = channelAid.size();
 
         // Close the channel if p1 = 0x80
         if (apdu[ISO7816.OFFSET_P1] == (byte) 0x80) {
             channelAid.set(apdu[ISO7816.OFFSET_P2], null);
-            return new ResponseAPDU(new byte[] {(byte) 0x90, 0x00});
+            currentChannel = INVALID_CHANNEL;
+            return formatApduResponse(null, ISO7816.SW_NO_ERROR);
         }
 
         for (int i = 1; i < numChannels; i++) {
@@ -119,22 +172,59 @@ public class JCardSimulator implements Simulator {
             }
         }
 
-        if (firstAvailableSlot == -1) {
-            return new ResponseAPDU(new byte[] {(byte) 0x68, (byte) 0x81});
+        if (INVALID_CHANNEL == firstAvailableSlot) {
+            return formatApduResponse(null, ISO7816.SW_LOGICAL_CHANNEL_NOT_SUPPORTED);
         }
 
         currentChannel = firstAvailableSlot;
-        return new ResponseAPDU(new byte[] {(byte) currentChannel, (byte) 0x90, 0x00});
+        return formatApduResponse(new byte[] {(byte) currentChannel}, ISO7816.SW_NO_ERROR);
+    }
+
+    /**
+     * Manually transmits a SELECT APDU to the simulator to initiate applet selection.
+     *
+     * <p>Unlike {@code Simulator.selectApplet()}, which abstracts the selection logic, this method
+     * uses {@code Simulator.transmit()} to send the raw APDU bytes exactly as provided. This
+     * ensures that any specific encoding or custom parameters in the caller's SELECT command are
+     * preserved and processed without modification by the simulator framework.
+     *
+     * @param apdu The raw SELECT APDU byte array to be transmitted.
+     * @return The response APDU bytes returned by the simulator.
+     * @throws Exception If the transmission fails or the simulator state is invalid.
+     */
+    private byte[] processSelectCommand(byte[] apdu) throws Exception {
+        CommandAPDU apduCmd = new CommandAPDU(apdu);
+        byte[] aid = apduCmd.getData();
+        // If the AID is empty, it means no applet is to be selected on this channel and the
+        // default applet is used
+        if (aid.length == 0) {
+            return formatApduResponse(null, ISO7816.SW_NO_ERROR);
+        }
+
+        String aidHex = HexFormat.of().formatHex(aid);
+        if (!CONFIGURATION_MAP.containsKey(aidHex)) {
+            return formatApduResponse(null, ISO7816.SW_FILE_NOT_FOUND);
+        }
+
+        ResponseAPDU response = new ResponseAPDU(simulator.transmitCommand(apdu));
+        if (ISO7816.SW_NO_ERROR == response.getSW()) {
+            byte ch = getChannelNumber((byte) apduCmd.getCLA());
+
+            // Update the channel registry to associate this AID with the active channel.
+            channelAid.set(ch, aidHex);
+            currentChannel = ch;
+        }
+        return formatApduResponse(response);
     }
 
     /*
      * Jcard Simulator design is based on one applet and one channel at a time
      *
      * In order to communicate multiple applets simultaneously on different channels
-     * We have added Logical channels implementation here. which has following variables
+     * We have added Logical channels implementation here. which has the following variables
      *  - Vector[AID] (index 0 represent channel 0... so on)
      *  - CurrentChannelnumber
-     * Generalized flow between SE hal and SE applet via JCserver is as follow
+     * Generalized flow between SE hal and SE applet via JCserver is as follows
      *
      *    SE HAL                     JCServer                                     JcardSim
      *  ------------------------------------------------------------------------------------------
@@ -159,54 +249,45 @@ public class JCardSimulator implements Simulator {
      */
     @Override
     public byte[] executeApdu(byte[] apdu) throws Exception {
-
-        // Check if ManageChannel Command
+        // Handle manage channel command.
         if (apdu[ISO7816.OFFSET_INS] == INS_MANAGE_CHANNEL) {
-            response = processManageCommand(apdu);
-        } else {
-            CommandAPDU apduCmd = new CommandAPDU(apdu);
-            byte ch = getchannelNumber((byte) apduCmd.getCLA());
-
-            if (ch == currentChannel || (byte) apduCmd.getINS() == INS_SELECT) {
-                response = simulator.transmitCommand(apduCmd);
-                // save AIDs if command is select
-                if ((byte) apduCmd.getINS() == INS_SELECT && response.getSW() == (int) 0x9000) {
-                    channelAid.set(
-                            ch,
-                            ByteArrayConverter.byteArrayToHexString(
-                                    apdu, ISO7816.OFFSET_CDATA, apdu[ISO7816.OFFSET_LC]));
-                    currentChannel = ch;
-                }
-            } else {
-                // send select command
-                byte[] aid = ByteArrayConverter.hexStringToByteArray(channelAid.get(ch));
-                byte[] selApdu = new byte[6 + aid.length];
-                selApdu[0] = 0x00;
-                selApdu[1] = INS_SELECT;
-                selApdu[2] = (byte) 0x04;
-                selApdu[3] = (byte) 0x00;
-                selApdu[4] = (byte) aid.length;
-                System.arraycopy(aid, 0, selApdu, 5, aid.length);
-                selApdu[selApdu.length - 1] = 0x00;
-
-                CommandAPDU selectCmd = new CommandAPDU(selApdu);
-                response = simulator.transmitCommand(selectCmd);
-                if (response.getSW() == 0x9000) {
-                    currentChannel = ch;
-                    response = simulator.transmitCommand(apduCmd);
-                }
-            }
+            return processManageCommand(apdu);
         }
-        return intToByteArray(response.getSW());
+
+        // Handle select command
+        if (apdu[ISO7816.OFFSET_INS] == INS_SELECT) {
+            return processSelectCommand(apdu);
+        }
+
+        CommandAPDU apduCmd = new CommandAPDU(apdu);
+        byte channel = getChannelNumber((byte) apduCmd.getCLA());
+        if (channel != currentChannel) {
+            // The APDU target resides on a different logical channel.
+            // Explicitly select the associated applet on that channel before routing the command.
+            byte[] aid = HexFormat.of().parseHex(channelAid.get(channel));
+            byte[] selectResponse = simulator.selectAppletWithResult(AIDUtil.create(aid));
+            ResponseAPDU response = new ResponseAPDU(selectResponse);
+
+            if (ISO7816.SW_NO_ERROR != response.getSW()) {
+                return formatApduResponse(response);
+            }
+            currentChannel = channel;
+        }
+
+        return formatApduResponse(simulator.transmitCommand(apduCmd));
     }
 
-    @Override
-    public byte[] formatApduResponse() {
-        byte[] resp = response.getData();
-        byte[] status = intToByteArray(response.getSW());
-        byte[] out = new byte[(resp.length + status.length)];
-        System.arraycopy(resp, 0, out, 0, resp.length);
-        System.arraycopy(status, 0, out, resp.length, status.length);
-        return out;
+    private byte[] formatApduResponse(ResponseAPDU response) {
+        return formatApduResponse(response.getData(), response.getSW());
+    }
+
+    private byte[] formatApduResponse(byte[] data, int statusWord) {
+        int dataLength = data != null ? data.length : 0;
+        ByteBuffer bb = ByteBuffer.allocate(dataLength + 2 /* Status Word */);
+        if (data != null) {
+            bb.put(data);
+        }
+        bb.putShort((short) statusWord);
+        return bb.array();
     }
 }

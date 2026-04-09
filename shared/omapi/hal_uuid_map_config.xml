@@ -15,6 +15,12 @@
 <!-- For VTS tests use UID: 0 and UUID: 9f36407ead0639fc966f14dde7970f68 -->
 
 <ref_do>
+    <uuid_ref_do>
+        <uids>
+            <uid>0</uid>
+        </uids>
+        <uuid>9f36407ead0639fc966f14dde7970f68</uuid>
+    </uuid_ref_do>
     <!-- Sample mapping entry with UIDs:1087 and 1088 mapped to -->
     <!-- UUID:a9b7ba70783b317e9998dc4dd82eb3c5 -->
     <uuid_ref_do>
