@@ -70,10 +70,13 @@ $(call inherit-product, $(SRC_TARGET_DIR)/product/emulated_storage.mk)
 # partition, instead of the vendor partition, and do not need vendor
 # sepolicy
 PRODUCT_PRODUCT_PROPERTIES += \
-    remote_provisioning.hostname=preprod-remoteprovisioning.googleapis.com \
     persist.adb.tcp.port=5555 \
     ro.com.google.locationfeatures=1 \
-    persist.sys.fuse.passthrough.enable=true \
+    persist.sys.fuse.passthrough.enable=true
+
+# RKPD
+PRODUCT_VENDOR_PROPERTIES += \
+    remote_provisioning.hostname=preprod-remoteprovisioning.googleapis.com \
     remote_provisioning.tee.rkp_only=1
 
 # Until we support adb keys on user builds, and fix logcat over serial,
