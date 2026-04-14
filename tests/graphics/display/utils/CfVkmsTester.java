@@ -37,10 +37,10 @@ public class CfVkmsTester implements Closeable {
 
     // DRM resource types
     private enum DrmResource {
-        CONNECTOR("connectors/CON_"),
+        CONNECTOR("connectors/CONNECTOR_"),
         CRTC("crtcs/CRTC_"),
-        ENCODER("encoders/ENC_"),
-        PLANE("planes/PLA_");
+        ENCODER("encoders/ENCODER_"),
+        PLANE("planes/PLANE_");
 
         private final String basePath;
 
@@ -351,8 +351,12 @@ public class CfVkmsTester implements Closeable {
             success = toggleSystemUi(false) && toggleVkmsAsDisplayDriver(true)
                 && setupDisplayConnectors(displaysCount, explicitConfig) && toggleVkms(true)
                 && toggleSystemUi(true);
+            if (success) {
+                waitForDisplaysToBeOn(displaysCount, DISPLAY_BRINGUP_TIMEOUT_MS);
+            }
         } catch (Exception e) {
             CLog.e("Failed to set up VKMS: %s", e.toString());
+            success = false;
         }
 
         if (!success) {
@@ -643,7 +647,7 @@ public class CfVkmsTester implements Closeable {
         throws Exception {
         String crtcName = DrmResource.CRTC.getBasePath() + crtcIdx;
         String resourceDir = VKMS_BASE_DIR + "/" + resource.getBasePath() + resourceIdx;
-        String possibleCrtcPath = resourceDir + "/possible_crtcs";
+        String possibleCrtcPath = resourceDir + "/possible_" + crtcName;
         String crtcDir = VKMS_BASE_DIR + "/" + crtcName;
 
         String command = "ln -s " + crtcDir + " " + possibleCrtcPath;
@@ -663,7 +667,7 @@ public class CfVkmsTester implements Closeable {
         String encoderName = DrmResource.ENCODER.getBasePath() + encoderIdx;
         String connectorDir =
             VKMS_BASE_DIR + "/" + DrmResource.CONNECTOR.getBasePath() + connectorIdx;
-        String possibleEncoderPath = connectorDir + "/possible_encoders";
+        String possibleEncoderPath = connectorDir + "/possible_" + encoderName;
         String encoderDir = VKMS_BASE_DIR + "/" + encoderName;
 
         String command = "ln -s " + encoderDir + " " + possibleEncoderPath;
@@ -703,7 +707,7 @@ public class CfVkmsTester implements Closeable {
     private CommandResult executeCommand(String command) throws Exception {
         CommandResult result = null;
         long startTime = System.currentTimeMillis();
-        long maxDurationMs = 500;
+        long maxDurationMs = 5000;
 
         while (System.currentTimeMillis() - startTime < maxDurationMs) {
             result = device.executeShellV2Command(command);

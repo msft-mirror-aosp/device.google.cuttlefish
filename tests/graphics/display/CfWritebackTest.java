@@ -63,7 +63,7 @@ public class CfWritebackTest extends BaseHostJUnit4Test {
 
         mVkmsTester.waitForDisplaysToBeOn(1, CfVkmsTester.DISPLAY_BRINGUP_TIMEOUT_MS);
         // After the display is on, wait for the login screen to find a colored image to read back.
-        Thread.sleep(5000);
+        Thread.sleep(10000);
     }
 
     @After
