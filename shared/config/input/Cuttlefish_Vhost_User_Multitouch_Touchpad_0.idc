@@ -5,3 +5,5 @@ touch.orientationAware = 0
 
 # Allow touches while the screen is off
 touch.enableForInactiveViewport = 1
+
+touch.wake = 1
