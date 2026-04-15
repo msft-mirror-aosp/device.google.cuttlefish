@@ -29,3 +29,41 @@ prebuilt_etc_host {
     src: "config_tv.json",
     sub_dir: "cvd_config",
 }
+
+prebuilt_etc {
+    name: "tv_audio_policy_configuration.xml",
+    src: "audio/policy/audio_policy_configuration.xml",
+    filename: "audio_policy_configuration.xml",
+    vendor: true,
+    required: [
+        "tv_primary_audio_policy_configuration.xml",
+        "tv_bluetooth_with_le_audio_policy_configuration_7_0.xml",
+    ],
+    enabled: select(soong_config_variable("cuttlefish_config", "use_tv_audio_policy"), {
+        true: true,
+        default: false,
+    }),
+}
+
+prebuilt_etc {
+    name: "tv_primary_audio_policy_configuration.xml",
+    src: "audio/policy/primary_audio_policy_configuration.xml",
+    filename: "primary_audio_policy_configuration.xml",
+    vendor: true,
+    enabled: select(soong_config_variable("cuttlefish_config", "use_tv_audio_policy"), {
+        true: true,
+        default: false,
+    }),
+}
+
+prebuilt_etc {
+    name: "tv_bluetooth_with_le_audio_policy_configuration_7_0.xml",
+    // Use the absolute path to bypass the framework's soong_namespace isolation
+    src: "//frameworks/av/services/audiopolicy/config:bluetooth_with_le_audio_policy_configuration_7_0",
+    filename: "bluetooth_with_le_audio_policy_configuration_7_0.xml",
+    vendor: true,
+    enabled: select(soong_config_variable("cuttlefish_config", "use_tv_audio_policy"), {
+        true: true,
+        default: false,
+    }),
+}
