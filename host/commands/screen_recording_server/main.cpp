@@ -79,7 +79,7 @@ class ScreenRecordingServiceImpl final
     for (const SharedFD& socket : *launcher_monitor_sockets) {
       Result<void> result =
           RunLauncherAction(socket, extended_action, std::nullopt);
-      successes.push_back(result.ok());
+      successes.push_back(result.has_value());
     }
 
     return successes;

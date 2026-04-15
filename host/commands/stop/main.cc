@@ -140,7 +140,7 @@ int StopInstance(const CuttlefishConfig& config,
                  const CuttlefishConfig::InstanceSpecific& instance,
                  const std::int32_t wait_for_launcher) {
   auto result = CleanStopInstance(instance, wait_for_launcher);
-  if (!result.ok()) {
+  if (!result.has_value()) {
     LOG(ERROR) << "Clean stop failed: " << result.error().FormatForEnv();
     return FallBackStop(DirsForInstance(config, instance));
   }
@@ -196,7 +196,8 @@ FlagVaules GetFlagValues(int argc, char** argv) {
   std::vector<std::string> args =
       ArgsToVec(argc - 1, argv + 1);  // Skip argv[0]
   auto parse_res = ConsumeFlags(flags, args);
-  CHECK(parse_res.ok() || helpxml) << "Could not process command line flags.";
+  CHECK(parse_res.has_value() || helpxml)
+      << "Could not process command line flags.";
 
   return {wait_for_launcher, clear_instance_dirs, helpxml};
 }
@@ -236,7 +237,8 @@ int StopCvdMain(const std::int32_t wait_for_launcher,
 
           if (clear_instance_dirs && DirectoryExists(instance.instance_dir())) {
             LOG(INFO) << "Deleting instance dir " << instance.instance_dir();
-            if (!RecursivelyRemoveDirectory(instance.instance_dir()).ok()) {
+            if (!RecursivelyRemoveDirectory(instance.instance_dir())
+                     .has_value()) {
               LOG(ERROR) << "Unable to rmdir " << instance.instance_dir();
             }
           }

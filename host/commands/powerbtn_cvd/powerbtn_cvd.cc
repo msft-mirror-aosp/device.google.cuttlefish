@@ -60,7 +60,7 @@ int main(int argc, char** argv) {
   ::android::base::InitLogging(argv, android::base::StderrLogger);
   google::ParseCommandLineFlags(&argc, &argv, true);
   cuttlefish::Result<void> result = cuttlefish::PowerbtnCvdMain();
-  if (!result.ok()) {
+  if (!result.has_value()) {
     LOG(ERROR) << result.error().FormatForEnv();
     return EXIT_FAILURE;
   }

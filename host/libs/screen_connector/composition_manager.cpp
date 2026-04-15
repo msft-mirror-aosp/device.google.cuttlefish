@@ -173,7 +173,7 @@ void CompositionManager::OnDisplayCreated(const DisplayCreatedEvent& e) {
   auto result = display_ring_buffer_manager_.CreateLocalDisplayBuffer(
       cluster_index_, e.display_number, e.display_width, e.display_height);
 
-  if (!result.ok()) {
+  if (!result.has_value()) {
     LOG(FATAL) << "OnDisplayCreated failed: " << result.error().FormatForEnv();
   }
 }

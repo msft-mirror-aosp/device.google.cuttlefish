@@ -33,7 +33,7 @@ static constexpr sensors::SensorsMask kUiSupportedSensors =
 SensorsHandler::SensorsHandler(SharedFD sensors_fd)
     : channel_(transport::SharedFdChannel(sensors_fd, sensors_fd)) {
   auto refresh_result = RefreshSensors(0, 0, 0);
-  if (!refresh_result.ok()) {
+  if (!refresh_result.has_value()) {
     LOG(ERROR) << "Failed to refresh sensors: "
                << refresh_result.error().FormatForEnv();
   }
@@ -80,7 +80,7 @@ Result<std::string> SensorsHandler::GetSensorsData() {
 // Get new sensor values and send them to client.
 void SensorsHandler::HandleMessage(const double x, const double y, const double z) {
   auto refresh_result = RefreshSensors(x, y, z);
-  if (!refresh_result.ok()) {
+  if (!refresh_result.has_value()) {
     LOG(ERROR) << "Failed to refresh sensors: "
                << refresh_result.error().FormatForEnv();
     return;
@@ -97,7 +97,7 @@ int SensorsHandler::Subscribe(std::function<void(const uint8_t*, size_t)> send_t
 
   // Send device's initial state to the new client.
   auto result = GetSensorsData();
-  if (!result.ok()) {
+  if (!result.has_value()) {
     LOG(ERROR) << "Failed to get sensors data: "
                << result.error().FormatForEnv();
     return subscriber_id;
@@ -117,7 +117,7 @@ void SensorsHandler::UnSubscribe(int subscriber_id) {
 
 void SensorsHandler::UpdateSensorsUi() {
   auto result = GetSensorsData();
-  if (!result.ok()) {
+  if (!result.has_value()) {
     LOG(ERROR) << "Failed to get sensors data: "
                << result.error().FormatForEnv();
     return;

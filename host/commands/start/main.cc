@@ -178,7 +178,7 @@ int CvdInternalStartMain(int argc, char** argv) {
       {GflagsCompatFlag("system_image_dir", image_dir)}, args_copy);
   LOG(INFO) << "Using system_image_dir of: " << image_dir;
 
-  if (!parse_res.ok()) {
+  if (!parse_res.has_value()) {
     LOG(ERROR) << "Error extracting system_image_dir from args: "
                << parse_res.error().FormatForEnv();
     return -1;
@@ -214,7 +214,7 @@ int CvdInternalStartMain(int argc, char** argv) {
   }
 
   auto instance_nums = InstanceNumsCalculator().FromGlobalGflags().Calculate();
-  if (!instance_nums.ok()) {
+  if (!instance_nums.has_value()) {
     LOG(ERROR) << instance_nums.error().FormatForEnv();
     abort();
   }

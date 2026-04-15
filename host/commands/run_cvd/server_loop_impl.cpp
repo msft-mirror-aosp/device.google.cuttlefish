@@ -105,7 +105,7 @@ Result<void> ServerLoopImpl::Run() {
     auto client = SharedFD::Accept(*server_);
     while (client->IsOpen()) {
       auto launcher_action_with_info_result = ReadLauncherActionFromFd(client);
-      if (!launcher_action_with_info_result.ok()) {
+      if (!launcher_action_with_info_result.has_value()) {
         LOG(ERROR) << "Reading launcher command from monitor failed: "
                    << launcher_action_with_info_result.error().FormatForEnv();
         break;
@@ -122,7 +122,7 @@ Result<void> ServerLoopImpl::Run() {
       }
       auto result = HandleExtended(launcher_action, process_monitor);
       auto response = LauncherResponse::kSuccess;
-      if (!result.ok()) {
+      if (!result.has_value()) {
         LOG(ERROR) << "Failed to handle extended action request.";
         LOG(ERROR) << result.error().FormatForEnv();
         response = LauncherResponse::kError;
@@ -205,7 +205,7 @@ void ServerLoopImpl::HandleActionWithNoData(const LauncherAction action,
   switch (action) {
     case LauncherAction::kStop: {
       auto stop = process_monitor.StopMonitoredProcesses();
-      if (stop.ok()) {
+      if (stop.has_value()) {
         auto response = LauncherResponse::kSuccess;
         client->Write(&response, sizeof(response));
         std::exit(0);
@@ -219,7 +219,7 @@ void ServerLoopImpl::HandleActionWithNoData(const LauncherAction action,
     }
     case LauncherAction::kFail: {
       auto stop = process_monitor.StopMonitoredProcesses();
-      if (stop.ok()) {
+      if (stop.has_value()) {
         auto response = LauncherResponse::kSuccess;
         client->Write(&response, sizeof(response));
         std::exit(RunnerExitCodes::kVirtualDeviceBootFailed);
@@ -249,7 +249,7 @@ void ServerLoopImpl::HandleActionWithNoData(const LauncherAction action,
       }
 
       auto stop = process_monitor.StopMonitoredProcesses();
-      if (!stop.ok()) {
+      if (!stop.has_value()) {
         LOG(ERROR) << "Stopping processes failed:\n"
                    << stop.error().FormatForEnv();
         auto response = LauncherResponse::kError;
@@ -274,7 +274,7 @@ void ServerLoopImpl::HandleActionWithNoData(const LauncherAction action,
     }
     case LauncherAction::kRestart: {
       auto stop = process_monitor.StopMonitoredProcesses();
-      if (!stop.ok()) {
+      if (!stop.has_value()) {
         LOG(ERROR) << "Stopping processes failed:\n"
                    << stop.error().FormatForEnv();
         auto response = LauncherResponse::kError;

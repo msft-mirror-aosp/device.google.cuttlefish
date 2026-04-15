@@ -46,7 +46,7 @@ class VconsoleSensorsTransport : public goldfish::SensorsTransport {
     auto channel = GetChannel(type);
 
     auto message_result = cuttlefish::transport::CreateMessage(0, size);
-    if (!message_result.ok()) {
+    if (!message_result.has_value()) {
       LOG(ERROR) << "Failed to allocate sensors message with size: " << size
                  << " bytes. "
                  << "Error message: " << message_result.error().Message();
@@ -57,7 +57,7 @@ class VconsoleSensorsTransport : public goldfish::SensorsTransport {
     std::memcpy(message->payload, msg, size);
 
     auto send_result = channel.SendRequest(*message);
-    if (!send_result.ok()) {
+    if (!send_result.has_value()) {
       LOG(ERROR) << "Failed to send sensors message with size: " << size
                  << " bytes. "
                  << "Error message: " << send_result.error().Message();
@@ -72,7 +72,7 @@ class VconsoleSensorsTransport : public goldfish::SensorsTransport {
     auto channel = GetChannel(type);
 
     auto message_result = channel.ReceiveMessage();
-    if (!message_result.ok()) {
+    if (!message_result.has_value()) {
       LOG(ERROR) << "Failed to receive sensors message. "
                  << "Error message: " << message_result.error().Message();
       return -1;

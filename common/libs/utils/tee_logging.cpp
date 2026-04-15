@@ -116,7 +116,7 @@ static LogSeverity GuessSeverity(const std::string& env_var,
                                  LogSeverity default_value) {
   std::string env_value = StringFromEnv(env_var, "");
   auto severity_result = ToSeverity(env_value);
-  if (!severity_result.ok()) {
+  if (!severity_result.has_value()) {
     return default_value;
   }
   return severity_result.value();

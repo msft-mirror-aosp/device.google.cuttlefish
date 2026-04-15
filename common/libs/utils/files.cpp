@@ -587,7 +587,7 @@ Result<std::string> FindFile(const std::string& path,
         }
         return true;
       });
-  if (!res.ok()) {
+  if (!res.has_value()) {
     return "";
   }
   return ret;
@@ -605,7 +605,7 @@ Result<void> WalkDirectory(
     callback(file_path);
     if (DirectoryExists(file_path)) {
       auto res = WalkDirectory(file_path, callback);
-      if (!res.ok()) {
+      if (!res.has_value()) {
         return res;
       }
     }
