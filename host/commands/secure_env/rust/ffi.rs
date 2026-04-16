@@ -30,7 +30,7 @@ use std::os::fd::OwnedFd;
 /// caller must not use or close them after the call.
 ///
 /// TODO: What are the preconditions for `trm`?
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn kmr_ta_main(
     fd_in: OwnedFd,
     fd_out: OwnedFd,
