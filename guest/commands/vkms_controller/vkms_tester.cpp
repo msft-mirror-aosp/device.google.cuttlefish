@@ -183,16 +183,16 @@ bool VkmsTester::SetupDisplays(
 
     CreateResource(DrmResource::kConnector, i);
     if (isExplicitConfig) {
-      SetConnectorStatus(i, builders[i].mEnabledAtStart);
       SetConnectorType(i, builders[i].mType);
       if (builders[i].mMonitorName.type != MonitorName::Type::UNSET) {
         SetConnectorEdid(i, builders[i].mMonitorName);
       }
+      SetConnectorStatus(i, builders[i].mEnabledAtStart);
     } else {
-      SetConnectorStatus(i, false);
       // Set connector type, eDP for first one, DP for the rest
       SetConnectorType(
           i, i == 0 ? ConnectorType::keDP : ConnectorType::kDisplayPort);
+      SetConnectorStatus(i, false);
     }
     LinkConnectorToEncoder(i, i);
 
