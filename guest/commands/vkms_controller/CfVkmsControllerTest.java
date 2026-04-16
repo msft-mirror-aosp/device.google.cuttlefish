@@ -66,6 +66,20 @@ public class CfVkmsControllerTest extends BaseHostJUnit4Test {
         return result;
     }
 
+    private boolean waitForSurfaceFlingerResolution(String expectedResolution, boolean shouldBePresent) throws Exception {
+        for (int i = 0; i < 15; i++) {
+            CommandResult result = getDevice().executeShellV2Command("dumpsys SurfaceFlinger --displays");
+            if (result.getStatus() == CommandStatus.SUCCESS) {
+                boolean isPresent = result.getStdout().contains(expectedResolution);
+                if (isPresent == shouldBePresent) {
+                    return true;
+                }
+            }
+            RunUtil.getDefault().sleep(1000);
+        }
+        return false;
+    }
+
     @Test
     public void testUsageAndInvalidArgs() throws Exception {
         CommandResult result = runTargetCommand(""); // No args
@@ -102,11 +116,11 @@ public class CfVkmsControllerTest extends BaseHostJUnit4Test {
     }
 
     @Test
-    public void testSetupScreensAndListDisplaysJSON() throws Exception {
+    public void testSetupScreensAndSystemVerification() throws Exception {
         // HandleSetupScreens branch
         CommandResult result = runTargetCommand("setup " +
                 "--screen=name=REDRIX " +
-                "--screen=name=ACI_9155_ASUS_VH238_HDMI,planes=2,enabled=false");
+                "--screen=name=HP_Spectre32_4K_DP,enabled=false");
         assertEquals("Setup screens failed: " + result.getStderr(),
                      CommandStatus.SUCCESS, result.getStatus());
 
@@ -134,29 +148,42 @@ public class CfVkmsControllerTest extends BaseHostJUnit4Test {
         // Ensure the JSON response formed properly containing both displays
         assertTrue("JSON output missing REDRIX: " + jsonOut,
                    jsonOut.contains("\"display_name\" : \"REDRIX\""));
-        assertTrue("JSON output missing ASUS_VH238_HDMI: " + jsonOut,
-                   jsonOut.contains("\"display_name\" : \"ACI_9155_ASUS_VH238_HDMI\""));
+        assertTrue("JSON output missing HP_Spectre32_4K_DP: " + jsonOut,
+                   jsonOut.contains("\"display_name\" : \"HP_Spectre32_4K_DP\""));
 
         // REDRIX should be connected (default behavior)
         assertTrue("REDRIX should be connected",
                    jsonOut.contains("\"status\" : \"Connected\""));
 
-        // ASUS should be disabled from the `--screen` argument
-        assertTrue("ASUS should be disconnected",
+        // HP Spectre should be disabled from the `--screen` argument
+        assertTrue("HP Spectre should be disconnected",
                    jsonOut.contains("\"status\" : \"Disconnected\""));
+
+        // Verify the system state with SurfaceFlinger
+        // REDRIX should be connected (2256x1504)
+        assertTrue("REDRIX (2256x1504) was not detected by SurfaceFlinger",
+                   waitForSurfaceFlingerResolution("2256x1504", true));
+
+        // HP Spectre should be disconnected (3840x2160 shouldn't be active)
+        assertTrue("HP Spectre (3840x2160) should be disconnected and not visible to SurfaceFlinger",
+                   waitForSurfaceFlingerResolution("3840x2160", false));
     }
 
     @Test
-    public void testHotplugToggle() throws Exception {
+    public void testHotplugToggleAndSystemVerification() throws Exception {
         // Setup a standard basic generic display
         CommandResult result = runTargetCommand("setup 1");
         assertEquals("Setup screens failed: " + result.getStderr(),
                      CommandStatus.SUCCESS, result.getStatus());
 
-        // Ensure initial state is Connected
+        // Ensure initial state is Connected (CLI JSON)
         result = runTargetCommand("list-displays --json");
         assertTrue("JSON must report Connected: " + result.getStdout(),
                    result.getStdout().contains("\"status\" : \"Connected\""));
+
+        // Ensure initial state is Connected and picked up by SF (defaults to REDRIX 2256x1504)
+        assertTrue("Initial display not detected by SurfaceFlinger",
+                   waitForSurfaceFlingerResolution("2256x1504", true));
 
         // Hotplug OFF
         result = runTargetCommand("hotplug 0 disconnected");
@@ -167,6 +194,10 @@ public class CfVkmsControllerTest extends BaseHostJUnit4Test {
         assertTrue("JSON must report Disconnected: " + result.getStdout(),
                    result.getStdout().contains("\"status\" : \"Disconnected\""));
 
+        // Verify it disappeared from SF
+        assertTrue("SurfaceFlinger still reports the display after disconnect",
+                   waitForSurfaceFlingerResolution("2256x1504", false));
+
         // Hotplug ON
         result = runTargetCommand("hotplug 0 connected");
         assertEquals("Hotplug on failed", CommandStatus.SUCCESS, result.getStatus());
@@ -175,6 +206,10 @@ public class CfVkmsControllerTest extends BaseHostJUnit4Test {
         result = runTargetCommand("list-displays --json");
         assertTrue("JSON must report Connected again: " + result.getStdout(),
                    result.getStdout().contains("\"status\" : \"Connected\""));
+
+        // Verify it reappeared in SF
+        assertTrue("SurfaceFlinger failed to detect the display after reconnect",
+                   waitForSurfaceFlingerResolution("2256x1504", true));
     }
 
     @Test
@@ -200,4 +235,3 @@ public class CfVkmsControllerTest extends BaseHostJUnit4Test {
         assertEquals(CommandStatus.SUCCESS, result.getStatus());
     }
 }
-
