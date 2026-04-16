@@ -699,7 +699,7 @@ GetGraphicsAvailabilityWithSubprocessCheck() {
 
   auto graphics_availability_content_result =
       ReadFileContents(graphics_availability_file.path);
-  if (!graphics_availability_content_result.ok()) {
+  if (!graphics_availability_content_result.has_value()) {
     LOG(ERROR) << "Failed to read graphics availability from file "
                << graphics_availability_file.path << ":"
                << graphics_availability_content_result.error().FormatForEnv()

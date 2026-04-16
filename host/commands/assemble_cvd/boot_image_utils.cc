@@ -96,7 +96,7 @@ std::string ExtractValue(const std::string& dictionary, const std::string& key) 
 bool DeleteTmpFileIfNotChanged(const std::string& tmp_file, const std::string& current_file) {
   if (!FileExists(current_file) ||
       ReadFile(current_file) != ReadFile(tmp_file)) {
-    if (!RenameFile(tmp_file, current_file).ok()) {
+    if (!RenameFile(tmp_file, current_file).has_value()) {
       LOG(ERROR) << "Unable to delete " << current_file;
       return false;
     }
@@ -174,7 +174,7 @@ void UnpackRamdisk(const std::string& original_ramdisk_path,
                          << original_ramdisk_path << "'.";
   }
   const auto ret = EnsureDirectoryExists(ramdisk_stage_dir);
-  CHECK(ret.ok()) << ret.error().FormatForEnv();
+  CHECK(ret.has_value()) << ret.error().FormatForEnv();
 
   SharedFD input = SharedFD::Open(original_ramdisk_path + kCpioExt, O_RDONLY);
   int cpio_status;
@@ -194,7 +194,7 @@ bool GetAvbMetadataFromBootImage(const std::string& boot_image_path,
   std::unique_ptr<Avb> avbtool = GetDefaultAvb();
   Result<void> result =
       avbtool->WriteInfoImage(boot_image_path, unpack_dir + "/boot_params");
-  if (!result.ok()) {
+  if (!result.has_value()) {
     LOG(ERROR) << result.error().Trace();
     return false;
   }
@@ -259,7 +259,7 @@ bool UnpackVendorBootImageIfNotUnpacked(
   }
 
   Result<std::vector<std::string>> unpack_files = DirectoryContents(unpack_dir);
-  if (!unpack_files.ok()) {
+  if (!unpack_files.has_value()) {
     LOG(ERROR) << "No unpacked files: " << unpack_files.error().FormatForEnv();
     return false;
   }
@@ -390,7 +390,7 @@ bool RepackVendorBootImage(const std::string& new_ramdisk,
   Result<void> result =
       avbtool.AddHashFooter(tmp_vendor_boot_image_path, "vendor_boot",
                             FileSize(vendor_boot_image_path));
-  if (!result.ok()) {
+  if (!result.has_value()) {
     LOG(ERROR) << result.error().Trace();
     return false;
   }
@@ -492,7 +492,7 @@ Result<std::string> ReadAndroidVersionFromBootImage(
   }
   android::base::ScopeGuard delete_dir([tmp_dir]() {
     Result<void> remove_res = RecursivelyRemoveDirectory(tmp_dir);
-    if (!remove_res.ok()) {
+    if (!remove_res.has_value()) {
       LOG(ERROR) << "Failed to delete temp dir '" << tmp_dir << '"';
       LOG(ERROR) << remove_res.error().FormatForEnv();
     }

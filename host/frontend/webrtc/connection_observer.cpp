@@ -356,7 +356,7 @@ class ConnectionObserverImpl : public webrtc_streaming::ConnectionObserver {
 
   void OnDisplayAddMsg(const Json::Value &msg) override {
     auto result = HandleDisplayAddMessage(msg);
-    if (!result.ok()) {
+    if (!result.has_value()) {
       LOG(ERROR) << result.error().FormatForEnv();
     }
   }
@@ -385,7 +385,7 @@ class ConnectionObserverImpl : public webrtc_streaming::ConnectionObserver {
 
   void OnDisplayRemoveMsg(const Json::Value &msg) override {
     auto result = HandleDisplayRemoveMessage(msg);
-    if (!result.ok()) {
+    if (!result.has_value()) {
       LOG(ERROR) << result.error().FormatForEnv();
     }
   }

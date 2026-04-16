@@ -415,7 +415,7 @@ Subprocess Command::Start(SubprocessOptions options) const {
   for (auto& prerequisite : prerequisites_) {
     auto prerequisiteResult = prerequisite();
 
-    if (!prerequisiteResult.ok()) {
+    if (!prerequisiteResult.has_value()) {
       LOG(ERROR) << "Failed to check prerequisites: "
                  << prerequisiteResult.error().FormatForEnv();
     }
@@ -648,14 +648,14 @@ Result<int> ExecuteImpl(const std::vector<std::string>& command,
 int Execute(const std::vector<std::string>& commands,
             const std::vector<std::string>& envs) {
   auto result = ExecuteImpl(commands, envs, /* extra_param */ std::nullopt);
-  return (!result.ok() ? -1 : *result);
+  return (!result.has_value() ? -1 : *result);
 }
 
 int Execute(const std::vector<std::string>& commands) {
   std::vector<std::string> envs;
   auto result = ExecuteImpl(commands, /* envs */ std::nullopt,
                             /* extra_param */ std::nullopt);
-  return (!result.ok() ? -1 : *result);
+  return (!result.has_value() ? -1 : *result);
 }
 
 Result<siginfo_t> Execute(const std::vector<std::string>& commands,

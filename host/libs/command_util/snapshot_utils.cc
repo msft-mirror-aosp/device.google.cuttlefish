@@ -152,7 +152,7 @@ std::string RealpathOrSelf(const std::string& path) {
     .path_to_convert = path, .follow_symlink = true,
   };
   auto absolute_path = EmulateAbsolutePath(input_form);
-  return absolute_path.ok() ? *absolute_path : path;
+  return absolute_path.has_value() ? *absolute_path : path;
 }
 
 }  // namespace

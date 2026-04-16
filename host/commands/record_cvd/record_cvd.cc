@@ -70,7 +70,7 @@ int main(int argc, char* argv[]) {
   google::ParseCommandLineFlags(&argc, &argv, true);
 
   cuttlefish::Result<void> result = cuttlefish::RecordCvdMain(argc, argv);
-  if (!result.ok()) {
+  if (!result.has_value()) {
     LOG(DEBUG) << result.error().FormatForEnv();
     return EXIT_FAILURE;
   }

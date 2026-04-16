@@ -84,7 +84,7 @@ Result<int> MkenvimageSlimMain(int argc, char** argv) {
 
 int main(int argc, char** argv) {
   auto res = cuttlefish::MkenvimageSlimMain(argc, argv);
-  if (res.ok()) {
+  if (res.has_value()) {
     return *res;
   }
   LOG(ERROR) << "mkenvimage_slim failed: \n" << res.error().FormatForEnv();

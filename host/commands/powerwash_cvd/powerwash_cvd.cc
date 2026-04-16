@@ -71,7 +71,7 @@ int main(int argc, char** argv) {
   google::ParseCommandLineFlags(&argc, &argv, true);
 
   cuttlefish::Result<void> result = cuttlefish::PowerwashCvdMain();
-  if (!result.ok()) {
+  if (!result.has_value()) {
     LOG(ERROR) << result.error().FormatForEnv();
     return EXIT_FAILURE;
   }

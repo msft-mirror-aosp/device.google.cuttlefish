@@ -128,7 +128,7 @@ Result<Parsed> Parse(std::vector<std::string>& args) {
   flags.push_back(HelpXmlFlag(flags, std::cout, help_xml));
   flags.push_back(UnexpectedArgumentGuard());
   auto parse_res = ConsumeFlags(flags, args);
-  if (!help_xml && !parse_res.ok()) {
+  if (!help_xml && !parse_res.has_value()) {
     // Parse fails if helpxml is passed
     CF_EXPECT(std::move(parse_res), "Flag parsing failed");
   }
