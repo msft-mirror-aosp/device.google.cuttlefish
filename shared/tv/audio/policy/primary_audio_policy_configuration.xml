@@ -30,8 +30,8 @@
                      samplingRates="8000 11025 16000 32000 44100 48000"
                      channelMasks="AUDIO_CHANNEL_OUT_MONO AUDIO_CHANNEL_OUT_STEREO"/>
         </mixPort>
-        <mixPort name="compressed_offload" role="source" maxOpenCount="1" maxActiveCount="1"
-                 flags="AUDIO_OUTPUT_FLAG_DIRECT AUDIO_OUTPUT_FLAG_COMPRESS_OFFLOAD AUDIO_OUTPUT_FLAG_NON_BLOCKING">
+        <mixPort name="sync_compressed_offload" role="source" maxOpenCount="1" maxActiveCount="1"
+                 flags="AUDIO_OUTPUT_FLAG_DIRECT AUDIO_OUTPUT_FLAG_COMPRESS_OFFLOAD">
             <profile name="" format="AUDIO_FORMAT_APE"
                      samplingRates="44100 48000"
                      channelMasks="AUDIO_CHANNEL_OUT_MONO AUDIO_CHANNEL_OUT_STEREO"/>
@@ -93,7 +93,7 @@
     </devicePorts>
     <routes>
         <route type="mix" sink="Speaker"
-               sources="primary output,compressed_offload,mmap_no_irq_out"/>
+               sources="primary output,sync_compressed_offload,mmap_no_irq_out"/>
         <route type="mix" sink="primary input"
                sources="Built-In Mic"/>
         <route type="mix" sink="mmap_no_irq_in"
