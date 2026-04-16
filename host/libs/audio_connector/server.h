@@ -45,6 +45,8 @@ class AudioServerExecutor {
   virtual void StopStream(StreamControlCommand& cmd) = 0;
   virtual void ChmapsInfo(ChmapInfoCommand& cmd) = 0;
   virtual void JacksInfo(JackInfoCommand& cmd) = 0;
+  virtual void ControlsInfo(ControlInfoCommand& cmd) = 0;
+  virtual void OnControlCommand(ControlCommand& cmd) = 0;
 
   // Implementations must call buffer.SendStatus() before destroying the buffer
   // to notify the other side of the release of the buffer. Failure to do so
@@ -57,7 +59,8 @@ class AudioClientConnection {
  public:
   static std::unique_ptr<AudioClientConnection> Create(
       SharedFD client_socket, uint32_t num_streams, uint32_t num_jacks,
-      uint32_t num_chmaps, size_t tx_shm_len, size_t rx_shm_len);
+      uint32_t num_chmaps, uint32_t num_controls, size_t tx_shm_len,
+      size_t rx_shm_len);
 
   AudioClientConnection() = delete;
   AudioClientConnection(const AudioClientConnection&) = delete;
@@ -104,11 +107,9 @@ class AudioServer {
  public:
   AudioServer(SharedFD server_socket) : server_socket_(server_socket) {}
 
-  std::unique_ptr<AudioClientConnection> AcceptClient(uint32_t num_streams,
-                                                      uint32_t num_jacks,
-                                                      uint32_t num_chmaps,
-                                                      size_t tx_shm_len,
-                                                      size_t rx_shm_len);
+  std::unique_ptr<AudioClientConnection> AcceptClient(
+      uint32_t num_streams, uint32_t num_jacks, uint32_t num_chmaps,
+      uint32_t num_controls, size_t tx_shm_len, size_t rx_shm_len);
 
  private:
   SharedFD server_socket_;

@@ -26,8 +26,8 @@ class AudioMixer {
   // Can be called on different threads
   void OnPlayback(uint32_t stream_id, uint32_t stream_sample_rate,
                   uint8_t stream_channels_count,
-                  uint8_t stream_bits_per_channel, const uint8_t* buffer,
-                  size_t size);
+                  uint8_t stream_bits_per_channel, float volume,
+                  const uint8_t* buffer, size_t size);
   void OnStreamStopped(uint32_t stream_id);
 
  private:
@@ -48,7 +48,7 @@ class AudioMixer {
   ///////////////// Guarded by mutex_ ////////////////
   ////////////////////////////////////////////////////
 
-  // Buffer stores mixed auido data for every active stream. Consumed by
+  // Buffer stores mixed audio data for every active stream. Consumed by
   // MixerLoop
   std::vector<uint8_t> mixed_buffer_;
 
@@ -57,6 +57,16 @@ class AudioMixer {
 
   // Frame index per stream to put next available data to
   std::unordered_map<uint32_t, size_t> next_frame_;
+
+  // Used to remap channels and apply volume levels
+  std::vector<std::vector<float>> channels_map = {{
+      {1, 0, 0, 0, 0, 0},
+      {0, 1, 0, 0, 0, 0},
+      {0, 0, 1, 0, 0, 0},
+      {0, 0, 0, 1, 0, 0},
+      {0, 0, 0, 0, 1, 0},
+      {0, 0, 0, 0, 0, 1},
+  }};
 
   ////////////////////////////////////////////////////
   ////////////////////////////////////////////////////
