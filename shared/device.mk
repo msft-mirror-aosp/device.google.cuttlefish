@@ -33,6 +33,7 @@ PRODUCT_VENDOR_PROPERTIES += \
     ro.vendor.boot_security_patch=$(BOOT_SECURITY_PATCH)
 
 PRODUCT_SOONG_NAMESPACES += device/generic/goldfish # for audio, wifi and sensors
+PRODUCT_SOONG_NAMESPACES += device/google/cuttlefish/guest/services/wifi/regdb
 
 PRODUCT_USE_DYNAMIC_PARTITIONS := true
 PRODUCT_SET_DEBUGFS_RESTRICTIONS := true
@@ -545,6 +546,10 @@ PRODUCT_PACKAGES += com.android.hardware.wifi
 # Add com.google.cf.wifi and com.google.cf.wpa_supplicant for hostapd and wpa_supplicant
 PRODUCT_PACKAGES += com.google.cf.wifi
 PRODUCT_PACKAGES += com.google.cf.wpa_supplicant
+# TODO(b/294888357) remove the ramdisk version once mac80211 is removed from first stage init.
+PRODUCT_PACKAGES += wifi-regulatory-fw \
+    wifi-regulatory-fw.vendor_ramdisk
+
 $(call add_soong_config_namespace, wpa_supplicant)
 $(call add_soong_config_var_value, wpa_supplicant, platform_version, $(PLATFORM_VERSION))
 $(call add_soong_config_var_value, wpa_supplicant, nl80211_driver, CONFIG_DRIVER_NL80211_QCA)

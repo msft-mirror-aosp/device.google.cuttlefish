@@ -78,6 +78,8 @@ on post-fs-data && property:ro.boot.wifi_impl=mac80211_hwsim_virtio
     mkdir /data/vendor/wifi 0770 wifi wifi
     mkdir /data/vendor/wifi/hostapd 0770 wifi wifi
     mkdir /data/vendor/wifi/hostapd/sockets 0770 wifi wifi
+    # TODO(b/294888357) currently, this is only used if cfg80211 is reloaded
+    write /sys/module/firmware_class/parameters/path /vendor/firmware
     start init_wifi_sh
 
 on boot

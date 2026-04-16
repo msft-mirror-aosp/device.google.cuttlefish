@@ -408,7 +408,8 @@ BOARD_KERNEL_CMDLINE += binder.impl=rust
 BOARD_KERNEL_CMDLINE += cma=0
 
 # Default firmware load path
-BOARD_KERNEL_CMDLINE += firmware_class.path=/vendor/etc/
+# TODO(b/294888357) this can be removed once we remove mac80211 from first stage init.
+BOARD_KERNEL_CMDLINE += firmware_class.path=/first_stage_ramdisk/system/etc/firmware/
 
 # Needed to boot Android
 BOARD_KERNEL_CMDLINE += loop.max_part=7
