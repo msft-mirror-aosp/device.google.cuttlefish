@@ -1,5 +1,0 @@
-allow cameraserver virtual_camera:fd use;
-allow cameraserver virtual_camera:memfd_file { read write getattr map };
-
-# Access minigbm properties.
-get_prop(cameraserver, vendor_minigbm_debug_prop)
