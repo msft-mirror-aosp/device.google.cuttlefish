@@ -626,7 +626,8 @@ PRODUCT_PACKAGES += set_adb
 # virtio-media utils
 #
 PRODUCT_PACKAGES += \
-    v4l2-ctl
+    v4l2-ctl \
+    v4l2-compliance
 
 PRODUCT_CHECK_VENDOR_SEAPP_VIOLATIONS := true
 
