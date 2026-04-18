@@ -1,0 +1,2 @@
+allow virtual_camera gpu_service:service_manager find;
+binder_call(virtual_camera, gpuservice)

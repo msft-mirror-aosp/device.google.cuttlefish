@@ -1,0 +1,2 @@
+allow cameraserver virtual_camera:fd use;
+allow cameraserver virtual_camera:memfd_file { read write getattr map };
