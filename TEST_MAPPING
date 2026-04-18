@@ -14,6 +14,9 @@
   ],
   "presubmit": [
     {
+      "name": "vts_kernel_net_tests"
+    },
+    {
       "name": "vts_treble_vintf_framework_test"
     },
     {
