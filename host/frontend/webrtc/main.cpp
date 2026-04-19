@@ -180,26 +180,67 @@ Result<void> ControlLoop(SharedFD control_socket,
   }
 }
 
+AudioChannelsLayout ConvertChannelLayout(
+    ::cuttlefish::config::Audio_ChannelLayout layout) {
+  using ChannelLayout = ::cuttlefish::config::Audio_ChannelLayout;
+
+  switch (layout) {
+    case ChannelLayout::Audio_ChannelLayout_MONO:
+      return AudioChannelsLayout::Mono;
+    case ChannelLayout::Audio_ChannelLayout_STEREO:
+      return AudioChannelsLayout::Stereo;
+    case ChannelLayout::Audio_ChannelLayout_SURROUND51:
+      return AudioChannelsLayout::Surround51;
+  }
+
+  LOG(ERROR) << "Unsupported channel layout: " << layout;
+  return AudioChannelsLayout::Stereo;
+}
+
+uint32_t ConvertSampleRate(::cuttlefish::config::Audio_SampleRate rate) {
+  using SampleRate = ::cuttlefish::config::Audio_SampleRate;
+  switch (rate) {
+    case SampleRate::Audio_SampleRate_RATE_32000:
+      return 32000;
+    case SampleRate::Audio_SampleRate_RATE_44100:
+      return 44100;
+    case SampleRate::Audio_SampleRate_RATE_48000:
+      return 48000;
+    case SampleRate::Audio_SampleRate_RATE_64000:
+      return 64000;
+  }
+
+  LOG(ERROR) << "Unsupported sample rate: " << rate;
+  return 48000;
+}
+
+cuttlefish::AudioStreamSettings ParseAudioStreamSettings(
+    const ::cuttlefish::config::Audio_PCMDevice_Stream& stream,
+    AudioStreamSettings::Direction direction) {
+  const auto id = stream.id();
+  CHECK_LE(id, std::numeric_limits<uint8_t>::max());
+  cuttlefish::AudioStreamSettings settings = {
+      .id = static_cast<uint8_t>(id),
+      .channels_layout = ConvertChannelLayout(stream.channel_layout()),
+      .direction = direction};
+  if (stream.has_controls()) {
+    const auto& controls = stream.controls();
+    settings.has_mute_control = controls.mute_control_enabled();
+    if (controls.has_volume_control()) {
+      const auto& volume = controls.volume_control();
+      settings.master_volume_control = {{
+          .min = volume.min(),
+          .max = volume.max(),
+          .step = volume.step(),
+      }};
+    }
+  }
+  return settings;
+}
+
 std::shared_ptr<AudioHandler> SetupAudio(
     const cuttlefish::CuttlefishConfig::InstanceSpecific& instance,
     cuttlefish::webrtc_streaming::Streamer& streamer) {
-  using ChannelLayout = ::cuttlefish::config::Audio_ChannelLayout;
-  using SampleRate = ::cuttlefish::config::Audio_SampleRate;
-  static const std::unordered_map<ChannelLayout, AudioChannelsLayout>
-      kChannelLayoutMap = {
-          {ChannelLayout::Audio_ChannelLayout_MONO, AudioChannelsLayout::Mono},
-          {ChannelLayout::Audio_ChannelLayout_STEREO,
-           AudioChannelsLayout::Stereo},
-          {ChannelLayout::Audio_ChannelLayout_SURROUND51,
-           AudioChannelsLayout::Surround51},
-      };
-  static const std::unordered_map<SampleRate, uint32_t> kSampleRateMap = {
-      {SampleRate::Audio_SampleRate_RATE_32000, 32000},
-      {SampleRate::Audio_SampleRate_RATE_44100, 44100},
-      {SampleRate::Audio_SampleRate_RATE_48000, 48000},
-      {SampleRate::Audio_SampleRate_RATE_64000, 64000},
-  };
-
   if (!instance.enable_audio()) {
     return nullptr;
   }
@@ -225,29 +266,21 @@ std::shared_ptr<AudioHandler> SetupAudio(
     }
     const auto& pcm = audio_settings->pcm_devices()[0];
     for (const auto& stream : pcm.playback_streams()) {
-      const auto id = stream.id();
-      CHECK(id <= std::numeric_limits<uint8_t>::max());
-      streams.push_back(
-          {.id = static_cast<uint8_t>(id),
-           .channels_layout = kChannelLayoutMap.at(stream.channel_layout()),
-           .direction = AudioStreamSettings::Direction::Playback});
+      streams.push_back(ParseAudioStreamSettings(
+          stream, AudioStreamSettings::Direction::Playback));
     }
     for (const auto& stream : pcm.capture_streams()) {
-      const auto id = stream.id();
-      CHECK(id <= std::numeric_limits<uint8_t>::max());
-      streams.push_back(
-          {.id = static_cast<uint8_t>(id),
-           .channels_layout = kChannelLayoutMap.at(stream.channel_layout()),
-           .direction = AudioStreamSettings::Direction::Capture});
+      streams.push_back(ParseAudioStreamSettings(
+          stream, AudioStreamSettings::Direction::Capture));
     }
     if (pcm.has_mixer()) {
       const auto& mixer = pcm.mixer();
       if (mixer.has_channel_layout()) {
         mixer_settings.channels_layout =
-            kChannelLayoutMap.at(mixer.channel_layout());
+            ConvertChannelLayout(mixer.channel_layout());
       }
       if (mixer.has_sample_rate()) {
-        mixer_settings.sample_rate = kSampleRateMap.at(mixer.sample_rate());
+        mixer_settings.sample_rate = ConvertSampleRate(mixer.sample_rate());
       }
     }
   }
