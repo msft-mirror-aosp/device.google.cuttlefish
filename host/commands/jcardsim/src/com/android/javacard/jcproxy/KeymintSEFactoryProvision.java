@@ -18,6 +18,8 @@ package com.android.javacard.jcproxy;
 
 import com.licel.jcardsim.smartcardio.CardSimulator;
 
+import java.util.HexFormat;
+
 /** This class provisions the keymint applet with UDS_Pub, UDS Cert chain and SE factory lock. */
 public class KeymintSEFactoryProvision extends KeymintProvision {
 
@@ -159,12 +161,12 @@ public class KeymintSEFactoryProvision extends KeymintProvision {
     }
 
     public void provisionUdsKeyPair() {
-        byte[] apdu = ByteArrayConverter.hexStringToByteArray(UDS_COSE_KEY);
+        byte[] apdu = HexFormat.of().parseHex(UDS_COSE_KEY);
         transmit(INS_PROVISION_RKP_DEVICE_UNIQUE_KEYPAIR_CMD, apdu);
     }
 
     public void provisionUdsCertChain() {
-        byte[] apdu = ByteArrayConverter.hexStringToByteArray(UDS_CERT_CHAIN);
+        byte[] apdu = HexFormat.of().parseHex(UDS_CERT_CHAIN);
         transmit(INS_PROVISION_RKP_UDS_CERT_CHAIN_CMD, apdu);
     }
 

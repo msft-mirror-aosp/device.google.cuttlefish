@@ -252,12 +252,7 @@ Result<std::unordered_map<std::string, std::string>> BootconfigArgsFromConfig(
           "androidboot.vendor.apex.com.google.emulated.camera.provider.hal")) {
     bootconfig_args
         ["androidboot.vendor.apex.com.google.emulated.camera.provider.hal"] =
-            // Camera configs is only populated for virtio-media host camera
-            // devices. The V4L2 Camera HAL implementation would handle all
-            // (possibly multiple) host cameras devices.
-        instance.camera_configs().empty()
-            ? "com.google.emulated.camera.provider.hal"
-            : "com.google.emulated.camera.provider.hal.v4l2";
+            "com.google.emulated.camera.provider.hal";
   }
 
   if (!instance.vcpu_config_path().empty()) {

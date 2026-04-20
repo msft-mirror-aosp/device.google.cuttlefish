@@ -146,12 +146,21 @@ func (c *cvdHostPackage) GenerateAndroidBuildActions(ctx android.ModuleContext) 
 	//   So installing the tarball also causes all of the tarball's inputs to be installed.
 	installedTarball := ctx.InstallFile(android.PathForModuleInstall(ctx), c.BaseModuleName()+".tar.gz", tarball)
 
+	board_platform := proptools.String(ctx.Config().ProductVariables().BoardPlatform)
+	isArmBoard := strings.Contains(board_platform, "arm")
+	isLinuxArm64 := ctx.Os().Linux() && ctx.Arch().ArchType == android.Arm64
+	isLinuxX8664 := ctx.Os().Linux() && ctx.Arch().ArchType == android.X86_64
+
 	android.SetProvider(ctx, CvdHostPackageMetadataInfoProvider, CvdHostPackageMetadataInfo{
 		TarballMetadata: installedTarball,
-		IsLinuxX8664: ctx.Os().Linux() && ctx.Arch().ArchType == android.X86_64,
+		IsStandardPackage: ctx.ModuleName() == "cvd-host_package",
+		IsDefaultArch: (isArmBoard && isLinuxArm64) || (!isArmBoard && isLinuxX8664),
 	})
 
 	ctx.ModulePhonyFiles(tarball)
+
+	// Distribute with the detailed name for newer tools or multi-arch builds.
+	ctx.DistForGoalWithFilename("dist_files", installedTarball, fmt.Sprintf("%s-%s.tar.gz", ctx.ModuleName(), ctx.Arch().ArchType))
 }
 
 // Always create all variants of cvd host packages (e.g. x86_64, arm, ...) for compatibility with acloud.
@@ -162,7 +171,8 @@ func (c *cvdHostPackage) SplitAllVariants() bool {
 // @auto-generate: gob
 type CvdHostPackageMetadataInfo struct {
 	TarballMetadata android.Path
-	IsLinuxX8664 bool
+	IsStandardPackage bool
+	IsDefaultArch bool
 }
 var CvdHostPackageMetadataInfoProvider = blueprint.NewProvider[CvdHostPackageMetadataInfo]()
 
@@ -188,15 +198,24 @@ func (p *cvdHostPackageSingleton) GenerateBuildActions(ctx android.SingletonCont
 		}
 	})
 
+	// Count how many "standard" cvd-host_package modules we have in this build.
+	standardCount := 0
+	for _, info := range cvdHostPackageMetadata {
+		if info.IsStandardPackage {
+			standardCount++
+		}
+	}
+
 	board_platform := proptools.String(ctx.Config().ProductVariables().BoardPlatform)
 	if (board_platform == "vsoc_arm") || (board_platform == "vsoc_arm64") || (board_platform == "vsoc_riscv64") || (board_platform == "vsoc_x86") || (board_platform == "vsoc_x86_64") {
 		for _, info := range cvdHostPackageMetadata {
 			ctx.Phony("hosttar", info.TarballMetadata)
 			ctx.Phony("droidcore", info.TarballMetadata)
-			// The riscv64 cuttlefish builds can be run on qemu on an x86_64 or arm64 host. Dist both sets of host packages.
-			if len(cvdHostPackageMetadata) > 1 && info.IsLinuxX8664 {
-				ctx.DistForGoalWithFilename("dist_files", info.TarballMetadata, "cvd-host_package-x86_64.tar.gz")
-			} else {
+
+			// We skip non-default variants in multi variant builds to avoid overwriting the default tarball.
+			// For single-variant builds, or the default variant of multi variant builds,
+			// DistForGoal will produce the standard name ("cvd-host_package.tar.gz").
+			if info.IsStandardPackage && (standardCount == 1 || info.IsDefaultArch) {
 				ctx.DistForGoal("dist_files", info.TarballMetadata)
 			}
 		}
