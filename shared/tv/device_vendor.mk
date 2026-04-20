@@ -22,6 +22,17 @@ CF_VENDOR_NO_UWB := true
 
 $(call inherit-product, device/google/atv/products/atv_vendor.mk)
 
+# If there is no override, disable the default shared Cuttlefish audio configuration
+LOCAL_USE_VENDOR_AUDIO_CONFIGURATION ?= false
+ifeq ($(LOCAL_USE_VENDOR_AUDIO_CONFIGURATION),false)
+LOCAL_USE_VENDOR_AUDIO_CONFIGURATION := true
+$(call soong_config_set_bool,cuttlefish_config,use_tv_audio_policy,true)
+PRODUCT_PACKAGES += tv_audio_policy_configuration.xml
+# Use default config files for the remote submix and effects
+$(call inherit-product, frameworks/av/services/audiopolicy/audio_policy_config_vendor_1.mk)
+$(call inherit-product, hardware/interfaces/audio/aidl/default/audio_effects.mk)
+endif
+
 $(call inherit-product, frameworks/native/build/phone-xhdpi-2048-dalvik-heap.mk)
 $(call inherit-product, device/google/cuttlefish/shared/bluetooth/device_vendor.mk)
 $(call inherit-product, device/google/cuttlefish/shared/graphics/device_vendor.mk)

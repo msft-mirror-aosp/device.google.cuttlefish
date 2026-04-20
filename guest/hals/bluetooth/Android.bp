@@ -34,7 +34,7 @@ rust_binary {
         "libbytes",
         "liblibc",
         "liblog_rust",
-        "libnix",
+        "libnix_0_29_0",
         "libpdl_runtime",
         "libthiserror",
         "libtokio",

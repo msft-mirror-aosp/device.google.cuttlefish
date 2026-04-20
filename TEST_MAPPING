@@ -1,4 +1,9 @@
 {
+  "imports": [
+    {
+      "path": "packages/modules/Connectivity"
+    }
+  ],
   "postsubmit" : [
     {
       "name": "tombstone_transmit_tests"
