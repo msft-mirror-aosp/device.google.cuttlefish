@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2025 The Android Open Source Project
+ * Copyright (C) 2026 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -120,6 +120,24 @@ std::unique_ptr<VkmsTester> VkmsTester::CreateWithBuilders(
 }
 
 // static
+std::unique_ptr<VkmsTester> VkmsTester::CreateWithGenericConnectors(
+    int displaysCount) {
+  if (displaysCount <= 0) {
+    ALOGE("Invalid number of displays: %d", displaysCount);
+    return nullptr;
+  }
+
+  auto tester = std::unique_ptr<VkmsTester>(new VkmsTester(displaysCount));
+
+  if (!tester->mInitialized) {
+    ALOGE("Failed to initialize VkmsTester with Generic Config");
+    return nullptr;
+  }
+
+  return tester;
+}
+
+// static
 void VkmsTester::ForceDeleteVkmsDir() { ShutdownAndCleanUpVkms(); }
 
 VkmsTester::VkmsTester(size_t displaysCount,
@@ -129,8 +147,13 @@ VkmsTester::VkmsTester(size_t displaysCount,
                  ToggleHwc3(true);
   if (!mInitialized) {
     ALOGE("Failed to set up VKMS");
-    ShutdownAndCleanUpVkms();
     return;
+  }
+}
+
+VkmsTester::~VkmsTester() {
+  if (mOwnsResources) {
+    ShutdownAndCleanUpVkms();
   }
 }
 
@@ -169,55 +192,60 @@ bool VkmsTester::ToggleVkmsAsDisplayDriver(bool enable) {
 
 bool VkmsTester::SetupDisplays(
     int displaysCount, const std::vector<VkmsConnectorBuilder>& builders) {
-  bool isExplicitConfig = !builders.empty();
-  if (isExplicitConfig && displaysCount != static_cast<int>(builders.size())) {
+  std::vector<VkmsConnectorBuilder> effectiveBuilders = builders;
+  if (effectiveBuilders.empty()) {
+    for (int i = 0; i < displaysCount; ++i) {
+      effectiveBuilders.push_back(
+          VkmsConnectorBuilder::create()
+              .withType(i == 0 ? ConnectorType::keDP
+                               : ConnectorType::kDisplayPort)
+              .enabledAtStart(false));
+    }
+  }
+
+  if (displaysCount != static_cast<int>(effectiveBuilders.size())) {
     ALOGE("Mismatch between requested displays count and builder config size");
     return false;
   }
 
   for (int i = 0; i < displaysCount; ++i) {
-    CreateResource(DrmResource::kCrtc, i);
-    SetCrtcWriteback(i, true);
-    CreateResource(DrmResource::kEncoder, i);
-    LinkToCrtc(DrmResource::kEncoder, i, i);
+    const auto& builder = effectiveBuilders[i];
+    bool success = CreateResource(DrmResource::kCrtc, i) &&
+                   SetCrtcWriteback(i, true) &&
+                   CreateResource(DrmResource::kEncoder, i) &&
+                   LinkToCrtc(DrmResource::kEncoder, i, i) &&
+                   CreateResource(DrmResource::kConnector, i) &&
+                   SetConnectorStatus(i, builder.mEnabledAtStart) &&
+                   SetConnectorType(i, builder.mType);
 
-    CreateResource(DrmResource::kConnector, i);
-    if (isExplicitConfig) {
-      SetConnectorType(i, builders[i].mType);
-      if (builders[i].mMonitorName.type != MonitorName::Type::UNSET) {
-        SetConnectorEdid(i, builders[i].mMonitorName);
-      }
-      SetConnectorStatus(i, builders[i].mEnabledAtStart);
-    } else {
-      // Set connector type, eDP for first one, DP for the rest
-      SetConnectorType(
-          i, i == 0 ? ConnectorType::keDP : ConnectorType::kDisplayPort);
-      SetConnectorStatus(i, false);
+    if (!success) {
+      return false;
     }
-    LinkConnectorToEncoder(i, i);
 
-    int additionalOverlays =
-        isExplicitConfig ? builders[i].mAdditionalOverlayPlanes : 0;
-    for (int j = 0; j < 2 + additionalOverlays; ++j) {
-      CreateResource(DrmResource::kPlane, mLatestPlaneId);
-      // For each connector, create at least 2 planes, a primary and a cursor
-      // PLUS any additional overlay planes
-      PlaneType type;
-      switch (j) {
-        case 0:
-          type = PlaneType::kCursor;
-          break;
-        case 1:
-          type = PlaneType::kPrimary;
-          break;
-        default:
-          type = PlaneType::kOverlay;
-          break;
+    if (builder.mMonitorName.type != MonitorName::Type::UNSET) {
+      if (!SetConnectorEdid(i, builder.mMonitorName)) {
+        return false;
       }
-      SetPlaneType(mLatestPlaneId, type);
-      SetPlaneFormat(mLatestPlaneId, type);
-      LinkToCrtc(DrmResource::kPlane, mLatestPlaneId, i);
+    }
 
+    if (!LinkConnectorToEncoder(i, i)) {
+      return false;
+    }
+
+    std::vector<PlaneType> planes = {PlaneType::kCursor, PlaneType::kPrimary};
+    for (int j = 0; j < builder.mAdditionalOverlayPlanes; ++j) {
+      planes.push_back(PlaneType::kOverlay);
+    }
+
+    for (auto type : planes) {
+      success = CreateResource(DrmResource::kPlane, mLatestPlaneId) &&
+                SetPlaneType(mLatestPlaneId, type) &&
+                SetPlaneFormat(mLatestPlaneId, type) &&
+                LinkToCrtc(DrmResource::kPlane, mLatestPlaneId, i);
+
+      if (!success) {
+        return false;
+      }
       mLatestPlaneId++;
     }
 

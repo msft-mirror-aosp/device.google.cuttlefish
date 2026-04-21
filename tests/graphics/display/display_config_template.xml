@@ -21,13 +21,6 @@
         <option name="push" value="{MODULE}->/data/cf_display_tests/{MODULE}" />
     </target_preparer>
 
-    <target_preparer class="com.android.tradefed.targetprep.RunCommandTargetPreparer">
-        <option name="run-command" value="stop" />
-        <option name="run-command" value="stop vendor.hwcomposer-3" />
-        <option name="teardown-command" value="start vendor.hwcomposer-3" />
-        <option name="teardown-command" value="start" />
-    </target_preparer>
-
     <test class="com.android.tradefed.testtype.HostTest">
         <option name="class" value="com.android.cuttlefish.tests.{MODULE}" />
     </test>

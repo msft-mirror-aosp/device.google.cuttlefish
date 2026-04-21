@@ -53,8 +53,7 @@ public class CfWritebackTest extends BaseHostJUnit4Test {
         List<CfVkmsTester.VkmsConnectorSetup> connectorConfigs =
                 Collections.singletonList(
                         CfVkmsTester.VkmsConnectorSetup.builder()
-                                .setType(CfVkmsTester.ConnectorType.EDP)
-                                .setMonitor(CfVkmsEdidHelper.EdpDisplay.REDRIX)
+                                .setMonitor(CfVkmsTester.Monitor.REDRIX)
                                 .setEnabledAtStart(true)
                                 .build());
 

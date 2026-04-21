@@ -229,6 +229,23 @@ public class CfVkmsControllerTest extends BaseHostJUnit4Test {
     }
 
     @Test
+    public void testResetCleansConfigFS() throws Exception {
+        // Setup a display
+        runTargetCommand("setup 1");
+
+        // Verify it exists in ConfigFS (check for base directory)
+        CommandResult lsResult = getDevice().executeShellV2Command("ls /config/vkms/my-vkms");
+        assertEquals("VKMS directory should exist after setup", CommandStatus.SUCCESS, lsResult.getStatus());
+
+        // Reset
+        runTargetCommand("reset");
+
+        // Verify directory is gone
+        lsResult = getDevice().executeShellV2Command("ls /config/vkms/my-vkms");
+        assertNotEquals("VKMS directory should be deleted after reset", CommandStatus.SUCCESS, lsResult.getStatus());
+    }
+
+    @Test
     public void testTeardown() throws Exception {
         runTargetCommand("setup 1");
         CommandResult result = runTargetCommand("reset");

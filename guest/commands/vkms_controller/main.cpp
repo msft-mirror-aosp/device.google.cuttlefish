@@ -164,6 +164,7 @@ bool LoadState(std::vector<ConnectorState>* states) {
 }
 
 int DoSetup(const std::vector<std::string>& args) {
+  VkmsTester::ForceDeleteVkmsDir();
   std::vector<VkmsTester::VkmsConnectorBuilder> builders;
   std::vector<ConnectorState> states;
 
@@ -243,14 +244,26 @@ int DoSetup(const std::vector<std::string>& args) {
   if (!tester) {
     return 1;
   }
+
+  if (!SaveState(states)) {
+    LOG(ERROR) << "Failed to save connector state. Aborting setup.";
+    // By NOT calling release() here, the 'tester' unique_ptr will go out of
+    // scope and its destructor will clean up the ConfigFS state we just
+    // created, preventing an "untracked" hardware state.
+    return 1;
+  }
+
   if (parsed_screens) {
-    SaveState(states);
     std::cout << "VKMS setup successful with " << states.size()
               << " connectors.\n";
-    return 0;
-  } else {
-    return SaveState(states) ? 0 : 1;
   }
+
+  // We detach the tester here because the CLI tool is intended to
+  // configure the kernel state and then exit, leaving the virtual hardware
+  // active for SurfaceFlinger and other processes. The RAII cleanup is
+  // primarily for unit tests where we want automatic teardown between cases.
+  tester->Detach();
+  return 0;
 }
 
 int DoHotplug(const std::vector<std::string>& args) {

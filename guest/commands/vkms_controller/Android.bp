@@ -17,10 +17,22 @@ package {
     default_team: "trendy_team_desktop_display",
 }
 
-cc_binary {
-    name: "vkms_controller",
+cc_library_static {
+    name: "libvkms_tester",
+    vendor_available: true,
+    enabled: false,
+    target: {
+        android_x86_64: {
+            enabled: true,
+        },
+        android_x86: {
+            enabled: true,
+        },
+        linux_glibc_x86_64: {
+            enabled: true,
+        },
+    },
     srcs: [
-        "main.cpp",
         "vkms_tester.cpp",
         "edid_helper.cpp",
     ],
@@ -34,8 +46,41 @@ cc_binary {
         "libcuttlefish_utils",
         "libcuttlefish_fs",
     ],
-    include_dirs: [
-        "device/google/cuttlefish",
+    export_include_dirs: [
+        ".",
+    ],
+    header_libs: [
+        "cuttlefish_common_headers",
+    ],
+}
+
+cc_binary {
+    name: "vkms_controller",
+    enabled: false,
+    target: {
+        android_x86_64: {
+            enabled: true,
+        },
+        android_x86: {
+            enabled: true,
+        },
+    },
+    srcs: [
+        "main.cpp",
+    ],
+    shared_libs: [
+        "libbase",
+        "libjsoncpp",
+        "liblog",
+        "libcutils",
+    ],
+    static_libs: [
+        "libvkms_tester",
+        "libcuttlefish_utils",
+        "libcuttlefish_fs",
+    ],
+    header_libs: [
+        "cuttlefish_common_headers",
     ],
     vendor: true,
 }
