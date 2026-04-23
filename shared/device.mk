@@ -476,12 +476,6 @@ LOCAL_THERMAL_HAL_PRODUCT_PACKAGE ?= com.android.hardware.thermal
 PRODUCT_PACKAGES += $(LOCAL_THERMAL_HAL_PRODUCT_PACKAGE)
 
 #
-# NeuralNetworks HAL
-#
-PRODUCT_PACKAGES += \
-    com.android.hardware.neuralnetworks
-
-#
 # NPU HAL
 #
 ifeq ($(RELEASE_AIDL_USE_UNFROZEN),true)
