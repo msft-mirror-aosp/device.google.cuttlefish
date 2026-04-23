@@ -73,11 +73,14 @@ ifneq (,$(RELEASE_KERNEL_CUTTLEFISH_X86_64_VERSION))
 BOARD_KERNEL_VERSION := $(word 1,$(subst vermagic=,,$(shell grep -E -h -ao -m 1 'vermagic=.*' $(KERNEL_MODULES_PATH)/nd_virtio.ko)))
 endif
 
-ifneq (,$(findstring auto, $(PRODUCT_NAME)))
+# Hibernation swap image configuration.
+# This is now handled as a build target in PRODUCT_PACKAGES.
+ENABLE_HIBERNATION_SWAP ?= false
+
+ifeq ($(ENABLE_HIBERNATION_SWAP), true)
 HIB_SWAP_IMAGE_SIZE_GB ?= 4
-ifeq ("$(wildcard $(PRODUCT_OUT)/hibernation_swap.img)", "")
-$(shell dd if=/dev/zero of=$(PRODUCT_OUT)/hibernation_swap.img bs=1K count=$(HIB_SWAP_IMAGE_SIZE_GB)M)
-endif
+$(PRODUCT_OUT)/hibernation_swap.img:
+	truncate -s $(HIB_SWAP_IMAGE_SIZE_GB)G $@
 endif
 
 # The list of modules strictly/only required either to reach second stage
@@ -408,7 +411,8 @@ BOARD_KERNEL_CMDLINE += binder.impl=rust
 BOARD_KERNEL_CMDLINE += cma=0
 
 # Default firmware load path
-BOARD_KERNEL_CMDLINE += firmware_class.path=/vendor/etc/
+# TODO(b/294888357) this can be removed once we remove mac80211 from first stage init.
+BOARD_KERNEL_CMDLINE += firmware_class.path=/first_stage_ramdisk/system/etc/firmware/
 
 # Needed to boot Android
 BOARD_KERNEL_CMDLINE += loop.max_part=7

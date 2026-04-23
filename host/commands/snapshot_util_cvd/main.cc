@@ -113,7 +113,7 @@ Result<void> SnapshotCvdMain(std::vector<std::string> args) {
             extended_action.mutable_resume();
             Result<void> result =
                 BroadcastLauncherAction(*config, parsed, extended_action);
-            if (!result.ok()) {
+            if (!result.has_value()) {
               LOG(FATAL) << "RunLauncherAction failed: "
                          << result.error().FormatForEnv();
             }
@@ -126,7 +126,7 @@ Result<void> SnapshotCvdMain(std::vector<std::string> args) {
         }
         LOG(ERROR) << "Snapshot take failed, so running clean-up.";
         Result<void> result = RecursivelyRemoveDirectory(parsed.snapshot_path);
-        if (!result.ok()) {
+        if (!result.has_value()) {
           LOG(ERROR) << "Failed to delete incomplete snapshot: "
                      << result.error().FormatForEnv();
         }
@@ -158,7 +158,7 @@ int main(int argc, char** argv) {
   ::android::base::InitLogging(argv, android::base::StderrLogger);
   std::vector<std::string> all_args = cuttlefish::ArgsToVec(argc, argv);
   auto result = cuttlefish::SnapshotCvdMain(std::move(all_args));
-  if (!result.ok()) {
+  if (!result.has_value()) {
     LOG(ERROR) << result.error().FormatForEnv();
     return EXIT_FAILURE;
   }

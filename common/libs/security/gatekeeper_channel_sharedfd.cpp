@@ -40,7 +40,7 @@ bool SharedFdGatekeeperChannel::SendMessage(uint32_t command, bool is_response,
   LOG(DEBUG) << "Sending message with id: " << command;
   auto payload_size = message.GetSerializedSize();
   auto to_send_result = transport::CreateMessage(command, payload_size);
-  if (!to_send_result.ok()) {
+  if (!to_send_result.has_value()) {
     LOG(ERROR) << "Could not allocate Gatekeeper Message: "
                << to_send_result.error().FormatForEnv();
     return false;
@@ -49,16 +49,16 @@ bool SharedFdGatekeeperChannel::SendMessage(uint32_t command, bool is_response,
   message.Serialize(to_send->payload, to_send->payload + payload_size);
 
   auto result = is_response ? channel_.SendResponse(*to_send) : channel_.SendRequest(*to_send);
-  if (!result.ok()) {
+  if (!result.has_value()) {
     LOG(ERROR) << "Could not write Gatekeeper Message: "
                << result.error().FormatForEnv();
   }
-  return result.ok();
+  return result.has_value();
 }
 
 transport::ManagedMessage SharedFdGatekeeperChannel::ReceiveMessage() {
   auto result = channel_.ReceiveMessage();
-  if (!result.ok()) {
+  if (!result.has_value()) {
     return {};
   }
   return std::move(result.value());

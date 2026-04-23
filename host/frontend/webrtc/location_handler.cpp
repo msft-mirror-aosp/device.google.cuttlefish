@@ -55,7 +55,7 @@ void LocationHandler::HandleMessage(const float longitude,
   coordinates.push_back(location);
 
   Result<void> reply = gpsclient.SendGpsLocations(1000, coordinates);
-  if (!reply.ok()) {
+  if (!reply.has_value()) {
     LOG(ERROR) << reply.error().FormatForEnv();
   }
 }

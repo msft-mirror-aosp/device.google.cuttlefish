@@ -260,7 +260,7 @@ int main(int argc, char* argv[]) {
   }
 
   auto result = cuttlefish::socket_proxy::Main();
-  if (!result.ok()) {
+  if (!result.has_value()) {
     LOG(FATAL) << "Failed to proxy: " << result.error().FormatForEnv();
   }
 

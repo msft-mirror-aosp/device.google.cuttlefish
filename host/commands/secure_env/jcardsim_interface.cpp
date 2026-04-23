@@ -112,7 +112,7 @@ JCardSimInterface::JCardSimInterface(JavaVM* jvm)
 
 JCardSimInterface::~JCardSimInterface() {
   auto result = GetOrAttachJNIEnvironment(jvm_);
-  if (result.ok()) {
+  if (result.has_value()) {
     JNIEnv* env = result.value();
     if (jcardsim_proxy_class_) {
       env->DeleteGlobalRef(jcardsim_proxy_class_);
@@ -209,7 +209,7 @@ Result<void> JCardSimInterface::ProvisionPresharedSecret(JNIEnv* env) {
 
   do {
     auto response = SelectKeymintApplet(env, cla);
-    if (!response.ok() || !ResponseOK(*response).ok()) {
+    if (!response.has_value() || !ResponseOK(*response).has_value()) {
       LOG(ERROR) << "Failed to select the Applet";
       break;
     }
@@ -232,7 +232,7 @@ Result<void> JCardSimInterface::ProvisionPresharedSecret(JNIEnv* env) {
     shared_secret_apdu.push_back(0x00);
     response = InternalTransmit(env, shared_secret_apdu.data(),
                                 shared_secret_apdu.size());
-    if (!response.ok() || !ResponseOK(*response).ok()) {
+    if (!response.has_value() || !ResponseOK(*response).has_value()) {
       LOG(ERROR) << "Failed to provision preshared secret";
       break;
     }

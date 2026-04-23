@@ -44,7 +44,7 @@ static bool PrepareVBMetaImage(const std::string& path, bool has_boot_config) {
   }
   Result<void> result =
       avbtool->MakeVbMetaImage(path, chained_partitions, {}, {});
-  if (!result.ok()) {
+  if (!result.has_value()) {
     LOG(ERROR) << result.error().Trace();
     return false;
   }

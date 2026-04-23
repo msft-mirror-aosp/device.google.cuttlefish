@@ -10,6 +10,3 @@ vendor.wlan.firmware.version   u:object_r:vendor_wlan_versions_prop:s0 exact str
 vendor.wlan.driver.version     u:object_r:vendor_wlan_versions_prop:s0 exact string
 vendor.dlkm.modules.ready      u:object_r:vendor_device_prop:s0 exact bool
 persist.vendor.otsim.local_interface    u:object_r:vendor_otsim_local_interface_prop:s0 exact string
-
-# Minigbm properties.
-vendor.minigbm.debug    u:object_r:vendor_minigbm_debug_prop:s0

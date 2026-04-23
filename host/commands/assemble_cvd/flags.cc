@@ -704,21 +704,22 @@ Result<void> ParseGuestConfigTxt(const std::string& guest_config_path,
                                  GuestConfig& guest_config) {
   auto res_device_type = GetAndroidInfoConfig(guest_config_path, "device_type");
   // If that "device_type" is not explicitly set, fall back to parse "config".
-  if (!res_device_type.ok()) {
+  if (!res_device_type.has_value()) {
     res_device_type = GetAndroidInfoConfig(guest_config_path, "config");
   }
   guest_config.device_type = ParseDeviceType(res_device_type.value_or(""));
 
   auto res = GetAndroidInfoConfig(guest_config_path, "gfxstream");
-  guest_config.gfxstream_supported = res.ok() && res.value() == "supported";
+  guest_config.gfxstream_supported =
+      res.has_value() && res.value() == "supported";
 
   res = GetAndroidInfoConfig(guest_config_path,
                              "gfxstream_gl_program_binary_link_status");
   guest_config.gfxstream_gl_program_binary_link_status_supported =
-      res.ok() && res.value() == "supported";
+      res.has_value() && res.value() == "supported";
 
   res = GetAndroidInfoConfig(guest_config_path, "gpu_mode_candidates");
-  if (res.ok()) {
+  if (res.has_value()) {
     const std::string& gpu_mode_candidates_str = res.value();
     for (const std::string& candidate_str :
          android::base::Split(gpu_mode_candidates_str, ",")) {
@@ -732,22 +733,22 @@ Result<void> ParseGuestConfigTxt(const std::string& guest_config_path,
 
   auto res_mouse_support = GetAndroidInfoConfig(guest_config_path, "mouse");
   guest_config.mouse_supported =
-      res_mouse_support.ok() && res_mouse_support.value() == "supported";
+      res_mouse_support.has_value() && res_mouse_support.value() == "supported";
 
   auto res_gamepad_support = GetAndroidInfoConfig(guest_config_path, "gamepad");
-  guest_config.gamepad_supported =
-      res_gamepad_support.ok() && res_gamepad_support.value() == "supported";
+  guest_config.gamepad_supported = res_gamepad_support.has_value() &&
+                                   res_gamepad_support.value() == "supported";
 
   auto res_custom_keyboard_config =
       GetAndroidInfoConfig(guest_config_path, "custom_keyboard");
-  if (res_custom_keyboard_config.ok()) {
+  if (res_custom_keyboard_config.has_value()) {
     guest_config.custom_keyboard_config =
         DefaultHostArtifactsPath(res_custom_keyboard_config.value());
   }
 
   auto res_domkey_mapping_config =
       GetAndroidInfoConfig(guest_config_path, "domkey_mapping");
-  if (res_domkey_mapping_config.ok()) {
+  if (res_domkey_mapping_config.has_value()) {
     guest_config.domkey_mapping_config =
         DefaultHostArtifactsPath(res_domkey_mapping_config.value());
   }
@@ -771,7 +772,7 @@ Result<void> ParseGuestConfigTxt(const std::string& guest_config_path,
   guest_config.ti50_emulator = res_ti50_emulator.value_or("");
   auto res_output_audio_streams_count =
       GetAndroidInfoConfig(guest_config_path, "output_audio_streams_count");
-  if (res_output_audio_streams_count.ok()) {
+  if (res_output_audio_streams_count.has_value()) {
     std::string output_audio_streams_count_str =
         res_output_audio_streams_count.value();
     CF_EXPECT(android::base::ParseInt(output_audio_streams_count_str.c_str(),
@@ -782,7 +783,7 @@ Result<void> ParseGuestConfigTxt(const std::string& guest_config_path,
 
   Result<std::string> enforce_mac80211_hwsim =
       GetAndroidInfoConfig(guest_config_path, "enforce_mac80211_hwsim");
-  if (enforce_mac80211_hwsim.ok()) {
+  if (enforce_mac80211_hwsim.has_value()) {
     if (*enforce_mac80211_hwsim == "true") {
       guest_config.enforce_mac80211_hwsim = true;
     } else if (*enforce_mac80211_hwsim == "false") {
@@ -792,7 +793,7 @@ Result<void> ParseGuestConfigTxt(const std::string& guest_config_path,
 
   auto res_blank_data_image_mb =
       GetAndroidInfoConfig(guest_config_path, "blank_data_image_mb");
-  if (res_blank_data_image_mb.ok()) {
+  if (res_blank_data_image_mb.has_value()) {
     std::string res_blank_data_image_mb_str = res_blank_data_image_mb.value();
     CF_EXPECT(android::base::ParseInt(res_blank_data_image_mb_str.c_str(),
                                       &guest_config.blank_data_image_mb),
@@ -802,7 +803,7 @@ Result<void> ParseGuestConfigTxt(const std::string& guest_config_path,
 
   if (const Result<std::string> res =
           GetAndroidInfoConfig(guest_config_path, "lights_server_enabled");
-      res.ok()) {
+      res.has_value()) {
     bool value;
     if (absl::SimpleAtob(*res, &value)) {
       guest_config.lights_server_enabled = value;
@@ -2463,7 +2464,7 @@ Result<void> SetDefaultFlagsForCrosvm(
   std::set<Arch> supported_archs{Arch::X86_64};
   bool default_enable_sandbox =
       supported_archs.find(HostArch()) != supported_archs.end() &&
-      EnsureDirectoryExists(kCrosvmVarEmptyDir).ok() &&
+      EnsureDirectoryExists(kCrosvmVarEmptyDir).has_value() &&
       IsDirectoryEmpty(kCrosvmVarEmptyDir) && !IsRunningInContainer();
 
   std::vector<std::string> system_image_dir =

@@ -29,12 +29,12 @@ enum {
 };
 
 ::ndk::ScopedAStatus resultToStatus(Result<void> r) {
-    if (r.ok()) {
-        return ::ndk::ScopedAStatus::ok();
-    } else {
-        return ::ndk::ScopedAStatus::fromServiceSpecificErrorWithMessage(
-                CUSTOM_ERROR_TRANSPORT_IS_FAILED, r.error().Message().c_str());
-    }
+  if (r.has_value()) {
+    return ::ndk::ScopedAStatus::ok();
+  } else {
+    return ::ndk::ScopedAStatus::fromServiceSpecificErrorWithMessage(
+        CUSTOM_ERROR_TRANSPORT_IS_FAILED, r.error().Message().c_str());
+  }
 }
 
 }

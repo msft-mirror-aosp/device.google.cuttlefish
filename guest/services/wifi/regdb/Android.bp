@@ -1,4 +1,4 @@
-// Copyright (C) 2025 The Android Open Source Project
+// Copyright (C) 2026 The Android Open Source Project
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,16 +12,22 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-java_library_host {
-    name: "CfVkmsTestUtils",
-    defaults: [
-        "cuttlefish_host_test_utils_defaults",
+soong_namespace {
+    imports: [
+        "external/wireless-regdb",
     ],
+}
+
+package {
+    default_applicable_licenses: ["Android-Apache-2.0"],
+}
+
+// TODO(b/294888357) this can be removed once mac80211 is removed from first stage init.
+prebuilt_firmware {
+    name: "wifi-regulatory-fw.vendor_ramdisk",
+    licenses: ["wireless-regdb_license"],
     srcs: [
-        "CfVkmsTester.java",
+        ":wireless-regdb-prebuilts",
     ],
-    libs: [
-        "tradefed",
-        "junit",
-    ],
+    vendor_ramdisk: true,
 }

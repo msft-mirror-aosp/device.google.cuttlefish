@@ -403,11 +403,11 @@ Result<void> ProcessMonitor::StartAndMonitorProcesses() {
   if (monitor_ == 0) {
     child_channel_ = transport::SharedFdChannel(child_sock, child_sock);
     Result<void> monitor_result = MonitorRoutine();
-    if (!monitor_result.ok()) {
+    if (!monitor_result.has_value()) {
       LOG(ERROR) << "Monitoring processes failed:\n"
                  << monitor_result.error().FormatForEnv();
     }
-    std::exit(monitor_result.ok() ? 0 : 1);
+    std::exit(monitor_result.has_value() ? 0 : 1);
   } else {
     parent_channel_ = transport::SharedFdChannel(parent_sock, parent_sock);
     return {};

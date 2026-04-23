@@ -32,7 +32,10 @@ std::vector<uint8_t> hexStringToBinary(const std::string& hexStr) {
   binary.reserve(hexStr.length() / 2);
   for (size_t i = 0; i < hexStr.length(); i += 2) {
     uint8_t byte;
-    if (android::base::ParseUint(hexStr.substr(i, 2), &byte)) {
+    char* endptr;
+    std::string hexByte = hexStr.substr(i, 2);
+    byte = static_cast<uint8_t>(strtoul(hexByte.c_str(), &endptr, 16));
+    if (*endptr == '\0') {
       binary.push_back(byte);
     }
   }

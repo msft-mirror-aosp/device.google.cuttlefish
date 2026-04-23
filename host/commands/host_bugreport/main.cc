@@ -67,7 +67,7 @@ void AddNetsimdLogs(ZipWriter& writer) {
     return;
   }
   auto names = DirectoryContents(dir);
-  if (!names.ok()) {
+  if (!names.has_value()) {
     LOG(ERROR) << "Cannot read from netsimd directory `" << dir
                << "`: " << names.error().FormatForEnv(/* color = */ false);
     return;
@@ -150,7 +150,7 @@ Result<void> CvdHostBugreportMain(int argc, char** argv) {
     save("disk_config.txt");
     if (DirectoryExists(instance.PerInstancePath("logs"))) {
       auto result = DirectoryContents(instance.PerInstancePath("logs"));
-      if (result.ok()) {
+      if (result.has_value()) {
         for (const auto& log : result.value()) {
           save("logs/" + log);
         }
@@ -167,7 +167,7 @@ Result<void> CvdHostBugreportMain(int argc, char** argv) {
 
     {
       auto result = DirectoryContents(instance.PerInstancePath("tombstones"));
-      if (result.ok()) {
+      if (result.has_value()) {
         for (const auto& tombstone : result.value()) {
           save("tombstones/" + tombstone);
         }
@@ -179,7 +179,7 @@ Result<void> CvdHostBugreportMain(int argc, char** argv) {
 
     {
       auto result = DirectoryContents(instance.PerInstancePath("recording"));
-      if (result.ok()) {
+      if (result.has_value()) {
         for (const auto& recording : result.value()) {
           save("recording/" + recording);
         }
@@ -195,9 +195,9 @@ Result<void> CvdHostBugreportMain(int argc, char** argv) {
       CF_EXPECTF(mkdtemp(device_br_dir.data()) != nullptr,
                  "mkdtemp failed: '{}'", strerror(errno));
       auto result = CreateDeviceBugreport(instance, device_br_dir);
-      if (result.ok()) {
+      if (result.has_value()) {
         auto names = DirectoryContents(device_br_dir);
-        if (names.ok()) {
+        if (names.has_value()) {
           for (const auto& name : names.value()) {
             std::string filename = device_br_dir + "/" + name;
             SaveFile(writer, android::base::Basename(filename), filename);
@@ -236,6 +236,6 @@ Result<void> CvdHostBugreportMain(int argc, char** argv) {
 
 int main(int argc, char** argv) {
   auto result = cuttlefish::CvdHostBugreportMain(argc, argv);
-  CHECK(result.ok()) << result.error().FormatForEnv();
+  CHECK(result.has_value()) << result.error().FormatForEnv();
   return 0;
 }
