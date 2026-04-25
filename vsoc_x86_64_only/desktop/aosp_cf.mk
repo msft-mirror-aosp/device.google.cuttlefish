@@ -14,6 +14,7 @@
 # limitations under the License.
 #
 #
+PDK_BUILD := true
 # All components inherited here go to vendor image
 #
 $(call inherit-product, device/google/cuttlefish/shared/desktop/common_x86.mk)
