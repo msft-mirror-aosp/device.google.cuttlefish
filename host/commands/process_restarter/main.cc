@@ -117,7 +117,7 @@ int main(int argc, char** argv) {
   cuttlefish::DefaultSubprocessLogging(argv);
   auto result = cuttlefish::RunProcessRestarter(
       cuttlefish::ArgsToVec(argc - 1, argv + 1));
-  if (!result.ok()) {
+  if (!result.has_value()) {
     LOG(DEBUG) << result.error().FormatForEnv();
     return EXIT_FAILURE;
   }

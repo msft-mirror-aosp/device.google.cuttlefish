@@ -474,7 +474,7 @@ bool WriteEnd(SharedFD out, const GptEnd& end) {
 void DeAndroidSparse(const std::vector<ImagePartition>& partitions) {
   for (const auto& partition : partitions) {
     Result<void> res = ForceRawImage(partition.image_file_path);
-    if (!res.ok()) {
+    if (!res.has_value()) {
       LOG(FATAL) << "Desparse failed: " << res.error().FormatForEnv();
     }
   }
@@ -590,7 +590,7 @@ void CreateOrUpdateCompositeDisk(std::vector<MultipleImagePartition> partitions,
 
   Result<CompositeDisk> composite_res =
       CompositeDiskFromFile(output_composite_path);
-  if (composite_res.ok() &&
+  if (composite_res.has_value() &&
       CompositeDiskEquals(composite_proto, composite_res.value())) {
     // The existing composite disk matches the given partitions, no need to
     // regenerate

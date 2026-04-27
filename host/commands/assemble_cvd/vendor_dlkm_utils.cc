@@ -103,7 +103,7 @@ Result<bool> WriteFsConfig(const char* output_path, const std::string& fs_root,
     }
     return true;
   });
-  if (!res.ok()) {
+  if (!res.has_value()) {
     return false;
   }
   return true;
@@ -429,7 +429,7 @@ bool SplitRamdiskModules(const std::string& ramdisk_path,
   const auto vendor_modules_dir = vendor_dlkm_build_dir + "/lib/modules";
   const auto system_modules_dir = system_dlkm_build_dir + "/lib/modules";
   auto ret = EnsureDirectoryExists(vendor_modules_dir);
-  CHECK(ret.ok()) << ret.error().FormatForEnv();
+  CHECK(ret.has_value()) << ret.error().FormatForEnv();
   ret = EnsureDirectoryExists(system_modules_dir);
   UnpackRamdisk(ramdisk_path, ramdisk_stage_dir);
   auto res = FindFile(ramdisk_stage_dir.c_str(), "modules.load");
@@ -470,18 +470,18 @@ bool SplitRamdiskModules(const std::string& ramdisk_path,
           fmt::format("{}/{}", system_modules_dir, module_path);
       auto res = EnsureDirectoryExists(
           android::base::Dirname(system_dlkm_module_location));
-      CHECK(res.ok()) << res.error().FormatForEnv();
+      CHECK(res.has_value()) << res.error().FormatForEnv();
       auto ret = RenameFile(module_location, system_dlkm_module_location);
-      CHECK(ret.ok()) << ret.error().FormatForEnv();
+      CHECK(ret.has_value()) << ret.error().FormatForEnv();
       system_dlkm_modules.emplace(module_path);
     } else {
       const auto vendor_dlkm_module_location =
           fmt::format("{}/{}", vendor_modules_dir, module_path);
       auto res = EnsureDirectoryExists(
           android::base::Dirname(vendor_dlkm_module_location));
-      CHECK(res.ok()) << res.error().FormatForEnv();
+      CHECK(res.has_value()) << res.error().FormatForEnv();
       auto ret = RenameFile(module_location, vendor_dlkm_module_location);
-      CHECK(ret.ok()) << ret.error().FormatForEnv();
+      CHECK(ret.has_value()) << ret.error().FormatForEnv();
       vendor_dlkm_modules.emplace(module_path);
     }
   }
@@ -507,7 +507,7 @@ bool SplitRamdiskModules(const std::string& ramdisk_path,
     const auto vendor_dlkm_blocklist_path =
         fmt::format("{}/{}", vendor_modules_dir, "modules.blocklist");
     auto ret = RenameFile(initramfs_blocklist_path, vendor_dlkm_blocklist_path);
-    CHECK(ret.ok()) << ret.error().FormatForEnv();
+    CHECK(ret.has_value()) << ret.error().FormatForEnv();
   }
 
   // Write updated modules.dep and modules.load files
@@ -561,7 +561,7 @@ bool MoveIfChanged(const std::string& src, const std::string& dst) {
     return false;
   }
   const auto ret = RenameFile(src, dst);
-  if (!ret.ok()) {
+  if (!ret.has_value()) {
     LOG(ERROR) << ret.error().FormatForEnv();
     return false;
   }

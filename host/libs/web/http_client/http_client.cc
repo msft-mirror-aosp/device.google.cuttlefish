@@ -227,7 +227,7 @@ class CurlClient : public HttpClient {
     auto response =
         CF_EXPECT(DownloadToString(method, url, headers, data_to_write));
     auto result = ParseJson(response.data);
-    if (!result.ok()) {
+    if (!result.has_value()) {
       Json::Value error_json;
       LOG(ERROR) << "Could not parse json: " << result.error().FormatForEnv();
       error_json["error"] = "Failed to parse json: " + result.error().Message();

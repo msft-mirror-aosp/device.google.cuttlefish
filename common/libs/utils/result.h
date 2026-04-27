@@ -312,7 +312,7 @@ template <typename T>
 typename std::conditional_t<std::is_void_v<T>, bool, T> OutcomeDereference(
     Result<T>&& result) {
   if constexpr (std::is_void<T>::value) {
-    return result.ok();
+    return result.has_value();
   } else {
     return std::move(*result);
   }
@@ -333,12 +333,12 @@ bool TypeIsSuccess(std::optional<T>& value) {
 
 template <typename T>
 bool TypeIsSuccess(Result<T>& value) {
-  return value.ok();
+  return value.has_value();
 }
 
 template <typename T>
 bool TypeIsSuccess(Result<T>&& value) {
-  return value.ok();
+  return value.has_value();
 }
 
 inline auto ErrorFromType(bool) { return StackTraceError(); }

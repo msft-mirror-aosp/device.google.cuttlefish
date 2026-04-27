@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2025 The Android Open Source Project
+ * Copyright (C) 2026 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -116,9 +116,41 @@ class VkmsTester {
   static std::unique_ptr<VkmsTester> CreateWithBuilders(
       const std::vector<VkmsConnectorBuilder>& builders);
 
+  /**
+   * Creates a VKMS configuration with a specified number of virtual displays,
+   * each with a default setup.
+   *
+   * Each connector is configured with:
+   *   - 1 CRTC
+   *   - 1 Encoder
+   *   - 2 Planes: 1 Primary and 1 Cursor
+   *
+   * The first connector is set to eDP, and the remaining connectors are set to
+   * DisplayPort.
+   *
+   * @param displaysCount The number of virtual displays to configure.
+   * @return A unique pointer to the created VkmsTester instance, or nullptr if
+   * creation failed.
+   */
+  static std::unique_ptr<VkmsTester> CreateWithGenericConnectors(
+      int displaysCount);
+
   static void ForceDeleteVkmsDir();
 
   static bool ToggleConnector(int connectorIndex, bool enable);
+
+  /**
+   * Detaches the VkmsTester from the virtual hardware state it created.
+   *
+   * By default, the destructor will clean up ConfigFS and destroy the
+   * virtual displays. Calling Detach() prevents this cleanup, leaving the
+   * displays active even after the C++ object goes out of scope. This is
+   * necessary for CLI operations where the process exits but the hardware
+   * must persist.
+   */
+  void Detach() { mOwnsResources = false; }
+
+  ~VkmsTester();
 
  private:
   enum class DrmResource {
@@ -170,6 +202,9 @@ class VkmsTester {
   // created.
   int mLatestPlaneId = 0;
 
+  // Determines whether the destructor should clean up the VKMS state.
+  // Set to false by calling Detach().
+  bool mOwnsResources = true;
   bool mInitialized = false;
 };
 

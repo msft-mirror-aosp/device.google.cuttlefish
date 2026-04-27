@@ -107,7 +107,7 @@ Result<void> UpdateSensorsHal(const std::string& sensors_data,
     if (mask & 1) {
       CF_EXPECT(static_cast<bool>(sensors_data_stream >> report));
       auto result = SensorIdToName(id);
-      if (result.ok()) {
+      if (result.has_value()) {
         reports.push_back(result.value() + INNER_DELIM + report + END_OF_MSG);
       }
     }
@@ -165,7 +165,7 @@ SensorsHalProxy::SensorsHalProxy(SharedFD control_from_guest_fd,
     while (running_) {
       auto result = ProcessHalRequest(control_channel_, hal_activated_,
                                       host_enabled_sensors);
-      if (!result.ok()) {
+      if (!result.has_value()) {
         running_ = false;
         LOG(ERROR) << result.error().FormatForEnv();
       }
@@ -180,7 +180,7 @@ SensorsHalProxy::SensorsHalProxy(SharedFD control_from_guest_fd,
             sensors_simulator_.GetSensorsData(host_update_sensors);
         auto result =
             UpdateSensorsHal(sensors_data, data_channel_, host_update_sensors);
-        if (!result.ok()) {
+        if (!result.has_value()) {
           running_ = false;
           LOG(ERROR) << result.error().FormatForEnv();
         }
@@ -191,7 +191,7 @@ SensorsHalProxy::SensorsHalProxy(SharedFD control_from_guest_fd,
   reboot_monitor_thread_ = std::thread([this] {
     while (kernel_events_fd_->IsOpen()) {
       auto read_result = monitor::ReadEvent(kernel_events_fd_);
-      CHECK(read_result.ok()) << read_result.error().FormatForEnv();
+      CHECK(read_result.has_value()) << read_result.error().FormatForEnv();
       CHECK(read_result->has_value()) << "EOF in kernel log monitor";
       if ((*read_result)->event == monitor::Event::BootloaderLoaded) {
         hal_activated_ = false;

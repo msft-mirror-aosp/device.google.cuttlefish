@@ -253,7 +253,8 @@ class EspBuilder final {
     // newfs_msdos won't make a partition smaller than 257 mb
     // this should be enough for anybody..
     const auto tmp_esp_image = image_path_ + ".tmp";
-    if (!MakeFatImage(tmp_esp_image, 257 /* mb */, 0 /* mb (offset) */).ok()) {
+    if (!MakeFatImage(tmp_esp_image, 257 /* mb */, 0 /* mb (offset) */)
+             .has_value()) {
       LOG(ERROR) << "Failed to create filesystem for " << tmp_esp_image;
       return false;
     }
@@ -280,7 +281,7 @@ class EspBuilder final {
       }
     }
 
-    if (!RenameFile(tmp_esp_image, image_path_).ok()) {
+    if (!RenameFile(tmp_esp_image, image_path_).has_value()) {
       LOG(ERROR) << "Renaming " << tmp_esp_image << " to "
                   << image_path_ << " failed";
       return false;

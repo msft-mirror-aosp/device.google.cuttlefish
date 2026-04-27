@@ -75,7 +75,7 @@ std::vector<std::string> SystemImageDirsFromArgs(
   std::string value;
   Flag flag = GflagsCompatFlag("system_image_dir", value);
   auto parse_res = flag.Parse(args);
-  if (!parse_res.ok()) {
+  if (!parse_res.has_value()) {
     LOG(ERROR) << "Failed to parse `system_image_dir` flag"
                << parse_res.error().FormatForEnv();
   }
@@ -687,7 +687,7 @@ Result<int> AssembleCvdMain(int argc, char** argv) {
 
 int main(int argc, char** argv) {
   auto res = cuttlefish::AssembleCvdMain(argc, argv);
-  if (res.ok()) {
+  if (res.has_value()) {
     return *res;
   }
   LOG(ERROR) << "assemble_cvd failed: \n" << res.error().FormatForEnv();

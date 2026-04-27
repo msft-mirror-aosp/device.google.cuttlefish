@@ -1,0 +1,4 @@
+# Necessary to read and validate the `regulatory.db` PKCS#7 signature
+# using keys created by dlkm_loader.
+allow kernel vendor_regulatory_db_file:file r_file_perms;
+allow kernel dlkm_loader:key search;

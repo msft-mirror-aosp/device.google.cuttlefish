@@ -158,7 +158,7 @@ Result<std::vector<pid_t>> CollectPids(const uid_t uid) {
     // android::base::ParseInt needs serious fixes
     CF_EXPECT(android::base::ParseInt(subdir, &pid));
     auto owner_uid_result = OwnerUids(pid);
-    if (owner_uid_result.ok() && owner_uid_result->real_ == uid) {
+    if (owner_uid_result.has_value() && owner_uid_result->real_ == uid) {
       pids.push_back(pid);
     }
   }
@@ -218,11 +218,11 @@ Result<std::vector<pid_t>> CollectPidsByExecName(const std::string& exec_name,
   std::vector<pid_t> output_pids;
   for (const auto pid : input_pids) {
     auto owner_uids_result = OwnerUids(pid);
-    if (!owner_uids_result.ok() || owner_uids_result->real_ != uid) {
+    if (!owner_uids_result.has_value() || owner_uids_result->real_ != uid) {
       LOG(VERBOSE) << "Process #" << pid << " does not belong to " << uid;
       continue;
     }
-    if (CheckExecNameFromStatus(exec_name, pid).ok()) {
+    if (CheckExecNameFromStatus(exec_name, pid).has_value()) {
       output_pids.push_back(pid);
     }
   }
@@ -235,7 +235,7 @@ Result<std::vector<pid_t>> CollectPidsByExecPath(const std::string& exec_path,
   std::vector<pid_t> output_pids;
   for (const auto pid : input_pids) {
     auto pid_exec_path = GetExecutablePath(pid);
-    if (!pid_exec_path.ok()) {
+    if (!pid_exec_path.has_value()) {
       continue;
     }
     if (*pid_exec_path == exec_path) {
@@ -251,7 +251,7 @@ Result<std::vector<pid_t>> CollectPidsByArgv0(const std::string& expected_argv0,
   std::vector<pid_t> output_pids;
   for (const auto pid : input_pids) {
     auto argv_result = GetCmdArgs(pid);
-    if (!argv_result.ok()) {
+    if (!argv_result.has_value()) {
       continue;
     }
     if (argv_result->empty()) {
@@ -267,7 +267,7 @@ Result<std::vector<pid_t>> CollectPidsByArgv0(const std::string& expected_argv0,
 Result<uid_t> OwnerUid(const pid_t pid) {
   // parse from /proc/<pid>/status
   auto uids_result = OwnerUids(pid);
-  if (!uids_result.ok()) {
+  if (!uids_result.has_value()) {
     LOG(DEBUG) << uids_result.error().Trace();
     LOG(DEBUG) << "Falling back to the old OwnerUid logic";
     return CF_EXPECT(FileOwnerUid(PidDirPath(pid)));

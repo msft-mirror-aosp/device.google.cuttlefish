@@ -74,7 +74,7 @@ Result<void> MoveThreadsToCgroup(const std::string& from_path,
 
   if (FileExists(file_path)) {
     Result<std::string> content_result = ReadFileContents(file_path);
-    if (!content_result.ok()) {
+    if (!content_result.has_value()) {
       LOG(INFO) << "Failed to open threads file and assume it is empty: "
                 << file_path;
       return {};
@@ -86,7 +86,7 @@ Result<void> MoveThreadsToCgroup(const std::string& from_path,
       std::string proc_status_path = "/proc/" + each_id;
       proc_status_path.append("/status");
       Result<std::string> proc_status = ReadFileContents(proc_status_path);
-      if (!proc_status.ok()) {
+      if (!proc_status.has_value()) {
         LOG(INFO) << "Failed to open proc status file and skip: "
                   << proc_status_path;
         continue;
@@ -325,8 +325,8 @@ class CvdBootStateMachine : public SetupFeature, public KernelLogPipeConsumer {
           [this, restore_complete_pipe_write, restore_complete_stop_read]() {
             const auto result =
                 vm_manager_.WaitForRestoreComplete(restore_complete_stop_read);
-            CHECK(result.ok()) << "Failed to wait for restore complete: "
-                               << result.error().FormatForEnv();
+            CHECK(result.has_value()) << "Failed to wait for restore complete: "
+                                      << result.error().FormatForEnv();
             if (!result.value()) {
               return;
             }
@@ -457,10 +457,11 @@ class CvdBootStateMachine : public SetupFeature, public KernelLogPipeConsumer {
               break;
             }
             auto monitor_res = GetLauncherMonitorFromInstance(instance_, 5);
-            CHECK(monitor_res.ok()) << monitor_res.error().FormatForEnv();
+            CHECK(monitor_res.has_value())
+                << monitor_res.error().FormatForEnv();
             auto fail_res = RunLauncherAction(
                 *monitor_res, LauncherAction::kFail, std::optional<int>());
-            CHECK(fail_res.ok()) << fail_res.error().FormatForEnv();
+            CHECK(fail_res.has_value()) << fail_res.error().FormatForEnv();
           }
           break;
         }
@@ -546,7 +547,7 @@ class CvdBootStateMachine : public SetupFeature, public KernelLogPipeConsumer {
           LOG(INFO) << "Virtual device rebooted successfully";
           if (!instance_.vcpu_config_path().empty()) {
             auto res = WattsonRebalanceThreads(instance_.id());
-            if (!res.ok()) {
+            if (!res.has_value()) {
               LOG(ERROR) << res.error().FormatForEnv();
             }
           }
@@ -575,7 +576,7 @@ class CvdBootStateMachine : public SetupFeature, public KernelLogPipeConsumer {
       state_ |= kGuestBootCompleted;
       if (!instance_.vcpu_config_path().empty()) {
         auto res = WattsonRebalanceThreads(instance_.id());
-        if (!res.ok()) {
+        if (!res.has_value()) {
           LOG(ERROR) << res.error().FormatForEnv();
         }
       }
