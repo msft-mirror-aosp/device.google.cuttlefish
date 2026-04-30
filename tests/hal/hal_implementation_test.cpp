@@ -150,6 +150,8 @@ static const std::set<std::string> kAlwaysMissingAidl = {
     "android.hardware.virtualization.capabilities.capabilities_service",
     // Removed in b/409403322.
     "android.hardware.health.storage",
+    // Deprecated
+    "android.hardware.neuralnetworks",
 };
 
 /*

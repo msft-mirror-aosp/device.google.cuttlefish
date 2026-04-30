@@ -72,12 +72,12 @@ fn make_raw(file: fs::File) -> std::io::Result<fs::File> {
 /// device from a previous session.
 fn clear(mut file: fs::File) -> std::io::Result<fs::File> {
     use nix::fcntl::*;
-    let mut flags = OFlag::from_bits_truncate(fcntl(file.as_raw_fd(), FcntlArg::F_GETFL)?);
+    let mut flags = OFlag::from_bits_truncate(fcntl(&file, FcntlArg::F_GETFL)?);
 
     // Make the input file nonblocking when checking if any data
     // is available to read().
     flags.insert(OFlag::O_NONBLOCK);
-    fcntl(file.as_raw_fd(), FcntlArg::F_SETFL(flags))?;
+    fcntl(&file, FcntlArg::F_SETFL(flags))?;
 
     // Drain bytes present in the file.
     let mut data = [0; 4096];
@@ -95,7 +95,7 @@ fn clear(mut file: fs::File) -> std::io::Result<fs::File> {
 
     // Restore the input file to blocking.
     flags.remove(OFlag::O_NONBLOCK);
-    fcntl(file.as_raw_fd(), FcntlArg::F_SETFL(flags))?;
+    fcntl(&file, FcntlArg::F_SETFL(flags))?;
 
     Ok(file)
 }
