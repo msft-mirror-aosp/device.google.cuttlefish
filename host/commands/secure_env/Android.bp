@@ -84,13 +84,13 @@ common_libsecure_srcs = [
     "json_serializable.cpp",
     "keymaster_responder.cpp",
     "primary_key_builder.cpp",
+    "secure_env_ffi.cpp",
     "storage/storage.cpp",
     "storage/tpm_storage.cpp",
     "tpm_attestation_record.cpp",
     "tpm_auth.cpp",
     "tpm_commands.cpp",
     "tpm_encrypt_decrypt.cpp",
-    "tpm_ffi.cpp",
     "tpm_gatekeeper.cpp",
     "tpm_hmac.cpp",
     "tpm_key_blob_maker.cpp",
@@ -138,10 +138,10 @@ cc_library {
 
 // Rust FFI bindings to access TPM-specific functionality in C/C++.
 rust_bindgen_host {
-    name: "libsecure_env_tpm",
-    source_stem: "libsecure_env_tpm",
-    crate_name: "secure_env_tpm",
-    wrapper_src: "tpm_ffi.h",
+    name: "libsecure_env_ffi",
+    source_stem: "libsecure_env_ffi",
+    crate_name: "secure_env_ffi",
+    wrapper_src: "secure_env_ffi.h",
     vendor_available: true,
     static_libs: [
         "libsecure_env_not_windows",

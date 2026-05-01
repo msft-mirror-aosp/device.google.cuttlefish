@@ -23,7 +23,7 @@
 
 #include "common/libs/utils/environment.h"
 #include "common/libs/utils/files.h"
-#include "host/commands/secure_env/tpm_ffi.h"
+#include "host/commands/secure_env/secure_env_ffi.h"
 #include "host/libs/config/config_utils.h"
 
 namespace cuttlefish {
