@@ -31,6 +31,7 @@ rust_binary {
         "libkmr_wire",
         "liblibc",
         "liblog_rust",
+        "libnix",
     ],
     prefer_rlib: true,
 }
