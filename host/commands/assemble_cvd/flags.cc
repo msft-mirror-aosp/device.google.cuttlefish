@@ -1391,12 +1391,13 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
 
   // TODO: schuffelen - fix behavior on riscv64
   if (guest_configs[0].target_arch == Arch::RiscV64) {
-    static constexpr char kRiscv64Secure[] = "keymint,gatekeeper,oemlock";
+    static constexpr char kRiscv64Secure[] =
+        "keymint,gatekeeper,oemlock,weaver";
     SetCommandLineOptionWithMode("secure_hals", kRiscv64Secure,
                                  google::FlagSettingMode::SET_FLAGS_DEFAULT);
   } else {
     static constexpr char kDefaultSecure[] =
-        "oemlock,guest_keymint_insecure,guest_gatekeeper_insecure";
+        "oemlock,guest_keymint_insecure,guest_gatekeeper_insecure,weaver";
     SetCommandLineOptionWithMode("secure_hals", kDefaultSecure,
                                  google::FlagSettingMode::SET_FLAGS_DEFAULT);
   }

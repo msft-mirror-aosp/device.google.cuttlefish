@@ -37,6 +37,11 @@ rust_library_host {
         "libzeroize",
     ],
     defaults: ["cuttlefish_buildhost_only"],
+    target: {
+        darwin: {
+            enabled: true,
+        },
+    },
 }
 
 rust_ffi_host {
@@ -51,4 +56,9 @@ rust_ffi_host {
     ],
     prefer_rlib: true,
     defaults: ["cuttlefish_buildhost_only"],
+    target: {
+        darwin: {
+            enabled: true,
+        },
+    },
 }

@@ -1,4 +1,4 @@
-service vendor.weaver_hal_cuttlefish /vendor/bin/hw/android.hardware.weaver-service.cuttlefish
+service vendor.weaver_hal_cuttlefish /apex/com.android.hardware.weaver/bin/hw/android.hardware.weaver-service.cuttlefish
     class hal
     user system
     group system
