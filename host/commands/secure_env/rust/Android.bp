@@ -33,6 +33,7 @@ rust_library_host {
         "liblibc",
         "liblog_rust",
         "libnix",
+        "libsecure_env_ffi",
     ],
     defaults: ["cuttlefish_buildhost_only"],
 }
@@ -54,7 +55,7 @@ rust_library_host {
         "libnix",
         "libprotobuf",
         "libsecure_env_common",
-        "libsecure_env_tpm",
+        "libsecure_env_ffi",
     ],
     defaults: ["cuttlefish_buildhost_only"],
 }
@@ -91,7 +92,7 @@ rust_test_host {
         "libnix",
         "libprotobuf",
         "libsecure_env_common",
-        "libsecure_env_tpm",
+        "libsecure_env_ffi",
     ],
     defaults: ["cuttlefish_buildhost_only"],
     test_suites: ["general-tests"],
