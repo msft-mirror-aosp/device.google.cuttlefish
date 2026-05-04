@@ -129,8 +129,15 @@ PRODUCT_PACKAGES += android.hardware.automotive.can-service
 PRODUCT_PACKAGES += android.hardware.macsec-service
 PRODUCT_PACKAGES += wpa_supplicant_macsec
 PRODUCT_COPY_FILES += \
-    $(LOCAL_PATH)/macsec/wpa_supplicant_macsec.conf:$(TARGET_COPY_OUT_VENDOR)/etc/wpa_supplicant_macsec.conf \
+    $(LOCAL_PATH)/macsec/wpa_supplicant_macsec.conf:$(TARGET_COPY_OUT_VENDOR)/etc/wpa_supplicant_macsec.conf
+
+ifeq ($(ENABLE_AUTO_ETHERNET), true)
+PRODUCT_COPY_FILES += \
+    $(LOCAL_PATH)/macsec/init.wpa_supplicant_macsec_ns.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/init.wpa_supplicant_macsec_ns.rc
+else
+PRODUCT_COPY_FILES += \
     $(LOCAL_PATH)/macsec/init.wpa_supplicant_macsec.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/init.wpa_supplicant_macsec.rc
+endif
 
 # Occupant Awareness HAL
 PRODUCT_PACKAGES += android.hardware.automotive.occupant_awareness@1.0-service
