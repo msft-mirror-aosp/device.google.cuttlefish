@@ -896,7 +896,7 @@ Result<std::vector<GuestConfig>> ReadGuestConfig() {
       CF_EXPECT(ikconfig_proc.Started() && ikconfig_proc.Wait() == 0,
                 "Failed to extract ikconfig from " << kernel_image_path);
 
-      std::string config = ReadFile(ikconfig_path);
+      std::string config = "\n" + ReadFile(ikconfig_path);
 
       if (config.find("\nCONFIG_ARM=y") != std::string::npos) {
         guest_config.target_arch = Arch::Arm;
