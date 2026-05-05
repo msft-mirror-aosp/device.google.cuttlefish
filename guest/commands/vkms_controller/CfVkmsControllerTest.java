@@ -101,6 +101,26 @@ public class CfVkmsControllerTest extends BaseHostJUnit4Test {
         assertTrue("Presets must include REDRIX", stdout.contains("REDRIX"));
         assertTrue("Presets must include HP_Spectre32_4K_DP", stdout.contains("HP_Spectre32_4K_DP"));
         assertTrue("Presets must include ACI_9155_ASUS_VH238_HDMI", stdout.contains("ACI_9155_ASUS_VH238_HDMI"));
+
+        // Check for new extended output
+        assertTrue("Output must contain default_resolution", stdout.contains("default_resolution=2256x1504"));
+        assertTrue("Output must contain default_refresh_rate", stdout.contains("default_refresh_rate=60Hz"));
+    }
+
+    @Test
+    public void testListPresetsJson() throws Exception {
+        CommandResult result = runTargetCommand("list-presets --json");
+        assertEquals("List presets --json failed: " + result.getStderr(),
+                     CommandStatus.SUCCESS, result.getStatus());
+
+        String jsonOut = result.getStdout();
+        // Simple structural checks for JSON
+        assertTrue("JSON output missing REDRIX", jsonOut.contains("\"preset_name\" : \"REDRIX\""));
+        assertTrue("JSON output missing 2256x1504", jsonOut.contains("\"default_resolution\" : \"2256x1504\""));
+        assertTrue("JSON output missing 60", jsonOut.contains("\"default_refresh_rate\" : 60"));
+
+        assertTrue("JSON output missing HP_Spectre32_4K_DP", jsonOut.contains("\"preset_name\" : \"HP_Spectre32_4K_DP\""));
+        assertTrue("JSON output missing 3840x2160", jsonOut.contains("\"default_resolution\" : \"3840x2160\""));
     }
 
     @Test
