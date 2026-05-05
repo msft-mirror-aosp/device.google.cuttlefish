@@ -25,10 +25,7 @@ PRODUCT_PRODUCT_PROPERTIES += \
 #
 # AudioPolicy
 #
-BOARD_SEPOLICY_DIRS += frameworks/av/services/audiopolicy/engineconfigurable/sepolicy
-
 PRODUCT_PACKAGES += audio_policy_configuration.xml
-
 
 #
 # AudioPolicyEngine
