@@ -181,7 +181,7 @@ class VkmsTester {
   bool SetupDisplays(int displaysCount,
                      const std::vector<VkmsConnectorBuilder>& builders);
   static bool ToggleVkms(bool enable);
-  static bool ToggleHwc3(bool enable);
+  static bool ToggleDisplayStack(bool enable);
 
   static bool CreateResource(DrmResource resource, int index);
   static bool SetCrtcWriteback(int crtcIndex, bool enable);

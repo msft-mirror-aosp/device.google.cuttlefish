@@ -67,7 +67,7 @@ public class CfVkmsControllerTest extends BaseHostJUnit4Test {
     }
 
     private boolean waitForSurfaceFlingerResolution(String expectedResolution, boolean shouldBePresent) throws Exception {
-        for (int i = 0; i < 15; i++) {
+        for (int i = 0; i < 30; i++) {
             CommandResult result = getDevice().executeShellV2Command("dumpsys SurfaceFlinger --displays");
             if (result.getStatus() == CommandStatus.SUCCESS) {
                 boolean isPresent = result.getStdout().contains(expectedResolution);
@@ -250,5 +250,53 @@ public class CfVkmsControllerTest extends BaseHostJUnit4Test {
         runTargetCommand("setup 1");
         CommandResult result = runTargetCommand("reset");
         assertEquals(CommandStatus.SUCCESS, result.getStatus());
+    }
+
+    @Test
+    public void testSetupIsRobustAgainstFrameworkRunning() throws Exception {
+        // Ensure framework is running (normal state)
+        getDevice().executeShellV2Command("start");
+        // Wait a bit for SF to be really up
+        RunUtil.getDefault().sleep(5000);
+
+        CommandResult result = runTargetCommand("setup --screen=name=REDRIX");
+        assertEquals("Setup failed while framework was running", CommandStatus.SUCCESS,
+                     result.getStatus());
+
+        // Verify SurfaceFlinger is back and has the display
+        assertTrue("REDRIX (2256x1504) not detected after robust setup",
+                   waitForSurfaceFlingerResolution("2256x1504", true));
+    }
+
+    @Test
+    public void testResetRestoresDefaultState() throws Exception {
+        // Setup 2 displays
+        runTargetCommand("setup 2");
+        assertTrue("Displays didn't come up", waitForSurfaceFlingerResolution("2256x1504", true));
+
+        // Reset
+        CommandResult result = runTargetCommand("reset");
+        assertEquals("Reset failed", CommandStatus.SUCCESS, result.getStatus());
+
+        // Verify virtual displays are GONE from SurfaceFlinger
+        // (REDRIX 2256x1504 is one of our virtual presets)
+        assertTrue("Virtual display still present in SF after reset",
+                   waitForSurfaceFlingerResolution("2256x1504", false));
+
+        // Verify ConfigFS is clean
+        CommandResult lsResult = getDevice().executeShellV2Command("ls /config/vkms/my-vkms");
+        assertNotEquals("VKMS directory should be deleted after reset", CommandStatus.SUCCESS,
+                        lsResult.getStatus());
+    }
+
+    @Test
+    public void testMultipleSetupsInARow() throws Exception {
+        for (int i = 0; i < 3; i++) {
+            CommandResult result = runTargetCommand("setup 1");
+            assertEquals("Setup iteration " + i + " failed", CommandStatus.SUCCESS,
+                         result.getStatus());
+            assertTrue("Display not up in iteration " + i,
+                       waitForSurfaceFlingerResolution("2256x1504", true));
+        }
     }
 }
