@@ -23,7 +23,7 @@ use std::os::fd::OwnedFd;
 ///
 /// `fd_in`, `fd_out` and `snapshot_fd` must be valid and open file descriptors and the caller must
 /// not use or close them after the call. `storage_path` must be a valid null-terminated C string.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn weaver_ta_main(
     fd_in: OwnedFd,
     fd_out: OwnedFd,
