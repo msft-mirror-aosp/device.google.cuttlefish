@@ -188,6 +188,7 @@ cc_binary_host {
         linux: {
             shared_libs: [
                 "libkmr_cf_ffi",
+                "libweaver_cf_ffi",
             ],
         },
     },
