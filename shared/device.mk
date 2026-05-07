@@ -650,3 +650,6 @@ endif
 
 PRODUCT_PACKAGES += \
     device_google_cuttlefish_shared_config_dma_heap_config
+
+PRODUCT_PACKAGES += \
+    excluded_hardware.prebuilt.xml

@@ -280,3 +280,10 @@ prebuilt_etc {
     srcs: ["dma_heap.json"],
     vendor: true,
 }
+
+prebuilt_etc {
+    name: "excluded_hardware.prebuilt.xml",
+    src: "excluded_hardware.xml",
+    relative_install_path: "permissions",
+    soc_specific: true,
+}
