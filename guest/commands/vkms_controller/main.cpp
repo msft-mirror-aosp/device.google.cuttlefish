@@ -46,7 +46,6 @@
 #include <fstream>
 #include <iostream>
 #include <memory>
-#include <regex>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -97,7 +96,7 @@ List all available hardware presets (monitor EDIDs) baked into the guest:
 )";
 
 constexpr std::string_view kListDisplaysUsage = R"(
-List all configured displays, resolving SurfaceFlinger IDs and connection state:
+List all configured displays and their connection state:
   vkms_controller list-displays [--json]
 )";
 
@@ -375,23 +374,8 @@ int DoListDisplays(const std::vector<std::string>& args) {
     }
   }
 
-  std::string dumpsys_out =
-      RunCommandAndCapture({"dumpsys", "SurfaceFlinger", "--displays"});
-
-  std::vector<std::string> display_ids;
-  std::istringstream iss(dumpsys_out);
-  std::string line;
-  std::regex display_id_regex(R"(Display\s+(\d+))");
-  std::smatch match;
-
-  while (std::getline(iss, line)) {
-    if (std::regex_search(line, match, display_id_regex)) {
-      display_ids.push_back(match[1].str());
-    }
-  }
-
   if (json_output) {
-    Json::Value root;
+    Json::Value root(Json::objectValue);
     Json::Value state;
     bool has_names = false;
 
@@ -422,22 +406,15 @@ int DoListDisplays(const std::vector<std::string>& args) {
         }
 
         displayObj["display_name"] = name;
-        displayObj["sf_id"] = i < display_ids.size() ? display_ids[i] : "";
         displayObj["status"] = status;
-        root["displays"][std::to_string(i)] = displayObj;
-      }
-    } else {
-      for (size_t i = 0; i < display_ids.size(); ++i) {
-        Json::Value displayObj;
-        displayObj["display_name"] = "Generic " + std::to_string(i);
-        displayObj["sf_id"] = display_ids[i];
-        displayObj["status"] = "Connected";
         root["displays"][std::to_string(i)] = displayObj;
       }
     }
     Json::StreamWriterBuilder builder;
     std::cout << Json::writeString(builder, root) << "\n";
   } else {
+    std::string dumpsys_out =
+        RunCommandAndCapture({"dumpsys", "SurfaceFlinger", "--displays"});
     std::cout << dumpsys_out << "\n";
   }
   return 0;
