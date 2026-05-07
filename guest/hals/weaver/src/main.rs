@@ -1,10 +1,11 @@
-// Copyright 2021, The Android Open Source Project
+//
+// Copyright (C) 2026 The Android Open Source Project
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+//      http://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
@@ -12,33 +13,33 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! This crate implements the KeyMint HAL service in Rust, communicating with a Rust
-//! trusted application (TA) running on the Cuttlefish host.
+//! Weaver HAL service for Cuttlefish.
 
-use kmr_hal::{register_binder_services, HalServiceError, ALL_HALS};
+use android_hardware_weaver::aidl::android::hardware::weaver::IWeaver::IWeaver;
+use hal_hal::channel::{read_msg, write_msg, SerializedChannel};
 use log::{error, info};
 use std::fs;
 use std::panic;
 use std::sync::{Arc, Mutex};
 
-/// Device file used to communicate with the KeyMint TA.
-static DEVICE_FILE_NAME: &str = "/dev/hvc11";
-
-/// Name of KeyMint binder device instance.
-static SERVICE_INSTANCE: &str = "default";
+/// Device file used to communicate with the Weaver TA.
+static DEVICE_FILE_NAME: &str = "/dev/hvc13";
 
 /// Read-write file used for communication with host TA.
 #[derive(Debug)]
 struct FileChannel(std::fs::File);
 
-impl kmr_hal::SerializedChannel for FileChannel {
-    const MAX_SIZE: usize = kmr_wire::DEFAULT_MAX_SIZE;
+impl SerializedChannel for FileChannel {
+    const MAX_SIZE: usize = 4096;
 
     fn execute(&mut self, serialized_req: &[u8]) -> binder::Result<Vec<u8>> {
-        kmr_hal::write_msg(&mut self.0, serialized_req)?;
-        kmr_hal::read_msg(&mut self.0)
+        write_msg(&mut self.0, serialized_req)?;
+        read_msg(&mut self.0)
     }
 }
+
+#[derive(Debug)]
+struct HalServiceError(String);
 
 fn make_raw(file: fs::File) -> std::io::Result<fs::File> {
     use nix::sys::termios::*;
@@ -58,7 +59,7 @@ fn inner_main() -> Result<(), HalServiceError> {
     // Initialize android logging.
     android_logger::init_once(
         android_logger::Config::default()
-            .with_tag("keymint-hal")
+            .with_tag("weaver-hal")
             .with_max_level(log::LevelFilter::Info)
             .with_log_buffer(android_logger::LogId::System),
     );
@@ -67,7 +68,7 @@ fn inner_main() -> Result<(), HalServiceError> {
         error!("{panic_info}");
     }));
 
-    info!("KeyMint HAL service is starting.");
+    info!("Weaver HAL service is starting.");
 
     info!("Starting thread pool now.");
     binder::ProcessState::start_thread_pool();
@@ -84,13 +85,17 @@ fn inner_main() -> Result<(), HalServiceError> {
 
     let channel = Arc::new(Mutex::new(FileChannel(fc)));
 
-    register_binder_services(&channel, ALL_HALS, SERVICE_INSTANCE)?;
+    let service = weaver_hal::WeaverService::new_as_binder(channel);
 
-    // Let the TA know information about the userspace environment.
-    kmr_hal_nonsecure::send_boot_info_and_attestation_id_info(&channel)?;
+    let service_name = format!(
+        "{}/default",
+        <weaver_hal::WeaverService<FileChannel> as IWeaver>::get_descriptor()
+    );
+    binder::add_service(&service_name, service.as_binder())
+        .map_err(|e| HalServiceError(format!("failed to register Weaver service: {e:?}")))?;
 
     info!("Joining thread pool now.");
     binder::ProcessState::join_thread_pool();
-    info!("KeyMint HAL service is terminating.");
+    info!("Weaver HAL service is terminating.");
     Ok(())
 }

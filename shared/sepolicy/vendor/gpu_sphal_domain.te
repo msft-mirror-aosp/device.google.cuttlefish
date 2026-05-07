@@ -1,0 +1,4 @@
+# In emulator builds without OpenGL passthrough, we may use software rendering
+# via SwiftShader, which requires JIT support.
+ifelse(target_requires_insecure_execmem_for_swiftshader, `true',
+  `allow gpu_sphal_domain self:process execmem;')
