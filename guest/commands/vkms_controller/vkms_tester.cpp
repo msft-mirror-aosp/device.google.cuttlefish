@@ -17,6 +17,7 @@
 #include "vkms_tester.h"  // NOLINT(build/include_subdir)
 
 #include <android-base/file.h>
+#include <android-base/properties.h>
 #include <android-base/unique_fd.h>
 #include <cutils/properties.h>
 #include <errno.h>
@@ -142,9 +143,9 @@ void VkmsTester::ForceDeleteVkmsDir() { ShutdownAndCleanUpVkms(); }
 
 VkmsTester::VkmsTester(size_t displaysCount,
                        const std::vector<VkmsConnectorBuilder>& builders) {
-  mInitialized = ToggleHwc3(false) && ToggleVkmsAsDisplayDriver(true) &&
+  mInitialized = ToggleDisplayStack(false) && ToggleVkmsAsDisplayDriver(true) &&
                  SetupDisplays(displaysCount, builders) && ToggleVkms(true) &&
-                 ToggleHwc3(true);
+                 ToggleDisplayStack(true);
   if (!mInitialized) {
     ALOGE("Failed to set up VKMS");
     return;
@@ -269,20 +270,43 @@ bool VkmsTester::ToggleVkms(bool enable) {
 }
 
 // static
-bool VkmsTester::ToggleHwc3(bool enable) {
-  const char* serviceName = "vendor.hwcomposer-3";
-  const char* propertyName = "ctl.start";
-  const char* propertyStopName = "ctl.stop";
+bool VkmsTester::ToggleDisplayStack(bool enable) {
+  // The correct order is critical:
+  // Start: HWC -> SurfaceFlinger -> Boot Animation
+  // Stop:  Boot Animation -> SurfaceFlinger -> HWC
+  std::vector<std::string> services = {"vendor.hwcomposer-3", "surfaceflinger",
+                                       "bootanim"};
 
-  if (property_set(enable ? propertyName : propertyStopName, serviceName) !=
-      0) {
-    ALOGE("Failed to set property %s to %s",
-          enable ? propertyName : propertyStopName, serviceName);
-    return false;
+  if (enable) {
+    for (const auto& service : services) {
+      if (property_set("ctl.start", service.c_str()) != 0) {
+        ALOGE("Failed to set property ctl.start to %s", service.c_str());
+        return false;
+      }
+      if (!android::base::WaitForProperty("init.svc." + service, "running",
+                                          std::chrono::seconds(5))) {
+        ALOGE("Timed out waiting for %s to start", service.c_str());
+        return false;
+      }
+      ALOGI("Successfully started %s", service.c_str());
+    }
+  } else {
+    // Stop in reverse order: bootanim, then surfaceflinger, then hwc
+    std::reverse(services.begin(), services.end());
+    for (const auto& service : services) {
+      if (property_set("ctl.stop", service.c_str()) != 0) {
+        ALOGE("Failed to set property ctl.stop to %s", service.c_str());
+        return false;
+      }
+      if (!android::base::WaitForProperty("init.svc." + service, "stopped",
+                                          std::chrono::seconds(5))) {
+        ALOGE("Timed out waiting for %s to stop", service.c_str());
+        return false;
+      }
+      ALOGI("Successfully stopped %s", service.c_str());
+    }
   }
 
-  ALOGI("Successfully set property %s to %s",
-        enable ? propertyName : propertyStopName, serviceName);
   return true;
 }
 
@@ -421,6 +445,7 @@ bool VkmsTester::LinkConnectorToEncoder(int connectorIdx, int encoderIdx) {
 // ConfigFS has special rules about deletion, so we need to clean up manually
 // every layer.
 void VkmsTester::ShutdownAndCleanUpVkms() {
+  ToggleDisplayStack(false);
   ToggleVkms(false);
   // Give the kernel a longer time to release resources
   std::this_thread::sleep_for(std::chrono::milliseconds(500));
@@ -432,6 +457,7 @@ void VkmsTester::ShutdownAndCleanUpVkms() {
   CleanUpDirAndChildren(kVkmsBaseDir);
 
   ToggleVkmsAsDisplayDriver(false);
+  ToggleDisplayStack(true);
 }
 
 // static
