@@ -85,4 +85,7 @@
          include all realistic refresh rates specified at Cuttlefish instance creation time via
          the display command line flags. -->
     <integer name="config_defaultPeakRefreshRate">1000</integer>
+
+    <!-- Whether to allow bypassing content safety sandboxing. -->
+    <bool name="config_allowBypassingContentSafetySandboxing">true</bool>
 </resources>
