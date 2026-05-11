@@ -143,9 +143,10 @@ void VkmsTester::ForceDeleteVkmsDir() { ShutdownAndCleanUpVkms(); }
 
 VkmsTester::VkmsTester(size_t displaysCount,
                        const std::vector<VkmsConnectorBuilder>& builders) {
-  mInitialized = ToggleDisplayStack(false) && ToggleVkmsAsDisplayDriver(true) &&
+  std::vector<std::string> services_to_restart = StopDisplayStack();
+  mInitialized = ToggleVkmsAsDisplayDriver(true) &&
                  SetupDisplays(displaysCount, builders) && ToggleVkms(true) &&
-                 ToggleDisplayStack(true);
+                 StartDisplayStack(services_to_restart);
   if (!mInitialized) {
     ALOGE("Failed to set up VKMS");
     return;
@@ -270,43 +271,58 @@ bool VkmsTester::ToggleVkms(bool enable) {
 }
 
 // static
-bool VkmsTester::ToggleDisplayStack(bool enable) {
-  // The correct order is critical:
-  // Start: HWC -> SurfaceFlinger -> Boot Animation
-  // Stop:  Boot Animation -> SurfaceFlinger -> HWC
-  std::vector<std::string> services = {"vendor.hwcomposer-3", "surfaceflinger",
-                                       "bootanim"};
+std::vector<std::string> VkmsTester::StopDisplayStack() {
+  // We must stop the display stack before reconfiguring VKMS.
+  // The correct order for stopping is reverse-dependency:
+  // Boot Animation -> SurfaceFlinger -> HWC.
+  //
+  // CRITICAL: We dynamically track which services were actually 'running'
+  // before we stopped them. This prevents us from unconditionally restarting
+  // services (like surfaceflinger) during StartDisplayStack if an external
+  // test harness (e.g. Tradefed for TestHwcComposition) deliberately stopped
+  // them prior to invoking vkms_controller.
+  std::vector<std::string> services = {"bootanim", "surfaceflinger",
+                                       "vendor.hwcomposer-3"};
+  std::vector<std::string> services_to_restart;
 
-  if (enable) {
-    for (const auto& service : services) {
-      if (property_set("ctl.start", service.c_str()) != 0) {
-        ALOGE("Failed to set property ctl.start to %s", service.c_str());
-        return false;
-      }
-      if (!android::base::WaitForProperty("init.svc." + service, "running",
-                                          std::chrono::seconds(5))) {
-        ALOGE("Timed out waiting for %s to start", service.c_str());
-        return false;
-      }
-      ALOGI("Successfully started %s", service.c_str());
+  for (const auto& service : services) {
+    if (android::base::GetProperty("init.svc." + service, "") == "running") {
+      services_to_restart.push_back(service);
     }
-  } else {
-    // Stop in reverse order: bootanim, then surfaceflinger, then hwc
-    std::reverse(services.begin(), services.end());
-    for (const auto& service : services) {
-      if (property_set("ctl.stop", service.c_str()) != 0) {
-        ALOGE("Failed to set property ctl.stop to %s", service.c_str());
-        return false;
-      }
-      if (!android::base::WaitForProperty("init.svc." + service, "stopped",
-                                          std::chrono::seconds(5))) {
-        ALOGE("Timed out waiting for %s to stop", service.c_str());
-        return false;
-      }
-      ALOGI("Successfully stopped %s", service.c_str());
+    if (property_set("ctl.stop", service.c_str()) != 0) {
+      ALOGE("Failed to set property ctl.stop to %s", service.c_str());
+      continue;
     }
+    if (!android::base::WaitForProperty("init.svc." + service, "stopped",
+                                        std::chrono::seconds(5))) {
+      ALOGE("Timed out waiting for %s to stop", service.c_str());
+      continue;
+    }
+    ALOGI("Successfully stopped %s", service.c_str());
   }
 
+  // Reverse to get the correct start order: hwc -> sf -> bootanim
+  std::reverse(services_to_restart.begin(), services_to_restart.end());
+  return services_to_restart;
+}
+
+// static
+bool VkmsTester::StartDisplayStack(const std::vector<std::string>& services) {
+  // Only restart the services that were actively running before we called
+  // StopDisplayStack. This preserves the expected state for external test
+  // harnesses.
+  for (const auto& service : services) {
+    if (property_set("ctl.start", service.c_str()) != 0) {
+      ALOGE("Failed to set property ctl.start to %s", service.c_str());
+      return false;
+    }
+    if (!android::base::WaitForProperty("init.svc." + service, "running",
+                                        std::chrono::seconds(5))) {
+      ALOGE("Timed out waiting for %s to start", service.c_str());
+      return false;
+    }
+    ALOGI("Successfully started %s", service.c_str());
+  }
   return true;
 }
 
@@ -445,7 +461,7 @@ bool VkmsTester::LinkConnectorToEncoder(int connectorIdx, int encoderIdx) {
 // ConfigFS has special rules about deletion, so we need to clean up manually
 // every layer.
 void VkmsTester::ShutdownAndCleanUpVkms() {
-  ToggleDisplayStack(false);
+  std::vector<std::string> services_to_restart = StopDisplayStack();
   ToggleVkms(false);
   // Give the kernel a longer time to release resources
   std::this_thread::sleep_for(std::chrono::milliseconds(500));
@@ -457,7 +473,7 @@ void VkmsTester::ShutdownAndCleanUpVkms() {
   CleanUpDirAndChildren(kVkmsBaseDir);
 
   ToggleVkmsAsDisplayDriver(false);
-  ToggleDisplayStack(true);
+  StartDisplayStack(services_to_restart);
 }
 
 // static
