@@ -112,6 +112,8 @@ func (c *cvdHostPackage) DepsMutator(ctx android.BottomUpMutatorContext) {
 		custom_style = "webrtc_custom_blank.css"
 	}
 	ctx.AddVariationDependencies(variations, cvdHostPackageDependencyTag, custom_style)
+
+	ctx.AddHostToolDependencies("sbox")
 }
 
 func (c *cvdHostPackage) GenerateAndroidBuildActions(ctx android.ModuleContext) {
@@ -121,14 +123,14 @@ func (c *cvdHostPackage) GenerateAndroidBuildActions(ctx android.ModuleContext) 
 	tarball := sboxDir.Join(ctx, c.BaseModuleName()+".tar.gz")
 
 	builder := android.NewRuleBuilder(pctx, ctx).
-		Sbox(sboxDir, sboxManifest).
-		SandboxDisabled()
-	builder.Command().Text("rm").Flag("-rf").Text(packageDir.String())
-	builder.Command().Text("mkdir").Flag("-p").Text(packageDir.String())
+		Sbox(sboxDir, sboxManifest)
+	builder.Command().BuiltTool("rm").Flag("-rf").Text(packageDir.String())
+	builder.Command().BuiltTool("mkdir").Flag("-p").Text(packageDir.String())
 	specs := c.GatherPackagingSpecs(ctx)
 	c.CopySpecsToDir(ctx, builder, specs, packageDir)
 
-	builder.Command().Text("tar Scfz").
+	builder.Command().BuiltTool("tar").Flag("Scfz").
+		ImplicitBuiltTool("gzip").
 		Output(tarball).
 		Flag("-C").
 		Text(packageDir.String()).

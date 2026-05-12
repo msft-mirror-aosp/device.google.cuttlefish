@@ -11,13 +11,13 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::{anyhow, bail, Context, Result};
 use clap::Parser;
+use command_fds::inherited::{init_inherited_fds, take_fd_ownership};
 use log::{error, info, LevelFilter};
 use vhost::vhost_user::Listener;
 use vhost_user_backend::VhostUserDaemon;
-use vm_memory::{GuestMemoryAtomic, GuestMemoryMmap};
-
 use vhu_input::VhostUserInput;
 use vio_input::VirtioInputConfig;
+use vm_memory::{GuestMemoryAtomic, GuestMemoryMmap};
 
 /// Vhost-user input server.
 #[derive(Parser, Debug)]
@@ -48,8 +48,7 @@ fn init_logging(verbosity: &str) -> Result<()> {
 fn main() -> Result<()> {
     // SAFETY: First thing after main
     unsafe {
-        rustutils::inherited_fd::init_once()
-            .context("Failed to take ownership of process' file descriptors")?
+        init_inherited_fds().context("Failed to take ownership of process' file descriptors")?
     };
     let args = Args::parse();
     init_logging(&args.verbosity)?;
@@ -64,9 +63,9 @@ fn main() -> Result<()> {
     let device_config = VirtioInputConfig::from_json(device_config_str.as_str())
         .context("Unable to parse config file")?;
 
-    // SAFETY: No choice but to trust the caller passed a valid fd representing a unix socket.
-    let server_fd = rustutils::inherited_fd::take_fd_ownership(args.socket_fd)
-        .context("Failed to take ownership of socket fd")?;
+    // No choice but to trust the caller passed a valid fd representing a unix socket.
+    let server_fd =
+        take_fd_ownership(args.socket_fd).context("Failed to take ownership of socket fd")?;
     loop {
         let backend =
             Arc::new(Mutex::new(VhostUserInput::new(device_config.clone(), std::io::stdin())));

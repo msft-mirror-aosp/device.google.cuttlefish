@@ -26,6 +26,19 @@ rust_protobuf {
 }
 
 rust_library_host {
+    name: "libsecure_env_common",
+    srcs: ["common.rs"],
+    crate_name: "secure_env_common",
+    rustlibs: [
+        "liblibc",
+        "liblog_rust",
+        "libnix",
+        "libsecure_env_ffi",
+    ],
+    defaults: ["cuttlefish_buildhost_only"],
+}
+
+rust_library_host {
     name: "libkmr_cf",
     srcs: ["lib.rs"],
     crate_name: "kmr_cf",
@@ -41,7 +54,8 @@ rust_library_host {
         "liblog_rust",
         "libnix",
         "libprotobuf",
-        "libsecure_env_tpm",
+        "libsecure_env_common",
+        "libsecure_env_ffi",
     ],
     defaults: ["cuttlefish_buildhost_only"],
 }
@@ -77,7 +91,8 @@ rust_test_host {
         "liblog_rust",
         "libnix",
         "libprotobuf",
-        "libsecure_env_tpm",
+        "libsecure_env_common",
+        "libsecure_env_ffi",
     ],
     defaults: ["cuttlefish_buildhost_only"],
     test_suites: ["general-tests"],
