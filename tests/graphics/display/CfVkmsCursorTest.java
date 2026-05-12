@@ -69,8 +69,22 @@ public class CfVkmsCursorTest extends BaseHostJUnit4Test {
         }
     }
 
+    private boolean toggleSystemUi(boolean enable) throws Exception {
+        if (enable) {
+            getDevice().executeShellV2Command("start vendor.hwcomposer-3");
+            getDevice().executeShellV2Command("start");
+        } else {
+            getDevice().executeShellV2Command("stop");
+            getDevice().executeShellV2Command("stop vendor.hwcomposer-3");
+        }
+        return true;
+    }
+
     @Test
     public void cursorCompositionSucceeds() throws Exception {
+        assertTrue(toggleSystemUi(false));
+        assertTrue(toggleSystemUi(true));
+
         CursorStats results = testCursorComposition();
         if (results.cursorFrames > 0) {
             return;
