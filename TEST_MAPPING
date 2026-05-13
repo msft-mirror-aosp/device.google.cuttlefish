@@ -23,6 +23,9 @@
       "name": "vts_treble_vintf_vendor_test"
     },
     {
+      "name": "dmabuf_procfs_test"
+    },
+    {
       "name": "hal_implementation_test"
     },
     {
@@ -36,6 +39,9 @@
     },
     {
       "name": "OverlayDeviceTests"
+    },
+    {
+      "name": "CtsDownloadManagerTestCases"
     },
     {
       "name": "CtsNativeVerifiedBootTestCases"
@@ -54,6 +60,12 @@
     },
     {
       "name": "CtsAppSearchTestCases"
+    },
+    {
+      "name": "NpuManagerPlatformTest"
+    },
+    {
+      "name": "VtsAidlUsbHostTest"
     }
   ],
   "auto-presubmit": [
