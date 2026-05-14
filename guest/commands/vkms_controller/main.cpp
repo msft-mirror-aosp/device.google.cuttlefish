@@ -46,7 +46,6 @@
 #include <fstream>
 #include <iostream>
 #include <memory>
-#include <regex>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -93,11 +92,11 @@ Reset all displays and clean up the environment:
 
 constexpr std::string_view kListPresetsUsage = R"(
 List all available hardware presets (monitor EDIDs) baked into the guest:
-  vkms_controller list-presets
+  vkms_controller list-presets [--json]
 )";
 
 constexpr std::string_view kListDisplaysUsage = R"(
-List all configured displays, resolving SurfaceFlinger IDs and connection state:
+List all configured displays and their connection state:
   vkms_controller list-displays [--json]
 )";
 
@@ -329,22 +328,84 @@ int DoReset(const std::vector<std::string>& args) {
 }
 
 int DoListPresets(const std::vector<std::string>& args) {
-  (void)args;
-  std::cout << "Supported Screen Presets (you can add an unlimited number of "
-               "screens to this list):\n";
-  std::cout << "  eDP (Internal):\n";
-#define X(monitor) std::cout << "    " << #monitor << "\n";
-  EDP_MONITOR_LIST(X)
+  bool json_output = false;
+  for (size_t i = 1; i < args.size(); ++i) {
+    if (args[i] == "--json") {
+      json_output = true;
+    }
+  }
+
+  if (json_output) {
+    Json::Value root;
+    auto add_presets = [&](const std::string& group_name,
+                           const std::vector<std::string>& monitors) {
+      for (const auto& m : monitors) {
+        Json::Value preset;
+        MonitorName name = StringToMonitorName(m);
+        preset["preset_name"] = m;
+        preset["default_resolution"] = getEdidPreferredResForMonitor(name);
+        preset["default_refresh_rate"] = getEdidPreferredRrForMonitor(name);
+        root[group_name].append(preset);
+      }
+    };
+
+    std::vector<std::string> edp_monitors;
+#define X(monitor) edp_monitors.push_back(#monitor);
+    EDP_MONITOR_LIST(X)
 #undef X
-  std::cout << "\n  DisplayPort (DP):\n";
-#define X(monitor) std::cout << "    " << #monitor << "\n";
-  DP_MONITOR_LIST(X)
+    add_presets("eDP", edp_monitors);
+
+    std::vector<std::string> dp_monitors;
+#define X(monitor) dp_monitors.push_back(#monitor);
+    DP_MONITOR_LIST(X)
 #undef X
-  std::cout << "\n  HDMI:\n";
-#define X(monitor) std::cout << "    " << #monitor << "\n";
-  HDMI_MONITOR_LIST(X)
+    add_presets("DP", dp_monitors);
+
+    std::vector<std::string> hdmi_monitors;
+#define X(monitor) hdmi_monitors.push_back(#monitor);
+    HDMI_MONITOR_LIST(X)
 #undef X
-  std::cout << std::endl;
+    add_presets("HDMI", hdmi_monitors);
+
+    Json::StreamWriterBuilder builder;
+    std::cout << Json::writeString(builder, root) << "\n";
+  } else {
+    std::cout << "Supported Screen Presets (you can add an unlimited number of "
+                 "screens to this list):\n";
+
+    auto print_group = [](const std::string& label,
+                          const std::vector<std::string>& monitors) {
+      std::cout << "  " << label << ":\n";
+      for (const auto& m : monitors) {
+        MonitorName name = StringToMonitorName(m);
+        std::cout << "    " << m << "\n";
+        std::cout << "      default_resolution="
+                  << getEdidPreferredResForMonitor(name) << "\n";
+        std::cout << "      default_refresh_rate="
+                  << getEdidPreferredRrForMonitor(name) << "Hz\n";
+      }
+    };
+
+    std::vector<std::string> edp_monitors;
+#define X(monitor) edp_monitors.push_back(#monitor);
+    EDP_MONITOR_LIST(X)
+#undef X
+    print_group("eDP (Internal)", edp_monitors);
+
+    std::vector<std::string> dp_monitors;
+#define X(monitor) dp_monitors.push_back(#monitor);
+    DP_MONITOR_LIST(X)
+#undef X
+    print_group("DisplayPort (DP)", dp_monitors);
+
+    std::vector<std::string> hdmi_monitors;
+#define X(monitor) hdmi_monitors.push_back(#monitor);
+    HDMI_MONITOR_LIST(X)
+#undef X
+    print_group("HDMI", hdmi_monitors);
+
+    std::cout << std::endl;
+  }
   return 0;
 }
 
@@ -375,23 +436,8 @@ int DoListDisplays(const std::vector<std::string>& args) {
     }
   }
 
-  std::string dumpsys_out =
-      RunCommandAndCapture({"dumpsys", "SurfaceFlinger", "--displays"});
-
-  std::vector<std::string> display_ids;
-  std::istringstream iss(dumpsys_out);
-  std::string line;
-  std::regex display_id_regex(R"(Display\s+(\d+))");
-  std::smatch match;
-
-  while (std::getline(iss, line)) {
-    if (std::regex_search(line, match, display_id_regex)) {
-      display_ids.push_back(match[1].str());
-    }
-  }
-
   if (json_output) {
-    Json::Value root;
+    Json::Value root(Json::objectValue);
     Json::Value state;
     bool has_names = false;
 
@@ -422,22 +468,15 @@ int DoListDisplays(const std::vector<std::string>& args) {
         }
 
         displayObj["display_name"] = name;
-        displayObj["sf_id"] = i < display_ids.size() ? display_ids[i] : "";
         displayObj["status"] = status;
-        root["displays"][std::to_string(i)] = displayObj;
-      }
-    } else {
-      for (size_t i = 0; i < display_ids.size(); ++i) {
-        Json::Value displayObj;
-        displayObj["display_name"] = "Generic " + std::to_string(i);
-        displayObj["sf_id"] = display_ids[i];
-        displayObj["status"] = "Connected";
         root["displays"][std::to_string(i)] = displayObj;
       }
     }
     Json::StreamWriterBuilder builder;
     std::cout << Json::writeString(builder, root) << "\n";
   } else {
+    std::string dumpsys_out =
+        RunCommandAndCapture({"dumpsys", "SurfaceFlinger", "--displays"});
     std::cout << dumpsys_out << "\n";
   }
   return 0;

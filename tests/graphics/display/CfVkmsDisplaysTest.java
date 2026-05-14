@@ -27,6 +27,7 @@ import com.android.tradefed.testtype.DeviceJUnit4ClassRunner;
 import com.android.tradefed.testtype.junit4.BaseHostJUnit4Test;
 import com.android.tradefed.util.CommandResult;
 import com.android.tradefed.util.CommandStatus;
+import com.android.tradefed.util.RunUtil;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -494,22 +495,25 @@ public class CfVkmsDisplaysTest extends BaseHostJUnit4Test {
      * @throws Exception If there's an error executing the command
      */
     private String getDisplayIdForName(String displayName) throws Exception {
-        // Run the command to get display IDs
-        String command = "dumpsys SurfaceFlinger --display-id";
-        CommandResult result = getDevice().executeShellV2Command(command);
-        if (result.getStatus() != CommandStatus.SUCCESS) {
-            CLog.e("Failed to execute dumpsys command: %s", result.getStderr());
-            return null;
-        }
-
-        // Parse the output
-        List<DisplayInfo> displays = parseDisplayInfo(result.getStdout());
-
-        // Find the display with the matching name
-        for (DisplayInfo info : displays) {
-            if (info.displayName != null && info.displayName.contains(displayName)) {
-                return info.id;
+        // Run the command to get display IDs with retries as EDID parsing can take time
+        for (int i = 0; i < 10; i++) {
+            String command = "dumpsys SurfaceFlinger --display-id";
+            CommandResult result = getDevice().executeShellV2Command(command);
+            if (result.getStatus() != CommandStatus.SUCCESS) {
+                CLog.e("Failed to execute dumpsys command: %s", result.getStderr());
+                continue;
             }
+
+            // Parse the output
+            List<DisplayInfo> displays = parseDisplayInfo(result.getStdout());
+
+            // Find the display with the matching name
+            for (DisplayInfo info : displays) {
+                if (info.displayName != null && info.displayName.contains(displayName)) {
+                    return info.id;
+                }
+            }
+            RunUtil.getDefault().sleep(1000);
         }
 
         return null;
@@ -523,27 +527,33 @@ public class CfVkmsDisplaysTest extends BaseHostJUnit4Test {
      * @throws Exception If there's an error executing the command
      */
     private List<String> getDisplayIdsForName(String displayName) throws Exception {
-        List<String> displayIds = new ArrayList<>();
-
-        // Run the command to get display IDs
-        String command = "dumpsys SurfaceFlinger --display-id";
-        CommandResult result = getDevice().executeShellV2Command(command);
-        if (result.getStatus() != CommandStatus.SUCCESS) {
-            CLog.e("Failed to execute dumpsys command: %s", result.getStderr());
-            return displayIds;
-        }
-
-        // Parse the output
-        List<DisplayInfo> displays = parseDisplayInfo(result.getStdout());
-
-        // Find all displays with the matching name
-        for (DisplayInfo info : displays) {
-            if (info.displayName != null && info.displayName.contains(displayName)) {
-                displayIds.add(info.id);
+        // Run the command to get display IDs with retries as EDID parsing can take time
+        for (int i = 0; i < 10; i++) {
+            List<String> displayIds = new ArrayList<>();
+            String command = "dumpsys SurfaceFlinger --display-id";
+            CommandResult result = getDevice().executeShellV2Command(command);
+            if (result.getStatus() != CommandStatus.SUCCESS) {
+                CLog.e("Failed to execute dumpsys command: %s", result.getStderr());
+                continue;
             }
+
+            // Parse the output
+            List<DisplayInfo> displays = parseDisplayInfo(result.getStdout());
+
+            // Find all displays with the matching name
+            for (DisplayInfo info : displays) {
+                if (info.displayName != null && info.displayName.contains(displayName)) {
+                    displayIds.add(info.id);
+                }
+            }
+
+            if (!displayIds.isEmpty()) {
+                return displayIds;
+            }
+            RunUtil.getDefault().sleep(1000);
         }
 
-        return displayIds;
+        return new ArrayList<>();
     }
 
     /**

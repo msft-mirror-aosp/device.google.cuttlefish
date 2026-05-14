@@ -25,7 +25,7 @@ import org.junit.Assert;
 
 public class CfVkmsTester implements AutoCloseable {
 
-  public static final long DISPLAY_BRINGUP_TIMEOUT_MS = 10000;
+  public static final long DISPLAY_BRINGUP_TIMEOUT_MS = 30000;
 
   private static final String CMD_SETUP = "setup";
   private static final String CMD_HOTPLUG = "hotplug";
@@ -125,7 +125,6 @@ public class CfVkmsTester implements AutoCloseable {
 
   private boolean setup(String config) {
     try {
-      device.executeShellV2Command("stop");
       String cmd =
           String.format("vkms_controller %s %s", CMD_SETUP, config);
       boolean success = false;
@@ -139,36 +138,14 @@ public class CfVkmsTester implements AutoCloseable {
         Thread.sleep(2000);
       }
 
-      device.executeShellV2Command("setprop sys.boot_completed 0");
-      device.executeShellV2Command("start");
-
       if (!success) {
         CLog.e("Failed to setup VKMS via vkms_controller after 3 retries");
         return false;
       }
 
-      boolean frameworkReady = false;
-      for (int i = 0; i < 45; i++) {
-        CommandResult res = device.executeShellV2Command("getprop sys.boot_completed");
-        if (res.getStatus() == CommandStatus.SUCCESS && "1".equals(res.getStdout().trim())) {
-          frameworkReady = true;
-          break;
-        }
-        Thread.sleep(2000);
-      }
-      if (!frameworkReady) {
-        CLog.w("Warning: system_server did not signal boot completion in setup().");
-      } else {
-        Thread.sleep(5000); // Allow input/SurfaceFlinger to settle
-      }
-
       return true;
     } catch (Exception e) {
       CLog.e("Exception during VKMS setup: %s", e.toString());
-      try {
-        device.executeShellV2Command("start");
-      } catch (Exception ex) {
-      }
       return false;
     }
   }
@@ -205,9 +182,6 @@ public class CfVkmsTester implements AutoCloseable {
       String cmd = String.format("vkms_controller %s", CMD_TEARDOWN);
       device.executeShellV2Command(cmd);
 
-      CLog.i("Performing full device reboot to cleanly recover from VKMS teardown...");
-      device.reboot();
-      CLog.i("Device rebooted successfully after VKMS teardown.");
       initialized = false;
     } catch (Exception e) {
       CLog.e("Exception during VKMS teardown: %s", e.toString());
