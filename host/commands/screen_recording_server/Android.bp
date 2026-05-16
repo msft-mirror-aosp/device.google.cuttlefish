@@ -59,7 +59,6 @@ cc_binary_host {
         "libgrpc++_unsecure",
         "libjsoncpp",
         "libprotobuf-cpp-full",
-        "libprotobuf-cpp-full",
     ],
     static_libs: [
         "libcuttlefish_command_util",
