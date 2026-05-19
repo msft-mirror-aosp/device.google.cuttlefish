@@ -49,7 +49,7 @@ inline android::base::unexpected<std::string> Err(const std::string& msg) {
 #define VK_ASSERT(x)                                          \
   ({                                                          \
     auto result = (x);                                        \
-    if (!result.ok()) {                                       \
+    if (!result.has_value()) {                                \
       ALOGE("Failed to " #x ": %s.", result.error().c_str()); \
       std::abort();                                           \
     };                                                        \
@@ -59,7 +59,7 @@ inline android::base::unexpected<std::string> Err(const std::string& msg) {
 #define VK_EXPECT(x)                \
   ({                                \
     auto expected = (x);            \
-    if (!expected.ok()) {           \
+    if (!expected.has_value()) {    \
       return Err(expected.error()); \
     };                              \
     std::move(expected.value());    \

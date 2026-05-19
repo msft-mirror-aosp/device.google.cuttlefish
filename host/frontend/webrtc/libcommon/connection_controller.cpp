@@ -41,7 +41,7 @@ class CreateSessionDescriptionObserverIntermediate
 
   void OnSuccess(webrtc::SessionDescriptionInterface* desc) override {
     auto res = controller_.OnCreateSDPSuccess(desc);
-    if (!res.ok()) {
+    if (!res.has_value()) {
       LOG(ERROR) << res.error().FormatForEnv();
     }
   }
@@ -123,7 +123,7 @@ void ConnectionController::FailConnection(const std::string& message) {
   reply["type"] = "error";
   reply["error"] = message;
   auto res = sig_handler_.SendMessage(reply);
-  if (!res.ok()) {
+  if (!res.has_value()) {
     LOG(ERROR) << res.error().FormatForEnv();
   }
   observer_.OnConnectionStateChange(CF_ERR(message));
@@ -272,7 +272,7 @@ ConnectionController::ThisAsSetRemoteSDPObserver() {
 
 void ConnectionController::HandleSignalingMessage(const Json::Value& msg) {
   auto result = HandleSignalingMessageInner(msg);
-  if (!result.ok()) {
+  if (!result.has_value()) {
     LOG(ERROR) << result.error().FormatForEnv();
     FailConnection(result.error().Message());
   }
@@ -414,7 +414,7 @@ void ConnectionController::OnIceCandidate(
   reply["candidate"] = candidate_sdp;
 
   auto res = sig_handler_.SendMessage(reply);
-  if (!res.ok()) {
+  if (!res.has_value()) {
     LOG(ERROR) << res.error().FormatForEnv();
   }
 }

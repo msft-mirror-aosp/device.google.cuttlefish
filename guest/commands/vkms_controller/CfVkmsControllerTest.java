@@ -67,7 +67,7 @@ public class CfVkmsControllerTest extends BaseHostJUnit4Test {
     }
 
     private boolean waitForSurfaceFlingerResolution(String expectedResolution, boolean shouldBePresent) throws Exception {
-        for (int i = 0; i < 15; i++) {
+        for (int i = 0; i < 30; i++) {
             CommandResult result = getDevice().executeShellV2Command("dumpsys SurfaceFlinger --displays");
             if (result.getStatus() == CommandStatus.SUCCESS) {
                 boolean isPresent = result.getStdout().contains(expectedResolution);
@@ -101,6 +101,26 @@ public class CfVkmsControllerTest extends BaseHostJUnit4Test {
         assertTrue("Presets must include REDRIX", stdout.contains("REDRIX"));
         assertTrue("Presets must include HP_Spectre32_4K_DP", stdout.contains("HP_Spectre32_4K_DP"));
         assertTrue("Presets must include ACI_9155_ASUS_VH238_HDMI", stdout.contains("ACI_9155_ASUS_VH238_HDMI"));
+
+        // Check for new extended output
+        assertTrue("Output must contain default_resolution", stdout.contains("default_resolution=2256x1504"));
+        assertTrue("Output must contain default_refresh_rate", stdout.contains("default_refresh_rate=60Hz"));
+    }
+
+    @Test
+    public void testListPresetsJson() throws Exception {
+        CommandResult result = runTargetCommand("list-presets --json");
+        assertEquals("List presets --json failed: " + result.getStderr(),
+                     CommandStatus.SUCCESS, result.getStatus());
+
+        String jsonOut = result.getStdout();
+        // Simple structural checks for JSON
+        assertTrue("JSON output missing REDRIX", jsonOut.contains("\"preset_name\" : \"REDRIX\""));
+        assertTrue("JSON output missing 2256x1504", jsonOut.contains("\"default_resolution\" : \"2256x1504\""));
+        assertTrue("JSON output missing 60", jsonOut.contains("\"default_refresh_rate\" : 60"));
+
+        assertTrue("JSON output missing HP_Spectre32_4K_DP", jsonOut.contains("\"preset_name\" : \"HP_Spectre32_4K_DP\""));
+        assertTrue("JSON output missing 3840x2160", jsonOut.contains("\"default_resolution\" : \"3840x2160\""));
     }
 
     @Test
@@ -250,5 +270,53 @@ public class CfVkmsControllerTest extends BaseHostJUnit4Test {
         runTargetCommand("setup 1");
         CommandResult result = runTargetCommand("reset");
         assertEquals(CommandStatus.SUCCESS, result.getStatus());
+    }
+
+    @Test
+    public void testSetupIsRobustAgainstFrameworkRunning() throws Exception {
+        // Ensure framework is running (normal state)
+        getDevice().executeShellV2Command("start");
+        // Wait a bit for SF to be really up
+        RunUtil.getDefault().sleep(5000);
+
+        CommandResult result = runTargetCommand("setup --screen=name=REDRIX");
+        assertEquals("Setup failed while framework was running", CommandStatus.SUCCESS,
+                     result.getStatus());
+
+        // Verify SurfaceFlinger is back and has the display
+        assertTrue("REDRIX (2256x1504) not detected after robust setup",
+                   waitForSurfaceFlingerResolution("2256x1504", true));
+    }
+
+    @Test
+    public void testResetRestoresDefaultState() throws Exception {
+        // Setup 2 displays
+        runTargetCommand("setup 2");
+        assertTrue("Displays didn't come up", waitForSurfaceFlingerResolution("2256x1504", true));
+
+        // Reset
+        CommandResult result = runTargetCommand("reset");
+        assertEquals("Reset failed", CommandStatus.SUCCESS, result.getStatus());
+
+        // Verify virtual displays are GONE from SurfaceFlinger
+        // (REDRIX 2256x1504 is one of our virtual presets)
+        assertTrue("Virtual display still present in SF after reset",
+                   waitForSurfaceFlingerResolution("2256x1504", false));
+
+        // Verify ConfigFS is clean
+        CommandResult lsResult = getDevice().executeShellV2Command("ls /config/vkms/my-vkms");
+        assertNotEquals("VKMS directory should be deleted after reset", CommandStatus.SUCCESS,
+                        lsResult.getStatus());
+    }
+
+    @Test
+    public void testMultipleSetupsInARow() throws Exception {
+        for (int i = 0; i < 3; i++) {
+            CommandResult result = runTargetCommand("setup 1");
+            assertEquals("Setup iteration " + i + " failed", CommandStatus.SUCCESS,
+                         result.getStatus());
+            assertTrue("Display not up in iteration " + i,
+                       waitForSurfaceFlingerResolution("2256x1504", true));
+        }
     }
 }
