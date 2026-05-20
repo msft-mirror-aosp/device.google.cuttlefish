@@ -160,7 +160,6 @@ PRODUCT_PACKAGES += \
     tombstone_transmit \
     tombstone_producer \
     suspend_blocker \
-    metrics_helper \
     snapshot_hook_post_resume \
     snapshot_hook_pre_suspend
 
