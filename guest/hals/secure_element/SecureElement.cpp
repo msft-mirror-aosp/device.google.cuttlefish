@@ -130,7 +130,7 @@ ScopedAStatus SecureElement::transmit(const std::vector<uint8_t>& data,
         return ScopedAStatus::fromExceptionCode(EX_ILLEGAL_STATE);
     }
     std::vector<uint8_t> output;
-    if (!forwardCommand(data, output).ok()) {
+    if (!forwardCommand(data, output).has_value()) {
         LOG(ERROR) << "Failed to transmit.";
         return ScopedAStatus::fromServiceSpecificError(IOERROR);
     }
@@ -148,7 +148,7 @@ ScopedAStatus SecureElement::openLogicalChannel(
     // Execute MANAGE CHANNEL. According to GlobalPlatform Card Specification, Section:11.7.3,
     // the assigned channel number is returned upon success.
     auto manageChannelRes = executeManageChannel(0 /* CLA */, 0 /* p1 */, 0 /* p2 */, 1 /* le */);
-    if (!manageChannelRes.ok()) {
+    if (!manageChannelRes.has_value()) {
         LOG(ERROR) << "Failed in ManageChannelCommand - " << manageChannelRes.error().Message();
         return ScopedAStatus::fromServiceSpecificError(IOERROR);
     }
@@ -167,7 +167,7 @@ ScopedAStatus SecureElement::openLogicalChannel(
     }
 
     auto selectResponse = executeSelect(cla, p2, aid);
-    if (!selectResponse.ok()) {
+    if (!selectResponse.has_value()) {
         LOG(ERROR) << "Failed to open logical channel - " << selectResponse.error().Message();
         return ScopedAStatus::fromServiceSpecificError(IOERROR);
     }
@@ -181,7 +181,7 @@ ScopedAStatus SecureElement::openBasicChannel(const std::vector<uint8_t>& aid, i
                                               std::vector<uint8_t>* aidl_return) {
 
     auto selectResponse = executeSelect(0 /* CLA */, p2, aid);
-    if (!selectResponse.ok()) {
+    if (!selectResponse.has_value()) {
         LOG(ERROR) << "Failed to open basic channel - " << selectResponse.error().Message();
         return ScopedAStatus::fromServiceSpecificError(IOERROR);
     }
@@ -204,7 +204,7 @@ ScopedAStatus SecureElement::closeChannel(int8_t channelNumber) {
 
     auto result =
         executeManageChannel(cla, kP1ManageChannelClose, channelNumber /* p2 */, 0 /* le */);
-    if (!result.ok()) {
+    if (!result.has_value()) {
         LOG(ERROR) << "closeChannel failed - " << result.error().Message();
         return ScopedAStatus::fromServiceSpecificError(IOERROR);
     }

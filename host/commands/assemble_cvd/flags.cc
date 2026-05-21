@@ -596,6 +596,23 @@ std::string StrForInstance(const std::string& prefix, int num) {
   return stream.str();
 }
 
+const auto& GetGpuModeMap() {
+  static const std::unordered_map<config::GpuMode, GpuMode> kGpuModeMap = {
+      {config::GpuMode::AUTO, GpuMode::Auto},
+      {config::GpuMode::CUSTOM, GpuMode::Custom},
+      {config::GpuMode::DRM_VIRGL, GpuMode::DrmVirgl},
+      {config::GpuMode::GFXSTREAM, GpuMode::Gfxstream},
+      {config::GpuMode::GFXSTREAM_GUEST_ANGLE, GpuMode::GfxstreamGuestAngle},
+      {config::GpuMode::GFXSTREAM_GUEST_ANGLE_HOST_LAVAPIPE,
+       GpuMode::GfxstreamGuestAngleHostLavapipe},
+      {config::GpuMode::GFXSTREAM_GUEST_ANGLE_HOST_SWIFTSHADER,
+       GpuMode::GfxstreamGuestAngleHostSwiftshader},
+      {config::GpuMode::GUEST_SWIFTSHADER, GpuMode::GuestSwiftshader},
+      {config::GpuMode::NONE, GpuMode::None},
+  };
+  return kGpuModeMap;
+}
+
 Result<void> ParseGuestConfigTextProto(const std::string& guest_config_path,
                                        GuestConfig& guest_config) {
   static const std::unordered_map<config::DeviceType, DeviceType>
@@ -642,6 +659,13 @@ Result<void> ParseGuestConfigTextProto(const std::string& guest_config_path,
   if (graphics_config.has_prefer_drm_virgl_when_supported()) {
     guest_config.prefer_drm_virgl_when_supported =
         graphics_config.prefer_drm_virgl_when_supported();
+  }
+
+  const auto& gpu_mode_map = GetGpuModeMap();
+  for (const auto& candidate : graphics_config.gpu_mode_candidates()) {
+    const auto it = gpu_mode_map.find(static_cast<config::GpuMode>(candidate));
+    CF_EXPECT(it != gpu_mode_map.end());
+    guest_config.gpu_mode_candidates.push_back(it->second);
   }
 
   const auto& input_config = proto_config.input();
@@ -896,7 +920,7 @@ Result<std::vector<GuestConfig>> ReadGuestConfig() {
       CF_EXPECT(ikconfig_proc.Started() && ikconfig_proc.Wait() == 0,
                 "Failed to extract ikconfig from " << kernel_image_path);
 
-      std::string config = ReadFile(ikconfig_path);
+      std::string config = "\n" + ReadFile(ikconfig_path);
 
       if (config.find("\nCONFIG_ARM=y") != std::string::npos) {
         guest_config.target_arch = Arch::Arm;

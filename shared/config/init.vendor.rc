@@ -4,14 +4,17 @@ on early-init
     setprop ro.hw_timeout_multiplier ${ro.boot.hw_timeout_multiplier}
     setprop hypervisor.memory_reclaim.supported ${ro.boot.hypervisor.vm.supported}
 
-    start metrics_helper
     # start module load in the background
     start vendor.dlkm_loader
     # specially load zram as it is a "leaf" GKI module
-    exec u:r:modprobe:s0 -- /system/bin/modprobe -a -d /system/lib/modules zram.ko
+    start modprobe_zram
     # only load vkms after virtio_gpu has been loaded
     wait /dev/dri/card0
-    exec u:r:vendor_modprobe:s0 -- /vendor/bin/modprobe -d /vendor/lib/modules vkms.ko create_default_dev=0
+    start modprobe_vkms
+
+on post-early-init
+    wait_for_prop init.svc.modprobe_zram "stopped"
+    wait_for_prop init.svc.modprobe_vkms "stopped"
 
 on early-init && property:ro.boot.vendor.apex.com.android.hardware.keymint=\
 com.android.hardware.keymint.rust_cf_guest_trusty_nonsecure
@@ -104,16 +107,26 @@ on property:sys.boot_completed=1
 on sys-boot-completed-set && property:persist.sys.zram_enabled=1
     swapon_all
 
+service modprobe_zram /system/bin/modprobe -a -d /system/lib/modules zram.ko
+    user root
+    group root
+    oneshot
+    disabled
+    seclabel u:r:modprobe:s0
+
+service modprobe_vkms /vendor/bin/modprobe -d /vendor/lib/modules vkms.ko create_default_dev=0
+    user root
+    group root
+    oneshot
+    disabled
+    seclabel u:r:vendor_modprobe:s0
+
 service vendor.dlkm_loader /vendor/bin/dlkm_loader
     class main
     user root
     group root system
     disabled
     oneshot
-
-service metrics_helper /vendor/bin/metrics_helper
-    group system
-    user root
 
 service socket_vsock_proxy /vendor/bin/socket_vsock_proxy -server_type=vsock -server_vsock_port=6520 -client_type=tcp -client_tcp_host=0.0.0.0 -client_tcp_port=5555
     user root

@@ -1,5 +1,4 @@
-#
-# Copyright (C) 2022 The Android Open Source Project
+# Copyright (C) 2026 The Android Open Source Project
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,7 +11,13 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
 
+on late-fs && property:android.car.auto_eth_namespace_setup_complete=1
+    exec u:r:modprobe:s0 -- /system/bin/modprobe -a -d /system/lib/modules macsec.ko
+    start wpa_supplicant_macsec
 
-PRODUCT_PACKAGES += libGLES_mesa
+service wpa_supplicant_macsec /vendor/bin/hw/wpa_supplicant_macsec \
+    -i eth1 -Dmacsec_linux -c /vendor/etc/wpa_supplicant_macsec.conf
+    enter_namespace net /mnt/run/auto_eth
+    user root
+    oneshot

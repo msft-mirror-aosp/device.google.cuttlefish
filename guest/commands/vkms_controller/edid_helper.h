@@ -70,6 +70,8 @@ struct MonitorName {
 };
 
 std::vector<uint8_t> getBinaryEdidForMonitor(const MonitorName& monitorName);
+std::string getEdidPreferredResForMonitor(const MonitorName& monitorName);
+int getEdidPreferredRrForMonitor(const MonitorName& monitorName);
 
 MonitorName StringToMonitorName(const std::string& name);
 std::string GetConnectorTypeFromName(const std::string& name);

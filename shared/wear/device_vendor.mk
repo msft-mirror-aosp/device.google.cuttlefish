@@ -31,7 +31,6 @@ $(call inherit-product, device/google/cuttlefish/shared/secure_element/device_ve
 $(call inherit-product, device/google/cuttlefish/shared/swiftshader/device_vendor.mk)
 $(call inherit-product, device/google/cuttlefish/shared/telephony/device_vendor.mk)
 $(call inherit-product, device/google/cuttlefish/shared/sensors/device_vendor.mk)
-$(call inherit-product, device/google/cuttlefish/shared/virgl/device_vendor.mk)
 
 # WearOS uses the lazy Widevine and Clearkey HALs
 TARGET_BUILD_WIDEVINE := lazy

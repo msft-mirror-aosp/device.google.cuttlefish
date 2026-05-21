@@ -5,11 +5,6 @@ symlinks {
   link_name: "bin/adb_connector"
 }
 
-symlinks {
-  target: "/usr/lib/cuttlefish-common/bin/allocd_client"
-  link_name: "bin/allocd_client"
-}
-
 symlinks: {
   target: "/usr/lib/cuttlefish-common/bin/casimir_control_server"
   link_name: "bin/casimir_control_server"
