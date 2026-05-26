@@ -1,5 +1,6 @@
 # Enable LE Audio and its related profiles
-bluetooth.profile.bap.broadcast.assist.enabled=false
+bluetooth.profile.bap.broadcast.assist.enabled=true
+bluetooth.profile.bap.broadcast.source.enabled=true
 bluetooth.profile.bap.unicast.client.enabled=true
 bluetooth.profile.bas.client.enabled=true
 bluetooth.profile.ccp.server.enabled=true
