@@ -97,8 +97,13 @@ FetcherConfigs FindFetcherConfigs(const std::vector<std::string>& args) {
     std::string fetcher_file =
         fmt::format("{}/{}", system_image_dirs[i], kFetcherConfigFile);
     FetcherConfig fetcher_config;
-    if (!fetcher_config.LoadFromFile(fetcher_file)) {
-      LOG(DEBUG) << "No valid fetcher_config in '" << fetcher_file
+    if (FileExists(fetcher_file)) {
+      if (!fetcher_config.LoadFromFile(fetcher_file)) {
+        LOG(DEBUG) << "No valid fetcher_config in '" << fetcher_file
+                   << "', falling back to default";
+      }
+    } else {
+      LOG(DEBUG) << "No fetcher_config in '" << fetcher_file
                  << "', falling back to default";
     }
     fetcher_configs.emplace_back(std::move(fetcher_config));

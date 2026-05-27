@@ -115,4 +115,4 @@ PRODUCT_PACKAGES += \
 #   CUTTLEFISH  - Custom OEM key for future use.
 #   EMU         - Last 3 char for custom targeting.
 PRODUCT_PRODUCT_PROPERTIES += \
-    ro.oem.key1=ATV00000024CUTTLEFISHEMU
+    ro.oem.key1=ATV00000026CUTTLEFISHEMU
