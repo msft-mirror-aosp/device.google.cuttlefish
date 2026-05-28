@@ -29,13 +29,6 @@ PRODUCT_FSTAB_PATH := device/google/desktop/common/shared/fstab
 AL_BINARY_TRANSLATION_MODE := ndk_translation_only
 
 #
-# Enable NDK Translation
-#
-# TODO(b/363016680): some branches don't include vendor/unbundled_google
-#
-$(call inherit-product-if-exists, vendor/unbundled_google/libs/ndk_translation/x86_64_ndk_translation_support.mk)
-
-#
 # Special settings for the target
 #
 $(call inherit-product, device/google/cuttlefish/vsoc_x86_64/bootloader.mk)
