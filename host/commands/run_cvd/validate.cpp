@@ -36,12 +36,14 @@ static Result<void> TestTapDevices(
     return {};
   }
   auto wifi = instance.wifi_tap_name();
-  CF_EXPECTF(ValidateTapInterfaceUnused(wifi), "Device \"{}\" in use", wifi);
+  CF_EXPECTF(ValidateTapInterfaceUnused(wifi),
+             "Failed to validate tap interface: {}", wifi);
   auto mobile = instance.mobile_tap_name();
-  CF_EXPECTF(ValidateTapInterfaceUnused(mobile), "Device \"{}\" in use",
-             mobile);
+  CF_EXPECTF(ValidateTapInterfaceUnused(mobile),
+             "Failed to validate tap interface: {}", mobile);
   auto eth = instance.ethernet_tap_name();
-  CF_EXPECTF(ValidateTapInterfaceUnused(eth), "Device \"{}\" in use", eth);
+  CF_EXPECTF(ValidateTapInterfaceUnused(eth),
+             "Failed to validate tap interface: {}", eth);
 #else
   (void)instance;
 #endif
@@ -50,11 +52,10 @@ static Result<void> TestTapDevices(
 
 Result<void> ValidateTapDevices(
     const CuttlefishConfig::InstanceSpecific& instance) {
-  CF_EXPECT(TestTapDevices(instance),
-            "There appears to be another cuttlefish device"
-            " already running, using the requested host "
-            "resources. Try `cvd reset` or `pkill run_cvd` "
-            "and `pkill crosvm`");
+  CF_EXPECT(
+      TestTapDevices(instance),
+      "Failed to validate tap devices. Try `cvd reset` or `pkill run_cvd` "
+      "and `pkill crosvm`");
   return {};
 }
 

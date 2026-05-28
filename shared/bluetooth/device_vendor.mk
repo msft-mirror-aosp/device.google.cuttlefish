@@ -36,6 +36,9 @@ PRODUCT_PACKAGES += com.google.cf.bt
 
 $(call soong_config_set_bool,cuttlefish_config,bt_lpp_service_instance_enabled, $(RELEASE_BLUETOOTH_LPP_SERVICE_INSTANCE))
 
+PRODUCT_COPY_FILES += \
+    frameworks/native/data/etc/android.hardware.bluetooth_le.channel_sounding.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.bluetooth_le.channel_sounding.xml
+
 else # BOARD_HAVE_BLUETOOTH == true
 
 PRODUCT_COPY_FILES += \

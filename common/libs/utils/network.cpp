@@ -101,6 +101,10 @@ bool NetworkInterfaceExists(const std::string& interface_name) {
 
 #ifdef __linux__
 Result<void> ValidateTapInterfaceUnused(const std::string& interface_name) {
+  CF_EXPECT(NetworkInterfaceExists(interface_name),
+            "Tap interface does not exist. Ensure "
+            "\"cuttlefish-host-resources.service\" is running (start with "
+            "\"sudo systemctl start cuttlefish-host-resources.service\").");
   constexpr auto kTunTapDev = "/dev/net/tun";
 
   auto tap_fd = SharedFD::Open(kTunTapDev, O_RDWR | O_NONBLOCK);
@@ -113,8 +117,8 @@ Result<void> ValidateTapInterfaceUnused(const std::string& interface_name) {
   strncpy(ifr.ifr_name, interface_name.c_str(), IFNAMSIZ);
 
   int err = tap_fd->Ioctl(TUNSETIFF, &ifr);
-  CF_EXPECTF(err >= 0, "Unable to connect to {} tap interface: {}",
-             interface_name, tap_fd->StrError());
+  CF_EXPECTF(err >= 0, "Unable to connect to tap interface: {}",
+             tap_fd->StrError());
 
   return {};
 }

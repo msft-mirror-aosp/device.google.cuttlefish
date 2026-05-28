@@ -22,6 +22,11 @@
 # Ensure this is set before inheriting car_generic_system.mk (which includes handheld_system.mk)
 PRODUCT_USE_HSUM?=true
 
+# CF targets set the ro.hw_timeout_multiplier property in the init script using the value
+# specified on the command line in assemble_cvd
+# NOTE: This must be set before inheriting car_generic_system.mk
+USE_DEFAULT_HW_TIMEOUT_MULTIPLIER?=false
+
 $(call inherit-product, $(SRC_TARGET_DIR)/product/core_64_bit_only.mk)
 $(call inherit-product, packages/services/Car/car_product/build/car_generic_system.mk)
 
