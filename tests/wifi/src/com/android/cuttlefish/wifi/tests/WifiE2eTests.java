@@ -23,11 +23,13 @@ import android.net.wifi.SupplicantState;
 import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
+import android.os.UserManager;
 import android.util.Log;
 
-import androidx.test.InstrumentationRegistry;
 import androidx.test.core.app.ApplicationProvider;
+import androidx.test.platform.app.InstrumentationRegistry;
 
+import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
@@ -48,12 +50,34 @@ public class WifiE2eTests {
     private Context mContext;
     private WifiManager mWifiManager;
     private ConnectivityManager mConnManager;
+    private UserManager mUserManager;
+    private boolean mOriginalWifiSharedRestrictionState;
+    private boolean mOriginalWifiPrivateRestrictionState;
 
     @Before
     public void setUp() throws Exception {
         mContext = ApplicationProvider.getApplicationContext();
         mWifiManager = (WifiManager)mContext.getSystemService(Context.WIFI_SERVICE);
         mConnManager = (ConnectivityManager)mContext.getSystemService(Context.CONNECTIVITY_SERVICE);
+        mUserManager = mContext.getSystemService(UserManager.class);
+
+        InstrumentationRegistry.getInstrumentation().getUiAutomation()
+                .adoptShellPermissionIdentity();
+        mOriginalWifiSharedRestrictionState = mUserManager.hasUserRestriction("no_config_wifi_shared");
+        mOriginalWifiPrivateRestrictionState = mUserManager.hasUserRestriction("no_config_wifi_private");
+        // Clear both restrictions for the duration of the test
+        mUserManager.setUserRestriction("no_config_wifi_shared", false);
+        mUserManager.setUserRestriction("no_config_wifi_private", false);
+    }
+
+
+    @After
+    public void tearDown() throws Exception {
+        // Restore both restrictions to their exact original cached states
+        mUserManager.setUserRestriction("no_config_wifi_shared", mOriginalWifiSharedRestrictionState);
+        mUserManager.setUserRestriction("no_config_wifi_private", mOriginalWifiPrivateRestrictionState);
+        InstrumentationRegistry.getInstrumentation().getUiAutomation()
+                .dropShellPermissionIdentity();
     }
 
 
