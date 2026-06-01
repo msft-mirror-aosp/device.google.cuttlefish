@@ -14,6 +14,9 @@
 # limitations under the License.
 #
 
+# Disable scalable UI landscape config by default
+FORCE_SKIP_DEWD_LANDSCAPE_CONFIG := true
+
 # Set board, as displays are set in the config_BOARD.json file (in
 # that file, display0 is main, display1 is cluster, and any other displays
 # are passenger displays - notice that the maximum allowed is 4 total).

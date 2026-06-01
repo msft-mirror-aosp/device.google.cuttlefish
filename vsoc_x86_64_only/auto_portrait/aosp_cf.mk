@@ -14,6 +14,10 @@
 # limitations under the License.
 #
 
+# Disable scalable UI landscape config by default
+# TODO(b/463757682): Remove once the flag is deprecated.
+FORCE_SKIP_DEWD_LANDSCAPE_CONFIG := true
+
 # AOSP Car UI Portrait Cuttlefish Target
 
 TARGET_BOARD_INFO_FILE := device/google/cuttlefish/shared/auto_portrait/android-info.txt
