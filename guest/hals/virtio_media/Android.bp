@@ -34,10 +34,7 @@ apex {
     updatable: false,
     vendor: true,
     binaries: [
-        "android.hardware.camera.provider-V1-external-service",
-    ],
-    native_shared_libs: [
-        "android.hardware.camera.provider-V1-external-impl",
+        "android.hardware.camera.provider-virtio-media-service",
     ],
     prebuilts: [
         "com.google.emulated.camera.provider.hal.v4l2.rc",

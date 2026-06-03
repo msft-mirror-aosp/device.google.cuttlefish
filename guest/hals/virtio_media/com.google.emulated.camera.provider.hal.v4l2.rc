@@ -1,4 +1,4 @@
-service vendor.camera.provider-ext /apex/com.google.emulated.camera.provider.hal/bin/hw/android.hardware.camera.provider-V1-external-service
+service vendor.camera.provider-ext /apex/com.google.emulated.camera.provider.hal/bin/hw/android.hardware.camera.provider-virtio-media-service
     interface aidl android.hardware.camera.provider.ICameraProvider/external/0
     class hal
     user cameraserver
