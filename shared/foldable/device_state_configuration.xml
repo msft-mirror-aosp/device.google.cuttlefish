@@ -30,7 +30,7 @@
       </lid-switch>
       <sensor>
         <type>android.sensor.hinge_angle</type>
-        <name>Hinge Angle Sensor</name>
+        <name>Goldfish hinge sensor0 (in degrees)</name>
         <value>
           <min>0</min>
           <max>180</max>

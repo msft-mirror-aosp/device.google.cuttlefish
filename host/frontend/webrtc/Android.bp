@@ -161,7 +161,6 @@ cc_binary_host {
         "libwebm_mkvmuxer",
         "libxml2",
         "libyuv",
-        "libprotobuf-cpp-full",
     ],
     defaults: [
         "cuttlefish_buildhost_only",
