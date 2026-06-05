@@ -87,6 +87,44 @@
                         </group>
                     </volumeGroups>
                 </zoneConfig>
+                <zoneConfig name="Bluetooth Config">
+                    <volumeGroups>
+                        <group name="entertainment" activationConfig="activation_volume_on_boot_config">
+                            <device type="TYPE_BLUETOOTH_A2DP">
+                                <context context="music"/>
+                                <context context="announcement"/>
+                            </device>
+                        </group>
+                        <group name="navvol" activationConfig="activation_volume_on_source_changed_config">
+                            <device address="BUS01_NAV_GUIDANCE_CARD_0_DEV_1">
+                                <context context="navigation"/>
+                            </device>
+                            <device address="BUS02_NOTIFICATION_CARD_0_DEV_2">
+                                <context context="notification"/>
+                            </device>
+                        </group>
+                        <group name="sdsvol" activationConfig="activation_volume_on_playback_changed_config">
+                            <device address="BUS04_ASSISTANT_CARD_0_DEV_4">
+                                <context context="voice_command"/>
+                            </device>
+                        </group>
+                        <group name="system" activationConfig="activation_volume_on_source_changed_config">
+                            <device address="BUS05_SYSTEM_CARD_0_DEV_5">
+                                <context context="system_sound"/>
+                                <context context="emergency"/>
+                                <context context="safety"/>
+                                <context context="vehicle_status"/>
+                            </device>
+                        </group>
+                        <group name="telringvol" activationConfig="activation_volume_on_playback_changed_config">
+                            <device address="BUS03_PHONE_CARD_0_DEV_3">
+                                <context context="call"/>
+                                <context context="call_ring"/>
+                                <context context="alarm"/>
+                            </device>
+                        </group>
+                    </volumeGroups>
+                </zoneConfig>
             </zoneConfigs>
         </zone>
         <zone name="rear seat zone 1" audioZoneId="1" occupantZoneId="1">
