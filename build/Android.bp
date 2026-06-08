@@ -187,6 +187,7 @@ cvd_host_tools = [
     "health",
     "kernel_log_monitor",
     "launch_cvd",
+    "lib_rootcanal_ffi",
     "libgrpc++",
     "libgrpc++_unsecure",
     "log_tee",
