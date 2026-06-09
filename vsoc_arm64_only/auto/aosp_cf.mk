@@ -14,6 +14,12 @@
 # limitations under the License.
 #
 
+
+# CF targets set the ro.hw_timeout_multiplier property in the init script using the value
+# specified on the command line in assemble_cvd
+# NOTE: This must be set before inheriting car_generic_system.mk
+USE_DEFAULT_HW_TIMEOUT_MULTIPLIER?=false
+
 #
 # All components inherited here go to system image
 #

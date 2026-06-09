@@ -274,19 +274,34 @@ bool VkmsTester::ToggleVkms(bool enable) {
 std::vector<std::string> VkmsTester::StopDisplayStack() {
   // We must stop the display stack before reconfiguring VKMS.
   // The correct order for stopping is reverse-dependency:
-  // Boot Animation -> SurfaceFlinger -> HWC.
+  // Zygote -> Boot Animation -> SurfaceFlinger -> HWC.
   //
   // CRITICAL: We dynamically track which services were actually 'running'
   // before we stopped them. This prevents us from unconditionally restarting
   // services (like surfaceflinger) during StartDisplayStack if an external
   // test harness (e.g. Tradefed for TestHwcComposition) deliberately stopped
   // them prior to invoking vkms_controller.
-  std::vector<std::string> services = {"bootanim", "surfaceflinger",
-                                       "vendor.hwcomposer-3"};
+  //
+  // We must also stop zygote and zygote_secondary before surfaceflinger.
+  // Why? If we stop surfaceflinger while system_server (a child of zygote)
+  // is running, system_server will detect the dead Binder connection and
+  // intentionally crash itself. Android's 'init' daemon is hardcoded to
+  // instantly restart zygote to recover from a system_server crash. This
+  // triggers an uncontrolled restart cascade that races with our vkms_tester
+  // configuration, resulting in system instability and flaky tests. By
+  // gracefully stopping zygote first, we safely drain the UI framework stack.
+  std::vector<std::string> services = {"zygote_secondary", "zygote", "bootanim",
+                                       "surfaceflinger", "vendor.hwcomposer-3"};
   std::vector<std::string> services_to_restart;
 
   for (const auto& service : services) {
-    if (android::base::GetProperty("init.svc." + service, "") == "running") {
+    std::string state =
+        android::base::GetProperty("init.svc." + service, "not_found");
+    if (state == "not_found") {
+      ALOGI("Service %s not found, skipping", service.c_str());
+      continue;
+    }
+    if (state == "running" || state == "restarting") {
       services_to_restart.push_back(service);
     }
     if (property_set("ctl.stop", service.c_str()) != 0) {
