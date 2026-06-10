@@ -95,13 +95,20 @@ apex {
     ],
 }
 
+prebuilt_etc {
+    name: "android.hardware.security.keymint-service.cf_trusty_system_vm.rc",
+    src: "android.hardware.security.keymint-service.cf_trusty_system_vm.rc",
+    installable: false,
+}
+
 apex {
     name: "com.android.hardware.keymint.rust_cf_guest_trusty_nonsecure",
     defaults: ["com.android.hardware.keymint.rust_defaults"],
     file_contexts: "file_contexts_trusty",
     prebuilts: [
+        // init_rc
+        "android.hardware.security.keymint-service.cf_trusty_system_vm.rc",
         // vintf_fragments
         "android.hardware.security.keymint-service.trusty_system_vm.xml",
     ],
-    init_rc: ["android.hardware.security.keymint-service.cf_trusty_system_vm.rc"],
 }

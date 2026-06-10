@@ -28,3 +28,7 @@ $(call inherit-product, device/google/cuttlefish/shared/secure_element/device_ve
 $(call inherit-product, device/google/cuttlefish/shared/swiftshader/device_vendor.mk)
 $(call inherit-product, device/google/cuttlefish/shared/sensors/device_vendor.mk)
 $(call inherit-product, device/google/cuttlefish/shared/device.mk)
+
+PRODUCT_COPY_FILES += \
+    $(LOCAL_PATH)/desktop_core_hardware.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/desktop_core_hardware.xml
+DEVICE_PACKAGE_OVERLAYS += device/google/cuttlefish/shared/desktop/overlay

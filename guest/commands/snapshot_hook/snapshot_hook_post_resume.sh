@@ -21,3 +21,10 @@ set -eux
 
 /system/bin/cmd bluetooth_manager enable
 /system/bin/cmd uwb enable-uwb
+set +e
+if /system/bin/cmd nfc status >/dev/null 2>&1; then
+  /system/bin/cmd nfc enable-nfc
+fi
+set -e
+
+

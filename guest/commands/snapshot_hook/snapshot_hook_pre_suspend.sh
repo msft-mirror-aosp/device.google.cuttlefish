@@ -22,3 +22,22 @@ set -eux
 /system/bin/cmd bluetooth_manager disable
 /system/bin/cmd bluetooth_manager wait-for-state:STATE_OFF
 /system/bin/cmd uwb disable-uwb
+
+set +e
+if /system/bin/cmd nfc status >/dev/null 2>&1; then
+  /system/bin/cmd nfc disable-nfc
+
+  # Poll until NFC is disabled (with 5s timeout)
+  limit=50
+  count=0
+  while [ $count -lt $limit ]; do
+    if /system/bin/cmd nfc status 2>/dev/null | grep -q "disabled"; then
+      break
+    fi
+    sleep 0.1
+    count=$((count + 1))
+  done
+fi
+set -e
+
+
