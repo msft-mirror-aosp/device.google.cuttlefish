@@ -42,7 +42,7 @@ using ::android::hardware::camera::external::common::ExternalCameraConfig;
 
 namespace {
 // "device@<version>/external/<id>"
-const std::regex kDeviceNameRE("device@([0-9]+\\.[0-9]+)/external/(.+)");
+const std::regex kDeviceNameRE("device@([0-9]+\\.[0-9]+)/internal/(.+)");
 const int kMaxDevicePathLen = 256;
 constexpr char kDevicePath[] = "/dev/";
 constexpr char kPrefix[] = "video";
@@ -187,7 +187,7 @@ void ExternalCameraProvider::addExternalCamera(const char* devName) {
   std::string cameraId = std::to_string(mCfg.cameraIdOffset +
                                         std::atoi(devName + kDevicePrefixLen));
   deviceName = std::string("device@") +
-               VirtioMediaCameraDevice::kDeviceVersion + "/external/" +
+               VirtioMediaCameraDevice::kDeviceVersion + "/internal/" +
                cameraId;
   mCameraStatusMap[deviceName] = CameraDeviceStatus::PRESENT;
   if (mCallback != nullptr) {

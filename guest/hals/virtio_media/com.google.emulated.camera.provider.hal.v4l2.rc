@@ -1,5 +1,5 @@
 service vendor.camera.provider-ext /apex/com.google.emulated.camera.provider.hal/bin/hw/android.hardware.camera.provider-virtio-media-service
-    interface aidl android.hardware.camera.provider.ICameraProvider/external/0
+    interface aidl android.hardware.camera.provider.ICameraProvider/internal/0
     class hal
     user cameraserver
     group audio camera input drmrpc usb
