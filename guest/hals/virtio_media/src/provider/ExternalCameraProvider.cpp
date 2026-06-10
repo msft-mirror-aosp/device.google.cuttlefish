@@ -19,7 +19,7 @@
 
 #include "ExternalCameraProvider.h"
 
-#include <ExternalCameraDevice.h>
+#include <VirtioMediaCameraDevice.h>
 #include <aidl/android/hardware/camera/common/Status.h>
 #include <convert.h>
 #include <cutils/properties.h>
@@ -35,8 +35,9 @@ namespace provider {
 namespace implementation {
 
 using ::aidl::android::hardware::camera::common::Status;
-using ::android::hardware::camera::device::implementation::ExternalCameraDevice;
 using ::android::hardware::camera::device::implementation::fromStatus;
+using ::android::hardware::camera::device::implementation::
+    VirtioMediaCameraDevice;
 using ::android::hardware::camera::external::common::ExternalCameraConfig;
 
 namespace {
@@ -136,8 +137,8 @@ ndk::ScopedAStatus ExternalCameraProvider::getCameraDeviceInterface(
   }
 
   ALOGV("Constructing external camera device");
-  std::shared_ptr<ExternalCameraDevice> deviceImpl =
-      ndk::SharedRefBase::make<ExternalCameraDevice>(cameraDevicePath, mCfg);
+  std::shared_ptr<VirtioMediaCameraDevice> deviceImpl =
+      ndk::SharedRefBase::make<VirtioMediaCameraDevice>(cameraDevicePath, mCfg);
   if (deviceImpl == nullptr || deviceImpl->isInitFailed()) {
     ALOGE("%s: camera device %s init failed!", __FUNCTION__,
           cameraDevicePath.c_str());
@@ -185,8 +186,9 @@ void ExternalCameraProvider::addExternalCamera(const char* devName) {
   std::string deviceName;
   std::string cameraId = std::to_string(mCfg.cameraIdOffset +
                                         std::atoi(devName + kDevicePrefixLen));
-  deviceName = std::string("device@") + ExternalCameraDevice::kDeviceVersion +
-               "/external/" + cameraId;
+  deviceName = std::string("device@") +
+               VirtioMediaCameraDevice::kDeviceVersion + "/external/" +
+               cameraId;
   mCameraStatusMap[deviceName] = CameraDeviceStatus::PRESENT;
   if (mCallback != nullptr) {
     mCallback->cameraDeviceStatusChange(deviceName,
@@ -217,9 +219,9 @@ void ExternalCameraProvider::deviceAdded(const char* devName) {
     }
   }
 
-  // See if we can initialize ExternalCameraDevice correctly
-  std::shared_ptr<ExternalCameraDevice> deviceImpl =
-      ndk::SharedRefBase::make<ExternalCameraDevice>(devName, mCfg);
+  // See if we can initialize VirtioMediaCameraDevice correctly
+  std::shared_ptr<VirtioMediaCameraDevice> deviceImpl =
+      ndk::SharedRefBase::make<VirtioMediaCameraDevice>(devName, mCfg);
   if (deviceImpl == nullptr || deviceImpl->isInitFailed()) {
     ALOGW("%s: Attempt to init camera device %s failed!", __FUNCTION__,
           devName);
@@ -235,8 +237,9 @@ void ExternalCameraProvider::deviceRemoved(const char* devName) {
   std::string cameraId = std::to_string(mCfg.cameraIdOffset +
                                         std::atoi(devName + kDevicePrefixLen));
 
-  deviceName = std::string("device@") + ExternalCameraDevice::kDeviceVersion +
-               "/external/" + cameraId;
+  deviceName = std::string("device@") +
+               VirtioMediaCameraDevice::kDeviceVersion + "/external/" +
+               cameraId;
 
   if (mCameraStatusMap.erase(deviceName) == 0) {
     // Unknown device, do not fire callback
