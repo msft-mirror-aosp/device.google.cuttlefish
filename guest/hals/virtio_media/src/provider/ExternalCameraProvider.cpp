@@ -42,7 +42,7 @@ using ::android::hardware::camera::external::common::ExternalCameraConfig;
 
 namespace {
 // "device@<version>/external/<id>"
-const std::regex kDeviceNameRE("device@([0-9]+\\.[0-9]+)/external/(.+)");
+const std::regex kDeviceNameRE("device@([0-9]+\\.[0-9]+)/internal/(.+)");
 const int kMaxDevicePathLen = 256;
 constexpr char kDevicePath[] = "/dev/";
 constexpr char kPrefix[] = "video";
@@ -187,7 +187,7 @@ void ExternalCameraProvider::addExternalCamera(const char* devName) {
   std::string cameraId = std::to_string(mCfg.cameraIdOffset +
                                         std::atoi(devName + kDevicePrefixLen));
   deviceName = std::string("device@") +
-               VirtioMediaCameraDevice::kDeviceVersion + "/external/" +
+               VirtioMediaCameraDevice::kDeviceVersion + "/internal/" +
                cameraId;
   mCameraStatusMap[deviceName] = CameraDeviceStatus::PRESENT;
   if (mCallback != nullptr) {
@@ -209,6 +209,14 @@ void ExternalCameraProvider::deviceAdded(const char* devName) {
     int ret = ioctl(fd.get(), VIDIOC_QUERYCAP, &capability);
     if (ret < 0) {
       ALOGE("%s v4l2 QUERYCAP %s failed", __FUNCTION__, devName);
+      return;
+    }
+
+    if (strncmp(reinterpret_cast<const char*>(capability.bus_info),
+                "platform:virtio-media", sizeof(capability.bus_info)) != 0) {
+      ALOGV("%s device (%s) with bus_info \"%s\" is not a virtio-media device",
+            __FUNCTION__, devName,
+            reinterpret_cast<const char*>(capability.bus_info));
       return;
     }
 
@@ -285,7 +293,7 @@ void ExternalCameraProvider::updateAttachedCameras() {
 
 ExternalCameraProvider::HotplugThread::HotplugThread(
     ExternalCameraProvider* parent)
-    : mParent(parent), mInternalDevices(parent->mCfg.mInternalDevices) {}
+    : mParent(parent) {}
 
 ExternalCameraProvider::HotplugThread::~HotplugThread() {
   // Clean up inotify descriptor if needed.
@@ -370,12 +378,6 @@ bool ExternalCameraProvider::HotplugThread::threadLoop() {
     ALOGV("%s inotify_event %s", __FUNCTION__, event->name);
     if (strncmp(kPrefix, event->name, kPrefixLen) != 0) {
       // event not for /dev/video*. ignore.
-      continue;
-    }
-
-    std::string deviceId = event->name + kPrefixLen;
-    if (mInternalDevices.count(deviceId) != 0) {
-      // update to an internal device. ignore.
       continue;
     }
 
