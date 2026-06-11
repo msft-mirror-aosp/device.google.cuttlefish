@@ -55,8 +55,18 @@ public class OemlockTest extends BaseHostJUnit4Test {
         getDevice().reboot();
     }
 
+    // TODO(b/401619000): Remove this workaround once CF started using GBL by default.
+    private boolean isGbl() throws DeviceNotAvailableException {
+        final CommandResult result = getDevice().executeFastbootCommand("getvar",
+                "gbl-default-block");
+        return result.getStatus() == CommandStatus.SUCCESS &&
+                !result.getStdout().contains("FAILED") &&
+                !result.getStderr().contains("FAILED");
+    }
+
     private void setLockedState(boolean locked) throws DeviceNotAvailableException {
         final String flashingCommand = locked ? "lock" : "unlock";
+        final boolean isGbl = isGbl();
         final CommandResult result = getDevice().executeFastbootCommand("flashing",
                 flashingCommand);
 
@@ -67,7 +77,11 @@ public class OemlockTest extends BaseHostJUnit4Test {
                 CommandStatus.SUCCESS
         );
 
-        getDevice().waitForDeviceAvailable();
+        if (isGbl) {
+            getDevice().reboot();
+        } else {
+            getDevice().waitForDeviceAvailable();
+        }
     }
 
     private void verifyErasingSuccess(boolean success) throws DeviceNotAvailableException {

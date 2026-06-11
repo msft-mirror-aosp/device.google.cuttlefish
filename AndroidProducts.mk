@@ -38,7 +38,6 @@ PRODUCT_MAKEFILES := \
 	aosp_cf_x86_64_auto_mdnd:$(LOCAL_DIR)/vsoc_x86_64_only/auto_mdnd/aosp_cf.mk \
 	aosp_cf_x86_64_auto_portrait:$(LOCAL_DIR)/vsoc_x86_64_only/auto_portrait/aosp_cf.mk \
 	aosp_cf_x86_64_desktop:$(LOCAL_DIR)/vsoc_x86_64_only/desktop/aosp_cf.mk \
-	aosp_cf_x86_64_pc:$(LOCAL_DIR)/vsoc_x86_64_only/pc/aosp_cf.mk \
 	aosp_cf_x86_64_phone:$(LOCAL_DIR)/vsoc_x86_64/phone/aosp_cf.mk \
 	aosp_cf_x86_64_tv:$(LOCAL_DIR)/vsoc_x86_64_only/tv/aosp_cf.mk \
 	aosp_cf_x86_64_foldable:$(LOCAL_DIR)/vsoc_x86_64_only/phone/aosp_cf_foldable.mk \
@@ -59,7 +58,6 @@ COMMON_LUNCH_CHOICES := \
 	aosp_cf_riscv64_phone-trunk_staging-userdebug \
 	aosp_cf_x86_64_only_phone_hsum-trunk_staging-userdebug \
 	aosp_cf_x86_64_desktop-trunk_staging-userdebug \
-	aosp_cf_x86_64_pc-trunk_staging-userdebug \
 	aosp_cf_x86_64_phone-trunk_staging-userdebug \
 	aosp_cf_x86_64_foldable-trunk_staging-userdebug \
 	aosp_cf_x86_64_auto-trunk_staging-userdebug \

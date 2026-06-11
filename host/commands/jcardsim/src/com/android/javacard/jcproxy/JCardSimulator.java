@@ -176,8 +176,7 @@ public class JCardSimulator implements Simulator {
             return formatApduResponse(null, ISO7816.SW_LOGICAL_CHANNEL_NOT_SUPPORTED);
         }
 
-        currentChannel = firstAvailableSlot;
-        return formatApduResponse(new byte[] {(byte) currentChannel}, ISO7816.SW_NO_ERROR);
+        return formatApduResponse(new byte[] {(byte) firstAvailableSlot}, ISO7816.SW_NO_ERROR);
     }
 
     /**
@@ -207,7 +206,7 @@ public class JCardSimulator implements Simulator {
         }
 
         ResponseAPDU response = new ResponseAPDU(simulator.transmitCommand(apdu));
-        if (ISO7816.SW_NO_ERROR == response.getSW()) {
+        if (ISO7816.SW_NO_ERROR == (short) response.getSW()) {
             byte ch = getChannelNumber((byte) apduCmd.getCLA());
 
             // Update the channel registry to associate this AID with the active channel.
@@ -259,17 +258,30 @@ public class JCardSimulator implements Simulator {
             return processSelectCommand(apdu);
         }
 
+        // Switch channel if not current before sending the APDU command.
         CommandAPDU apduCmd = new CommandAPDU(apdu);
         byte channel = getChannelNumber((byte) apduCmd.getCLA());
         if (channel != currentChannel) {
+            String aidStr = channelAid.get(channel);
+            if (aidStr == null) {
+                // When a logical channel is closed, the associated AID in the channelAid vector
+                // is cleared (set to null). If we receive a command on a channel with no active
+                // AID, we return SW_APPLET_SELECT_FAILED to signal the client (e.g., KeyMint HAL)
+                // that the applet needs to be re-selected on this channel.
+                currentChannel = INVALID_CHANNEL;
+                return formatApduResponse(null, ISO7816.SW_APPLET_SELECT_FAILED);
+            }
             // The APDU target resides on a different logical channel.
             // Explicitly select the associated applet on that channel before routing the command.
-            byte[] aid = HexFormat.of().parseHex(channelAid.get(channel));
+            byte[] aid = HexFormat.of().parseHex(aidStr);
             byte[] selectResponse = simulator.selectAppletWithResult(AIDUtil.create(aid));
             ResponseAPDU response = new ResponseAPDU(selectResponse);
 
-            if (ISO7816.SW_NO_ERROR != response.getSW()) {
-                return formatApduResponse(response);
+            if (ISO7816.SW_NO_ERROR != (short) response.getSW()) {
+                // If the implicit selection fails, return SW_APPLET_SELECT_FAILED to force
+                // the client to re-establish the session.
+                currentChannel = INVALID_CHANNEL;
+                return formatApduResponse(null, ISO7816.SW_APPLET_SELECT_FAILED);
             }
             currentChannel = channel;
         }

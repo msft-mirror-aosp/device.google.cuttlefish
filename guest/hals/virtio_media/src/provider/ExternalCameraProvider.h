@@ -93,7 +93,6 @@ class ExternalCameraProvider : public BnCameraProvider {
     bool initialize();
 
     ExternalCameraProvider* mParent = nullptr;
-    const std::unordered_set<std::string> mInternalDevices;
 
     bool mIsInitialized = false;
 

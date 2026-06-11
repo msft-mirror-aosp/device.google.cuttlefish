@@ -35,7 +35,7 @@ int main() {
   std::shared_ptr<ExternalCameraProvider> defaultProvider =
       ndk::SharedRefBase::make<ExternalCameraProvider>();
   const std::string serviceName =
-      std::string(ExternalCameraProvider::descriptor) + "/external/0";
+      std::string(ExternalCameraProvider::descriptor) + "/internal/0";
 
   binder_exception_t ret = AServiceManager_addService(
       defaultProvider->asBinder().get(), serviceName.c_str());
