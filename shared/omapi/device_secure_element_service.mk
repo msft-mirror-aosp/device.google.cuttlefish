@@ -31,6 +31,4 @@ DEVICE_PACKAGE_OVERLAYS += \
     device/google/cuttlefish/shared/omapi/overlay
 
 PRODUCT_PACKAGES += secure_element_framework_matrix.xml
-
-DEVICE_MANIFEST_FILE += device/google/cuttlefish/shared/omapi/secure_element-service.xml
 endif
