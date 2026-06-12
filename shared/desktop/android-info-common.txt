@@ -1,0 +1,6 @@
+config=desktop
+gfxstream=supported
+mouse=supported
+custom_keyboard=/etc/virtio_input_configs/desktop_keyboard.json
+domkey_mapping=/etc/domkey_mapping_configs/domkey_mapping.json
+gamepad=supported

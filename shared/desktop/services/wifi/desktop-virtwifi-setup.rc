@@ -1,0 +1,10 @@
+# desktop-virtwifi-setup service makes the device connecting to VirtWifi on start up
+service desktop-virtwifi-setup /vendor/bin/desktop-virtwifi-setup.sh
+    class core
+    user root
+    group shell
+    oneshot
+    disabled
+
+on property:sys.boot_completed=1
+    start desktop-virtwifi-setup
