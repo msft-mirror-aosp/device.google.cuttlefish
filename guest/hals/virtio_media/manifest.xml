@@ -19,7 +19,7 @@
         <version>1</version>
         <interface>
           <name>ICameraProvider</name>
-          <instance>external/0</instance>
+          <instance>internal/0</instance>
         </interface>
     </hal>
 </manifest>
