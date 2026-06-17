@@ -35,3 +35,9 @@ prebuilt_etc_host {
     src: "domkey_mapping_configs/domkey_mapping.json",
     sub_dir: "domkey_mapping_configs",
 }
+
+prebuilt_etc_host {
+    name: "cvd_config_desktop.json",
+    src: "config_desktop.json",
+    sub_dir: "cvd_config",
+}
