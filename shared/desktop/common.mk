@@ -99,8 +99,7 @@ PRODUCT_CHARACTERISTICS := desktop
 # default. Set PRODUCT_BUILD_GENERIC_OTA_PACKAGE to enable it again.
 PRODUCT_BUILD_GENERIC_OTA_PACKAGE := true
 
-# Exclude Non-Desktop packages
+# Include Launcher
 PRODUCT_PACKAGES += \
-    ExcludeNonDesktopApps \
     Launcher3QuickStep
 
