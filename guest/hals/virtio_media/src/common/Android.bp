@@ -15,28 +15,14 @@
 //
 
 cc_library_shared {
-    name: "android.hardware.camera.device.virtio-media",
+    name: "libvirtiomedia_v4l2utils",
     proprietary: true,
     srcs: [
-        "VirtioMediaCameraDevice.cpp",
+        "V4l2Utils.cpp",
     ],
     shared_libs: [
-        "android.hardware.camera.device-V1-ndk",
-        "android.hardware.graphics.mapper@2.0",
-        "android.hardware.graphics.mapper@3.0",
-        "camera.device-external-impl",
-        "libbinder_ndk",
-        "libcamera_metadata",
-        "libfmq",
         "liblog",
-        "libtinyxml2",
         "libbase",
-        "libutils",
-        "libvirtiomedia_v4l2utils",
-    ],
-    static_libs: [
-        "android.hardware.camera.common@1.0-helper",
-        "libaidlcommonsupport",
     ],
     export_include_dirs: ["."],
 }
