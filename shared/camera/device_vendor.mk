@@ -17,8 +17,7 @@
 # Enable Camera Extension sample
 ifeq ($(TARGET_USE_CAMERA_ADVANCED_EXTENSION_SAMPLE),true)
 PRODUCT_PACKAGES += \
-    androidx.camera.extensions.impl.advanced advancedSample_camera_extensions.xml \
-    libencoderjpeg_jni
+    androidx.camera.extensions.impl.advanced advancedSample_camera_extensions.xml
 else
 PRODUCT_PACKAGES += androidx.camera.extensions.impl sample_camera_extensions.xml
 endif

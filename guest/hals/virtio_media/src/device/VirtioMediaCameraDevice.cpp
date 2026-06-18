@@ -387,6 +387,13 @@ status_t VirtioMediaCameraDevice::initAvailableCapabilities(
     availableCapabilities.push_back(
         ANDROID_REQUEST_AVAILABLE_CAPABILITIES_BACKWARD_COMPATIBLE);
   }
+
+  availableCapabilities.push_back(
+      ANDROID_REQUEST_AVAILABLE_CAPABILITIES_MANUAL_SENSOR);
+  availableCapabilities.push_back(
+      ANDROID_REQUEST_AVAILABLE_CAPABILITIES_MANUAL_POST_PROCESSING);
+  availableCapabilities.push_back(ANDROID_REQUEST_AVAILABLE_CAPABILITIES_RAW);
+
   if (!availableCapabilities.empty()) {
     UPDATE(ANDROID_REQUEST_AVAILABLE_CAPABILITIES, availableCapabilities.data(),
            availableCapabilities.size());
@@ -398,7 +405,8 @@ status_t VirtioMediaCameraDevice::initAvailableCapabilities(
 status_t VirtioMediaCameraDevice::initDefaultCharsKeys(
     ::android::hardware::camera::common::V1_0::helper::CameraMetadata*
         metadata) {
-  const uint8_t hardware_level = ANDROID_INFO_SUPPORTED_HARDWARE_LEVEL_EXTERNAL;
+  const uint8_t hardware_level = ANDROID_INFO_SUPPORTED_HARDWARE_LEVEL_FULL;
+
   UPDATE(ANDROID_INFO_SUPPORTED_HARDWARE_LEVEL, &hardware_level, 1);
 
   // android.colorCorrection
@@ -439,7 +447,7 @@ status_t VirtioMediaCameraDevice::initDefaultCharsKeys(
   UPDATE(ANDROID_EDGE_AVAILABLE_EDGE_MODES, &edgeMode, 1);
 
   // android.flash
-  const uint8_t flashInfo = ANDROID_FLASH_INFO_AVAILABLE_FALSE;
+  const uint8_t flashInfo = ANDROID_FLASH_INFO_AVAILABLE_TRUE;
   UPDATE(ANDROID_FLASH_INFO_AVAILABLE, &flashInfo, 1);
 
   // android.hotPixel
@@ -466,12 +474,23 @@ status_t VirtioMediaCameraDevice::initDefaultCharsKeys(
   UPDATE(ANDROID_LENS_INFO_FOCUS_DISTANCE_CALIBRATION,
          &focusDistanceCalibration, 1);
 
+  const float minFocusDistance = 0.1f;  // Mock value
+  UPDATE(ANDROID_LENS_INFO_MINIMUM_FOCUS_DISTANCE, &minFocusDistance, 1);
+
+  const float availableFocalLengths[] = {2.8f};  // Mock value
+  UPDATE(ANDROID_LENS_INFO_AVAILABLE_FOCAL_LENGTHS, availableFocalLengths,
+         ARRAY_SIZE(availableFocalLengths));
+
+  const float physicalSize[] = {2.68f};  // Mock value
+  UPDATE(ANDROID_SENSOR_INFO_PHYSICAL_SIZE, physicalSize,
+         ARRAY_SIZE(physicalSize));
+
   const uint8_t opticalStabilizationMode =
       ANDROID_LENS_OPTICAL_STABILIZATION_MODE_OFF;
   UPDATE(ANDROID_LENS_INFO_AVAILABLE_OPTICAL_STABILIZATION,
          &opticalStabilizationMode, 1);
 
-  const uint8_t facing = ANDROID_LENS_FACING_EXTERNAL;
+  uint8_t facing = ANDROID_LENS_FACING_BACK;
   UPDATE(ANDROID_LENS_FACING, &facing, 1);
 
   // android.noiseReduction

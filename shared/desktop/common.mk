@@ -101,4 +101,6 @@ PRODUCT_BUILD_GENERIC_OTA_PACKAGE := true
 
 # Exclude Non-Desktop packages
 PRODUCT_PACKAGES += \
-    ExcludeNonDesktopApps
+    ExcludeNonDesktopApps \
+    Launcher3QuickStep
+

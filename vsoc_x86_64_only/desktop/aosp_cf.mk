@@ -24,7 +24,7 @@ $(call inherit-product, device/google/cuttlefish/shared/desktop/aosp_device_vend
 #
 $(call inherit-product, $(SRC_TARGET_DIR)/product/aosp_product.mk)
 
-PRODUCT_FSTAB_PATH := device/google/desktop/common/shared/fstab
+PRODUCT_FSTAB_PATH := device/google/cuttlefish/shared/desktop/fstab
 # Ika uses ndk-translation only like http://go/al-bt-config describes.
 AL_BINARY_TRANSLATION_MODE := ndk_translation_only
 
@@ -58,11 +58,11 @@ UNCOMPRESS_CHROME_WEBVIEW = true
 
 # Add arch-independent information.
 # Arch-specific file can be added in cf_*_desktop.mk.
-TARGET_BOARD_INFO_FILES += vendor/google/products/cuttlefish/desktop/android-info-common.txt
+TARGET_BOARD_INFO_FILES += device/google/cuttlefish/shared/desktop/android-info-common.txt
 
 PRODUCT_COPY_FILES += \
-    vendor/google/products/cuttlefish/desktop/services/wifi/desktop-virtwifi-setup.sh:$(TARGET_COPY_OUT_VENDOR)/bin/desktop-virtwifi-setup.sh \
-    vendor/google/products/cuttlefish/desktop/services/wifi/desktop-virtwifi-setup.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/desktop-virtwifi-setup.rc
+    device/google/cuttlefish/shared/desktop/services/wifi/desktop-virtwifi-setup.sh:$(TARGET_COPY_OUT_VENDOR)/bin/desktop-virtwifi-setup.sh \
+    device/google/cuttlefish/shared/desktop/services/wifi/desktop-virtwifi-setup.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/desktop-virtwifi-setup.rc
 
 
 # Soong-only configuration for aosp_cf_x86_64_desktop
