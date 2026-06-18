@@ -663,3 +663,9 @@ PRODUCT_COPY_FILES += \
 # Bind target-isolated native_omapi release config map for Cuttlefish
 PRODUCT_RELEASE_CONFIG_MAPS += build/release/native_omapi/release_config_map.textproto
 PRODUCT_RELEASE_CONFIG_MAPS += $(wildcard vendor/google_shared/build/release/native_omapi/release_config_map.textproto)
+
+# Enable ESP image building
+PRODUCT_BUILD_ANDROID_ESP_IMAGE := true
+PRODUCT_PACKAGES += \
+    gbl_efi_esp \
+    gbl_efi_esp_prebuilt_info

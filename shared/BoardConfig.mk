@@ -525,3 +525,6 @@ else
 endif
 
 BOARD_CUTTLEFISH_EXAMPLE_CUSTOM_IMAGE_LIST := $(OUT_DIR)/soong/.intermediates/device/google/cuttlefish/custom_partition/cuttlefish_example_custom/$(VARIANT_DIR)/cuttlefish_example_custom.img
+
+BOARD_ANDROID_ESPIMAGE_PARTITION_SIZE := 16777216
+BOARD_ANDROID_ESPIMAGE_FILE_SYSTEM_TYPE := vfat:16
