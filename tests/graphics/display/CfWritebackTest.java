@@ -75,10 +75,10 @@ public class CfWritebackTest extends BaseHostJUnit4Test {
 
     @Test
     public void testUiIsntBlackReadback() throws Exception {
-        final String imagePath = "/data/local/tmp/writeback_test.png";
+        final String imagePath = "/data/local/tmp/cf_writeback/writeback_test.png";
         File localFile = null;
         try {
-            getDevice().executeShellV2Command("mkdir -p /data/local/tmp");
+            getDevice().executeShellV2Command("mkdir -p /data/local/tmp/cf_writeback");
 
             // Capture the screen content. Because we have configured the device with VKMS and
             // enabled writeback, this will exercise the desired HWC readback path.
