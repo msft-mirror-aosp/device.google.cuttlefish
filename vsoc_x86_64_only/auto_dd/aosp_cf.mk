@@ -13,6 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Disable scalable UI landscape config by default
+FORCE_SKIP_DEWD_LANDSCAPE_CONFIG := true
+
 # AOSP Car UI Distant Display Cuttlefish Target
 TARGET_BOARD_INFO_FILE := device/google/cuttlefish/shared/auto_dd/android-info.txt
 
