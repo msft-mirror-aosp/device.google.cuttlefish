@@ -116,7 +116,6 @@ endif # RELEASE_DEPRECATE_RUNTIME_APEX
 PRODUCT_PACKAGES += \
     selinux_policy \
     com.android.adbd \
-    mdnsd \
 
 PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/minidroid/fstab.minidroid:$(TARGET_COPY_OUT_VENDOR_RAMDISK)/first_stage_ramdisk/fstab.minidroid \
