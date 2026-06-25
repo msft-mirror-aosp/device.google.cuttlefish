@@ -184,6 +184,7 @@ class CuttlefishConfig {
     Bluetooth = 0b00000001,
     Wifi      = 0b00000010,
     Uwb       = 0b00000100,
+    Nfc       = 0b00001000,
   };
 
   void netsim_radio_enable(NetsimRadio flag);

@@ -26,7 +26,7 @@
     </test>
 
     <metrics_collector class="com.android.tradefed.device.metric.FilePullerLogCollector">
-        <option name="directory-keys" value="/data/local/tmp" />
+        <option name="directory-keys" value="/data/local/tmp/cf_writeback" />
         <option name="collect-on-run-ended-only" value="true" />
         <option name="pull-pattern-keys" value="writeback" />
     </metrics_collector>
