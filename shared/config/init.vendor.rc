@@ -94,6 +94,8 @@ on boot
     setprop ro.hardware.audio.primary goldfish
     symlink /dev/hvc6 /dev/gnss0
     symlink /dev/hvc7 /dev/gnss1
+    symlink /dev/hvc12 /dev/nfc_nci
+    start nfc_hal_service
 
 on property:sys.boot_completed=1
     trigger sys-boot-completed-set

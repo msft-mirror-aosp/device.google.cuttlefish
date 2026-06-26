@@ -69,7 +69,7 @@ PRODUCT_PACKAGES += \
 
 # NFC AIDL HAL
 PRODUCT_PACKAGES += \
-    com.google.cf.nfc
+    com.android.hardware.nfc
 
 TARGET_BOARD_INFO_FILE ?= device/google/cuttlefish/shared/phone/android-info.txt
 
