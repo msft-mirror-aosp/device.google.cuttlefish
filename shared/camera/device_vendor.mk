@@ -22,7 +22,7 @@ else
 PRODUCT_PACKAGES += androidx.camera.extensions.impl sample_camera_extensions.xml
 endif
 
-PRODUCT_PACKAGES += EyesFreeVidService
+PRODUCT_PACKAGES += SelfieSegService
 
 PRODUCT_SOONG_NAMESPACES += hardware/google/camera/devices/EmulatedCamera
 
