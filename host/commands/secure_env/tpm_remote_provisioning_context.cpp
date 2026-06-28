@@ -112,43 +112,109 @@ std::unique_ptr<cppbor::Map> TpmRemoteProvisioningContext::CreateDeviceInfo(
 
 std::pair<std::vector<uint8_t> /* privKey */, cppbor::Array /* BCC */>
 TpmRemoteProvisioningContext::GenerateBcc(bool testMode) const {
-  std::vector<uint8_t> privKey(ED25519_PRIVATE_KEY_LEN);
-  std::vector<uint8_t> pubKey(ED25519_PUBLIC_KEY_LEN);
+  std::vector<uint8_t> uds_seed;
+  std::vector<uint8_t> stage1_seed;
+  std::vector<uint8_t> stage2_seed;
 
-  std::vector<uint8_t> seed;
   if (testMode) {
-    // Length is hard-coded in the BoringCrypto API without a constant
-    seed.resize(32);
-    RAND_bytes(seed.data(), seed.size());
+    uds_seed.resize(32);
+    RAND_bytes(uds_seed.data(), uds_seed.size());
+    stage1_seed.resize(32);
+    RAND_bytes(stage1_seed.data(), stage1_seed.size());
+    stage2_seed.resize(32);
+    RAND_bytes(stage2_seed.data(), stage2_seed.size());
   } else {
-    // TODO: Switch to P256 signing keys that are TPM-bound.
-    seed = DeriveBytesFromHbk("BccKey", 32);
+    uds_seed = DeriveBytesFromHbk("UdsKey", 32);
+    stage1_seed = DeriveBytesFromHbk("Stage1Key", 32);
+    stage2_seed = DeriveBytesFromHbk("Stage2Key", 32);
   }
-  ED25519_keypair_from_seed(pubKey.data(), privKey.data(), seed.data());
 
-  const auto issuer_and_subject = "Cuttlefish secure env";
-  auto coseKey = cppbor::Map()
-                     .add(CoseKey::KEY_TYPE, OCTET_KEY_PAIR)
-                     .add(CoseKey::ALGORITHM, EDDSA)
-                     .add(CoseKey::CURVE, ED25519)
-                     .add(CoseKey::PUBKEY_X, pubKey)
-                     .canonicalize();
-  auto sign1Payload =
+  std::vector<uint8_t> uds_priv(ED25519_PRIVATE_KEY_LEN);
+  std::vector<uint8_t> uds_pub(ED25519_PUBLIC_KEY_LEN);
+  ED25519_keypair_from_seed(uds_pub.data(), uds_priv.data(), uds_seed.data());
+
+  std::vector<uint8_t> stage1_priv(ED25519_PRIVATE_KEY_LEN);
+  std::vector<uint8_t> stage1_pub(ED25519_PUBLIC_KEY_LEN);
+  ED25519_keypair_from_seed(stage1_pub.data(), stage1_priv.data(),
+                            stage1_seed.data());
+
+  std::vector<uint8_t> stage2_priv(ED25519_PRIVATE_KEY_LEN);
+  std::vector<uint8_t> stage2_pub(ED25519_PUBLIC_KEY_LEN);
+  ED25519_keypair_from_seed(stage2_pub.data(), stage2_priv.data(),
+                            stage2_seed.data());
+
+  auto udsCoseKey = cppbor::Map()
+                        .add(CoseKey::KEY_TYPE, OCTET_KEY_PAIR)
+                        .add(CoseKey::ALGORITHM, EDDSA)
+                        .add(CoseKey::CURVE, ED25519)
+                        .add(CoseKey::PUBKEY_X, uds_pub)
+                        .canonicalize();
+
+  auto stage1CoseKey = cppbor::Map()
+                           .add(CoseKey::KEY_TYPE, OCTET_KEY_PAIR)
+                           .add(CoseKey::ALGORITHM, EDDSA)
+                           .add(CoseKey::CURVE, ED25519)
+                           .add(CoseKey::PUBKEY_X, stage1_pub)
+                           .canonicalize();
+  auto configDescStage1 = cppbor::Map()
+                              .add(-70002 /* Component Name */, "Stage 1")
+                              .add(-70005 /* Security Version */, 1)
+                              .canonicalize()
+                              .encode();
+  auto cert1Payload =
       cppbor::Map()
-          .add(1 /* Issuer */, issuer_and_subject)
-          .add(2 /* Subject */, issuer_and_subject)
-          .add(-4670552 /* Subject Pub Key */, coseKey.encode())
+          .add(1 /* Issuer */, "UDS")
+          .add(2 /* Subject */, "Stage 1")
+          .add(-4670552 /* Subject Pub Key */, stage1CoseKey.encode())
           .add(-4670553 /* Key Usage (little-endian order) */,
                std::vector<uint8_t>{0x20} /* keyCertSign = 1<<5 */)
+          .add(-4670551 /* Mode */, std::vector<uint8_t>{1} /* Normal */)
+          .add(-4670545 /* Code Hash */, std::vector<uint8_t>(64, 0))
+          .add(-4670548 /* Config Desc */, configDescStage1)
+          .add(-4670549 /* Authority Hash */, std::vector<uint8_t>(64, 0))
           .canonicalize()
           .encode();
-  auto coseSign1 = constructEdDsaCoseSign1(privKey,       /* signing key */
-                                           cppbor::Map(), /* extra protected */
-                                           sign1Payload, {} /* AAD */);
-  assert(coseSign1);
+  auto cert1 = constructEdDsaCoseSign1(uds_priv,      /* signing key */
+                                       cppbor::Map(), /* extra protected */
+                                       cert1Payload, {} /* AAD */);
+  assert(cert1);
 
-  return {privKey,
-          cppbor::Array().add(std::move(coseKey)).add(coseSign1.moveValue())};
+  auto stage2CoseKey = cppbor::Map()
+                           .add(CoseKey::KEY_TYPE, OCTET_KEY_PAIR)
+                           .add(CoseKey::ALGORITHM, EDDSA)
+                           .add(CoseKey::CURVE, ED25519)
+                           .add(CoseKey::PUBKEY_X, stage2_pub)
+                           .canonicalize();
+  auto configDescStage2 =
+      cppbor::Map()
+          .add(-70002 /* Component Name */, "Stage 2 (KeyMint)")
+          .add(-70005 /* Security Version */, 1)
+          .canonicalize()
+          .encode();
+  auto cert2Payload =
+      cppbor::Map()
+          .add(1 /* Issuer */, "Stage 1")
+          .add(2 /* Subject */, "Stage 2 (KeyMint)")
+          .add(-4670552 /* Subject Pub Key */, stage2CoseKey.encode())
+          .add(-4670553 /* Key Usage (little-endian order) */,
+               std::vector<uint8_t>{0x20} /* keyCertSign = 1<<5 */)
+          .add(-4670551 /* Mode */, std::vector<uint8_t>{1} /* Normal */)
+          .add(-4670545 /* Code Hash */, std::vector<uint8_t>(64, 0))
+          .add(-4670548 /* Config Desc */, configDescStage2)
+          .add(-4670549 /* Authority Hash */, std::vector<uint8_t>(64, 0))
+          .canonicalize()
+          .encode();
+  auto cert2 = constructEdDsaCoseSign1(stage1_priv,   /* signing key */
+                                       cppbor::Map(), /* extra protected */
+                                       cert2Payload, {} /* AAD */);
+  assert(cert2);
+
+  cppbor::Array bcc;
+  bcc.add(std::move(udsCoseKey));
+  bcc.add(cert1.moveValue());
+  bcc.add(cert2.moveValue());
+
+  return {stage2_priv, std::move(bcc)};
 }
 
 void TpmRemoteProvisioningContext::SetSystemVersion(uint32_t os_version,
