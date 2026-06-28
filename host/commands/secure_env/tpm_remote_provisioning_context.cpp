@@ -172,6 +172,7 @@ TpmRemoteProvisioningContext::GenerateBcc(bool testMode) const {
           .add(-4670545 /* Code Hash */, std::vector<uint8_t>(64, 0))
           .add(-4670548 /* Config Desc */, configDescStage1)
           .add(-4670549 /* Authority Hash */, std::vector<uint8_t>(64, 0))
+          .add(-4670554 /* Profile Name */, "android.16")
           .canonicalize()
           .encode();
   auto cert1 = constructEdDsaCoseSign1(uds_priv,      /* signing key */
@@ -202,6 +203,7 @@ TpmRemoteProvisioningContext::GenerateBcc(bool testMode) const {
           .add(-4670545 /* Code Hash */, std::vector<uint8_t>(64, 0))
           .add(-4670548 /* Config Desc */, configDescStage2)
           .add(-4670549 /* Authority Hash */, std::vector<uint8_t>(64, 0))
+          .add(-4670554 /* Profile Name */, "android.16")
           .canonicalize()
           .encode();
   auto cert2 = constructEdDsaCoseSign1(stage1_priv,   /* signing key */
