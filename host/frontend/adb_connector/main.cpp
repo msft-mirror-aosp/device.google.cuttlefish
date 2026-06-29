@@ -14,63 +14,12 @@
  * limitations under the License.
  */
 
-#include <algorithm>
-#include <iterator>
-#include <limits>
-#include <sstream>
-#include <thread>
-#include <vector>
+#include <stdlib.h>
 
-#include <android-base/logging.h>
-#include <gflags/gflags.h>
+#include <iostream>
 
-#include <unistd.h>
-#include <host/commands/kernel_log_monitor/kernel_log_server.h>
-#include <host/commands/kernel_log_monitor/utils.h>
-
-#include "common/libs/fs/shared_fd.h"
-#include "host/frontend/adb_connector/adb_connection_maintainer.h"
-#include "host/libs/config/cuttlefish_config.h"
-#include "host/libs/config/logging.h"
-
-DEFINE_string(addresses, "", "Comma-separated list of addresses to "
-                             "'adb connect' to");
-
-namespace cuttlefish {
-namespace {
-void LaunchConnectionMaintainerThread(const std::string& address) {
-  std::thread(EstablishAndMaintainConnection, address).detach();
-}
-
-std::vector<std::string> ParseAddressList(std::string ports) {
-  std::replace(ports.begin(), ports.end(), ',', ' ');
-  std::istringstream port_stream{ports};
-  return {std::istream_iterator<std::string>{port_stream},
-          std::istream_iterator<std::string>{}};
-}
-
-[[noreturn]] void SleepForever() {
-  while (true) {
-    sleep(std::numeric_limits<unsigned int>::max());
-  }
-}
-
-}  // namespace
-
-int AdbConnectorMain(int argc, char* argv[]) {
-  DefaultSubprocessLogging(argv);
-  gflags::ParseCommandLineFlags(&argc, &argv, true);
-  CHECK(!FLAGS_addresses.empty()) << "Must specify --addresses flag";
-
-  for (const auto& address : ParseAddressList(FLAGS_addresses)) {
-    LaunchConnectionMaintainerThread(address);
-  }
-
-  SleepForever();
-}
-
-}  // namespace cuttlefish
-
-int main(int argc, char* argv[]) {
-  return cuttlefish::AdbConnectorMain(argc, argv);
+int main() {
+  std::cerr << "Migrated executable, use `launch_cvd` or `cvd create`\n";
+  abort();
+  return 255;
 }
