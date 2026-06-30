@@ -19,25 +19,6 @@ package {
 
 cc_binary {
     name: "console_forwarder",
-    srcs: [
-        "main.cpp",
-    ],
-    shared_libs: [
-        "libbase",
-        "libcuttlefish_fs",
-        "libcuttlefish_utils",
-        "libprotobuf-cpp-full",
-        "libjsoncpp",
-    ],
-    static_libs: [
-        "libcuttlefish_host_config",
-        "libcuttlefish_guest_config_proto",
-        "libgflags",
-    ],
-    target: {
-        darwin: {
-            enabled: true,
-        },
-    },
+    srcs: ["main.cpp"],
     defaults: ["cuttlefish_host"],
 }

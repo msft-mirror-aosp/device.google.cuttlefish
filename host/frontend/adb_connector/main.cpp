@@ -20,6 +20,8 @@
 
 int main() {
   std::cerr << "Migrated executable, use `launch_cvd` or `cvd create`\n";
+  std::cerr << "See go/cf-host-tool-mixing\n";
+  std::cerr.flush();
   abort();
   return 255;
 }
