@@ -135,7 +135,7 @@ class VkmsTester {
   static std::unique_ptr<VkmsTester> CreateWithGenericConnectors(
       int displaysCount);
 
-  static void ForceDeleteVkmsDir();
+  static void ShutdownAndCleanUpVkms();
 
   static bool ToggleConnector(int connectorIndex, bool enable);
 
@@ -194,7 +194,6 @@ class VkmsTester {
   static bool LinkToCrtc(DrmResource resource, int resourceIdx, int crtcIdx);
   static bool LinkConnectorToEncoder(int connectorIdx, int encoderIdx);
 
-  static void ShutdownAndCleanUpVkms();
   static void FindAndCleanupPossibleLinks(const std::string& dirPath);
   static void CleanUpDirAndChildren(const std::string& rootDir);
 
