@@ -21,6 +21,7 @@ symlinks {
   link_name: "bin/console_forwarder"
 }
 
+# Stubbed
 symlinks {
   target: "/usr/lib/cuttlefish-common/bin/cvd_import_locations"
   link_name: "bin/cvd_import_locations"
