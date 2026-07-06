@@ -138,9 +138,6 @@ std::unique_ptr<VkmsTester> VkmsTester::CreateWithGenericConnectors(
   return tester;
 }
 
-// static
-void VkmsTester::ForceDeleteVkmsDir() { ShutdownAndCleanUpVkms(); }
-
 VkmsTester::VkmsTester(size_t displaysCount,
                        const std::vector<VkmsConnectorBuilder>& builders) {
   std::vector<std::string> services_to_restart = StopDisplayStack();
@@ -261,13 +258,23 @@ bool VkmsTester::SetupDisplays(
 bool VkmsTester::ToggleVkms(bool enable) {
   std::filesystem::path path = std::filesystem::path(kVkmsBaseDir) / "enabled";
   std::string value = enable ? "1" : "0";
-  if (!android::base::WriteStringToFile(value, path.string())) {
-    ALOGE("Failed to toggle VKMS: %s", strerror(errno));
-    return false;
+  // Retry writing if it fails with ENOENT, it might be due to async kernel
+  // cleanup of the old device
+  int saved_errno = 0;
+  for (int i = 0; i < 10; ++i) {
+    if (android::base::WriteStringToFile(value, path.string())) {
+      ALOGI("Successfully toggled VKMS at %s", path.string().c_str());
+      return true;
+    }
+    saved_errno = errno;
+    if (saved_errno != ENOENT) {
+      break;
+    }
+    ALOGW("enabled file not found, retrying in 100ms... (try %d)", i + 1);
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
   }
-
-  ALOGI("Successfully toggled VKMS at %s", path.string().c_str());
-  return true;
+  ALOGE("Failed to toggle VKMS: %s", strerror(saved_errno));
+  return false;
 }
 
 // static
