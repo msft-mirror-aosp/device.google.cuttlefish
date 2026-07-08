@@ -119,7 +119,7 @@ func (c *cvdHostPackage) DepsMutator(ctx android.BottomUpMutatorContext) {
 func (c *cvdHostPackage) GenerateAndroidBuildActions(ctx android.ModuleContext) {
 	sboxDir := android.PathForModuleOut(ctx, "sbox")
 	sboxManifest := android.PathForModuleOut(ctx, "sbox.manifest")
-	packageDir := sboxDir.Join(ctx, "staging_dir")
+	packageDir := android.PathForModuleOutDir(ctx, "sbox", "staging_dir")
 	tarball := sboxDir.Join(ctx, c.BaseModuleName()+".tar.gz")
 
 	builder := android.NewRuleBuilder(pctx, ctx).
