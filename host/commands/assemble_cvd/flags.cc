@@ -237,6 +237,8 @@ DEFINE_vec(netsim_bt, fmt::format("{}", CF_DEFAULTS_NETSIM_BT),
            "Connect Bluetooth radio to netsim.");
 DEFINE_vec(netsim_uwb, fmt::format("{}", CF_DEFAULTS_NETSIM_UWB),
            "[Experimental] Connect Uwb radio to netsim.");
+DEFINE_vec(netsim_nfc, fmt::format("{}", CF_DEFAULTS_NETSIM_NFC),
+           "[Experimental] Connect Nfc radio to netsim.");
 DEFINE_string(netsim_args, CF_DEFAULTS_NETSIM_ARGS,
               "Space-separated list of netsim args.");
 
@@ -1462,8 +1464,12 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
   std::vector<bool> netsim_uwb_vec = CF_EXPECT(GET_FLAG_BOOL_VALUE(netsim_uwb));
   bool any_netsim_uwb = std::any_of(
       netsim_uwb_vec.begin(), netsim_uwb_vec.end(), [](bool e) { return e; });
+  std::vector<bool> netsim_nfc_vec = CF_EXPECT(GET_FLAG_BOOL_VALUE(netsim_nfc));
+  bool any_netsim_nfc = std::any_of(
+      netsim_nfc_vec.begin(), netsim_nfc_vec.end(), [](bool e) { return e; });
   bool netsim_has_bt = any_netsim_all_radios || any_netsim_bt;
   bool netsim_has_uwb = any_netsim_all_radios || any_netsim_uwb;
+  bool netsim_has_nfc = any_netsim_all_radios || any_netsim_nfc;
 
   // These flags inform NetsimServer::ResultSetup which radios it owns.
   if (netsim_has_bt) {
@@ -1472,12 +1478,17 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
   if (netsim_has_uwb) {
     tmp_config_obj.netsim_radio_enable(CuttlefishConfig::NetsimRadio::Uwb);
   }
+  if (netsim_has_nfc) {
+    tmp_config_obj.netsim_radio_enable(CuttlefishConfig::NetsimRadio::Nfc);
+  }
 
   bool any_not_netsim_bt = false;
   bool any_not_netsim_uwb = false;
+  bool any_not_netsim_nfc = false;
   for (int32_t i = 0; i < instances_size; ++i) {
     any_not_netsim_bt |= !netsim_all_radios_vec[i] && !netsim_bt_vec[i];
     any_not_netsim_uwb |= !netsim_all_radios_vec[i] && !netsim_uwb_vec[i];
+    any_not_netsim_nfc |= !netsim_all_radios_vec[i] && !netsim_nfc_vec[i];
   }
 
   std::vector<bool> enable_host_bluetooth_vec =
@@ -1705,6 +1716,8 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     pica_instance_num = FLAGS_pica_instance_num - 1;
   }
   tmp_config_obj.set_enable_host_uwb(FLAGS_enable_host_uwb || any_netsim_uwb);
+  tmp_config_obj.set_enable_host_nfc(FLAGS_enable_host_nfc || any_netsim_nfc);
+  tmp_config_obj.set_enable_host_nfc_connector(FLAGS_enable_host_nfc && any_not_netsim_nfc);
 
   tmp_config_obj.set_pica_uci_port(7000 + pica_instance_num);
   LOG(DEBUG) << "launch pica: " << (FLAGS_pica_instance_num <= 0);
@@ -2269,7 +2282,7 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     instance.set_start_rootcanal(is_first_instance && any_not_netsim_bt &&
                                  (FLAGS_rootcanal_instance_num <= 0));
 
-    instance.set_start_casimir(is_first_instance && FLAGS_casimir_instance_num <= 0);
+    instance.set_start_casimir(is_first_instance && any_not_netsim_nfc && FLAGS_casimir_instance_num <= 0);
 
     instance.set_start_pica(is_first_instance && any_not_netsim_uwb &&
                             FLAGS_pica_instance_num <= 0);

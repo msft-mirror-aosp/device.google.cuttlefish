@@ -48,7 +48,8 @@ VhostDeviceVsockComponent();
 Result<std::optional<MonitorCommand>> BluetoothConnector(
     const CuttlefishConfig&, const CuttlefishConfig::InstanceSpecific&);
 
-Result<MonitorCommand> NfcConnector(
+Result<std::optional<MonitorCommand>> NfcConnector(
+    const CuttlefishConfig&,
     const CuttlefishConfig::EnvironmentSpecific&,
     const CuttlefishConfig::InstanceSpecific&);
 

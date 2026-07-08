@@ -7,3 +7,9 @@ rs priv_app udp_socket b/291029681
 mediashell_app rootfs dir b/293075059
 init debugfs_bootreceiver_tracing dir b/340399580
 init debugfs_wifi_tracing dir b/340399580
+platform_app default_android_service service_manager b/527019803
+system_app default_android_service service_manager b/527019803
+pixelsystemservice_app default_android_service service_manager b/527019803
+pixelsystemservice_app hal_timestamp_service service_manager b/527019803
+hal_drm_widevine shell_exec file b/527019803
+shell kernel system b/527019803
