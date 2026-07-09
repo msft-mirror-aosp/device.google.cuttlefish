@@ -24,3 +24,11 @@ filegroup {
     ],
     visibility: ["//visibility:public"],
 }
+
+filegroup {
+    name: "jcardsim_proxy_test_sources",
+    srcs: [
+        "test/**/*.java",
+    ],
+    visibility: ["//visibility:public"],
+}

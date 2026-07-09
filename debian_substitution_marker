@@ -10,6 +10,7 @@ symlinks: {
   link_name: "bin/casimir_control_server"
 }
 
+# Stubbed
 symlinks: {
   target: "/usr/lib/cuttlefish-common/bin/cf_vhost_user_input"
   link_name: "bin/cf_vhost_user_input"
@@ -20,6 +21,7 @@ symlinks {
   link_name: "bin/console_forwarder"
 }
 
+# Stubbed
 symlinks {
   target: "/usr/lib/cuttlefish-common/bin/cvd_import_locations"
   link_name: "bin/cvd_import_locations"

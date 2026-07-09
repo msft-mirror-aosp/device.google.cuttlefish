@@ -19,29 +19,7 @@ package {
 
 rust_binary_host {
     name: "cf_vhost_user_input",
-
     srcs: ["main.rs"],
-
-    rustlibs: [
-        "libanyhow",
-        "libclap",
-        "libclap_builder",
-        "libcommand_fds",
-        "libenv_logger",
-        "liblog_rust",
-        "libserde",
-        "libserde_json",
-        "libvhost_android",
-        "libvhost_user_backend",
-        "libvirtio_bindings",
-        "libvirtio_queue",
-        "libvm_memory_android",
-        "libvmm_sys_util",
-        "libzerocopy",
-    ],
-    proc_macros: [
-        "libclap_derive",
-    ],
     defaults: [
         "cuttlefish_buildhost_only",
     ],

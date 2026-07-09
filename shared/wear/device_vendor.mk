@@ -58,7 +58,7 @@ PRODUCT_PRODUCT_PROPERTIES += \
 
 # NFC AIDL HAL
 PRODUCT_PACKAGES += \
-    com.google.cf.nfc
+    com.android.hardware.nfc
 
 PRODUCT_CHARACTERISTICS := nosdcard,watch
 

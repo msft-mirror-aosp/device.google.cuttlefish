@@ -30,7 +30,9 @@ cc_library_shared {
         "libfmq",
         "liblog",
         "libtinyxml2",
+        "libbase",
         "libutils",
+        "libvirtiomedia_v4l2utils",
     ],
     static_libs: [
         "android.hardware.camera.common@1.0-helper",

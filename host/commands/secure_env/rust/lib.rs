@@ -119,7 +119,11 @@ pub unsafe fn ta_main(
         legacy_key: None,
         rpc,
     };
-    let mut ta = KeyMintTa::new(hw_info, RpcInfo::V3(rpc_info_v3), imp, dev);
+    let mut config = kmr_ta::Config::default();
+    // Support KeyMint V5 (the minimum supported version, used when unfrozen
+    // interfaces are disabled).
+    config.allowed_aidl_versions = vec![kmr_ta::KeyMintHalVersion::V5];
+    let mut ta = KeyMintTa::new_with_config(hw_info, RpcInfo::V3(rpc_info_v3), imp, dev, config);
 
     run_ta_loop(infile, outfile, snapshot_socket, kmr_wire::DEFAULT_MAX_SIZE, |req| {
         ta.process(req)

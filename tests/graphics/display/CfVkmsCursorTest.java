@@ -35,7 +35,8 @@ import org.junit.Test;
 
 @RunWith(DeviceJUnit4ClassRunner.class)
 public class CfVkmsCursorTest extends BaseHostJUnit4Test {
-    private static final long CURSOR_FRAMES_TIMEOUT_MS = 60 * 1000;
+    private static final long UI_BOOT_TIMEOUT_MS = 60 * 1000;
+    private static final long CURSOR_FRAMES_TIMEOUT_MS = 20 * 1000;
     private static final String DUMPSYS_COMMAND = "dumpsys SurfaceFlinger";
     private static final Pattern SUCCESS_PATTERN =
             Pattern.compile("Cursor plane frames: (\\d+)", Pattern.MULTILINE);
@@ -84,6 +85,7 @@ public class CfVkmsCursorTest extends BaseHostJUnit4Test {
     public void cursorCompositionSucceeds() throws Exception {
         assertTrue(toggleSystemUi(false));
         assertTrue(toggleSystemUi(true));
+        mVkmsTester.waitForUiReady(UI_BOOT_TIMEOUT_MS);
 
         CursorStats results = testCursorComposition();
         if (results.cursorFrames > 0) {
