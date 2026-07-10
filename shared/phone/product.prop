@@ -31,3 +31,6 @@ persist.bluetooth.sw_offload=true
 
 # Enable software offload for A2DP
 ro.bluetooth.a2dp_offload.supported=true
+
+bluetooth.sco.managed_by_audio=true
+bluetooth.hfp.software_datapath.enabled=true
