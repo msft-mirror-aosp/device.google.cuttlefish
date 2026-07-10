@@ -169,7 +169,6 @@ prebuilt_etc {
     srcs: [
         "audio/policy/audio_policy_configuration.xml",
         "audio/policy/primary_audio_policy_configuration.xml",
-        "audio/policy/bluetooth_with_le_audio_policy_configuration_7_0.xml",
     ],
     vendor: true,
     enabled: select(soong_config_variable("cuttlefish_config", "use_audio_policy"), {
