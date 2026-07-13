@@ -15,9 +15,11 @@
  */
 
 #define LOG_TAG "VirtioMediaCamDevSsn"
-#include <log/log.h>
 
 #include "VirtioMediaCameraDeviceSession.h"
+
+#include <convert.h>
+#include <log/log.h>
 
 namespace android {
 namespace hardware {
@@ -91,6 +93,36 @@ ScopedAStatus VirtioMediaCameraDeviceSession::constructDefaultRequestSettings(
   if (mSession == nullptr) {
     return ScopedAStatus::fromServiceSpecificError(
         static_cast<int32_t>(Status::INTERNAL_ERROR));
+  }
+  if (in_type == RequestTemplate::MANUAL) {
+    // Use PREVIEW defaults as the baseline for MANUAL template.
+    ScopedAStatus res = mSession->constructDefaultRequestSettings(
+        RequestTemplate::PREVIEW, _aidl_return);
+    if (!res.isOk()) {
+      return res;
+    }
+    ::android::hardware::camera::common::V1_0::helper::CameraMetadata tmp;
+    tmp = reinterpret_cast<const camera_metadata_t*>(
+        _aidl_return->metadata.data());
+
+    // Per camera3.h specification for CAMERA3_TEMPLATE_MANUAL:
+    // "All automatic control is disabled (auto-exposure, auto-white balance,
+    // auto-focus)..."
+    uint8_t intent = ANDROID_CONTROL_CAPTURE_INTENT_MANUAL;
+    uint8_t controlMode = ANDROID_CONTROL_MODE_OFF;
+    uint8_t aeMode = ANDROID_CONTROL_AE_MODE_OFF;
+    uint8_t awbMode = ANDROID_CONTROL_AWB_MODE_OFF;
+
+    tmp.update(ANDROID_CONTROL_CAPTURE_INTENT, &intent, 1);
+    tmp.update(ANDROID_CONTROL_MODE, &controlMode, 1);
+    tmp.update(ANDROID_CONTROL_AE_MODE, &aeMode, 1);
+    tmp.update(ANDROID_CONTROL_AWB_MODE, &awbMode, 1);
+
+    const camera_metadata_t* md = tmp.getAndLock();
+    convertToAidl(md, _aidl_return);
+    tmp.unlock(md);
+
+    return ScopedAStatus::ok();
   }
   return mSession->constructDefaultRequestSettings(in_type, _aidl_return);
 }

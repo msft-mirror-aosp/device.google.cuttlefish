@@ -485,7 +485,7 @@ status_t VirtioMediaCameraDevice::initDefaultCharsKeys(
   UPDATE(ANDROID_LENS_INFO_AVAILABLE_FOCAL_LENGTHS, availableFocalLengths,
          ARRAY_SIZE(availableFocalLengths));
 
-  const float physicalSize[] = {2.68f};  // Mock value
+  const float physicalSize[] = {2.68f, 2.68f};  // Mock value
   UPDATE(ANDROID_SENSOR_INFO_PHYSICAL_SIZE, physicalSize,
          ARRAY_SIZE(physicalSize));
 
