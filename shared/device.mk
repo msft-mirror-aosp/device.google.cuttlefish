@@ -294,9 +294,8 @@ PRODUCT_PACKAGES += \
     com.android.hardware.authsecret
 
 ifndef LOCAL_AUDIO_PRODUCT_PACKAGE
-#
-# Still use HIDL Audio HAL on 'next'
-#
+# Choose the audio HAL interfaces version which is the same as the system image uses.
+$(call soong_config_set, audio_hal, fcm_version, SYSTEM)
 LOCAL_AUDIO_PRODUCT_PACKAGE += \
     android.hardware.audio.parameter_parser.example_service \
     com.android.hardware.audio
