@@ -207,7 +207,7 @@ BOARD_IS_AUTOMOTIVE := true
 
 DEVICE_PACKAGE_OVERLAYS += device/google/cuttlefish/shared/auto/overlay
 
-PRODUCT_PACKAGES += CarServiceOverlayCuttleFish
+PRODUCT_PACKAGES += CarServiceOverlayCuttleFish SampleRearViewServiceOverlayCuttleFish
 GOOGLE_CAR_SERVICE_OVERLAY += CarServiceOverlayCuttleFishGoogle
 
 PRODUCT_PACKAGES += ConnectivityOverlayCuttleFish ConnectivityOverlayCuttleFishGoogle
