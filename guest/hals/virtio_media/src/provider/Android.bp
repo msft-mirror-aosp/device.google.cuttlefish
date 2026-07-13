@@ -41,6 +41,7 @@ cc_library_shared {
         "liblog",
         "libtinyxml2",
         "libutils",
+        "libvirtiomedia_v4l2utils",
     ],
     static_libs: [
         "android.hardware.camera.common@1.0-helper",
