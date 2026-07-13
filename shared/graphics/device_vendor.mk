@@ -43,7 +43,7 @@ PRODUCT_PACKAGES += \
 
 # Gfxstream Vulkan implementation (Vulkan streamed to the host).
 ifeq ($(TARGET_VULKAN_SUPPORT),true)
-PRODUCT_PACKAGES += com.google.cf.vulkan
+PRODUCT_PACKAGES += com.google.cf.vulkan.pastel
 endif
 
 #
