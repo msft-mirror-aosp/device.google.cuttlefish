@@ -27,6 +27,12 @@ PRODUCT_USE_HSUM?=true
 # NOTE: This must be set before inheriting car_generic_system.mk
 USE_DEFAULT_HW_TIMEOUT_MULTIPLIER?=false
 
+# TODO: b/510265107 - Use a build flag instead of the hardcoded true value
+# (e.g. RELEASE_CAR_SDV_ENABLE_INTEGRATION)
+# NOTE: This must be set before inheriting car_generic_system.mk to allow the
+# inclusion of SDV components that go to system image
+ENABLE_SDV_INTEGRATION ?= true
+
 $(call inherit-product, $(SRC_TARGET_DIR)/product/core_64_bit_only.mk)
 $(call inherit-product, packages/services/Car/car_product/build/car_generic_system.mk)
 
@@ -77,4 +83,9 @@ PRODUCT_VENDOR_PROPERTIES += \
 
 ifeq ($(TARGET_PRODUCT),aosp_cf_x86_64_auto)
     PRODUCT_SOONG_ONLY := $(RELEASE_SOONG_ONLY_CUTTLEFISH)
+endif
+
+# SDV components that don't go to system image
+ifeq ($(ENABLE_SDV_INTEGRATION),true)
+    $(call inherit-product, device/google/sdv/sdv_ivi/sdv_ivi.mk)
 endif
