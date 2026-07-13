@@ -138,7 +138,7 @@ ndk::ScopedAStatus VirtioMediaCameraDevice::open(
     return fromStatus(Status::INTERNAL_ERROR);
   }
 
-  std::shared_ptr<ExternalCameraDeviceSession> session;
+  std::shared_ptr<VirtioMediaCameraDeviceSession> session;
   ALOGV("%s: Initializing device for camera %s", __FUNCTION__,
         mCameraId.c_str());
   session = mSession.lock();
@@ -203,7 +203,7 @@ ndk::ScopedAStatus VirtioMediaCameraDevice::getTorchStrengthLevel(int32_t*) {
   return fromStatus(Status::OPERATION_NOT_SUPPORTED);
 }
 
-std::shared_ptr<ExternalCameraDeviceSession>
+std::shared_ptr<VirtioMediaCameraDeviceSession>
 VirtioMediaCameraDevice::createSession(
     const std::shared_ptr<ICameraDeviceCallback>& cb,
     const ExternalCameraConfig& cfg,
@@ -211,7 +211,7 @@ VirtioMediaCameraDevice::createSession(
     const CroppingType& croppingType,
     const common::V1_0::helper::CameraMetadata& chars,
     const std::string& cameraId, unique_fd v4l2Fd, v4l2_buf_type captureType) {
-  return ndk::SharedRefBase::make<ExternalCameraDeviceSession>(
+  return ndk::SharedRefBase::make<VirtioMediaCameraDeviceSession>(
       cb, cfg, sortedFormats, croppingType, chars, cameraId, std::move(v4l2Fd),
       captureType);
 }
@@ -1141,7 +1141,7 @@ VirtioMediaCameraDevice::getCandidateSupportedFormatsLocked(
 
 binder_status_t VirtioMediaCameraDevice::dump(int fd, const char** args,
                                               uint32_t numArgs) {
-  std::shared_ptr<ExternalCameraDeviceSession> session = mSession.lock();
+  std::shared_ptr<VirtioMediaCameraDeviceSession> session = mSession.lock();
   if (session == nullptr) {
     dprintf(fd, "No active camera device session instance\n");
     return STATUS_OK;
