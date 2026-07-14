@@ -28,6 +28,8 @@
 #include <sys/inotify.h>
 #include <regex>
 
+#include "V4l2Utils.h"
+
 namespace android {
 namespace hardware {
 namespace camera {
@@ -225,6 +227,17 @@ void ExternalCameraProvider::deviceAdded(const char* devName) {
       ALOGW(
           "%s device %s does not support VIDEO_CAPTURE or VIDEO_CAPTURE_MPLANE",
           __FUNCTION__, devName);
+      return;
+    }
+
+    // Devices advertising LENS_FACING equal to EXTERNAL continue to be managed
+    // by the External Camera HAL hardware/interfaces/camera/provider/default.
+    Result<std::optional<int64_t>> lens_facing_res =
+        cuttlefish::virtio_media::LensFacingCtrl(fd);
+    if (lens_facing_res.ok() && lens_facing_res.value().has_value() &&
+        lens_facing_res.value().value() == ANDROID_LENS_FACING_EXTERNAL) {
+      ALOGI("%s device %s has LENS_FACING equal to EXTERNAL, skipping",
+            __FUNCTION__, devName);
       return;
     }
   }
