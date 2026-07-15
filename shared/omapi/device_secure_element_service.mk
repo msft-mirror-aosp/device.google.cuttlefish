@@ -14,15 +14,20 @@
 # limitations under the License.
 #
 
+DEVICE_PACKAGE_OVERLAYS += \
+    device/google/cuttlefish/shared/omapi/overlay
+
 # Enabling fullaccess for clients to omapi in cuttlefish
 PRODUCT_PRODUCT_PROPERTIES += \
     persist.service.seek=fullaccess
 
+
 PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/omapi/hal_uuid_map_config.xml:$(TARGET_COPY_OUT_VENDOR)/etc/hal_uuid_map_config.xml
+
+PRODUCT_PACKAGES += secure_element_framework_matrix.xml
+
+DEVICE_MANIFEST_FILE += device/google/cuttlefish/shared/omapi/secure_element-service.xml
+
 PRODUCT_COPY_FILES += \
     frameworks/native/data/etc/android.hardware.se.omapi.ese.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.se.omapi.ese.xml
-
-# Enable Native Rust OMAPI (Note: SecureElement Java app remains in the build but is inactive at runtime)
-PRODUCT_PACKAGES += omapi
-PRODUCT_PRODUCT_PROPERTIES += persist.sys.secure_element.backend=rust
