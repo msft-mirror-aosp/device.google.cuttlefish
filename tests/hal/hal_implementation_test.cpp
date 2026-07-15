@@ -106,6 +106,7 @@ static const std::set<std::string> kAlwaysMissingAidl = {
     // types-only packages, which never expect a default implementation
     "android.frameworks.cameraservice.common",
     "android.frameworks.cameraservice.device",
+    "android.frameworks.debugfileupload",
     "android.hardware.audio.common",
     "android.hardware.audio.core.sounddose",
     "android.hardware.biometrics.common",
