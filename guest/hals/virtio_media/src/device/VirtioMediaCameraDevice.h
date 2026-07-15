@@ -21,6 +21,8 @@
 #include <aidl/android/hardware/camera/common/Status.h>
 #include <aidl/android/hardware/camera/device/BnCameraDevice.h>
 
+#include "VirtioMediaCameraDeviceSession.h"
+
 namespace android {
 namespace hardware {
 namespace camera {
@@ -71,7 +73,7 @@ class VirtioMediaCameraDevice : public BnCameraDevice {
   static std::string kDeviceVersion;
 
  private:
-  virtual std::shared_ptr<ExternalCameraDeviceSession> createSession(
+  virtual std::shared_ptr<VirtioMediaCameraDeviceSession> createSession(
       const std::shared_ptr<ICameraDeviceCallback>&,
       const ExternalCameraConfig& cfg,
       const std::vector<SupportedV4L2Format>& sortedFormats,
@@ -139,8 +141,8 @@ class VirtioMediaCameraDevice : public BnCameraDevice {
   CroppingType mCroppingType;
   v4l2_buf_type mCaptureType = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 
-  std::weak_ptr<ExternalCameraDeviceSession> mSession =
-      std::weak_ptr<ExternalCameraDeviceSession>();
+  std::weak_ptr<VirtioMediaCameraDeviceSession> mSession =
+      std::weak_ptr<VirtioMediaCameraDeviceSession>();
 
   ::android::hardware::camera::common::V1_0::helper::CameraMetadata
       mCameraCharacteristics;
