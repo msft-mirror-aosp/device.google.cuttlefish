@@ -167,7 +167,22 @@ ndk::ScopedAStatus ExternalCameraProvider::getConcurrentCameraIds(
   if (_aidl_return == nullptr) {
     return fromStatus(Status::ILLEGAL_ARGUMENT);
   }
+  Mutex::Autolock _l(mLock);
+  std::vector<std::string> presentCameraIds;
+  for (const auto& [id, status] : mCameraStatusMap) {
+    if (status == CameraDeviceStatus::PRESENT) {
+      size_t pos = id.rfind('/');
+      if (pos != std::string::npos) {
+        presentCameraIds.push_back(id.substr(pos + 1));
+      }
+    }
+  }
   *_aidl_return = {};
+  if (!presentCameraIds.empty()) {
+    ConcurrentCameraIdCombination combination;
+    combination.combination = std::move(presentCameraIds);
+    _aidl_return->push_back(std::move(combination));
+  }
   return fromStatus(Status::OK);
 }
 
@@ -177,8 +192,7 @@ ExternalCameraProvider::isConcurrentStreamCombinationSupported(
   if (_aidl_return == nullptr) {
     return fromStatus(Status::ILLEGAL_ARGUMENT);
   }
-  // No concurrent stream combinations are supported
-  *_aidl_return = false;
+  *_aidl_return = true;
   return fromStatus(Status::OK);
 }
 
