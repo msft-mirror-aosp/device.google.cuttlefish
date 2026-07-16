@@ -344,12 +344,7 @@ ifeq ($(LOCAL_ENABLE_WIDEVINE),true)
 -include vendor/google/widevine/cdm/android/level3/generic/widevine_release_level3.mk
 
 ifeq ($(RELEASE_WIDEVINE_CUTTLEFISH_L1),true)
-    ifndef TARGET_BUILD_WIDEVINE_BUILD_CONFIG
-        ifneq ($(PRODUCT_IS_ATV),true)
-            PRODUCT_SOONG_NAMESPACES += vendor/google/widevine/cdm
-            PRODUCT_PACKAGES += liboemcrypto_no_ipc_test_only
-        endif
-    endif
+    -include vendor/google/widevine/cdm/oemcrypto/opk/ports/linux/ta/common/wtpi_impl/test-only/device.mk
 endif
 
 ifeq ($(RELEASE_WIDEVINE_OEMCRYPTO_AIDL),true)
