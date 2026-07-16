@@ -19,22 +19,6 @@ package {
 
 cc_binary {
     name: "adb_connector",
-    srcs: [
-        "adb_connection_maintainer.cpp",
-        "main.cpp",
-    ],
-    static_libs: [
-        "libcuttlefish_host_config",
-        "libcuttlefish_guest_config_proto",
-        "libgflags",
-        "libjsoncpp",
-    ],
-    shared_libs: [
-        "libbase",
-        "libcuttlefish_fs",
-        "libcuttlefish_utils",
-        "liblog",
-        "libprotobuf-cpp-full",
-    ],
+    srcs: ["main.cpp"],
     defaults: ["cuttlefish_host"],
 }

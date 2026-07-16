@@ -20,11 +20,14 @@
 #include <utility>
 #include <vector>
 
+#include <android-base/parseint.h>
+#include <android-base/strings.h>
 #include <fruit/fruit.h>
 
 #include "common/libs/fs/shared_fd.h"
 #include "common/libs/utils/files.h"
 #include "common/libs/utils/result.h"
+#include "host/commands/run_cvd/launch/grpc_socket_creator.h"
 #include "host/libs/config/command_source.h"
 #include "host/libs/config/known_paths.h"
 
@@ -50,13 +53,24 @@ class Chip {
  public:
   SharedFD fd_in;
   SharedFD fd_out;
+  SharedFD vsock_fd;
+  int sim_type = 1;
 
   Chip(std::string kind) : kind_(kind) {}
 
   // Append the chip information as Json to the command.
   void Append(Command& c) const {
-    c.AppendToLastParameter(R"({"kind":")", kind_, R"(","fdIn":)", fd_in,
-                            R"(,"fdOut":)", fd_out, "}");
+    if (vsock_fd->IsOpen()) {
+      c.AppendToLastParameter(R"({"kind":")", kind_, R"(","vsockFd":)",
+                              vsock_fd);
+    } else {
+      c.AppendToLastParameter(R"({"kind":")", kind_, R"(","fdIn":)", fd_in,
+                              R"(,"fdOut":)", fd_out);
+    }
+    if (kind_ == "CELLULAR") {
+      c.AppendToLastParameter(R"(,"simType":)", std::to_string(sim_type));
+    }
+    c.AppendToLastParameter("}");
   }
 
  private:
@@ -88,8 +102,9 @@ class Device {
 class NetsimServer : public CommandSource {
  public:
   INJECT(NetsimServer(const CuttlefishConfig& config,
-                      const CuttlefishConfig::InstanceSpecific& instance))
-      : config_(config), instance_(instance) {}
+                      const CuttlefishConfig::InstanceSpecific& instance,
+                      GrpcSocketCreator& grpc_socket))
+      : config_(config), instance_(instance), grpc_socket_(grpc_socket) {}
 
   // CommandSource
   Result<std::vector<MonitorCommand>> Commands() override {
@@ -100,6 +115,9 @@ class NetsimServer : public CommandSource {
     devices_.clear();
     // Port configuration.
     netsimd.AddParameter("--hci_port=", config_.rootcanal_hci_port());
+
+    netsimd.AddParameter("--grpc_uds_path=",
+                         grpc_socket_.CreateGrpcSocket("NetsimControlServer"));
 
     // When no connector is requested, add the instance number
     if (config_.netsim_connector_instance_num() ==
@@ -131,6 +149,9 @@ class NetsimServer : public CommandSource {
     hci_vsock_proxy.AddParameter("--client_tcp_host=127.0.0.1");
     hci_vsock_proxy.AddParameter("--client_tcp_port=",
                                  config_.rootcanal_hci_port());
+    if (instance_.vhost_user_vsock()) {
+      hci_vsock_proxy.AddParameter("--vhost_user_vsock=true");
+    }
 
     // Add command for forwarding the test port to a vsock server.
     Command test_vsock_proxy(SocketVsockProxyBinary());
@@ -143,6 +164,9 @@ class NetsimServer : public CommandSource {
     test_vsock_proxy.AddParameter("--client_tcp_host=127.0.0.1");
     test_vsock_proxy.AddParameter("--client_tcp_port=",
                                   config_.rootcanal_test_port());
+    if (instance_.vhost_user_vsock()) {
+      test_vsock_proxy.AddParameter("--vhost_user_vsock=true");
+    }
 
     std::vector<MonitorCommand> commands;
     commands.emplace_back(std::move(netsimd));
@@ -180,26 +204,58 @@ class NetsimServer : public CommandSource {
     for (const auto& instance : config_.Instances()) {
       Device device(instance.adb_ip_and_port());
       // Add bluetooth chip if enabled
-      if (config_.netsim_radio_enabled(
-              CuttlefishConfig::NetsimRadio::Bluetooth)) {
+      if (instance.has_bluetooth() &&
+          !instance.enable_host_bluetooth_connector()) {
         Chip chip("BLUETOOTH");
         chip.fd_in = CF_EXPECT(MakeFifo(instance, "bt_fifo_vm.in"));
         chip.fd_out = CF_EXPECT(MakeFifo(instance, "bt_fifo_vm.out"));
         device.chips.emplace_back(chip);
       }
       // Add uwb chip if enabled
-      if (config_.netsim_radio_enabled(CuttlefishConfig::NetsimRadio::Uwb)) {
+      if (config_.enable_host_uwb() &&
+          !instance.enable_host_uwb_connector()) {
         Chip chip("UWB");
         chip.fd_in = CF_EXPECT(MakeFifo(instance, "uwb_fifo_vm.in"));
         chip.fd_out = CF_EXPECT(MakeFifo(instance, "uwb_fifo_vm.out"));
         device.chips.emplace_back(chip);
       }
       // Add nfc chip if enabled
-      if (config_.netsim_radio_enabled(CuttlefishConfig::NetsimRadio::Nfc)) {
+      if (config_.enable_host_nfc() && !config_.enable_host_nfc_connector()) {
         Chip chip("NFC");
         chip.fd_in = CF_EXPECT(MakeFifo(instance, "nfc_fifo_vm.in"));
         chip.fd_out = CF_EXPECT(MakeFifo(instance, "nfc_fifo_vm.out"));
         device.chips.emplace_back(chip);
+      }
+      // Add modem chip if enabled
+      if (instance.enable_modem_netsim()) {
+        // modem_count is the number of modems configured for this VM instance
+        int modem_count = instance.modem_simulator_instance_number();
+        CF_EXPECT(modem_count >= 0 && modem_count < 4,
+                  "Modem simulator instance number should range between 0 and 3");
+        auto port_strings =
+            android::base::Split(instance.modem_simulator_ports(), ",");
+        for (size_t i = 0;
+             i < static_cast<size_t>(modem_count) && i < port_strings.size();
+             ++i) {
+          int port = 0;
+          CF_EXPECT(android::base::ParseInt(port_strings[i], &port),
+                    "Failed to parse modem simulator port: " << port_strings[i]);
+
+          auto vsock = SharedFD::VsockServer(
+              port, SOCK_STREAM,
+              instance.vhost_user_vsock()
+                  ? std::make_optional(instance.vsock_guest_cid())
+                  : std::nullopt);
+          CF_EXPECT(
+              vsock->IsOpen(),
+              vsock->StrError()
+                  << " (try `cvd reset`, or `pkill run_cvd` and `pkill crosvm`)");
+
+          Chip chip("CELLULAR");
+          chip.vsock_fd = vsock;
+          chip.sim_type = instance.modem_simulator_sim_type();
+          device.chips.emplace_back(chip);
+        }
       }
       // Add other chips if enabled
       devices_.emplace_back(device);
@@ -217,12 +273,14 @@ class NetsimServer : public CommandSource {
   std::vector<Device> devices_;
   const CuttlefishConfig& config_;
   const CuttlefishConfig::InstanceSpecific& instance_;
+  GrpcSocketCreator& grpc_socket_;
 };
 
 }  // namespace
 
 fruit::Component<fruit::Required<const CuttlefishConfig,
-                                 const CuttlefishConfig::InstanceSpecific>>
+                                 const CuttlefishConfig::InstanceSpecific,
+                                 GrpcSocketCreator>>
 NetsimServerComponent() {
   return fruit::createComponent()
       .addMultibinding<CommandSource, NetsimServer>()

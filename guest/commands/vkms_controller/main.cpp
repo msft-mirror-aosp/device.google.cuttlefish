@@ -34,14 +34,19 @@
 #include <android-base/parseint.h>
 #include <android-base/properties.h>
 #include <android-base/strings.h>
+#include <android-base/unique_fd.h>
 #include <cutils/properties.h>
+#include <fcntl.h>
 #include <getopt.h>
 #include <json/json.h>
+#include <sys/file.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
 #include <algorithm>
+#include <cerrno>
 #include <cstdio>
+#include <cstring>
 #include <filesystem>  // NOLINT(build/c++17)
 #include <fstream>
 #include <iostream>
@@ -163,7 +168,7 @@ bool LoadState(std::vector<ConnectorState>* states) {
 }
 
 int DoSetup(const std::vector<std::string>& args) {
-  VkmsTester::ForceDeleteVkmsDir();
+  VkmsTester::ShutdownAndCleanUpVkms();
   std::vector<VkmsTester::VkmsConnectorBuilder> builders;
   std::vector<ConnectorState> states;
 
@@ -321,7 +326,7 @@ int DoHotplug(const std::vector<std::string>& args) {
 
 int DoReset(const std::vector<std::string>& args) {
   (void)args;
-  VkmsTester::ForceDeleteVkmsDir();
+  VkmsTester::ShutdownAndCleanUpVkms();
   unlink(kStateFilePath.c_str());
   std::cout << "VKMS reset complete.\n";
   return 0;
@@ -497,6 +502,38 @@ static const std::unordered_map<std::string_view, Command> kCommands = {
      {.help = kListDisplaysUsage, .func = DoListDisplays}},
 };
 
+class ScopedFileLock {
+ public:
+  ScopedFileLock(const char* lock_path) {
+    android::base::unique_fd fd(TEMP_FAILURE_RETRY(
+        open(lock_path, O_RDWR | O_CREAT | O_CLOEXEC, 0666)));
+    if (fd.get() == -1) {
+      LOG(ERROR) << "Failed to open lock file " << lock_path << ": "
+                 << strerror(errno);
+      return;
+    }
+    LOG(INFO) << "Acquiring lock on " << lock_path << "...";
+    if (TEMP_FAILURE_RETRY(flock(fd.get(), LOCK_EX)) < 0) {
+      LOG(ERROR) << "Failed to flock " << lock_path << ": " << strerror(errno);
+      return;
+    }
+    LOG(INFO) << "Lock acquired.";
+    fd_ = std::move(fd);
+  }
+
+  ~ScopedFileLock() {
+    if (fd_.get() != -1) {
+      LOG(INFO) << "Releasing lock...";
+      TEMP_FAILURE_RETRY(flock(fd_.get(), LOCK_UN));
+    }
+  }
+
+  bool IsLocked() const { return fd_.get() != -1; }
+
+ private:
+  android::base::unique_fd fd_;
+};
+
 }  // namespace vkms_controller
 }  // namespace cuttlefish
 
@@ -545,6 +582,13 @@ int main(int argc, char** argv) {
   }
 
   if (cuttlefish::vkms_controller::kCommands.count(args[0])) {
+    cuttlefish::vkms_controller::ScopedFileLock lock(
+        "/data/local/tmp/vkms_controller.lock");
+    if (!lock.IsLocked()) {
+      std::cerr << "Error: Failed to acquire vkms_controller lock."
+                << std::endl;
+      return 1;
+    }
     return cuttlefish::vkms_controller::kCommands.at(args[0]).func(args);
   } else {
     std::cout << cuttlefish::vkms_controller::kUsage << std::endl;

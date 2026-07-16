@@ -16,3 +16,23 @@ fn test_rkp_soft_trait() {
     );
     kmr_tests::test_retrieve_rpc_artifacts(soft_rpc, &hmac, &hmac);
 }
+
+#[test]
+fn test_rkp_soft_trait_es256() {
+    let hmac = kmr_crypto_boring::hmac::BoringHmac;
+    let soft_rpc = soft::RpcArtifacts::new(
+        soft::Derive::default(),
+        kmr_ta::device::CsrSigningAlgorithm::ES256,
+    );
+    kmr_tests::test_retrieve_rpc_artifacts(soft_rpc, &hmac, &hmac);
+}
+
+#[test]
+fn test_rkp_soft_trait_es384() {
+    let hmac = kmr_crypto_boring::hmac::BoringHmac;
+    let soft_rpc = soft::RpcArtifacts::new(
+        soft::Derive::default(),
+        kmr_ta::device::CsrSigningAlgorithm::ES384,
+    );
+    kmr_tests::test_retrieve_rpc_artifacts(soft_rpc, &hmac, &hmac);
+}

@@ -27,6 +27,7 @@
 #include <android-base/file.h>
 #include <android-base/strings.h>
 #include <fmt/format.h>
+#include <google/protobuf/io/tokenizer.h>
 #include <google/protobuf/text_format.h>
 
 #include "common/libs/utils/contains.h"
@@ -43,6 +44,23 @@
 
 namespace cuttlefish {
 namespace {
+
+struct AggregatingErrorCollector : public google::protobuf::io::ErrorCollector {
+  void RecordError(int /* line */, int /* column */,
+                   const absl::string_view message) override {
+    if (!error_message.empty()) {
+      error_message += "; ";
+    }
+    error_message += message;
+  }
+
+  void RecordWarning(int /* line */, int /* column */,
+                     const absl::string_view /* message */) override {
+    // Ignore warnings
+  }
+
+  std::string error_message;
+};
 
 struct CommonState {
   const VmmMode vmm_mode;
@@ -528,6 +546,35 @@ Result<bool> SelectGpuVhostUserMode(const GpuMode gpu_mode,
   return gpu_vhost_user_mode_arg == kGpuVhostUserModeOn;
 }
 
+Result<GuestHwuiRenderer> SelectGuestHwuiRenderer(
+    const GpuMode gpu_mode, const GuestConfig& guest_config,
+    const std::string& guest_hwui_renderer_arg) {
+  if (!guest_hwui_renderer_arg.empty()) {
+    GuestHwuiRenderer hwui_renderer = CF_EXPECT(
+        ParseGuestHwuiRenderer(guest_hwui_renderer_arg),
+        "Failed to parse HWUI renderer flag: " << guest_hwui_renderer_arg);
+    LOG(INFO) << "Using explicitly provided HWUI renderer: "
+              << ToString(hwui_renderer);
+    return hwui_renderer;
+  }
+
+  // Only makes sense for Android guests:
+  if (guest_config.android_version_number.empty()) {
+    return GuestHwuiRenderer::kUnknown;
+  }
+
+  // TODO(b/533056543): after testing Gfxstream's virtual queue support.
+  if (IsGfxstreamGuestAngleMode(gpu_mode) &&
+      gpu_mode != GpuMode::GfxstreamGuestAngleHostSwiftshader) {
+    LOG(INFO) << "Selecting SkiaVk as the HWUI renderer for "
+              << GpuModeString(gpu_mode)
+              << " GPU mode which is GfxstreamGuestAngle* based.";
+    return GuestHwuiRenderer::kSkiaVk;
+  }
+
+  return GuestHwuiRenderer::kUnknown;
+}
+
 Result<GuestRendererPreload> SelectGuestRendererPreload(
     const GpuMode gpu_mode, const GuestHwuiRenderer guest_hwui_renderer,
     const std::string& guest_renderer_preload_arg) {
@@ -616,7 +663,8 @@ std::string GetGfxstreamRendererFeaturesString(
 
 CF_UNUSED_ON_MACOS
 Result<void> SetGfxstreamFlags(
-    const GpuMode gpu_mode, const std::string& gpu_renderer_features_arg,
+    const GpuMode gpu_mode, const GuestHwuiRenderer hwui_renderer,
+    const std::string& gpu_renderer_features_arg,
     const GuestConfig& guest_config,
     const gfxstream::proto::GraphicsAvailability& availability,
     CuttlefishConfig::MutableInstanceSpecific& instance) {
@@ -659,6 +707,13 @@ Result<void> SetGfxstreamFlags(
                << (feature_enabled ? "enabled" : "disabled")
                << " via command line argument.";
     features[feature_name] = feature_enabled;
+  }
+
+  // SwiftShader currently only supports a single queue. SkiaVK requests
+  // a second queue used for transfers.
+  if (gpu_mode == GpuMode::GfxstreamGuestAngleHostSwiftshader &&
+      hwui_renderer == GuestHwuiRenderer::kSkiaVk) {
+    features["VulkanVirtualQueue"] = true;
   }
 
   // Convert features back to a string for passing to the VMM.
@@ -710,10 +765,15 @@ GetGraphicsAvailabilityWithSubprocessCheck() {
       graphics_availability_content_result.value();
 
   gfxstream::proto::GraphicsAvailability availability;
+
   google::protobuf::TextFormat::Parser parser;
+  parser.AllowUnknownField(true);
+  AggregatingErrorCollector error_collector;
+  parser.RecordErrorsTo(&error_collector);
   if (!parser.ParseFromString(graphics_availability_content, &availability)) {
     LOG(ERROR) << "Failed to parse graphics detector output: "
                << graphics_availability_content
+               << ". Error(s): " << error_collector.error_message
                << ". Assuming no availability.";
     return {};
   }
@@ -752,14 +812,6 @@ Result<GpuMode> ConfigureGpuSettings(
   const bool enable_gpu_vhost_user =
       CF_EXPECT(SelectGpuVhostUserMode(gpu_mode, gpu_vhost_user_mode_arg, vmm));
 
-  if (gpu_mode == GpuMode::Gfxstream ||
-      gpu_mode == GpuMode::GfxstreamGuestAngle ||
-      gpu_mode == GpuMode::GfxstreamGuestAngleHostLavapipe ||
-      gpu_mode == GpuMode::GfxstreamGuestAngleHostSwiftshader) {
-    CF_EXPECT(SetGfxstreamFlags(gpu_mode, gpu_renderer_features_arg,
-                                guest_config, graphics_availability, instance));
-  }
-
   if (gpu_mode == GpuMode::Custom) {
     auto requested_types = android::base::Split(gpu_context_types_arg, ":");
     for (const std::string& requested : requested_types) {
@@ -787,17 +839,19 @@ Result<GpuMode> ConfigureGpuSettings(
     instance.set_enable_gpu_system_blob(false);
   }
 
-  GuestHwuiRenderer hwui_renderer = GuestHwuiRenderer::kUnknown;
-  if (!guest_hwui_renderer_arg.empty()) {
-    hwui_renderer = CF_EXPECT(
-        ParseGuestHwuiRenderer(guest_hwui_renderer_arg),
-        "Failed to parse HWUI renderer flag: " << guest_hwui_renderer_arg);
-  }
+  const GuestHwuiRenderer hwui_renderer = CF_EXPECT(
+      SelectGuestHwuiRenderer(gpu_mode, guest_config, guest_hwui_renderer_arg));
   instance.set_guest_hwui_renderer(hwui_renderer);
 
   const auto guest_renderer_preload = CF_EXPECT(SelectGuestRendererPreload(
       gpu_mode, hwui_renderer, guest_renderer_preload_arg));
   instance.set_guest_renderer_preload(guest_renderer_preload);
+
+  if (IsGfxstreamMode(gpu_mode)) {
+    CF_EXPECT(SetGfxstreamFlags(gpu_mode, hwui_renderer,
+                                gpu_renderer_features_arg, guest_config,
+                                graphics_availability, instance));
+  }
 
   instance.set_gpu_mode(gpu_mode);
   instance.set_enable_gpu_vhost_user(enable_gpu_vhost_user);

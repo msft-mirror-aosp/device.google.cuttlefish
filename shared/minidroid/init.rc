@@ -7,7 +7,6 @@
 #
 
 import /init.environ.rc
-import /system/etc/init/mdnsd.rc
 import /system/etc/init/servicemanager.rc
 import /system/etc/init/logd.rc
 # TODO(b/267320398): this file does not exist in -user builds, but init can

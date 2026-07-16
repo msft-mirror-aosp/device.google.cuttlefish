@@ -130,11 +130,16 @@ public class CfVkmsTester implements AutoCloseable {
       boolean success = false;
       for (int i = 0; i < 3; i++) {
         CommandResult result = device.executeShellV2Command(cmd);
-        if (result.getStatus() == CommandStatus.SUCCESS) {
+        if (result.getStatus() == CommandStatus.SUCCESS && result.getExitCode() != null && result.getExitCode() == 0) {
           success = true;
           break;
         }
-        CLog.w("Try %d: Failed to setup VKMS via vkms_controller: %s", i + 1, result.getStderr());
+        CLog.w(
+            "Try %d: Failed to setup VKMS via vkms_controller (status=%s, exitCode=%s): %s",
+            i + 1,
+            result.getStatus(),
+            result.getExitCode(),
+            result.getStderr());
         Thread.sleep(2000);
       }
 
@@ -160,9 +165,17 @@ public class CfVkmsTester implements AutoCloseable {
               "vkms_controller %s %d %s",
               CMD_HOTPLUG, connectorIndex, isConnected ? "connected" : "disconnected");
       CommandResult result = device.executeShellV2Command(cmd);
-      if (result.getStatus() != CommandStatus.SUCCESS) {
+      if (result.getStatus() != CommandStatus.SUCCESS
+          || result.getExitCode() == null
+          || result.getExitCode() != 0) {
         Assert.fail(
-            "Failed to hotplug connector " + connectorIndex + ": " + result.getStderr());
+            String.format(
+                "Failed to hotplug connector %d. Status: %s, Exit Code: %s, Stderr: %s, Stdout: %s",
+                connectorIndex,
+                result.getStatus(),
+                result.getExitCode(),
+                result.getStderr(),
+                result.getStdout()));
       }
     } catch (Exception e) {
       Assert.fail("Exception during VKMS hotplug: " + e.toString());
@@ -181,6 +194,13 @@ public class CfVkmsTester implements AutoCloseable {
     try {
       String cmd = String.format("vkms_controller %s", CMD_TEARDOWN);
       device.executeShellV2Command(cmd);
+
+      // Wait for UI to recover after reset
+      try {
+        waitForUiReady(DISPLAY_BRINGUP_TIMEOUT_MS);
+      } catch (Exception e) {
+        CLog.w("UI failed to become ready after teardown: %s", e.getMessage());
+      }
 
       initialized = false;
     } catch (Exception e) {
@@ -213,6 +233,25 @@ public class CfVkmsTester implements AutoCloseable {
               + minimumExpectedDisplays
               + ", found "
               + displayCount);
+    }
+  }
+
+  public void waitForUiReady(long timeoutMs) throws Exception {
+    long startTime = System.currentTimeMillis();
+    boolean ready = false;
+    while (System.currentTimeMillis() - startTime < timeoutMs) {
+      CommandResult result = device.executeShellV2Command("dumpsys window");
+      if (result.getStatus() == CommandStatus.SUCCESS && result.getStdout() != null) {
+        String stdout = result.getStdout();
+        if (stdout.contains("mCurrentFocus=Window{")) {
+          ready = true;
+          break;
+        }
+      }
+      Thread.sleep(POLL_INTERVAL_MS);
+    }
+    if (!ready) {
+      throw new Exception("Timed out waiting for UI stack to become ready (window focus active)");
     }
   }
 }

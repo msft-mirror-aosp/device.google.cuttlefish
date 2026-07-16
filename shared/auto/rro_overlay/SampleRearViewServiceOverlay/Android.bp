@@ -1,5 +1,4 @@
-//
-// Copyright (C) 2021 The Android Open Source Project
+// Copyright (C) 2026 The Android Open Source Project
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,11 +16,10 @@ package {
     default_applicable_licenses: ["Android-Apache-2.0"],
 }
 
-prebuilt_etc {
-    name: "libnfc-hal-cf.conf-default",
-    src: "libnfc-hal-cf.conf",
-    proprietary: true,
-    vendor: true,
-    filename: "libnfc-hal-cf.conf",
-
+runtime_resource_overlay {
+    name: "SampleRearViewServiceOverlayCuttleFish",
+    resource_dirs: ["res"],
+    manifest: "AndroidManifest.xml",
+    sdk_version: "current",
+    product_specific: true,
 }

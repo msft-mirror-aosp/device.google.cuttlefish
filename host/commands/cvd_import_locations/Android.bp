@@ -17,76 +17,8 @@ package {
     default_applicable_licenses: ["Android-Apache-2.0"],
 }
 
-cc_defaults {
-    name: "cvd_import_locations_defaults",
-    shared_libs: [
-        "libbase",
-        "libcuttlefish_fs",
-        "libgrpc++_unsecure",
-        "liblog",
-        "libprotobuf-cpp-full",
-    ],
-    defaults: ["cuttlefish_buildhost_only"],
-}
-
 cc_binary {
     name: "cvd_import_locations",
-    shared_libs: [
-        "libbase",
-        "libcuttlefish_fs",
-        "libcuttlefish_utils",
-        "libgrpc++_unsecure",
-        "libjsoncpp",
-        "libprotobuf-cpp-full",
-        "libxml2",
-    ],
-    static_libs: [
-        "libcuttlefish_host_config",
-        "libcuttlefish_guest_config_proto",
-        "libcvd_gnss_grpc_proxy",
-        "libgflags",
-        "liblocation",
-    ],
-    srcs: [
-        "main.cc",
-    ],
-    cflags: [
-        "-D_XOPEN_SOURCE",
-        "-Wno-unused-parameter",
-    ],
-    defaults: ["cvd_import_locations_defaults"],
-    target: {
-        darwin: {
-            enabled: true,
-        },
-    },
-}
-
-cc_test_host {
-    name: "cvd_import_locations_test",
-    shared_libs: [
-        "libbase",
-        "libcuttlefish_fs",
-        "libcuttlefish_utils",
-        "libxml2",
-    ],
-    static_libs: [
-        "libgmock",
-        "liblocation",
-    ],
-    srcs: [
-        "unittest/gpx_parser_test.cc",
-        "unittest/kml_parser_test.cc",
-        "unittest/main_test.cc",
-    ],
-    cflags: [
-        "-D_XOPEN_SOURCE",
-        "-Wno-unused-parameter",
-    ],
-    defaults: ["cvd_import_locations_defaults"],
-    target: {
-        darwin: {
-            enabled: true,
-        },
-    },
+    srcs: ["main.cc"],
+    defaults: ["cuttlefish_buildhost_only"],
 }

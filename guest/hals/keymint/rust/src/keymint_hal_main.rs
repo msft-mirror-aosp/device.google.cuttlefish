@@ -15,9 +15,10 @@
 //! This crate implements the KeyMint HAL service in Rust, communicating with a Rust
 //! trusted application (TA) running on the Cuttlefish host.
 
-use kmr_hal::{register_binder_services, HalServiceError, ALL_HALS};
+use kmr_hal::{ALL_HALS, HalServiceError, register_binder_services, send_hal_info};
 use log::{error, info};
 use std::fs;
+use std::ops::DerefMut;
 use std::panic;
 use std::sync::{Arc, Mutex};
 
@@ -88,6 +89,10 @@ fn inner_main() -> Result<(), HalServiceError> {
 
     // Let the TA know information about the userspace environment.
     kmr_hal_nonsecure::send_boot_info_and_attestation_id_info(&channel)?;
+
+    // Send the HAL service version information to the TA
+    send_hal_info(channel.lock().unwrap().deref_mut())
+        .map_err(|e| HalServiceError(format!("Failed to send HAL info: {:?}", e)))?;
 
     info!("Joining thread pool now.");
     binder::ProcessState::join_thread_pool();

@@ -25,7 +25,7 @@
             android.camera.extensions.impl.service
     </string>
     <string name="config_extensionFallbackServiceName" translatable="false">
-            android.camera.extensions.impl.service.EyesFreeVidService
+            android.camera.extensions.impl.service.SelfieSegService
     </string>
     <!-- List of country codes where oem-enabled satellite services are either allowed or disallowed
              by the device. Each country code is a lowercase 2 character ISO-3166-1 alpha-2. -->

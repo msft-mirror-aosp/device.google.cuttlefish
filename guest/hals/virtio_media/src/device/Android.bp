@@ -19,6 +19,7 @@ cc_library_shared {
     proprietary: true,
     srcs: [
         "VirtioMediaCameraDevice.cpp",
+        "VirtioMediaCameraDeviceSession.cpp",
     ],
     shared_libs: [
         "android.hardware.camera.device-V1-ndk",
@@ -30,7 +31,9 @@ cc_library_shared {
         "libfmq",
         "liblog",
         "libtinyxml2",
+        "libbase",
         "libutils",
+        "libvirtiomedia_v4l2utils",
     ],
     static_libs: [
         "android.hardware.camera.common@1.0-helper",

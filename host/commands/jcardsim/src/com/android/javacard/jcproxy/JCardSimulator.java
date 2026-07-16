@@ -23,6 +23,7 @@ import com.licel.jcardsim.smartcardio.CardSimulator;
 import com.licel.jcardsim.utils.AIDUtil;
 
 import javacard.framework.AID;
+import javacard.framework.Applet;
 import javacard.framework.ISO7816;
 
 import java.io.IOException;
@@ -50,17 +51,24 @@ public class JCardSimulator implements Simulator {
     // OMAPI Test Applet AIDs
     public static final String OMAPI_TEST_APPLET_AID_1 = "A000000476416E64726F696443545331";
     public static final String OMAPI_TEST_APPLET_AID_2 = "A000000476416E64726F696443545332";
-
-    private static final Map<String, Class> CONFIGURATION_MAP;
+    private static final Map<String, Class<? extends Applet>> CONFIGURATION_MAP;
 
     static {
         // Registry of applets to be installed in the simulator.
         // TreeMap with case-insensitive ordering allows AIDs to be matched regardless
         // of hexadecimal string casing during the selection process.
         CONFIGURATION_MAP = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
-        CONFIGURATION_MAP.put(KEYMINT_AID, KM3Applet.class);
+        CONFIGURATION_MAP.put(KEYMINT_AID, getKeyMintClass());
         CONFIGURATION_MAP.put(OMAPI_TEST_APPLET_AID_1, CtsAndroidOmapiTestApplet.class);
         CONFIGURATION_MAP.put(OMAPI_TEST_APPLET_AID_2, CtsAndroidOmapiTestApplet.class);
+    }
+
+    public static Class<? extends Applet> getKeyMintClass() {
+        return KM3Applet.class;
+    }
+
+    public static short getKeyMintP1P2() {
+        return KM3Applet.P1P2;
     }
 
     private CardSimulator simulator;
@@ -136,20 +144,29 @@ public class JCardSimulator implements Simulator {
         provisionKeyMint();
     }
 
-    private byte getChannelNumber(byte cla) throws IOException {
-        byte ch = (byte) (cla & 0x03);
-        if (ch == BASIC_CHANNEL) {
-            return ch;
-        }
-        boolean b7 = (cla & 0x40) == (byte) 0x40;
+    private static byte extractChannelNumber(byte cla) throws IOException {
+        // As per ISO7816-4 specification for CLA byte (section 5.1.1) and GlobalPlatform Card
+        // Specification (section 11.1.4.1), both interindustry and proprietary classes use Bit 7
+        // (b7 in 1-indexed, corresponding to Bit 6 / 0x40 in 0-indexed) to distinguish between
+        // basic and extended logical channels:
+        //
+        // 1. Basic Logical Channels (0-3): b7 is set to 0 (CLA is 0x0X or 0x8X).
+        //    - Bits 2 and 1 (LSB, 0x03) encode the logical channel number.
+        // 2. Extended Logical Channels (4-19): b7 is set to 1 (CLA is 0x4X or 0xCX).
+        //    - Bits 4 to 1 (0x0F) encode the channel number minus 4.
 
-        // b7 = 1 indicates the inter-industry class byte coding
-        if (b7) {
-            ch -= 4;
+        boolean isExtended = (cla & 0x40) == 0x40;
+        byte ch;
+        if (isExtended) {
+            // Further Class: Bits 4 to 1 (0x0F) encode (channel minus 4).
+            ch = (byte) ((cla & 0x0F) + 4);
+        } else {
+            // Basic Class: Bits 2 to 1 (0x03) encode channel (0-3).
+            ch = (byte) (cla & 0x03);
         }
 
-        if (!(ch >= (byte) 0x00 && ch <= (byte) 0x14)) {
-            throw new IOException("class byte error");
+        if (ch < 0 || ch >= MAX_LOGICAL_CHANNEL) {
+            throw new IOException("Unsupported channel: " + ch);
         }
         return ch;
     }
@@ -160,8 +177,14 @@ public class JCardSimulator implements Simulator {
 
         // Close the channel if p1 = 0x80
         if (apdu[ISO7816.OFFSET_P1] == (byte) 0x80) {
-            channelAid.set(apdu[ISO7816.OFFSET_P2], null);
-            currentChannel = INVALID_CHANNEL;
+            byte channelToClose = apdu[ISO7816.OFFSET_P2];
+            if (channelToClose <= 0 || channelToClose >= numChannels) {
+                return formatApduResponse(null, ISO7816.SW_WRONG_P1P2);
+            }
+            channelAid.set(channelToClose, null);
+            if (channelToClose == currentChannel) {
+                currentChannel = INVALID_CHANNEL;
+            }
             return formatApduResponse(null, ISO7816.SW_NO_ERROR);
         }
 
@@ -193,9 +216,19 @@ public class JCardSimulator implements Simulator {
      */
     private byte[] processSelectCommand(byte[] apdu) throws Exception {
         CommandAPDU apduCmd = new CommandAPDU(apdu);
+        // Validate the channel number early. Although the channel index `ch` is only needed
+        // later to update the registry upon successful selection, we must check it here.
+        // The underlying jcardsim library does not support extended logical channels (4-19)
+        // in its applet selection detection logic (it expects basic CLA 0x0X and treats 0x4X
+        // as a regular apdu command, returning an error SW like 6D00).
+        // Checking early forces a fast fail and throws an IOException for unsupported channels (>=
+        // 4), maintaining consistency with non-select command behavior.
+        byte ch = extractChannelNumber((byte) apduCmd.getCLA());
         byte[] aid = apduCmd.getData();
         // If the AID is empty, it means no applet is to be selected on this channel and the
-        // default applet is used
+        // default applet is used.
+        // Currently, no default applet is actually selected. We return SW_NO_ERROR just to pass
+        // the VTS OMAPI test.
         if (aid.length == 0) {
             return formatApduResponse(null, ISO7816.SW_NO_ERROR);
         }
@@ -207,8 +240,6 @@ public class JCardSimulator implements Simulator {
 
         ResponseAPDU response = new ResponseAPDU(simulator.transmitCommand(apdu));
         if (ISO7816.SW_NO_ERROR == (short) response.getSW()) {
-            byte ch = getChannelNumber((byte) apduCmd.getCLA());
-
             // Update the channel registry to associate this AID with the active channel.
             channelAid.set(ch, aidHex);
             currentChannel = ch;
@@ -260,7 +291,7 @@ public class JCardSimulator implements Simulator {
 
         // Switch channel if not current before sending the APDU command.
         CommandAPDU apduCmd = new CommandAPDU(apdu);
-        byte channel = getChannelNumber((byte) apduCmd.getCLA());
+        byte channel = extractChannelNumber((byte) apduCmd.getCLA());
         if (channel != currentChannel) {
             String aidStr = channelAid.get(channel);
             if (aidStr == null) {

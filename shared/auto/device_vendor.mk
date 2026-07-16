@@ -174,7 +174,7 @@ BOARD_SEPOLICY_DIRS += device/google/cuttlefish/shared/auto/sepolicy/camera
 DEVICE_MANIFEST_FILE += device/google/cuttlefish/shared/auto/camera/android.hardware.camera.provider-V1-external-service.xml
 PRODUCT_COPY_FILES += \
     frameworks/native/data/etc/android.hardware.camera.external.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.camera.external.xml \
-    device/google/cuttlefish/shared/auto/camera/external_camera_config.xml:$(TARGET_COPY_OUT_VENDOR)/etc/external_camera_config.xml \
+    device/google/cuttlefish/shared/auto/camera/emulated_camera_config.xml:$(TARGET_COPY_OUT_VENDOR)/etc/emulated_camera_config.xml \
     device/google/cuttlefish/shared/auto/camera/ExampleSharedSessionConfiguration.xml:$(TARGET_COPY_OUT_SYSTEM_EXT)/etc/shared_session_config.xml
 endif
 
@@ -207,7 +207,7 @@ BOARD_IS_AUTOMOTIVE := true
 
 DEVICE_PACKAGE_OVERLAYS += device/google/cuttlefish/shared/auto/overlay
 
-PRODUCT_PACKAGES += CarServiceOverlayCuttleFish
+PRODUCT_PACKAGES += CarServiceOverlayCuttleFish SampleRearViewServiceOverlayCuttleFish
 GOOGLE_CAR_SERVICE_OVERLAY += CarServiceOverlayCuttleFishGoogle
 
 PRODUCT_PACKAGES += ConnectivityOverlayCuttleFish ConnectivityOverlayCuttleFishGoogle

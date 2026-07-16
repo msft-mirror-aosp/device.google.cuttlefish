@@ -20,6 +20,7 @@
 #include "VirtioMediaCameraDevice.h"
 
 #include <aidl/android/hardware/camera/common/Status.h>
+#include <android-base/result.h>
 #include <convert.h>
 #include <linux/videodev2.h>
 #include <log/log.h>
@@ -28,6 +29,8 @@
 #include <set>
 #include <tuple>
 
+#include "V4l2Utils.h"
+
 namespace android {
 namespace hardware {
 namespace camera {
@@ -35,6 +38,7 @@ namespace device {
 namespace implementation {
 
 using ::aidl::android::hardware::camera::common::Status;
+using ::android::base::Result;
 
 namespace {
 // Currently supported V4L2 formats:
@@ -134,7 +138,7 @@ ndk::ScopedAStatus VirtioMediaCameraDevice::open(
     return fromStatus(Status::INTERNAL_ERROR);
   }
 
-  std::shared_ptr<ExternalCameraDeviceSession> session;
+  std::shared_ptr<VirtioMediaCameraDeviceSession> session;
   ALOGV("%s: Initializing device for camera %s", __FUNCTION__,
         mCameraId.c_str());
   session = mSession.lock();
@@ -199,7 +203,7 @@ ndk::ScopedAStatus VirtioMediaCameraDevice::getTorchStrengthLevel(int32_t*) {
   return fromStatus(Status::OPERATION_NOT_SUPPORTED);
 }
 
-std::shared_ptr<ExternalCameraDeviceSession>
+std::shared_ptr<VirtioMediaCameraDeviceSession>
 VirtioMediaCameraDevice::createSession(
     const std::shared_ptr<ICameraDeviceCallback>& cb,
     const ExternalCameraConfig& cfg,
@@ -207,7 +211,7 @@ VirtioMediaCameraDevice::createSession(
     const CroppingType& croppingType,
     const common::V1_0::helper::CameraMetadata& chars,
     const std::string& cameraId, unique_fd v4l2Fd, v4l2_buf_type captureType) {
-  return ndk::SharedRefBase::make<ExternalCameraDeviceSession>(
+  return ndk::SharedRefBase::make<VirtioMediaCameraDeviceSession>(
       cb, cfg, sortedFormats, croppingType, chars, cameraId, std::move(v4l2Fd),
       captureType);
 }
@@ -481,7 +485,7 @@ status_t VirtioMediaCameraDevice::initDefaultCharsKeys(
   UPDATE(ANDROID_LENS_INFO_AVAILABLE_FOCAL_LENGTHS, availableFocalLengths,
          ARRAY_SIZE(availableFocalLengths));
 
-  const float physicalSize[] = {2.68f};  // Mock value
+  const float physicalSize[] = {2.68f, 2.68f};  // Mock value
   UPDATE(ANDROID_SENSOR_INFO_PHYSICAL_SIZE, physicalSize,
          ARRAY_SIZE(physicalSize));
 
@@ -489,9 +493,6 @@ status_t VirtioMediaCameraDevice::initDefaultCharsKeys(
       ANDROID_LENS_OPTICAL_STABILIZATION_MODE_OFF;
   UPDATE(ANDROID_LENS_INFO_AVAILABLE_OPTICAL_STABILIZATION,
          &opticalStabilizationMode, 1);
-
-  uint8_t facing = ANDROID_LENS_FACING_BACK;
-  UPDATE(ANDROID_LENS_FACING, &facing, 1);
 
   // android.noiseReduction
   const uint8_t noiseReductionMode = ANDROID_NOISE_REDUCTION_MODE_OFF;
@@ -666,8 +667,8 @@ status_t VirtioMediaCameraDevice::initDefaultCharsKeys(
 }
 
 status_t VirtioMediaCameraDevice::initCameraControlsCharsKeys(
-    int, ::android::hardware::camera::common::V1_0::helper::CameraMetadata*
-             metadata) {
+    int fd, ::android::hardware::camera::common::V1_0::helper::CameraMetadata*
+                metadata) {
   // android.sensor.info.sensitivityRange   -> V4L2_CID_ISO_SENSITIVITY
   // android.sensor.info.exposureTimeRange  -> V4L2_CID_EXPOSURE_ABSOLUTE
   // android.sensor.info.maxFrameDuration   -> TBD
@@ -707,6 +708,17 @@ status_t VirtioMediaCameraDevice::initCameraControlsCharsKeys(
          scalerAvailableMaxDigitalZoom,
          ARRAY_SIZE(scalerAvailableMaxDigitalZoom));
 
+  // ANDROID_LENS_FACING
+  Result<std::optional<int64_t>> lens_facing_res =
+      cuttlefish::virtio_media::LensFacingCtrl(fd);
+  if (!lens_facing_res.ok()) {
+    ALOGE("%s: lens facing failed: %s", __FUNCTION__,
+          lens_facing_res.error().message().c_str());
+    return lens_facing_res.error().code();
+  }
+  uint8_t facing = lens_facing_res.has_value() ? (*lens_facing_res).value()
+                                               : ANDROID_LENS_FACING_BACK;
+  UPDATE(ANDROID_LENS_FACING, &facing, 1);
   return OK;
 }
 
@@ -1129,7 +1141,7 @@ VirtioMediaCameraDevice::getCandidateSupportedFormatsLocked(
 
 binder_status_t VirtioMediaCameraDevice::dump(int fd, const char** args,
                                               uint32_t numArgs) {
-  std::shared_ptr<ExternalCameraDeviceSession> session = mSession.lock();
+  std::shared_ptr<VirtioMediaCameraDeviceSession> session = mSession.lock();
   if (session == nullptr) {
     dprintf(fd, "No active camera device session instance\n");
     return STATUS_OK;

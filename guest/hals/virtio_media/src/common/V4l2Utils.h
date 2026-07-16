@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2022 The Android Open Source Project
+ * Copyright (C) 2026 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,10 +14,21 @@
  * limitations under the License.
  */
 
-#include <android-base/file.h>
-#include <gtest/gtest.h>
+#pragma once
 
-int main(int argc, char** argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}
+#include <optional>
+
+#include <android-base/result.h>
+#include <android-base/unique_fd.h>
+
+using ::android::base::borrowed_fd;
+using ::android::base::Result;
+
+namespace cuttlefish {
+namespace virtio_media {
+
+// Queries virtio-media "lens_facing" control value.
+Result<std::optional<int64_t>> LensFacingCtrl(borrowed_fd fd);
+
+}  // namespace virtio_media
+}  // namespace cuttlefish
