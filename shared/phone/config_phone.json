@@ -1,7 +1,7 @@
 {
-	"x_res" : 720,
-	"y_res" : 1280,
-	"dpi" : 320,
+	"x_res" : 616,
+	"y_res" : 1380,
+	"dpi" : 240,
 	"memory_mb" : 4096,
 	"ddr_mem_mb" : 4915
 }
