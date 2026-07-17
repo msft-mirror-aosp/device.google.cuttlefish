@@ -495,9 +495,12 @@ status_t VirtioMediaCameraDevice::initDefaultCharsKeys(
          &opticalStabilizationMode, 1);
 
   // android.noiseReduction
-  const uint8_t noiseReductionMode = ANDROID_NOISE_REDUCTION_MODE_OFF;
+  const uint8_t noiseReductionModes[] = {
+      ANDROID_NOISE_REDUCTION_MODE_OFF, ANDROID_NOISE_REDUCTION_MODE_FAST,
+      ANDROID_NOISE_REDUCTION_MODE_HIGH_QUALITY};
   UPDATE(ANDROID_NOISE_REDUCTION_AVAILABLE_NOISE_REDUCTION_MODES,
-         &noiseReductionMode, 1);
+         noiseReductionModes, ARRAY_SIZE(noiseReductionModes));
+  const uint8_t noiseReductionMode = ANDROID_NOISE_REDUCTION_MODE_OFF;
   UPDATE(ANDROID_NOISE_REDUCTION_MODE, &noiseReductionMode, 1);
 
   const int32_t partialResultCount = 1;

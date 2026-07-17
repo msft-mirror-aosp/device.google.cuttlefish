@@ -94,17 +94,24 @@ ScopedAStatus VirtioMediaCameraDeviceSession::constructDefaultRequestSettings(
     return ScopedAStatus::fromServiceSpecificError(
         static_cast<int32_t>(Status::INTERNAL_ERROR));
   }
+  ScopedAStatus res;
   if (in_type == RequestTemplate::MANUAL) {
     // Use PREVIEW defaults as the baseline for MANUAL template.
-    ScopedAStatus res = mSession->constructDefaultRequestSettings(
-        RequestTemplate::PREVIEW, _aidl_return);
-    if (!res.isOk()) {
-      return res;
-    }
-    ::android::hardware::camera::common::V1_0::helper::CameraMetadata tmp;
-    tmp = reinterpret_cast<const camera_metadata_t*>(
-        _aidl_return->metadata.data());
+    res = mSession->constructDefaultRequestSettings(RequestTemplate::PREVIEW,
+                                                    _aidl_return);
+  } else {
+    res = mSession->constructDefaultRequestSettings(in_type, _aidl_return);
+  }
 
+  if (!res.isOk()) {
+    return res;
+  }
+
+  ::android::hardware::camera::common::V1_0::helper::CameraMetadata tmp;
+  tmp =
+      reinterpret_cast<const camera_metadata_t*>(_aidl_return->metadata.data());
+
+  if (in_type == RequestTemplate::MANUAL) {
     // Per camera3.h specification for CAMERA3_TEMPLATE_MANUAL:
     // "All automatic control is disabled (auto-exposure, auto-white balance,
     // auto-focus)..."
@@ -117,14 +124,22 @@ ScopedAStatus VirtioMediaCameraDeviceSession::constructDefaultRequestSettings(
     tmp.update(ANDROID_CONTROL_MODE, &controlMode, 1);
     tmp.update(ANDROID_CONTROL_AE_MODE, &aeMode, 1);
     tmp.update(ANDROID_CONTROL_AWB_MODE, &awbMode, 1);
-
-    const camera_metadata_t* md = tmp.getAndLock();
-    convertToAidl(md, _aidl_return);
-    tmp.unlock(md);
-
-    return ScopedAStatus::ok();
   }
-  return mSession->constructDefaultRequestSettings(in_type, _aidl_return);
+
+  // android.noiseReduction.mode
+  uint8_t noiseReductionMode = ANDROID_NOISE_REDUCTION_MODE_FAST;
+  if (in_type == RequestTemplate::STILL_CAPTURE) {
+    noiseReductionMode = ANDROID_NOISE_REDUCTION_MODE_HIGH_QUALITY;
+  } else if (in_type == RequestTemplate::MANUAL) {
+    noiseReductionMode = ANDROID_NOISE_REDUCTION_MODE_OFF;
+  }
+  tmp.update(ANDROID_NOISE_REDUCTION_MODE, &noiseReductionMode, 1);
+
+  const camera_metadata_t* md = tmp.getAndLock();
+  convertToAidl(md, _aidl_return);
+  tmp.unlock(md);
+
+  return ScopedAStatus::ok();
 }
 
 ScopedAStatus VirtioMediaCameraDeviceSession::flush() {
