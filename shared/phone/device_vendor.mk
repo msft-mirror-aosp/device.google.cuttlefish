@@ -80,3 +80,6 @@ PRODUCT_VENDOR_PROPERTIES += \
 # Cuttlefish doesn't support protected VMs, run AppSearch in non-protected mode
 PRODUCT_PRODUCT_PROPERTIES += ro.appsearch.feature.enable_isolated_storage=true
 PRODUCT_PRODUCT_PROPERTIES += ro.enable.nonprotected_appsearch_vm=true
+
+# Enable pvmfw partition for Cuttlefish phone targets
+PRODUCT_BUILD_PVMFW_IMAGE := true
