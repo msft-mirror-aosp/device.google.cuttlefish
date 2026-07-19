@@ -16,11 +16,11 @@
 # HW-dependent rules (such as HAL) go to device_common.mk
 
 # First enable HSUM, since it can affect subsequent mk behaviour.
-# $(call inherit-product, build/make/target/product/hsu_as_login.mk)
+$(call inherit-product, build/make/target/product/hsu_as_login.mk)
 
 # TODO(b/489783760#comment12): Explicitly setting the variable is required,
 # rather than just inheriting it from hsu_as_login.mk; ideally, fix this.
-# PRODUCT_USE_HSUM := true
+PRODUCT_USE_HSUM := true
 
 $(call inherit-product, $(SRC_TARGET_DIR)/product/generic_system.mk)
 $(call inherit-product, $(SRC_TARGET_DIR)/product/core_64_bit_only.mk)
