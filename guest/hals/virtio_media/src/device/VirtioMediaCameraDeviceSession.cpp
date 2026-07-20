@@ -135,6 +135,24 @@ ScopedAStatus VirtioMediaCameraDeviceSession::constructDefaultRequestSettings(
   }
   tmp.update(ANDROID_NOISE_REDUCTION_MODE, &noiseReductionMode, 1);
 
+  // android.control.aeTargetFpsRange
+  // For video recording templates, the default target FPS range must be fixed
+  // (minFps == maxFps) to ensure stable frame delivery for video encoders.
+  if (in_type == RequestTemplate::VIDEO_RECORD) {
+    camera_metadata_entry fpsRangeEntry =
+        tmp.find(ANDROID_CONTROL_AE_TARGET_FPS_RANGE);
+    if (fpsRangeEntry.count == 2) {
+      int32_t maxFps = fpsRangeEntry.data.i32[1];
+      int32_t fixedFpsRange[] = {maxFps, maxFps};
+      tmp.update(ANDROID_CONTROL_AE_TARGET_FPS_RANGE, fixedFpsRange, 2);
+    } else {
+      ALOGE(
+          "%s: Target FPS range is missing or malformed in default record "
+          "template (count=%zu)",
+          __FUNCTION__, fpsRangeEntry.count);
+    }
+  }
+
   const camera_metadata_t* md = tmp.getAndLock();
   convertToAidl(md, _aidl_return);
   tmp.unlock(md);
