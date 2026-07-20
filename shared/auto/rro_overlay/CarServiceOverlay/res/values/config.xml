@@ -86,4 +86,10 @@
         <item>serviceType=REARVIEW,cameraId=/dev/video10,activityName=com.google.android.car.evs/com.google.android.car.evs.CarEvsCameraPreviewActivity</item>
         <item>serviceType=FRONTVIEW,cameraId=/dev/video11</item>
     </string-array>
+
+    <!-- The services that need to be started earlier in the boot sequence and in particular order. -->
+    <string-array translatable="false" name="config_earlyStartupServices">
+        <item>com.google.android.car.samplerearviewservice/.SampleRearViewService#bind=start,user=system,trigger=asap</item>
+    </string-array>
+    <string name="activityAllowlist" translatable="false">com.google.android.car.samplerearviewservice</string>
 </resources>
