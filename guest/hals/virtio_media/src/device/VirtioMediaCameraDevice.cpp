@@ -423,7 +423,7 @@ status_t VirtioMediaCameraDevice::initDefaultCharsKeys(
   const uint8_t antibandingMode = ANDROID_CONTROL_AE_ANTIBANDING_MODE_AUTO;
   UPDATE(ANDROID_CONTROL_AE_AVAILABLE_ANTIBANDING_MODES, &antibandingMode, 1);
 
-  const int32_t controlMaxRegions[] = {/*AE*/ 0, /*AWB*/ 0, /*AF*/ 0};
+  const int32_t controlMaxRegions[] = {/*AE*/ 0, /*AWB*/ 0, /*AF*/ 1};
   UPDATE(ANDROID_CONTROL_MAX_REGIONS, controlMaxRegions,
          ARRAY_SIZE(controlMaxRegions));
 
@@ -602,6 +602,7 @@ status_t VirtioMediaCameraDevice::initDefaultCharsKeys(
       ANDROID_CONTROL_AE_PRECAPTURE_TRIGGER,
       ANDROID_CONTROL_AE_TARGET_FPS_RANGE,
       ANDROID_CONTROL_AF_MODE,
+      ANDROID_CONTROL_AF_REGIONS,
       ANDROID_CONTROL_AF_TRIGGER,
       ANDROID_CONTROL_AWB_LOCK,
       ANDROID_CONTROL_AWB_MODE,
@@ -634,6 +635,7 @@ status_t VirtioMediaCameraDevice::initDefaultCharsKeys(
       ANDROID_CONTROL_AE_STATE,
       ANDROID_CONTROL_AE_TARGET_FPS_RANGE,
       ANDROID_CONTROL_AF_MODE,
+      ANDROID_CONTROL_AF_REGIONS,
       ANDROID_CONTROL_AF_STATE,
       ANDROID_CONTROL_AF_TRIGGER,
       ANDROID_CONTROL_AWB_LOCK,
