@@ -650,3 +650,7 @@ PRODUCT_PACKAGES += \
 
 PRODUCT_PACKAGES += \
     excluded_hardware.prebuilt.xml
+
+# MemoryLimiter configuration.
+PRODUCT_COPY_FILES += \
+        device/google/cuttlefish/shared/memory-limiter-config.xml:$(TARGET_COPY_OUT_VENDOR)/etc/memory-limiter-config.xml
