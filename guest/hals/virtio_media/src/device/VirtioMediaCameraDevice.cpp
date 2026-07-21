@@ -934,9 +934,11 @@ status_t VirtioMediaCameraDevice::calculateMinFps(
   std::vector<int32_t> fpsRanges;
   // FPS ranges
   for (const auto& framerate : framerates) {
-    // Empirical: webcams often have close to 2x fps error and cannot support
-    // fixed fps range
+    // Variable FPS range (allows auto-exposure to drop frame rate in low light)
     fpsRanges.push_back(framerate / 2);
+    fpsRanges.push_back(framerate);
+    // Fixed FPS range (to support fixed FPS video recording)
+    fpsRanges.push_back(framerate);
     fpsRanges.push_back(framerate);
   }
   minFps /= 2;
