@@ -97,6 +97,19 @@ bool LinkResources(std::string_view srcResourceBase, int srcIdx,
   }
   return true;
 }
+
+bool WaitForDeviceNode(const std::string& path, bool expect_exists) {
+  // Wait up to 15 seconds (150 * 100ms) for the device node
+  for (int i = 0; i < 150; i++) {
+    bool exists = (access(path.c_str(), F_OK) == 0);
+    if (exists == expect_exists) {
+      return true;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  }
+  return false;
+}
+
 }  // namespace
 
 // static
@@ -137,9 +150,6 @@ std::unique_ptr<VkmsTester> VkmsTester::CreateWithGenericConnectors(
 
   return tester;
 }
-
-// static
-void VkmsTester::ForceDeleteVkmsDir() { ShutdownAndCleanUpVkms(); }
 
 VkmsTester::VkmsTester(size_t displaysCount,
                        const std::vector<VkmsConnectorBuilder>& builders) {
@@ -261,13 +271,23 @@ bool VkmsTester::SetupDisplays(
 bool VkmsTester::ToggleVkms(bool enable) {
   std::filesystem::path path = std::filesystem::path(kVkmsBaseDir) / "enabled";
   std::string value = enable ? "1" : "0";
-  if (!android::base::WriteStringToFile(value, path.string())) {
-    ALOGE("Failed to toggle VKMS: %s", strerror(errno));
-    return false;
+  // Retry writing if it fails with ENOENT, it might be due to async kernel
+  // cleanup of the old device
+  int saved_errno = 0;
+  for (int i = 0; i < 10; ++i) {
+    if (android::base::WriteStringToFile(value, path.string())) {
+      ALOGI("Successfully toggled VKMS at %s", path.string().c_str());
+      return true;
+    }
+    saved_errno = errno;
+    if (saved_errno != ENOENT) {
+      break;
+    }
+    ALOGW("enabled file not found, retrying in 100ms... (try %d)", i + 1);
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
   }
-
-  ALOGI("Successfully toggled VKMS at %s", path.string().c_str());
-  return true;
+  ALOGE("Failed to toggle VKMS: %s", strerror(saved_errno));
+  return false;
 }
 
 // static
@@ -309,7 +329,7 @@ std::vector<std::string> VkmsTester::StopDisplayStack() {
       continue;
     }
     if (!android::base::WaitForProperty("init.svc." + service, "stopped",
-                                        std::chrono::seconds(5))) {
+                                        std::chrono::seconds(15))) {
       ALOGE("Timed out waiting for %s to stop", service.c_str());
       continue;
     }
@@ -323,6 +343,16 @@ std::vector<std::string> VkmsTester::StopDisplayStack() {
 
 // static
 bool VkmsTester::StartDisplayStack(const std::vector<std::string>& services) {
+  // Wait for the target DRM device to become available to prevent race
+  // conditions where surfaceflinger/hwcomposer start before udev creates the
+  // device node.
+  std::string drm_device =
+      android::base::GetProperty("vendor.hwc.drm.device", "/dev/dri/card0");
+  if (!WaitForDeviceNode(drm_device, true)) {
+    ALOGE("Timed out waiting for DRM device %s to appear", drm_device.c_str());
+    return false;
+  }
+
   // Only restart the services that were actively running before we called
   // StopDisplayStack. This preserves the expected state for external test
   // harnesses.
@@ -332,7 +362,7 @@ bool VkmsTester::StartDisplayStack(const std::vector<std::string>& services) {
       return false;
     }
     if (!android::base::WaitForProperty("init.svc." + service, "running",
-                                        std::chrono::seconds(5))) {
+                                        std::chrono::seconds(15))) {
       ALOGE("Timed out waiting for %s to start", service.c_str());
       return false;
     }
@@ -478,8 +508,17 @@ bool VkmsTester::LinkConnectorToEncoder(int connectorIdx, int encoderIdx) {
 void VkmsTester::ShutdownAndCleanUpVkms() {
   std::vector<std::string> services_to_restart = StopDisplayStack();
   ToggleVkms(false);
+
+  // Wait for the DRM device to be removed by ueventd to prevent the next test
+  // from incorrectly finding the old node before it is deleted.
+  std::string drm_device =
+      android::base::GetProperty("vendor.hwc.drm.device", "/dev/dri/card1");
+  if (!WaitForDeviceNode(drm_device, false)) {
+    ALOGW("Timed out waiting for DRM device %s to disappear",
+          drm_device.c_str());
+  }
   // Give the kernel a longer time to release resources
-  std::this_thread::sleep_for(std::chrono::milliseconds(500));
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
   // Clean up manually created relationships first under
   // possible_(crtcs/encoders). This is required before we started cleaning up

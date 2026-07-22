@@ -40,7 +40,6 @@ class OemLock {
   Result<bool> IsOemLocked() const;
   Result<void> SetOemUnlockAllowedByCarrier(bool allowed);
   Result<void> SetOemUnlockAllowedByDevice(bool allowed);
-  // TODO(b/286558252): add ConfirmationUI token to the signature
   Result<void> SetOemLocked(bool locked);
 
  private:

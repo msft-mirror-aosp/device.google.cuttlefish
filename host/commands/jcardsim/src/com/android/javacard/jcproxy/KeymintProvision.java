@@ -24,18 +24,21 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 
 /**
- * This class provisions the KeyMint applet by preparing the APDU header and trasmitting the APDU to
- * the jcardsim.
+ * This class provisions the KeyMint applet by preparing the APDU header and transmitting the APDU
+ * to the jcardsim.
  */
 public class KeymintProvision {
     public static final byte APDU_CLS = (byte) 0x80;
-    public static final byte APDU_P1 = (byte) 0x60;
-    public static final byte APDU_P2 = (byte) 0x00;
     public static final short APDU_RESP_STATUS_OK = (short) 0x9000;
-    private CardSimulator simulator;
+    private final CardSimulator mSimulator;
+    private final byte mApduP1;
+    private final byte mApduP2;
 
     public KeymintProvision(CardSimulator simulator) {
-        this.simulator = simulator;
+        this.mSimulator = simulator;
+        short p1p2 = JCardSimulator.getKeyMintP1P2();
+        this.mApduP1 = (byte) ((p1p2 >> 8) & 0xFF);
+        this.mApduP2 = (byte) (p1p2 & 0xFF);
     }
 
     public byte[] addApduHeader(byte ins, byte[] apdu) {
@@ -43,8 +46,8 @@ public class KeymintProvision {
             ByteArrayOutputStream bao = new ByteArrayOutputStream();
             bao.write(APDU_CLS);
             bao.write(ins);
-            bao.write(APDU_P1);
-            bao.write(APDU_P2);
+            bao.write(mApduP1);
+            bao.write(mApduP2);
             int apduLen = (apdu != null) ? apdu.length : 0;
             if (Short.MAX_VALUE >= apduLen) {
                 if (apduLen > 0) {
@@ -68,7 +71,7 @@ public class KeymintProvision {
 
     public void transmit(byte ins, byte[] apduData) {
         byte[] apdu = addApduHeader(ins, apduData);
-        byte[] resp = simulator.transmitCommand(apdu);
+        byte[] resp = mSimulator.transmitCommand(apdu);
         if (resp == null) {
             throw new RuntimeException("Response is null for INS: " + ins);
         }

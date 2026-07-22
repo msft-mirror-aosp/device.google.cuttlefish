@@ -20,6 +20,7 @@
 #include "VirtioMediaCameraDevice.h"
 
 #include <aidl/android/hardware/camera/common/Status.h>
+#include <android-base/result.h>
 #include <convert.h>
 #include <linux/videodev2.h>
 #include <log/log.h>
@@ -28,6 +29,8 @@
 #include <set>
 #include <tuple>
 
+#include "V4l2Utils.h"
+
 namespace android {
 namespace hardware {
 namespace camera {
@@ -35,6 +38,7 @@ namespace device {
 namespace implementation {
 
 using ::aidl::android::hardware::camera::common::Status;
+using ::android::base::Result;
 
 namespace {
 // Currently supported V4L2 formats:
@@ -490,9 +494,6 @@ status_t VirtioMediaCameraDevice::initDefaultCharsKeys(
   UPDATE(ANDROID_LENS_INFO_AVAILABLE_OPTICAL_STABILIZATION,
          &opticalStabilizationMode, 1);
 
-  uint8_t facing = ANDROID_LENS_FACING_BACK;
-  UPDATE(ANDROID_LENS_FACING, &facing, 1);
-
   // android.noiseReduction
   const uint8_t noiseReductionMode = ANDROID_NOISE_REDUCTION_MODE_OFF;
   UPDATE(ANDROID_NOISE_REDUCTION_AVAILABLE_NOISE_REDUCTION_MODES,
@@ -666,8 +667,8 @@ status_t VirtioMediaCameraDevice::initDefaultCharsKeys(
 }
 
 status_t VirtioMediaCameraDevice::initCameraControlsCharsKeys(
-    int, ::android::hardware::camera::common::V1_0::helper::CameraMetadata*
-             metadata) {
+    int fd, ::android::hardware::camera::common::V1_0::helper::CameraMetadata*
+                metadata) {
   // android.sensor.info.sensitivityRange   -> V4L2_CID_ISO_SENSITIVITY
   // android.sensor.info.exposureTimeRange  -> V4L2_CID_EXPOSURE_ABSOLUTE
   // android.sensor.info.maxFrameDuration   -> TBD
@@ -707,6 +708,17 @@ status_t VirtioMediaCameraDevice::initCameraControlsCharsKeys(
          scalerAvailableMaxDigitalZoom,
          ARRAY_SIZE(scalerAvailableMaxDigitalZoom));
 
+  // ANDROID_LENS_FACING
+  Result<std::optional<int64_t>> lens_facing_res =
+      cuttlefish::virtio_media::LensFacingCtrl(fd);
+  if (!lens_facing_res.ok()) {
+    ALOGE("%s: lens facing failed: %s", __FUNCTION__,
+          lens_facing_res.error().message().c_str());
+    return lens_facing_res.error().code();
+  }
+  uint8_t facing = lens_facing_res.has_value() ? (*lens_facing_res).value()
+                                               : ANDROID_LENS_FACING_BACK;
+  UPDATE(ANDROID_LENS_FACING, &facing, 1);
   return OK;
 }
 

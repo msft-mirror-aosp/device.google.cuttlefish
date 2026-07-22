@@ -166,10 +166,36 @@ const std::unordered_set<std::string>& BoolFlags() {
   return *bool_flags;
 }
 
+bool ParentIsCvd() {
+  std::string exe_path;
+  CHECK(android::base::Readlink(fmt::format("/proc/{}/exe", getppid()),
+                                &exe_path))
+      << strerror(errno);
+  return exe_path.ends_with("/cvd");
+}
+
+void ExecCvd(std::vector<std::string> args) {
+  args.insert(args.begin(), {"cvd", "create", "-daemon=false", "-reuse=true"});
+
+  std::vector<char*> args_cstr;
+  args_cstr.reserve(args.size());
+  for (std::string& arg : args) {
+    args_cstr.push_back(arg.data());
+  }
+  args_cstr.push_back(nullptr);
+
+  static constexpr char kCvdPath[] = "/usr/bin/cvd";
+  execv(kCvdPath, args_cstr.data());
+  PLOG(FATAL) << "execv(cvd) failed";
+}
+
 int CvdInternalStartMain(int argc, char** argv) {
   ::android::base::InitLogging(argv, android::base::StderrLogger);
 
   std::vector<std::string> args(argv + 1, argv + argc);
+  if (!ParentIsCvd()) {
+    ExecCvd(args);
+  }
 
   std::vector<std::string> assemble_args;
   std::string image_dir;
