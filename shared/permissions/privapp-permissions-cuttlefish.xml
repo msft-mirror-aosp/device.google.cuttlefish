@@ -23,6 +23,7 @@
         <permission name="android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED" />
         <permission name="android.permission.INTERNET" />
         <permission name="android.permission.RECEIVE_BOOT_COMPLETED" />
+        <permission name="android.permission.START_ACTIVITIES_FROM_BACKGROUND" />
         <permission name="android.permission.USE_EXACT_ALARM" />
         <permission name="android.permission.WRITE_SETTINGS" />
     </privapp-permissions>
