@@ -284,8 +284,8 @@ PRODUCT_PACKAGES += \
 #
 # Weaver aidl HAL
 #
-# TODO(b/262418065) Add a real weaver implementation
-
+PRODUCT_PACKAGES += \
+    com.android.hardware.weaver.cf
 
 #
 # Authsecret AIDL HAL

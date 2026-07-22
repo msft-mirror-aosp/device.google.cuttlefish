@@ -36,6 +36,11 @@ rust_library_host {
         "libsecure_env_ffi",
     ],
     defaults: ["cuttlefish_buildhost_only"],
+    target: {
+        darwin: {
+            enabled: true,
+        },
+    },
 }
 
 rust_library_host {

@@ -62,6 +62,7 @@ class SnapshotCommandHandler {
     // The jcardsim is optional. It is only required if
     // FLAGS_enable_jcard_simulator is enabled.
     std::optional<SharedFD> jcardsim;
+    SharedFD weaver;
   };
 
   ~SnapshotCommandHandler();
