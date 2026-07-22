@@ -104,7 +104,8 @@ Result<std::vector<MonitorCommand>> Pica(
 MonitorCommand EchoServer(GrpcSocketCreator& grpc_socket);
 
 fruit::Component<fruit::Required<const CuttlefishConfig,
-                                 const CuttlefishConfig::InstanceSpecific>>
+                                 const CuttlefishConfig::InstanceSpecific,
+                                 GrpcSocketCreator>>
 NetsimServerComponent();
 
 Result<std::optional<MonitorCommand>> ScreenRecordingServer(GrpcSocketCreator&);

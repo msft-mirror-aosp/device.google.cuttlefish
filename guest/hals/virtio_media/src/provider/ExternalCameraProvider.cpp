@@ -28,6 +28,8 @@
 #include <sys/inotify.h>
 #include <regex>
 
+#include "V4l2Utils.h"
+
 namespace android {
 namespace hardware {
 namespace camera {
@@ -165,7 +167,22 @@ ndk::ScopedAStatus ExternalCameraProvider::getConcurrentCameraIds(
   if (_aidl_return == nullptr) {
     return fromStatus(Status::ILLEGAL_ARGUMENT);
   }
+  Mutex::Autolock _l(mLock);
+  std::vector<std::string> presentCameraIds;
+  for (const auto& [id, status] : mCameraStatusMap) {
+    if (status == CameraDeviceStatus::PRESENT) {
+      size_t pos = id.rfind('/');
+      if (pos != std::string::npos) {
+        presentCameraIds.push_back(id.substr(pos + 1));
+      }
+    }
+  }
   *_aidl_return = {};
+  if (!presentCameraIds.empty()) {
+    ConcurrentCameraIdCombination combination;
+    combination.combination = std::move(presentCameraIds);
+    _aidl_return->push_back(std::move(combination));
+  }
   return fromStatus(Status::OK);
 }
 
@@ -175,8 +192,7 @@ ExternalCameraProvider::isConcurrentStreamCombinationSupported(
   if (_aidl_return == nullptr) {
     return fromStatus(Status::ILLEGAL_ARGUMENT);
   }
-  // No concurrent stream combinations are supported
-  *_aidl_return = false;
+  *_aidl_return = true;
   return fromStatus(Status::OK);
 }
 
@@ -220,9 +236,22 @@ void ExternalCameraProvider::deviceAdded(const char* devName) {
       return;
     }
 
-    if (!(capability.device_caps & V4L2_CAP_VIDEO_CAPTURE)) {
-      ALOGW("%s device %s does not support VIDEO_CAPTURE", __FUNCTION__,
-            devName);
+    if (!(capability.device_caps &
+          (V4L2_CAP_VIDEO_CAPTURE | V4L2_CAP_VIDEO_CAPTURE_MPLANE))) {
+      ALOGW(
+          "%s device %s does not support VIDEO_CAPTURE or VIDEO_CAPTURE_MPLANE",
+          __FUNCTION__, devName);
+      return;
+    }
+
+    // Devices advertising LENS_FACING equal to EXTERNAL continue to be managed
+    // by the External Camera HAL hardware/interfaces/camera/provider/default.
+    Result<std::optional<int64_t>> lens_facing_res =
+        cuttlefish::virtio_media::LensFacingCtrl(fd);
+    if (lens_facing_res.ok() && lens_facing_res.value().has_value() &&
+        lens_facing_res.value().value() == ANDROID_LENS_FACING_EXTERNAL) {
+      ALOGI("%s device %s has LENS_FACING equal to EXTERNAL, skipping",
+            __FUNCTION__, devName);
       return;
     }
   }

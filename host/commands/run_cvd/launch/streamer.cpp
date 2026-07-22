@@ -282,7 +282,8 @@ class WebRtcServer : public virtual CommandSource,
 
   // SetupFeature
   bool Enabled() const override {
-    return sockets_.Enabled() && instance_.enable_webrtc();
+    return sockets_.Enabled() && instance_.gpu_mode() != GpuMode::None &&
+           instance_.enable_webrtc();
   }
 
  private:
