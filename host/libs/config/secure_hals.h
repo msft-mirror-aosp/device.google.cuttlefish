@@ -33,7 +33,6 @@ enum class SecureHal {
   kHostGatekeeperSecure,
   kHostOemlockInsecure,
   kHostOemlockSecure,
-  kHostWeaverSecure,
 };
 
 Result<SecureHal> ParseSecureHal(std::string);
