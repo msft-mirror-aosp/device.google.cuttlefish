@@ -316,6 +316,11 @@ TEST(Hal, AllAidlInterfacesAreInAosp) {
   if (!kAidlUseUnfrozen) {
     GTEST_SKIP() << "Not valid in 'next' configuration";
   }
+  // skip the test on non-AOSP cuttlefish
+  std::string productName = base::GetProperty("ro.product.name", "");
+  if (base::StartsWith(productName, "cf_")) {
+    GTEST_SKIP() << "Skipping test for non-AOSP product: " << productName;
+  }
   if (getDeviceType() != DeviceType::PHONE &&
       getDeviceType() != DeviceType::AUTOMOTIVE) {
     GTEST_SKIP() << "Test only supports phones and automotive right now";
