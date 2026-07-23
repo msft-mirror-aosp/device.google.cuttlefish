@@ -43,7 +43,7 @@ using ::android::hardware::camera::device::implementation::
 using ::android::hardware::camera::external::common::ExternalCameraConfig;
 
 namespace {
-// "device@<version>/external/<id>"
+// "device@<version>/internal/<id>"
 const std::regex kDeviceNameRE("device@([0-9]+\\.[0-9]+)/internal/(.+)");
 const int kMaxDevicePathLen = 256;
 constexpr char kDevicePath[] = "/dev/";
@@ -275,7 +275,7 @@ void ExternalCameraProvider::deviceRemoved(const char* devName) {
                                         std::atoi(devName + kDevicePrefixLen));
 
   deviceName = std::string("device@") +
-               VirtioMediaCameraDevice::kDeviceVersion + "/external/" +
+               VirtioMediaCameraDevice::kDeviceVersion + "/internal/" +
                cameraId;
 
   if (mCameraStatusMap.erase(deviceName) == 0) {
