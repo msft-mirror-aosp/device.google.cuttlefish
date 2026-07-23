@@ -78,7 +78,8 @@ class VirtioMediaCameraDevice : public BnCameraDevice {
       const std::vector<SupportedV4L2Format>& sortedFormats,
       const CroppingType& croppingType,
       const common::V1_0::helper::CameraMetadata& chars,
-      const std::string& cameraId, unique_fd v4l2Fd, v4l2_buf_type captureType);
+      const std::string& cameraId, ::android::base::unique_fd v4l2Fd,
+      v4l2_buf_type captureType);
 
   bool isInitFailedLocked();
 

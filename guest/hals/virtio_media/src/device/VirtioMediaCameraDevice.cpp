@@ -39,6 +39,7 @@ namespace implementation {
 
 using ::aidl::android::hardware::camera::common::Status;
 using ::android::base::Result;
+using ::android::base::unique_fd;
 
 namespace {
 // Currently supported V4L2 formats:
