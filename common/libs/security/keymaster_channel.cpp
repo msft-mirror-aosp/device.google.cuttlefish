@@ -15,6 +15,7 @@
  */
 
 #include "common/libs/security/keymaster_channel.h"
+#include <cstdlib>
 
 namespace cuttlefish {
 
