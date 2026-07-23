@@ -38,8 +38,7 @@
 # hvc12 for NFC
 /dev/hvc12  u:object_r:nfc_device:s0
 
-# hvc13 for weaver
-/dev/hvc13  u:object_r:weaver_device:s0
+# hvc13 sink
 
 # hvc14 for MCU control
 /dev/hvc14  u:object_r:mcu_control_device:s0
@@ -123,7 +122,7 @@ starting_at_board_api(202604, `
 /vendor/bin/hw/android\.hardware\.confirmationui-service.cuttlefish  u:object_r:hal_confirmationui_cuttlefish_exec:s0
 /vendor/bin/hw/android\.hardware\.oemlock-service.example u:object_r:hal_oemlock_default_exec:s0
 /vendor/bin/hw/android\.hardware\.oemlock-service.remote  u:object_r:hal_oemlock_remote_exec:s0
-/vendor/bin/hw/android\.hardware\.weaver-service.cuttlefish u:object_r:hal_weaver_default_exec:s0
+/vendor/bin/hw/android\.hardware\.weaver-service.example u:object_r:hal_weaver_default_exec:s0
 /vendor/bin/hw/android\.hardware\.authsecret@1\.0-service  u:object_r:hal_authsecret_default_exec:s0
 /vendor/bin/hw/android\.hardware\.authsecret-service.example u:object_r:hal_authsecret_default_exec:s0
 /vendor/bin/dlkm_loader  u:object_r:dlkm_loader_exec:s0
