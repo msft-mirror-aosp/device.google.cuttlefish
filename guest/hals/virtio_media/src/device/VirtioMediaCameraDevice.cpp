@@ -56,7 +56,6 @@ const std::array<uint32_t, /*size*/ 6> kSupportedFourCCs{
 constexpr int MAX_RETRY = 5;  // Allow retry v4l2 open failures a few times.
 constexpr int OPEN_RETRY_SLEEP_US = 100'000;  // 100ms * MAX_RETRY = 0.5 seconds
 
-const std::regex kDevicePathRE("/dev/video([0-9]+)");
 }  // namespace
 
 std::string VirtioMediaCameraDevice::kDeviceVersion = "1.1";
@@ -64,13 +63,12 @@ std::string VirtioMediaCameraDevice::kDeviceVersion = "1.1";
 VirtioMediaCameraDevice::VirtioMediaCameraDevice(
     const std::string& devicePath, const ExternalCameraConfig& config)
     : mCameraId("-1"), mDevicePath(devicePath), mCfg(config) {
-  std::smatch sm;
-  if (std::regex_match(mDevicePath, sm, kDevicePathRE)) {
-    mCameraId = std::to_string(mCfg.cameraIdOffset + std::stoi(sm[1]));
-  } else {
-    ALOGE("%s: device path match failed for %s", __FUNCTION__,
-          mDevicePath.c_str());
+  auto cameraId = cuttlefish::virtio_media::DevNameToCameraId(mDevicePath);
+  if (!cameraId.ok()) {
+    ALOGE("%s: %s", __FUNCTION__, cameraId.error().message().c_str());
+    return;
   }
+  mCameraId = *cameraId;
 }
 
 VirtioMediaCameraDevice::~VirtioMediaCameraDevice() {}

@@ -93,6 +93,18 @@
                    channels="1" />
         </EncoderProfile>
 
+        <EncoderProfile quality="480p" fileFormat="mp4" duration="60">
+            <Video codec="h264"
+                   bitRate="4000000"
+                   width="640"
+                   height="480"
+                   frameRate="30" />
+            <Audio codec="amrnb"
+                   bitRate="12200"
+                   sampleRate="8000"
+                   channels="1" />
+        </EncoderProfile>
+
         <EncoderProfile quality="720p " fileFormat="mp4" duration="60">
             <Video codec="h264"
                    bitRate="12000000"
@@ -132,6 +144,18 @@
                    bitRate="128000"
                    width="320"
                    height="240"
+                   frameRate="30" />
+            <Audio codec="amrnb"
+                   bitRate="12200"
+                   sampleRate="8000"
+                   channels="1" />
+        </EncoderProfile>
+
+        <EncoderProfile quality="480p" fileFormat="mp4" duration="60">
+            <Video codec="h264"
+                   bitRate="4000000"
+                   width="640"
+                   height="480"
                    frameRate="30" />
             <Audio codec="amrnb"
                    bitRate="12200"
