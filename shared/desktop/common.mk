@@ -15,6 +15,9 @@
 # HW-independent rules (applicable to virtual devices) go here.
 # HW-dependent rules (such as HAL) go to device_common.mk
 
+# TODO: b/538257834 - Revert this once missing dependencies are resolved.
+ALLOW_MISSING_DEPENDENCIES := true
+
 # First enable HSUM, since it can affect subsequent mk behaviour.
 # $(call inherit-product, build/make/target/product/hsu_as_login.mk)
 
