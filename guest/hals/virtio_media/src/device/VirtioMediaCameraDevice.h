@@ -16,7 +16,6 @@
 
 #pragma once
 
-#include <ExternalCameraDeviceSession.h>
 #include <ExternalCameraUtils.h>
 #include <aidl/android/hardware/camera/common/Status.h>
 #include <aidl/android/hardware/camera/device/BnCameraDevice.h>

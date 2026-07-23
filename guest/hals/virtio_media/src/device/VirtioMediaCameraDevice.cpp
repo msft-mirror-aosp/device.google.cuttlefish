@@ -114,7 +114,7 @@ ndk::ScopedAStatus VirtioMediaCameraDevice::isStreamCombinationSupported(
           mCameraId.c_str());
     return fromStatus(Status::INTERNAL_ERROR);
   }
-  Status s = ExternalCameraDeviceSession::isStreamCombinationSupported(
+  Status s = VirtioMediaCameraDeviceSession::isStreamCombinationSupported(
       in_streams, mSupportedFormats, mCfg);
   *_aidl_return = s == Status::OK;
   return fromStatus(Status::OK);
@@ -515,8 +515,8 @@ status_t VirtioMediaCameraDevice::initDefaultCharsKeys(
   // YUV_420_888 or YV12.
   const int32_t requestMaxNumOutputStreams[] = {
       /*RAW*/ 0,
-      /*Processed*/ ExternalCameraDeviceSession::kMaxProcessedStream,
-      /*Stall*/ ExternalCameraDeviceSession::kMaxStallStream};
+      /*Processed*/ VirtioMediaCameraDeviceSession::kMaxProcessedStream,
+      /*Stall*/ VirtioMediaCameraDeviceSession::kMaxStallStream};
   UPDATE(ANDROID_REQUEST_MAX_NUM_OUTPUT_STREAMS, requestMaxNumOutputStreams,
          ARRAY_SIZE(requestMaxNumOutputStreams));
 
