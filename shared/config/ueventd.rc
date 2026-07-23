@@ -47,8 +47,7 @@
 # NFC
 /dev/hvc12 0666 nfc nfc
 
-# Weaver
-/dev/hvc13 0660 system system
+# /dev/hvc13 sink
 
 # MCU control
 /dev/hvc14 0666 system system

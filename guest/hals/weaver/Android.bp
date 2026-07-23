@@ -32,36 +32,6 @@ rust_binary {
         "libnix",
         "libweaver_hal",
     ],
-}
-
-prebuilt_etc {
-    name: "android.hardware.weaver-service.cuttlefish.rc",
-    src: "android.hardware.weaver-service.cuttlefish.rc",
-    installable: false,
-}
-
-prebuilt_etc {
-    name: "android.hardware.weaver-service.cuttlefish.xml",
-    src: "android.hardware.weaver-service.cuttlefish.xml",
-    sub_dir: "vintf",
-    installable: false,
-}
-
-apex {
-    name: "com.android.hardware.weaver.cf",
-    manifest: "manifest.json",
-    file_contexts: "file_contexts",
-    key: "com.google.cf.apex.key",
-    certificate: ":com.google.cf.apex.certificate",
-    vendor: true,
-    updatable: false,
-    soc_specific: true,
-
-    binaries: [
-        "android.hardware.weaver-service.cuttlefish",
-    ],
-    prebuilts: [
-        "android.hardware.weaver-service.cuttlefish.rc",
-        "android.hardware.weaver-service.cuttlefish.xml",
-    ],
+    init_rc: ["android.hardware.weaver-service.cuttlefish.rc"],
+    vintf_fragments: ["android.hardware.weaver-service.cuttlefish.xml"],
 }
