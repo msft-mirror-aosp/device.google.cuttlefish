@@ -49,7 +49,6 @@ PRODUCT_MANUFACTURER := Google
 PRODUCT_MODEL := AOSP Cuttlefish x86_64 auto 64-bit only with portrait UI
 
 $(call inherit-product, packages/services/Car/car_product/car_ui_portrait/apps/car_ui_portrait_apps.mk)
-$(call inherit-product, packages/services/Car/car_product/car_ui_portrait/rro/car_ui_portrait_rro.mk)
 
 PRODUCT_COPY_FILES += \
     packages/services/Car/car_product/car_ui_portrait/car_ui_portrait_hardware.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/car_ui_portrait_hardware.xml
