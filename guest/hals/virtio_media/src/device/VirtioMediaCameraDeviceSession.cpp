@@ -1096,6 +1096,100 @@ status_t VirtioMediaCameraDeviceSession::fillCaptureResult(
   }
   UPDATE(md, ANDROID_CONTROL_AF_STATE, &afState, 1);
 
+  // TODO(b/538688597): Replace the following guest-side mocks with host-side
+  // control emulation after the relevant host package releases.
+
+  if (!md.exists(ANDROID_LENS_APERTURE)) {
+    float aperture = 2.8f;
+    UPDATE(md, ANDROID_LENS_APERTURE, &aperture, 1);
+  }
+  if (!md.exists(ANDROID_LENS_FILTER_DENSITY)) {
+    float filterDensity = 0.0f;
+    UPDATE(md, ANDROID_LENS_FILTER_DENSITY, &filterDensity, 1);
+  }
+  if (!md.exists(ANDROID_LENS_FOCAL_LENGTH)) {
+    float focalLength = 2.8f;
+    UPDATE(md, ANDROID_LENS_FOCAL_LENGTH, &focalLength, 1);
+  }
+  if (!md.exists(ANDROID_LENS_FOCUS_DISTANCE)) {
+    float focusDistance = 0.0f;
+    UPDATE(md, ANDROID_LENS_FOCUS_DISTANCE, &focusDistance, 1);
+  }
+  if (!md.exists(ANDROID_LENS_FOCUS_RANGE)) {
+    float focusRange[] = {0.0f, 0.0f};
+    UPDATE(md, ANDROID_LENS_FOCUS_RANGE, focusRange, 2);
+  }
+  if (!md.exists(ANDROID_SENSOR_EXPOSURE_TIME)) {
+    int64_t exposureTime = 10000000;  // 10ms
+    UPDATE(md, ANDROID_SENSOR_EXPOSURE_TIME, &exposureTime, 1);
+  }
+  if (!md.exists(ANDROID_SENSOR_FRAME_DURATION)) {
+    int64_t frameDuration = 33333333;  // 30fps
+    UPDATE(md, ANDROID_SENSOR_FRAME_DURATION, &frameDuration, 1);
+  }
+  if (!md.exists(ANDROID_SENSOR_SENSITIVITY)) {
+    int32_t sensitivity = 100;
+    UPDATE(md, ANDROID_SENSOR_SENSITIVITY, &sensitivity, 1);
+  }
+  if (!md.exists(ANDROID_BLACK_LEVEL_LOCK)) {
+    uint8_t blackLevelLock = ANDROID_BLACK_LEVEL_LOCK_OFF;
+    UPDATE(md, ANDROID_BLACK_LEVEL_LOCK, &blackLevelLock, 1);
+  }
+  if (!md.exists(ANDROID_SENSOR_NEUTRAL_COLOR_POINT)) {
+    camera_metadata_rational_t neutralColorPoint[] = {{1, 1}, {1, 1}, {1, 1}};
+    UPDATE(md, ANDROID_SENSOR_NEUTRAL_COLOR_POINT, neutralColorPoint, 3);
+  }
+  if (!md.exists(ANDROID_SENSOR_NOISE_PROFILE)) {
+    double noiseProfile[] = {1e-6, 1e-10, 1e-6, 1e-10,
+                             1e-6, 1e-10, 1e-6, 1e-10};
+    UPDATE(md, ANDROID_SENSOR_NOISE_PROFILE, noiseProfile, 8);
+  }
+  if (!md.exists(ANDROID_SENSOR_GREEN_SPLIT)) {
+    float greenSplit = 0.0f;
+    UPDATE(md, ANDROID_SENSOR_GREEN_SPLIT, &greenSplit, 1);
+  }
+  if (!md.exists(ANDROID_SENSOR_ROLLING_SHUTTER_SKEW)) {
+    int64_t rollingShutterSkew = 0;
+    UPDATE(md, ANDROID_SENSOR_ROLLING_SHUTTER_SKEW, &rollingShutterSkew, 1);
+  }
+  if (!md.exists(ANDROID_COLOR_CORRECTION_MODE)) {
+    uint8_t colorCorrectionMode = ANDROID_COLOR_CORRECTION_MODE_FAST;
+    UPDATE(md, ANDROID_COLOR_CORRECTION_MODE, &colorCorrectionMode, 1);
+  }
+  if (!md.exists(ANDROID_COLOR_CORRECTION_TRANSFORM)) {
+    camera_metadata_rational_t colorCorrectionTransform[] = {
+        {1, 1}, {0, 1}, {0, 1}, {0, 1}, {1, 1}, {0, 1}, {0, 1}, {0, 1}, {1, 1}};
+    UPDATE(md, ANDROID_COLOR_CORRECTION_TRANSFORM, colorCorrectionTransform, 9);
+  }
+  if (!md.exists(ANDROID_COLOR_CORRECTION_GAINS)) {
+    float colorCorrectionGains[] = {1.0f, 1.0f, 1.0f, 1.0f};
+    UPDATE(md, ANDROID_COLOR_CORRECTION_GAINS, colorCorrectionGains, 4);
+  }
+  if (!md.exists(ANDROID_TONEMAP_MODE)) {
+    uint8_t tonemapMode = ANDROID_TONEMAP_MODE_FAST;
+    UPDATE(md, ANDROID_TONEMAP_MODE, &tonemapMode, 1);
+  }
+  if (!md.exists(ANDROID_SHADING_MODE)) {
+    uint8_t shadingMode = ANDROID_SHADING_MODE_FAST;
+    UPDATE(md, ANDROID_SHADING_MODE, &shadingMode, 1);
+  }
+  if (!md.exists(ANDROID_EDGE_MODE)) {
+    uint8_t edgeMode = ANDROID_EDGE_MODE_FAST;
+    UPDATE(md, ANDROID_EDGE_MODE, &edgeMode, 1);
+  }
+  if (!md.exists(ANDROID_HOT_PIXEL_MODE)) {
+    uint8_t hotPixelMode = ANDROID_HOT_PIXEL_MODE_FAST;
+    UPDATE(md, ANDROID_HOT_PIXEL_MODE, &hotPixelMode, 1);
+  }
+  if (!md.exists(ANDROID_CONTROL_AF_REGIONS)) {
+    int32_t afRegions[] = {0, 0, 0, 0, 0};
+    UPDATE(md, ANDROID_CONTROL_AF_REGIONS, afRegions, 5);
+  }
+  if (!md.exists(ANDROID_LENS_STATE)) {
+    uint8_t lensState = ANDROID_LENS_STATE_STATIONARY;
+    UPDATE(md, ANDROID_LENS_STATE, &lensState, 1);
+  }
+
   camera_metadata_ro_entry activeArraySize =
       mCameraCharacteristics.find(ANDROID_SENSOR_INFO_ACTIVE_ARRAY_SIZE);
 
