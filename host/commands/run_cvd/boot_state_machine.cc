@@ -382,7 +382,8 @@ class CvdBootStateMachine : public SetupFeature, public KernelLogPipeConsumer {
                 instance_.adb_ip_and_port());
             adb_command.AddParameter("wait-for-device");
             adb_command.AddParameter("shell");
-            adb_command.AddParameter("/vendor/bin/snapshot_hook_post_resume");
+            adb_command.AddParameter(
+                "su root /vendor/bin/snapshot_hook_post_resume");
             CHECK_EQ(adb_command.Start().Wait(), 0)
                 << "Failed to run /vendor/bin/snapshot_hook_post_resume";
             // Done last so that adb is more likely to be ready.

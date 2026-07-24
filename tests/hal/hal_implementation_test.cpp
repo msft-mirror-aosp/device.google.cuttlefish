@@ -106,6 +106,7 @@ static const std::set<std::string> kAlwaysMissingAidl = {
     // types-only packages, which never expect a default implementation
     "android.frameworks.cameraservice.common",
     "android.frameworks.cameraservice.device",
+    "android.frameworks.debugfileupload",
     "android.hardware.audio.common",
     "android.hardware.audio.core.sounddose",
     "android.hardware.biometrics.common",
@@ -168,7 +169,6 @@ static const std::vector<VersionedAidlPackage> kKnownMissingAidl = {
     {"android.se.omapi.", 2, 266870904},
     {"android.hardware.soundtrigger3.", 5, 266941225},
     {"android.media.soundtrigger.", 5, 266941225},
-    {"android.hardware.weaver.", 3, 262418065},
 
     {"android.automotive.computepipe.registry.", 2, 273549907},
     {"android.automotive.computepipe.runner.", 2, 273549907},
@@ -315,6 +315,11 @@ static std::vector<VersionedAidlPackage> allAidlManifestInterfaces() {
 TEST(Hal, AllAidlInterfacesAreInAosp) {
   if (!kAidlUseUnfrozen) {
     GTEST_SKIP() << "Not valid in 'next' configuration";
+  }
+  // skip the test on non-AOSP cuttlefish
+  std::string productName = base::GetProperty("ro.product.name", "");
+  if (base::StartsWith(productName, "cf_")) {
+    GTEST_SKIP() << "Skipping test for non-AOSP product: " << productName;
   }
   if (getDeviceType() != DeviceType::PHONE &&
       getDeviceType() != DeviceType::AUTOMOTIVE) {

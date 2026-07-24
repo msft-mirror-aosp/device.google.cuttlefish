@@ -20,4 +20,6 @@
   <bool name="config_showNavigationBar" translatable="false">true</bool>
   <!--  Maximum number of supported users -->
   <integer name="config_multiuserMaximumUsers" translatable="false">4</integer>
+  <bool name="config_isDesktopModeSupported" translatable="false">true</bool>
+  <bool name="config_canInternalDisplayHostDesktops" translatable="false">true</bool>
 </resources>

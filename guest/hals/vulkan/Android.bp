@@ -38,7 +38,7 @@ graphics_apex_defaults {
 }
 
 apex {
-    name: "com.google.cf.vulkan",
+    name: "com.google.cf.vulkan.pastel",
     manifest: "apex_manifest.json",
     key: "com.google.cf.apex.key",
     certificate: ":com.google.cf.apex.certificate",
