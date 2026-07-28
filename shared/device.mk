@@ -346,6 +346,13 @@ ifeq ($(LOCAL_ENABLE_WIDEVINE),true)
 ifeq ($(RELEASE_WIDEVINE_CUTTLEFISH_L1),true)
     -include vendor/google/widevine/cdm/oemcrypto/opk/ports/linux/ta/common/wtpi_impl/test-only/device.mk
 endif
+
+# Widevine OEMCrypto AIDL (internal non-AOSP builds only)
+ifeq (,$(filter aosp_%,$(TARGET_PRODUCT)))
+ifeq ($(RELEASE_WIDEVINE_OEMCRYPTO_AIDL),true)
+    -include vendor/google_shared/widevine/oemcrypto/oemcrypto/aidl/device.mk
+endif
+endif
 endif
 
 #
