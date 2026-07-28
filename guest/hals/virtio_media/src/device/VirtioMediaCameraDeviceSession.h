@@ -338,6 +338,8 @@ class VirtioMediaCameraDeviceSession
 
   Size getMaxThumbResolution() const;
 
+  int32_t getPartialResultCount() const;
+
   int waitForV4L2BufferReturnLocked(std::unique_lock<std::mutex>& lk);
 
   // Main body of switchToOffline. This method does not invoke any callbacks

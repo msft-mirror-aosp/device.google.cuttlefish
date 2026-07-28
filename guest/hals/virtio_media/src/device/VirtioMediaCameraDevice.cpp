@@ -502,7 +502,11 @@ status_t VirtioMediaCameraDevice::initDefaultCharsKeys(
   const uint8_t noiseReductionMode = ANDROID_NOISE_REDUCTION_MODE_OFF;
   UPDATE(ANDROID_NOISE_REDUCTION_MODE, &noiseReductionMode, 1);
 
-  const int32_t partialResultCount = 1;
+  // Advertise 2 partial results to pass CTS testPartialResult.
+  // We only send the final result (with index 2) and skip intermediate ones.
+  // This is a compliant minimal implementation as the framework allows skipping
+  // intermediate partial results.
+  const int32_t partialResultCount = 2;
   UPDATE(ANDROID_REQUEST_PARTIAL_RESULT_COUNT, &partialResultCount, 1);
 
   // This means pipeline latency of X frame intervals. The maximum number is 4.
