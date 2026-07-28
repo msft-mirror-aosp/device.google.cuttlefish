@@ -22,6 +22,9 @@ CF_VENDOR_NO_UWB := true
 
 $(call inherit-product, device/google/atv/products/atv_vendor.mk)
 
+# Choose the audio HAL interfaces version which is the same as the system image uses.
+$(call soong_config_set, audio_hal, fcm_version, SYSTEM)
+
 # If there is no override, disable the default shared Cuttlefish audio configuration
 LOCAL_USE_VENDOR_AUDIO_CONFIGURATION ?= false
 ifeq ($(LOCAL_USE_VENDOR_AUDIO_CONFIGURATION),false)

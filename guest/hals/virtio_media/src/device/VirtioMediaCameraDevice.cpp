@@ -423,7 +423,7 @@ status_t VirtioMediaCameraDevice::initDefaultCharsKeys(
   const uint8_t antibandingMode = ANDROID_CONTROL_AE_ANTIBANDING_MODE_AUTO;
   UPDATE(ANDROID_CONTROL_AE_AVAILABLE_ANTIBANDING_MODES, &antibandingMode, 1);
 
-  const int32_t controlMaxRegions[] = {/*AE*/ 0, /*AWB*/ 0, /*AF*/ 0};
+  const int32_t controlMaxRegions[] = {/*AE*/ 0, /*AWB*/ 0, /*AF*/ 1};
   UPDATE(ANDROID_CONTROL_MAX_REGIONS, controlMaxRegions,
          ARRAY_SIZE(controlMaxRegions));
 
@@ -495,9 +495,12 @@ status_t VirtioMediaCameraDevice::initDefaultCharsKeys(
          &opticalStabilizationMode, 1);
 
   // android.noiseReduction
-  const uint8_t noiseReductionMode = ANDROID_NOISE_REDUCTION_MODE_OFF;
+  const uint8_t noiseReductionModes[] = {
+      ANDROID_NOISE_REDUCTION_MODE_OFF, ANDROID_NOISE_REDUCTION_MODE_FAST,
+      ANDROID_NOISE_REDUCTION_MODE_HIGH_QUALITY};
   UPDATE(ANDROID_NOISE_REDUCTION_AVAILABLE_NOISE_REDUCTION_MODES,
-         &noiseReductionMode, 1);
+         noiseReductionModes, ARRAY_SIZE(noiseReductionModes));
+  const uint8_t noiseReductionMode = ANDROID_NOISE_REDUCTION_MODE_OFF;
   UPDATE(ANDROID_NOISE_REDUCTION_MODE, &noiseReductionMode, 1);
 
   const int32_t partialResultCount = 1;
@@ -599,6 +602,7 @@ status_t VirtioMediaCameraDevice::initDefaultCharsKeys(
       ANDROID_CONTROL_AE_PRECAPTURE_TRIGGER,
       ANDROID_CONTROL_AE_TARGET_FPS_RANGE,
       ANDROID_CONTROL_AF_MODE,
+      ANDROID_CONTROL_AF_REGIONS,
       ANDROID_CONTROL_AF_TRIGGER,
       ANDROID_CONTROL_AWB_LOCK,
       ANDROID_CONTROL_AWB_MODE,
@@ -631,6 +635,7 @@ status_t VirtioMediaCameraDevice::initDefaultCharsKeys(
       ANDROID_CONTROL_AE_STATE,
       ANDROID_CONTROL_AE_TARGET_FPS_RANGE,
       ANDROID_CONTROL_AF_MODE,
+      ANDROID_CONTROL_AF_REGIONS,
       ANDROID_CONTROL_AF_STATE,
       ANDROID_CONTROL_AF_TRIGGER,
       ANDROID_CONTROL_AWB_LOCK,
@@ -929,9 +934,11 @@ status_t VirtioMediaCameraDevice::calculateMinFps(
   std::vector<int32_t> fpsRanges;
   // FPS ranges
   for (const auto& framerate : framerates) {
-    // Empirical: webcams often have close to 2x fps error and cannot support
-    // fixed fps range
+    // Variable FPS range (allows auto-exposure to drop frame rate in low light)
     fpsRanges.push_back(framerate / 2);
+    fpsRanges.push_back(framerate);
+    // Fixed FPS range (to support fixed FPS video recording)
+    fpsRanges.push_back(framerate);
     fpsRanges.push_back(framerate);
   }
   minFps /= 2;

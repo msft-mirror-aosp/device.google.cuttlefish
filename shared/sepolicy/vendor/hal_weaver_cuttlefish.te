@@ -1,0 +1,7 @@
+type weaver_device, dev_type;
+
+allow hal_weaver_default weaver_device:chr_file rw_file_perms;
+
+# Write to kernel log (/dev/kmsg)
+allow hal_weaver_default kmsg_device:chr_file w_file_perms;
+allow hal_weaver_default kmsg_device:chr_file getattr;

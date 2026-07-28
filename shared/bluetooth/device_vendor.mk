@@ -27,11 +27,6 @@ LOCAL_BT_PROPERTIES ?= \
 PRODUCT_VENDOR_PROPERTIES += \
     ${LOCAL_BT_PROPERTIES} \
 
-ifneq ($(LOCAL_USE_VENDOR_AUDIO_CONFIGURATION),true)
-PRODUCT_COPY_FILES += \
-    frameworks/av/services/audiopolicy/config/bluetooth_with_le_audio_policy_configuration_7_0.xml:$(TARGET_COPY_OUT_VENDOR)/etc/bluetooth_with_le_audio_policy_configuration_7_0.xml
-endif
-
 PRODUCT_PACKAGES += com.google.cf.bt
 
 $(call soong_config_set_bool,cuttlefish_config,bt_lpp_service_instance_enabled, $(RELEASE_BLUETOOTH_LPP_SERVICE_INSTANCE))
