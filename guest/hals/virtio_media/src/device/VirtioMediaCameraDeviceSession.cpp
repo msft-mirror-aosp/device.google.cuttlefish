@@ -146,6 +146,18 @@ Size VirtioMediaCameraDeviceSession::getMaxJpegResolution() const {
   return ret;
 }
 
+int32_t VirtioMediaCameraDeviceSession::getPartialResultCount() const {
+  // Returns the advertised partial result count. The final result we send must
+  // have partialResult set to this value to comply with the Camera HAL
+  // contract. We skip intermediate partial results as allowed by the spec.
+  camera_metadata_ro_entry entry =
+      mCameraCharacteristics.find(ANDROID_REQUEST_PARTIAL_RESULT_COUNT);
+  if (entry.count > 0) {
+    return entry.data.i32[0];
+  }
+  return 1;
+}
+
 bool VirtioMediaCameraDeviceSession::initialize() {
   if (mV4l2Fd.get() < 0) {
     ALOGE("%s: invalid v4l2 device fd %d!", __FUNCTION__, mV4l2Fd.get());
@@ -2262,7 +2274,7 @@ Status VirtioMediaCameraDeviceSession::processCaptureRequestError(
   // Fill output buffers
   CaptureResult result;
   result.frameNumber = req->frameNumber;
-  result.partialResult = 1;
+  result.partialResult = getPartialResultCount();
   result.inputBuffer.streamId = -1;
   result.outputBuffers.resize(req->buffers.size());
   for (size_t i = 0; i < req->buffers.size(); i++) {
@@ -2311,7 +2323,7 @@ Status VirtioMediaCameraDeviceSession::processCaptureResult(
   std::vector<CaptureResult> results(1);
   CaptureResult& result = results[0];
   result.frameNumber = req->frameNumber;
-  result.partialResult = 1;
+  result.partialResult = getPartialResultCount();
   result.inputBuffer.streamId = -1;
   result.outputBuffers.resize(req->buffers.size());
   for (size_t i = 0; i < req->buffers.size(); i++) {
