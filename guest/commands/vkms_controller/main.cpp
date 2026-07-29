@@ -51,6 +51,7 @@
 #include <fstream>
 #include <iostream>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -114,14 +115,6 @@ struct ConnectorState {
 };
 
 bool SaveState(const std::vector<ConnectorState>& states) {
-  std::error_code ec;
-  std::filesystem::create_directories(kStateDir, ec);
-  if (ec) {
-    LOG(ERROR) << "Failed to create directory " << kStateDir.string() << ": "
-               << ec.message();
-    return false;
-  }
-
   Json::Value root;
   for (const auto& s : states) {
     Json::Value val;
@@ -327,7 +320,8 @@ int DoHotplug(const std::vector<std::string>& args) {
 int DoReset(const std::vector<std::string>& args) {
   (void)args;
   VkmsTester::ShutdownAndCleanUpVkms();
-  unlink(kStateFilePath.c_str());
+  std::error_code ec;
+  std::filesystem::remove(kStateFilePath, ec);
   std::cout << "VKMS reset complete.\n";
   return 0;
 }
@@ -504,33 +498,51 @@ static const std::unordered_map<std::string_view, Command> kCommands = {
 
 class ScopedFileLock {
  public:
-  ScopedFileLock(const char* lock_path) {
+  static std::optional<ScopedFileLock> TryLock(
+      const std::filesystem::path& lock_path) {
+    std::error_code ec;
+    if (lock_path.has_parent_path()) {
+      std::filesystem::create_directories(lock_path.parent_path(), ec);
+      if (ec) {
+        LOG(ERROR) << "Failed to create directory "
+                   << lock_path.parent_path().string() << ": " << ec.message();
+        return std::nullopt;
+      }
+    }
+
+    const std::string path_str = lock_path.string();
     android::base::unique_fd fd(TEMP_FAILURE_RETRY(
-        open(lock_path, O_RDWR | O_CREAT | O_CLOEXEC, 0666)));
+        open(path_str.c_str(), O_RDWR | O_CREAT | O_CLOEXEC, 0666)));
+
     if (fd.get() == -1) {
-      LOG(ERROR) << "Failed to open lock file " << lock_path << ": "
-                 << strerror(errno);
-      return;
+      PLOG(ERROR) << "Failed to open lock file " << path_str;
+      return std::nullopt;
     }
-    LOG(INFO) << "Acquiring lock on " << lock_path << "...";
+
+    LOG(INFO) << "Acquiring lock on " << path_str << "...";
     if (TEMP_FAILURE_RETRY(flock(fd.get(), LOCK_EX)) < 0) {
-      LOG(ERROR) << "Failed to flock " << lock_path << ": " << strerror(errno);
-      return;
+      PLOG(ERROR) << "Failed to acquire file lock on " << path_str;
+      return std::nullopt;
     }
+
     LOG(INFO) << "Lock acquired.";
-    fd_ = std::move(fd);
+    return ScopedFileLock(std::move(fd));
   }
 
   ~ScopedFileLock() {
     if (fd_.get() != -1) {
-      LOG(INFO) << "Releasing lock...";
-      TEMP_FAILURE_RETRY(flock(fd_.get(), LOCK_UN));
+      LOG(INFO) << "Releasing lock implicitly via fd closure...";
     }
   }
 
-  bool IsLocked() const { return fd_.get() != -1; }
+  ScopedFileLock(const ScopedFileLock&) = delete;
+  ScopedFileLock& operator=(const ScopedFileLock&) = delete;
+
+  ScopedFileLock(ScopedFileLock&&) = default;
+  ScopedFileLock& operator=(ScopedFileLock&&) = default;
 
  private:
+  explicit ScopedFileLock(android::base::unique_fd fd) : fd_(std::move(fd)) {}
   android::base::unique_fd fd_;
 };
 
@@ -582,9 +594,9 @@ int main(int argc, char** argv) {
   }
 
   if (cuttlefish::vkms_controller::kCommands.count(args[0])) {
-    cuttlefish::vkms_controller::ScopedFileLock lock(
-        "/data/local/tmp/vkms_controller.lock");
-    if (!lock.IsLocked()) {
+    auto lock = cuttlefish::vkms_controller::ScopedFileLock::TryLock(
+        cuttlefish::vkms_controller::kLockFilePath);
+    if (!lock) {
       std::cerr << "Error: Failed to acquire vkms_controller lock."
                 << std::endl;
       return 1;
