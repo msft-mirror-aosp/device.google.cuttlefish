@@ -161,7 +161,7 @@ bool LoadState(std::vector<ConnectorState>* states) {
 }
 
 int DoSetup(const std::vector<std::string>& args) {
-  VkmsTester::ShutdownAndCleanUpVkms();
+  VkmsTester::CleanUpConfigFs();
   std::vector<VkmsTester::VkmsConnectorBuilder> builders;
   std::vector<ConnectorState> states;
 
@@ -239,6 +239,10 @@ int DoSetup(const std::vector<std::string>& args) {
 
   auto tester = VkmsTester::CreateWithBuilders(builders);
   if (!tester) {
+    LOG(ERROR) << "VkmsTester::CreateWithBuilders failed during DoSetup.";
+    std::cerr << "VKMS_CONTROLLER_ERROR: Setup failed during display stack "
+                 "initialization."
+              << std::endl;
     return 1;
   }
 

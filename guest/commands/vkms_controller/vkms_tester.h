@@ -16,11 +16,15 @@
 
 #pragma once
 
+#include <chrono>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
+
 #include "edid_helper.h"  // NOLINT(build/include_subdir)
 
 namespace cuttlefish {
@@ -136,6 +140,7 @@ class VkmsTester {
       int displaysCount);
 
   static void ShutdownAndCleanUpVkms();
+  static void CleanUpConfigFs();
 
   static bool ToggleConnector(int connectorIndex, bool enable);
 
@@ -183,6 +188,11 @@ class VkmsTester {
   static bool ToggleVkms(bool enable);
   static std::vector<std::string> StopDisplayStack();
   static bool StartDisplayStack(const std::vector<std::string>& services);
+
+  static std::unordered_set<std::string> GetExistingDrmDevices();
+  static std::optional<std::string> WaitForNewDrmDevice(
+      const std::unordered_set<std::string>& existing_devices,
+      std::chrono::milliseconds timeout = std::chrono::milliseconds(15000));
 
   static bool CreateResource(DrmResource resource, int index);
   static bool SetCrtcWriteback(int crtcIndex, bool enable);
