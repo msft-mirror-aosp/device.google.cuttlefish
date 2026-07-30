@@ -16,6 +16,7 @@
 
 #define LOG_TAG "CuttlefishComponentStore"
 
+#include "C2CuttlefishHevcDec.h"
 #include "CuttlefishComponentStore.h"
 
 #include <C2DmaBufAllocator.h>
@@ -86,7 +87,7 @@ CuttlefishComponentStore::CuttlefishComponentStore()
 }
 
 void CuttlefishComponentStore::initCodecs() {
-  // Detached codec plugins register here.
+  RegisterCuttlefishHevcDec(this, mReflector);
 }
 
 void CuttlefishComponentStore::registerCodec(
