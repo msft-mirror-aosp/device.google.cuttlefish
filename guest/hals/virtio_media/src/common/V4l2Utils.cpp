@@ -57,7 +57,9 @@ Result<std::optional<uint32_t>> CtrlId(borrowed_fd fd,
   return std::nullopt;
 }
 
-Result<int64_t> CtrlValue(borrowed_fd fd, uint32_t ctrl_id) {
+}  // namespace
+
+Result<int64_t> GetCtrlValue(borrowed_fd fd, uint32_t ctrl_id) {
   struct v4l2_ext_control ext_ctrl;
   std::memset(&ext_ctrl, 0, sizeof(ext_ctrl));
   ext_ctrl.id = ctrl_id;
@@ -76,7 +78,51 @@ Result<int64_t> CtrlValue(borrowed_fd fd, uint32_t ctrl_id) {
   return ext_ctrl.value64;
 }
 
-}  // namespace
+Result<void> SetCtrlValue(borrowed_fd fd, uint32_t ctrl_id, int64_t value) {
+  struct v4l2_ext_control ext_ctrl;
+  std::memset(&ext_ctrl, 0, sizeof(ext_ctrl));
+  ext_ctrl.id = ctrl_id;
+  ext_ctrl.value64 = value;
+
+  struct v4l2_ext_controls ext_ctrls;
+  std::memset(&ext_ctrls, 0, sizeof(ext_ctrls));
+  ext_ctrls.which = V4L2_CTRL_WHICH_CUR_VAL;
+  ext_ctrls.count = 1;
+  ext_ctrls.controls = &ext_ctrl;
+
+  if (ioctl(fd.get(), VIDIOC_S_EXT_CTRLS, &ext_ctrls) < 0) {
+    return ErrnoError() << "ioctl(VIDIOC_S_EXT_CTRLS) failed for 0x" << std::hex
+                        << ctrl_id;
+  }
+
+  return {};
+}
+
+Result<std::optional<CtrlRange>> GetCtrlRange(borrowed_fd fd,
+                                              uint32_t ctrl_id) {
+  struct v4l2_queryctrl queryctrl;
+  memset(&queryctrl, 0, sizeof(queryctrl));
+  queryctrl.id = ctrl_id;
+
+  if (ioctl(fd.get(), VIDIOC_QUERYCTRL, &queryctrl) < 0) {
+    if (errno == EINVAL) {
+      return std::nullopt;
+    }
+    return ErrnoError() << "ioctl(VIDIOC_QUERYCTRL) failed for 0x" << std::hex
+                        << ctrl_id;
+  }
+
+  if (queryctrl.flags & V4L2_CTRL_FLAG_DISABLED) {
+    return std::nullopt;
+  }
+
+  return CtrlRange{
+      .min = queryctrl.minimum,
+      .max = queryctrl.maximum,
+      .step = queryctrl.step,
+      .default_value = queryctrl.default_value,
+  };
+}
 
 Result<std::optional<int64_t>> LensFacingCtrl(borrowed_fd fd) {
   Result<std::optional<uint32_t>> ctrl_id = CtrlId(fd, "LENS_FACING");
@@ -86,7 +132,7 @@ Result<std::optional<int64_t>> LensFacingCtrl(borrowed_fd fd) {
   if (!ctrl_id.has_value()) {
     return ctrl_id;
   }
-  return CtrlValue(fd, ctrl_id.value().value());
+  return GetCtrlValue(fd, ctrl_id.value().value());
 }
 
 Result<std::string> DevNameToCameraId(const std::string& devName) {

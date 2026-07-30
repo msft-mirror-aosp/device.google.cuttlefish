@@ -18,6 +18,7 @@
 // #define LOG_NDEBUG 0
 #include <log/log.h>
 
+#include "V4l2Utils.h"
 #include "VirtioMediaCameraDeviceSession.h"
 
 #include <Exif.h>
@@ -691,6 +692,23 @@ Status VirtioMediaCameraDeviceSession::processOneCaptureRequest(
     }
   }
 
+  if (mLatestReqSetting.exists(ANDROID_SENSOR_SENSITIVITY)) {
+    camera_metadata_entry entry =
+        mLatestReqSetting.find(ANDROID_SENSOR_SENSITIVITY);
+    int32_t sensitivity = entry.data.i32[0];
+    if (sensitivity != mCurrentSensitivity) {
+      auto set_res = cuttlefish::virtio_media::SetCtrlValue(
+          mV4l2Fd, V4L2_CID_GAIN, sensitivity);
+      if (set_res.ok()) {
+        mCurrentSensitivity = sensitivity;
+        ALOGV("%s: Set V4L2_CID_GAIN to %d", __FUNCTION__, sensitivity);
+      } else {
+        ALOGE("%s: Failed to set V4L2_CID_GAIN to %d: %s", __FUNCTION__,
+              sensitivity, set_res.error().message().c_str());
+      }
+    }
+  }
+
   nsecs_t shutterTs = 0;
   std::unique_ptr<V4L2Frame> frameIn = dequeueV4l2FrameLocked(&shutterTs);
   if (frameIn == nullptr) {
@@ -1141,6 +1159,16 @@ status_t VirtioMediaCameraDeviceSession::fillCaptureResult(
   }
   if (!md.exists(ANDROID_SENSOR_SENSITIVITY)) {
     int32_t sensitivity = 100;
+    auto gain_res =
+        cuttlefish::virtio_media::GetCtrlValue(mV4l2Fd, V4L2_CID_GAIN);
+    if (gain_res.ok()) {
+      sensitivity = static_cast<int32_t>(gain_res.value());
+      ALOGV("%s: SENSOR_SENSITIVITY set to %d from V4L2_CID_GAIN", __FUNCTION__,
+            sensitivity);
+    } else {
+      ALOGW("%s: Failed to get V4L2_CID_GAIN, using default %d: %s",
+            __FUNCTION__, sensitivity, gain_res.error().message().c_str());
+    }
     UPDATE(md, ANDROID_SENSOR_SENSITIVITY, &sensitivity, 1);
   }
   if (!md.exists(ANDROID_BLACK_LEVEL_LOCK)) {
