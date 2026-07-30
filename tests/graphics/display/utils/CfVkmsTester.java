@@ -135,12 +135,13 @@ public class CfVkmsTester implements AutoCloseable {
           break;
         }
         CLog.w(
-            "Try %d: Failed to setup VKMS via vkms_controller (status=%s, exitCode=%s): %s",
+            "Try %d: Failed to setup VKMS via vkms_controller (status=%s, exitCode=%s): stdout=%s, stderr=%s",
             i + 1,
             result.getStatus(),
             result.getExitCode(),
+            result.getStdout(),
             result.getStderr());
-        Thread.sleep(2000);
+        Thread.sleep(3000);
       }
 
       if (!success) {
@@ -193,7 +194,22 @@ public class CfVkmsTester implements AutoCloseable {
     }
     try {
       String cmd = String.format("vkms_controller %s", CMD_TEARDOWN);
-      device.executeShellV2Command(cmd);
+      for (int i = 0; i < 3; i++) {
+        CommandResult result = device.executeShellV2Command(cmd);
+        if (result.getStatus() == CommandStatus.SUCCESS
+            && result.getExitCode() != null
+            && result.getExitCode() == 0) {
+          break;
+        }
+        CLog.w(
+            "Try %d: vkms_controller reset failed (status=%s, exitCode=%s): stdout=%s, stderr=%s",
+            i + 1,
+            result.getStatus(),
+            result.getExitCode(),
+            result.getStdout(),
+            result.getStderr());
+        Thread.sleep(2000);
+      }
 
       // Wait for UI to recover after reset
       try {
@@ -201,10 +217,10 @@ public class CfVkmsTester implements AutoCloseable {
       } catch (Exception e) {
         CLog.w("UI failed to become ready after teardown: %s", e.getMessage());
       }
-
-      initialized = false;
     } catch (Exception e) {
       CLog.e("Exception during VKMS teardown: %s", e.toString());
+    } finally {
+      initialized = false;
     }
   }
 

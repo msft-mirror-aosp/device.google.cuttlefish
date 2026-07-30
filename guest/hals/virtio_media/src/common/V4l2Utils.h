@@ -17,6 +17,7 @@
 #pragma once
 
 #include <optional>
+#include <string>
 
 #include <android-base/result.h>
 #include <android-base/unique_fd.h>
@@ -26,6 +27,13 @@ using ::android::base::Result;
 
 namespace cuttlefish {
 namespace virtio_media {
+
+// /dev/video0 is always the loopback device, so we offset camera IDs by 1
+// to advertise virtio-media cameras starting from 0 (e.g. /dev/video1 -> ID 0).
+constexpr int kVideoNodeIdOffset = 1;
+
+Result<std::string> DevNameToCameraId(const std::string& devName);
+Result<std::string> CameraIdToDevName(const std::string& cameraId);
 
 // Queries virtio-media "lens_facing" control value.
 Result<std::optional<int64_t>> LensFacingCtrl(borrowed_fd fd);

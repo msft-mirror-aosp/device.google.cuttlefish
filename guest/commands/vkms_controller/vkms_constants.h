@@ -42,6 +42,8 @@ inline constexpr std::string_view kStatusDisconnected = "disconnected";
 // Filesystem Paths
 inline const std::filesystem::path kStateDir = "/data/vendor/vkms";
 inline const std::filesystem::path kStateFilePath = kStateDir / "state.json";
+inline const std::filesystem::path kLockFilePath =
+    kStateDir / "vkms_controller.lock";
 
 }  // namespace vkms_controller
 }  // namespace cuttlefish

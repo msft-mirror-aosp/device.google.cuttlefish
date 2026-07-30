@@ -25,7 +25,9 @@
 #include <log/log.h>
 #include <string.h>
 #include <sys/ioctl.h>
+#include <regex>
 
+#include <android-base/parseint.h>
 #include <android-base/result.h>
 
 using ::android::base::borrowed_fd;
@@ -85,6 +87,32 @@ Result<std::optional<int64_t>> LensFacingCtrl(borrowed_fd fd) {
     return ctrl_id;
   }
   return CtrlValue(fd, ctrl_id.value().value());
+}
+
+Result<std::string> DevNameToCameraId(const std::string& devName) {
+  static const std::regex kDevicePathRE("/dev/video([0-9]+)");
+  std::smatch sm;
+  if (!std::regex_match(devName, sm, kDevicePathRE)) {
+    return android::base::Error()
+           << "Device name does not match expected format: " << devName;
+  }
+  int nodeIndex;
+  if (!android::base::ParseInt(sm[1].str(), &nodeIndex)) {
+    return android::base::Error()
+           << "Failed to parse video node index from " << sm[1].str();
+  }
+  return std::to_string(nodeIndex - kVideoNodeIdOffset);
+}
+
+Result<std::string> CameraIdToDevName(const std::string& cameraId) {
+  int id;
+  if (!android::base::ParseInt(cameraId, &id)) {
+    return android::base::Error() << "Failed to parse camera ID: " << cameraId;
+  }
+  if (id < 0) {
+    return android::base::Error() << "Camera ID cannot be negative: " << id;
+  }
+  return "/dev/video" + std::to_string(id + kVideoNodeIdOffset);
 }
 
 }  // namespace virtio_media
