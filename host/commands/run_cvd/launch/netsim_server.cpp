@@ -116,8 +116,10 @@ class NetsimServer : public CommandSource {
     // Port configuration.
     netsimd.AddParameter("--hci_port=", config_.rootcanal_hci_port());
 
-    netsimd.AddParameter("--grpc_uds_path=",
-                         grpc_socket_.CreateGrpcSocket("NetsimControlServer"));
+    if (EnableNetsimNfc(config_)) {
+      netsimd.AddParameter("--grpc_uds_path=", grpc_socket_.CreateGrpcSocket(
+                                                   "NetsimControlServer"));
+    }
 
     // When no connector is requested, add the instance number
     if (config_.netsim_connector_instance_num() ==
@@ -220,7 +222,7 @@ class NetsimServer : public CommandSource {
         device.chips.emplace_back(chip);
       }
       // Add nfc chip if enabled
-      if (config_.enable_host_nfc() && !config_.enable_host_nfc_connector()) {
+      if (EnableNetsimNfc(config_)) {
         Chip chip("NFC");
         chip.fd_in = CF_EXPECT(MakeFifo(instance, "nfc_fifo_vm.in"));
         chip.fd_out = CF_EXPECT(MakeFifo(instance, "nfc_fifo_vm.out"));
