@@ -80,3 +80,6 @@ TARGET_BOARD_INFO_FILE ?= device/google/cuttlefish/vsoc_riscv64/phone/android-in
 ifeq ($(TARGET_PRODUCT),aosp_cf_riscv64_phone)
 PRODUCT_SOONG_ONLY := $(RELEASE_SOONG_ONLY_CUTTLEFISH)
 endif
+
+# RISC-V does not support pvmfw yet
+PRODUCT_BUILD_PVMFW_IMAGE := false

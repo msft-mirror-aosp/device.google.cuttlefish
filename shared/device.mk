@@ -284,8 +284,8 @@ PRODUCT_PACKAGES += \
 #
 # Weaver aidl HAL
 #
-PRODUCT_PACKAGES += \
-    com.android.hardware.weaver.cf
+# TODO(b/262418065) Add a real weaver implementation
+
 
 #
 # Authsecret AIDL HAL
@@ -347,10 +347,12 @@ ifeq ($(RELEASE_WIDEVINE_CUTTLEFISH_L1),true)
     -include vendor/google/widevine/cdm/oemcrypto/opk/ports/linux/ta/common/wtpi_impl/test-only/device.mk
 endif
 
+# Widevine OEMCrypto AIDL (internal non-AOSP builds only)
+ifeq (,$(filter aosp_%,$(TARGET_PRODUCT)))
 ifeq ($(RELEASE_WIDEVINE_OEMCRYPTO_AIDL),true)
     -include vendor/google_shared/widevine/oemcrypto/oemcrypto/aidl/device.mk
 endif
-
+endif
 endif
 
 #
@@ -478,14 +480,12 @@ PRODUCT_PACKAGES += $(LOCAL_THERMAL_HAL_PRODUCT_PACKAGE)
 #
 # NPU HAL
 #
-ifeq ($(RELEASE_AIDL_USE_UNFROZEN),true)
-    PRODUCT_PACKAGES += \
-        com.android.hardware.npu.cf
+PRODUCT_PACKAGES += \
+    com.android.hardware.npu.cf
 
-    # Indicates that Cuttlefish has NPU support
-    PRODUCT_COPY_FILES += \
-        frameworks/native/data/etc/android.hardware.npu.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.npu.xml
-endif
+# Indicates that Cuttlefish has NPU support
+PRODUCT_COPY_FILES += \
+    frameworks/native/data/etc/android.hardware.npu.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.npu.xml
 
 # USB
 PRODUCT_PACKAGES += \

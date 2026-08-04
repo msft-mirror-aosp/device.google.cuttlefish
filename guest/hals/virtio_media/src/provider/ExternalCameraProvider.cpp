@@ -43,16 +43,14 @@ using ::android::hardware::camera::device::implementation::
 using ::android::hardware::camera::external::common::ExternalCameraConfig;
 
 namespace {
-// "device@<version>/external/<id>"
+// "device@<version>/internal/<id>"
 const std::regex kDeviceNameRE("device@([0-9]+\\.[0-9]+)/internal/(.+)");
 const int kMaxDevicePathLen = 256;
 constexpr char kDevicePath[] = "/dev/";
 constexpr char kPrefix[] = "video";
 constexpr int kPrefixLen = sizeof(kPrefix) - 1;
-constexpr int kDevicePrefixLen = sizeof(kDevicePath) + kPrefixLen - 1;
 
-bool matchDeviceName(int cameraIdOffset, const std::string& deviceName,
-                     std::string* deviceVersion,
+bool matchDeviceName(const std::string& deviceName, std::string* deviceVersion,
                      std::string* cameraDevicePath) {
   std::smatch sm;
   if (std::regex_match(deviceName, sm, kDeviceNameRE)) {
@@ -60,8 +58,12 @@ bool matchDeviceName(int cameraIdOffset, const std::string& deviceName,
       *deviceVersion = sm[1];
     }
     if (cameraDevicePath != nullptr) {
-      *cameraDevicePath =
-          "/dev/video" + std::to_string(std::stoi(sm[2]) - cameraIdOffset);
+      auto devName = cuttlefish::virtio_media::CameraIdToDevName(sm[2]);
+      if (!devName.ok()) {
+        ALOGE("%s: %s", __FUNCTION__, devName.error().message().c_str());
+        return false;
+      }
+      *cameraDevicePath = *devName;
     }
     return true;
   }
@@ -124,8 +126,8 @@ ndk::ScopedAStatus ExternalCameraProvider::getCameraDeviceInterface(
     return fromStatus(Status::ILLEGAL_ARGUMENT);
   }
   std::string cameraDevicePath, deviceVersion;
-  bool match = matchDeviceName(mCfg.cameraIdOffset, in_cameraDeviceName,
-                               &deviceVersion, &cameraDevicePath);
+  bool match =
+      matchDeviceName(in_cameraDeviceName, &deviceVersion, &cameraDevicePath);
 
   if (!match) {
     *_aidl_return = nullptr;
@@ -199,12 +201,14 @@ ExternalCameraProvider::isConcurrentStreamCombinationSupported(
 void ExternalCameraProvider::addExternalCamera(const char* devName) {
   ALOGV("%s: ExtCam: adding %s to External Camera HAL!", __FUNCTION__, devName);
   Mutex::Autolock _l(mLock);
-  std::string deviceName;
-  std::string cameraId = std::to_string(mCfg.cameraIdOffset +
-                                        std::atoi(devName + kDevicePrefixLen));
-  deviceName = std::string("device@") +
-               VirtioMediaCameraDevice::kDeviceVersion + "/internal/" +
-               cameraId;
+  auto cameraId = cuttlefish::virtio_media::DevNameToCameraId(devName);
+  if (!cameraId.ok()) {
+    ALOGE("%s: %s", __FUNCTION__, cameraId.error().message().c_str());
+    return;
+  }
+  std::string deviceName = std::string("device@") +
+                           VirtioMediaCameraDevice::kDeviceVersion +
+                           "/internal/" + *cameraId;
   mCameraStatusMap[deviceName] = CameraDeviceStatus::PRESENT;
   if (mCallback != nullptr) {
     mCallback->cameraDeviceStatusChange(deviceName,
@@ -271,12 +275,15 @@ void ExternalCameraProvider::deviceAdded(const char* devName) {
 void ExternalCameraProvider::deviceRemoved(const char* devName) {
   Mutex::Autolock _l(mLock);
   std::string deviceName;
-  std::string cameraId = std::to_string(mCfg.cameraIdOffset +
-                                        std::atoi(devName + kDevicePrefixLen));
+  auto cameraId = cuttlefish::virtio_media::DevNameToCameraId(devName);
+  if (!cameraId.ok()) {
+    ALOGE("%s: %s", __FUNCTION__, cameraId.error().message().c_str());
+    return;
+  }
 
   deviceName = std::string("device@") +
-               VirtioMediaCameraDevice::kDeviceVersion + "/external/" +
-               cameraId;
+               VirtioMediaCameraDevice::kDeviceVersion + "/internal/" +
+               *cameraId;
 
   if (mCameraStatusMap.erase(deviceName) == 0) {
     // Unknown device, do not fire callback

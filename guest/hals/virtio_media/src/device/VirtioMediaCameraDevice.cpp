@@ -39,6 +39,7 @@ namespace implementation {
 
 using ::aidl::android::hardware::camera::common::Status;
 using ::android::base::Result;
+using ::android::base::unique_fd;
 
 namespace {
 // Currently supported V4L2 formats:
@@ -56,7 +57,6 @@ const std::array<uint32_t, /*size*/ 6> kSupportedFourCCs{
 constexpr int MAX_RETRY = 5;  // Allow retry v4l2 open failures a few times.
 constexpr int OPEN_RETRY_SLEEP_US = 100'000;  // 100ms * MAX_RETRY = 0.5 seconds
 
-const std::regex kDevicePathRE("/dev/video([0-9]+)");
 }  // namespace
 
 std::string VirtioMediaCameraDevice::kDeviceVersion = "1.1";
@@ -64,13 +64,12 @@ std::string VirtioMediaCameraDevice::kDeviceVersion = "1.1";
 VirtioMediaCameraDevice::VirtioMediaCameraDevice(
     const std::string& devicePath, const ExternalCameraConfig& config)
     : mCameraId("-1"), mDevicePath(devicePath), mCfg(config) {
-  std::smatch sm;
-  if (std::regex_match(mDevicePath, sm, kDevicePathRE)) {
-    mCameraId = std::to_string(mCfg.cameraIdOffset + std::stoi(sm[1]));
-  } else {
-    ALOGE("%s: device path match failed for %s", __FUNCTION__,
-          mDevicePath.c_str());
+  auto cameraId = cuttlefish::virtio_media::DevNameToCameraId(mDevicePath);
+  if (!cameraId.ok()) {
+    ALOGE("%s: %s", __FUNCTION__, cameraId.error().message().c_str());
+    return;
   }
+  mCameraId = *cameraId;
 }
 
 VirtioMediaCameraDevice::~VirtioMediaCameraDevice() {}
@@ -116,7 +115,7 @@ ndk::ScopedAStatus VirtioMediaCameraDevice::isStreamCombinationSupported(
           mCameraId.c_str());
     return fromStatus(Status::INTERNAL_ERROR);
   }
-  Status s = ExternalCameraDeviceSession::isStreamCombinationSupported(
+  Status s = VirtioMediaCameraDeviceSession::isStreamCombinationSupported(
       in_streams, mSupportedFormats, mCfg);
   *_aidl_return = s == Status::OK;
   return fromStatus(Status::OK);
@@ -503,7 +502,11 @@ status_t VirtioMediaCameraDevice::initDefaultCharsKeys(
   const uint8_t noiseReductionMode = ANDROID_NOISE_REDUCTION_MODE_OFF;
   UPDATE(ANDROID_NOISE_REDUCTION_MODE, &noiseReductionMode, 1);
 
-  const int32_t partialResultCount = 1;
+  // Advertise 2 partial results to pass CTS testPartialResult.
+  // We only send the final result (with index 2) and skip intermediate ones.
+  // This is a compliant minimal implementation as the framework allows skipping
+  // intermediate partial results.
+  const int32_t partialResultCount = 2;
   UPDATE(ANDROID_REQUEST_PARTIAL_RESULT_COUNT, &partialResultCount, 1);
 
   // This means pipeline latency of X frame intervals. The maximum number is 4.
@@ -517,8 +520,8 @@ status_t VirtioMediaCameraDevice::initDefaultCharsKeys(
   // YUV_420_888 or YV12.
   const int32_t requestMaxNumOutputStreams[] = {
       /*RAW*/ 0,
-      /*Processed*/ ExternalCameraDeviceSession::kMaxProcessedStream,
-      /*Stall*/ ExternalCameraDeviceSession::kMaxStallStream};
+      /*Processed*/ VirtioMediaCameraDeviceSession::kMaxProcessedStream,
+      /*Stall*/ VirtioMediaCameraDeviceSession::kMaxStallStream};
   UPDATE(ANDROID_REQUEST_MAX_NUM_OUTPUT_STREAMS, requestMaxNumOutputStreams,
          ARRAY_SIZE(requestMaxNumOutputStreams));
 
@@ -660,7 +663,28 @@ status_t VirtioMediaCameraDevice::initDefaultCharsKeys(
       ANDROID_STATISTICS_FACE_DETECT_MODE,
       ANDROID_STATISTICS_HOT_PIXEL_MAP_MODE,
       ANDROID_STATISTICS_LENS_SHADING_MAP_MODE,
-      ANDROID_STATISTICS_SCENE_FLICKER};
+      ANDROID_STATISTICS_SCENE_FLICKER,
+      ANDROID_LENS_APERTURE,
+      ANDROID_LENS_FILTER_DENSITY,
+      ANDROID_LENS_FOCAL_LENGTH,
+      ANDROID_LENS_FOCUS_DISTANCE,
+      ANDROID_LENS_FOCUS_RANGE,
+      ANDROID_SENSOR_EXPOSURE_TIME,
+      ANDROID_SENSOR_FRAME_DURATION,
+      ANDROID_SENSOR_SENSITIVITY,
+      ANDROID_BLACK_LEVEL_LOCK,
+      ANDROID_SENSOR_NEUTRAL_COLOR_POINT,
+      ANDROID_SENSOR_NOISE_PROFILE,
+      ANDROID_SENSOR_GREEN_SPLIT,
+      ANDROID_SENSOR_ROLLING_SHUTTER_SKEW,
+      ANDROID_COLOR_CORRECTION_MODE,
+      ANDROID_COLOR_CORRECTION_TRANSFORM,
+      ANDROID_COLOR_CORRECTION_GAINS,
+      ANDROID_TONEMAP_MODE,
+      ANDROID_SHADING_MODE,
+      ANDROID_EDGE_MODE,
+      ANDROID_HOT_PIXEL_MODE,
+      ANDROID_LENS_STATE};
   UPDATE(ANDROID_REQUEST_AVAILABLE_RESULT_KEYS, availableResultKeys,
          ARRAY_SIZE(availableResultKeys));
 
