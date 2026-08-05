@@ -35,7 +35,6 @@ java_test_host {
         "device-tests",
     ],
     libs: [
-        "compatibility-host-util",
         "cts-tradefed",
         "tradefed",
     ],
@@ -64,7 +63,6 @@ java_test_host {
         "device-tests",
     ],
     libs: [
-        "compatibility-host-util",
         "cts-tradefed",
         "tradefed",
     ],
@@ -93,7 +91,6 @@ java_test_host {
         "device-tests",
     ],
     libs: [
-        "compatibility-host-util",
         "cts-tradefed",
         "tradefed",
     ],
@@ -122,7 +119,6 @@ java_test_host {
         "device-tests",
     ],
     libs: [
-        "compatibility-host-util",
         "cts-tradefed",
         "tradefed",
     ],
