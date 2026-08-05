@@ -26,7 +26,6 @@ java_library_host {
         "auto_value_plugin",
     ],
     libs: [
-        "compatibility-host-util",
         "tradefed",
     ],
 }
