@@ -1103,6 +1103,8 @@ class CuttlefishConfig {
 // device would actually perform a restore instead of their respective actions.
 bool IsRestoring(const CuttlefishConfig&);
 
+bool EnableNetsimNfc(const CuttlefishConfig& config);
+
 // Vhost-user-vsock modes
 extern const char* const kVhostUserVsockModeAuto;
 extern const char* const kVhostUserVsockModeTrue;
