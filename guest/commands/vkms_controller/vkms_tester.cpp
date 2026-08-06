@@ -373,7 +373,7 @@ bool VkmsTester::ToggleVkms(bool enable) {
 std::vector<std::string> VkmsTester::StopDisplayStack() {
   // We must stop the display stack before reconfiguring VKMS.
   // The correct order for stopping is reverse-dependency:
-  // Zygote -> Boot Animation -> SurfaceFlinger -> HWC.
+  // Zygote -> Boot Animation -> SurfaceFlinger -> HWC -> Allocator.
   //
   // CRITICAL: We dynamically track which services were actually 'running'
   // before we stopped them. This prevents us from unconditionally restarting
@@ -389,8 +389,12 @@ std::vector<std::string> VkmsTester::StopDisplayStack() {
   // triggers an uncontrolled restart cascade that races with our vkms_tester
   // configuration, resulting in system instability and flaky tests. By
   // gracefully stopping zygote first, we safely drain the UI framework stack.
-  std::vector<std::string> services = {"zygote_secondary", "zygote", "bootanim",
-                                       "surfaceflinger", "vendor.hwcomposer-3"};
+  std::vector<std::string> services = {"zygote_secondary",
+                                       "zygote",
+                                       "bootanim",
+                                       "surfaceflinger",
+                                       "vendor.hwcomposer-3",
+                                       "vendor.graphics.allocator"};
   std::vector<std::string> services_to_restart;
 
   for (const auto& service : services) {
@@ -415,7 +419,7 @@ std::vector<std::string> VkmsTester::StopDisplayStack() {
     ALOGI("Successfully stopped %s", service.c_str());
   }
 
-  // Reverse to get the correct start order: hwc -> sf -> bootanim
+  // Reverse to get the correct start order: allocator -> hwc -> sf -> bootanim
   std::reverse(services_to_restart.begin(), services_to_restart.end());
   return services_to_restart;
 }
@@ -604,8 +608,6 @@ void VkmsTester::CleanUpConfigFs() {
             drm_device.c_str());
     }
   }
-  // Give the kernel a longer time to release resources
-  std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
   // Clean up manually created relationships first under
   // possible_(crtcs/encoders). This is required before we started cleaning up
@@ -619,6 +621,7 @@ void VkmsTester::CleanUpConfigFs() {
 // every layer.
 void VkmsTester::ShutdownAndCleanUpVkms() {
   std::vector<std::string> services_to_restart = StopDisplayStack();
+
   CleanUpConfigFs();
   ToggleVkmsAsDisplayDriver(false);
   StartDisplayStack(services_to_restart);
