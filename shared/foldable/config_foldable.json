@@ -1,7 +1,7 @@
 {
 	"display0" : "width=1768,height=2208,dpi=374",
 	"display1" : "width=832,height=2268,dpi=387",
-	"memory_mb" : 4096,
+	"memory_mb" : 6144,
 	"custom_actions" : [
                 {
                         "device_states": [
