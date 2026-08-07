@@ -282,13 +282,6 @@ PRODUCT_PACKAGES += \
     android.hidl.allocator@1.0-service
 
 #
-# Codec2 AIDL HAL
-#
-PRODUCT_PACKAGES += \
-    android.hardware.media.c2-service-cuttlefish
-
-
-#
 # Weaver aidl HAL
 #
 # TODO(b/262418065) Add a real weaver implementation
