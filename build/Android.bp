@@ -290,7 +290,9 @@ cvd_host_webrtc_assets = [
 
 cvd_host_model_simulator_files = [
     "iccprofile_for_sim0.xml_host",
+    "iccprofile_for_sim1.xml_host",
     "iccprofile_for_sim0_for_CtsCarrierApiTestCases.xml_host",
+    "iccprofile_for_sim1_for_CtsCarrierApiTestCases.xml_host",
     "numeric_operator.xml_host",
 ]
 
