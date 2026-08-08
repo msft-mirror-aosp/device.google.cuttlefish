@@ -18,6 +18,7 @@
 
 #include <android-base/file.h>
 #include <android-base/properties.h>
+#include <android-base/scopeguard.h>
 #include <android-base/strings.h>
 #include <android-base/unique_fd.h>
 #include <cutils/properties.h>
@@ -162,17 +163,28 @@ VkmsTester::VkmsTester(size_t displaysCount,
 
   std::unordered_set<std::string> existing_cards = GetExistingDrmDevices();
 
+  bool vkms_setup_success = false;
+  auto stack_guard = android::base::make_scope_guard(
+      [&vkms_setup_success, &services_to_restart, this]() {
+        if (!vkms_setup_success) {
+          CleanUpConfigFs();
+        }
+        if (!StartDisplayStack(services_to_restart)) {
+          ALOGE("Failed to start display stack");
+        } else if (vkms_setup_success) {
+          this->mInitialized = true;
+        }
+      });
+
   if (!ToggleVkmsAsDisplayDriver(true) ||
       !SetupDisplays(displaysCount, builders) || !ToggleVkms(true)) {
     ALOGE("Failed to set up VKMS");
-    CleanUpConfigFs();
     return;
   }
 
   std::optional<std::string> new_card_opt = WaitForNewDrmDevice(existing_cards);
   if (!new_card_opt.has_value()) {
     ALOGE("Timed out waiting for new VKMS DRM card to appear");
-    CleanUpConfigFs();
     return;
   }
 
@@ -182,16 +194,12 @@ VkmsTester::VkmsTester(size_t displaysCount,
                                       std::chrono::milliseconds(5000))) {
     ALOGE("Failed to set vendor.hwc.drm.device property to %s",
           new_card.c_str());
-    CleanUpConfigFs();
     return;
   }
   ALOGI("Successfully detected and set vendor.hwc.drm.device to %s",
         new_card.c_str());
 
-  mInitialized = StartDisplayStack(services_to_restart);
-  if (!mInitialized) {
-    ALOGE("Failed to start display stack");
-  }
+  vkms_setup_success = true;
 }
 
 // static
