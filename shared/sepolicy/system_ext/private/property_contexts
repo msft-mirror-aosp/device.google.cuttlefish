@@ -7,3 +7,7 @@ persist.vendor.radio.videopause.mode            u:object_r:vendor_radio_prop:s0
 persist.vendor.radio.smlog_switch               u:object_r:vendor_radio_prop:s0
 ro.vendor.radio.log_loc                         u:object_r:vendor_radio_prop:s0
 ro.vendor.radio.log_prefix                      u:object_r:vendor_radio_prop:s0
+
+vendor.minigbm.p010  u:object_r:vendor_minigbm_prop:s0 exact bool
+vendor.minigbm.p210  u:object_r:vendor_minigbm_prop:s0 exact bool
+vendor.minigbm.debug u:object_r:vendor_minigbm_prop:s0 exact string
