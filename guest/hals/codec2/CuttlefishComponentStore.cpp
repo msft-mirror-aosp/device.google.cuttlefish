@@ -23,6 +23,8 @@
 #include <android-base/properties.h>
 #include <utils/Log.h>
 
+#include "C2CuttlefishHevcDec.h"
+
 namespace android {
 
 CuttlefishComponentStore::StoreInterface::StoreInterface(
@@ -86,7 +88,7 @@ CuttlefishComponentStore::CuttlefishComponentStore()
 }
 
 void CuttlefishComponentStore::initCodecs() {
-  // Detached codec plugins register here.
+  RegisterCuttlefishHevcDec(this, mReflector);
 }
 
 void CuttlefishComponentStore::registerCodec(
