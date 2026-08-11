@@ -8,12 +8,7 @@
 	"touchpad": "width=1600,height=900",
 	"custom_actions" : [
 		{
-				"device_states": [
-						{
-								"lid_switch_open": true,
-								"hinge_angle_value": 90
-						}
-				],
+				"shell_command": "cmd device_state base-state 2",
 				"button":{
 						"command":"open_lid",
 						"title":"Open lid",
@@ -21,16 +16,19 @@
 				}
 		},
 		{
-				"device_states": [
-						{
-								"lid_switch_open": false,
-								"hinge_angle_value": 0
-						}
-				],
+				"shell_command": "cmd device_state base-state 0",
 				"button":{
 						"command":"close_lid",
 						"title":"Close lid",
 						"icon_name":"cancel_presentation"
+				}
+		},
+		{
+				"shell_command": "cmd device_state base-state 1",
+				"button":{
+						"command":"dock",
+						"title":"Dock",
+						"icon_name":"connected_tv"
 				}
 		}
 	]

@@ -21,4 +21,6 @@
     <item target="array/config_carEvsService" value="@array/config_carEvsService" />
     <item target="bool/audioUseMinMaxActivationVolume" value="@bool/audioUseMinMaxActivationVolume" />
     <item target="bool/audioUseCarVolumeGroupEvent" value="@bool/audioUseCarVolumeGroupEvent" />
+    <item target="array/config_earlyStartupServices" value="@array/config_earlyStartupServices" />
+    <item target="string/activityAllowlist" value="@string/activityAllowlist" />
 </overlay>

@@ -20,6 +20,12 @@
 # NOTE: This must be set before inheriting car_generic_system.mk
 USE_DEFAULT_HW_TIMEOUT_MULTIPLIER?=false
 
+# TODO: b/510265107 - Use a build flag instead of the hardcoded true value
+# (e.g. RELEASE_CAR_SDV_ENABLE_INTEGRATION)
+# NOTE: This must be set before inheriting car_generic_system.mk to allow the
+# inclusion of SDV components that go to system image
+ENABLE_SDV_INTEGRATION ?= true
+
 #
 # All components inherited here go to system image
 #
@@ -70,3 +76,8 @@ PRODUCT_MODEL := Cuttlefish arm64 auto
 PRODUCT_VENDOR_PROPERTIES += \
     ro.soc.manufacturer=$(PRODUCT_MANUFACTURER) \
     ro.soc.model=$(PRODUCT_DEVICE)
+
+# SDV components that don't go to system image
+ifeq ($(ENABLE_SDV_INTEGRATION),true)
+    $(call inherit-product, device/google/sdv/sdv_ivi/sdv_ivi.mk)
+endif

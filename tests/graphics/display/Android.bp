@@ -14,7 +14,7 @@
 
 package {
     default_applicable_licenses: ["Android-Apache-2.0"],
-    default_team: "trendy_team_android_core_graphics_stack",
+    default_team: "trendy_team_desktop_display",
 }
 
 java_test_host {
@@ -35,7 +35,6 @@ java_test_host {
         "device-tests",
     ],
     libs: [
-        "compatibility-host-util",
         "cts-tradefed",
         "tradefed",
     ],
@@ -48,7 +47,6 @@ java_test_host {
 
 java_test_host {
     name: "CfVkmsCursorTest",
-    team: "trendy_team_desktop_display",
     defaults: [
         "cuttlefish_host_test_utils_defaults",
     ],
@@ -65,7 +63,6 @@ java_test_host {
         "device-tests",
     ],
     libs: [
-        "compatibility-host-util",
         "cts-tradefed",
         "tradefed",
     ],
@@ -94,7 +91,6 @@ java_test_host {
         "device-tests",
     ],
     libs: [
-        "compatibility-host-util",
         "cts-tradefed",
         "tradefed",
     ],
@@ -123,7 +119,6 @@ java_test_host {
         "device-tests",
     ],
     libs: [
-        "compatibility-host-util",
         "cts-tradefed",
         "tradefed",
     ],
