@@ -138,6 +138,11 @@ BOARD_VENDOR_RAMDISK_KERNEL_MODULES += \
 	$(wildcard $(SYSTEM_VIRTIO_PREBUILTS_PATH)/vmw_vsock_virtio_transport_common.ko) \
 	$(wildcard $(SYSTEM_VIRTIO_PREBUILTS_PATH)/vsock.ko)
 
+ifeq ($(TARGET_KERNEL_ARCH),arm64)
+# Support pKVM hypervisor protected modules
+BOARD_VENDOR_RAMDISK_KERNEL_MODULES += $(wildcard $(KERNEL_MODULES_PATH)/pkvm_iommu_temp.ko)
+endif
+
 BOARD_DO_NOT_STRIP_VENDOR_RAMDISK_MODULES := true
 BOARD_VENDOR_KERNEL_MODULES := \
     $(filter-out $(BOARD_VENDOR_RAMDISK_KERNEL_MODULES),\
