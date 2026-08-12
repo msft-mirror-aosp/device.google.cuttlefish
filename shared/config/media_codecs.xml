@@ -87,6 +87,7 @@ Only the three quirks included above are recognized at this point:
 
     <Decoders>
         <MediaCodec name="c2.cuttlefish.hevc.decoder" type="video/hevc">
+            <Attribute name="software-codec" />
             <Limit name="size" min="2x2" max="4096x4096" />
             <Limit name="alignment" value="2x2" />
             <Limit name="block-size" value="8x8" />
