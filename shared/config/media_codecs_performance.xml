@@ -151,6 +151,19 @@
             <!-- 4 runs, min 80 max 89 gmean 84 -->
             <Limit name="measured-frame-rate-1920x1080" range="80-89" />
         </MediaCodec>
+        <MediaCodec name="c2.cuttlefish.hevc.decoder" type="video/hevc" update="true">
+            <!-- This is actually a copy of c2.android.hevc.decoder -->
+            <!-- 4 runs, min 234 max 315 gmean 276 -->
+            <Limit name="measured-frame-rate-352x288" range="234-315" />
+            <!-- 4 runs, min 215 max 267 gmean 242 -->
+            <Limit name="measured-frame-rate-640x360" range="215-267" />
+            <!-- 4 runs, min 209 max 249 gmean 236 -->
+            <Limit name="measured-frame-rate-720x480" range="209-249" />
+            <!-- 4 runs, min 125 max 146 gmean 139 -->
+            <Limit name="measured-frame-rate-1280x720" range="125-146" />
+            <!-- 4 runs, min 80 max 89 gmean 84 -->
+            <Limit name="measured-frame-rate-1920x1080" range="80-89" />
+        </MediaCodec>
         <MediaCodec name="c2.android.mpeg4.decoder" type="video/mp4v-es" update="true">
             <!-- 4 runs, min 285 max 404 gmean 344 -->
             <Limit name="measured-frame-rate-176x144" range="285-404" />
