@@ -18,14 +18,17 @@
 # TODO: b/538257834 - Revert this once missing dependencies are resolved.
 ALLOW_MISSING_DEPENDENCIES := true
 
-# First enable HSUM, since it can affect subsequent mk behaviour.
-$(call inherit-product, build/make/target/product/hsu_as_login.mk)
+$(call inherit-product, $(SRC_TARGET_DIR)/product/desktop_common.mk)
+
+
 
 # TODO(b/489783760#comment12): Explicitly setting the variable is required,
-# rather than just inheriting it from hsu_as_login.mk; ideally, fix this.
+# rather than just inheriting hsu_as_login.mk through desktop_common.mk;
+# ideally, fix this.
 PRODUCT_USE_HSUM := true
 
-$(call inherit-product, $(SRC_TARGET_DIR)/product/generic_system.mk)
+$(call inherit-product, $(SRC_TARGET_DIR)/product/desktop_system.mk)
+
 $(call inherit-product, $(SRC_TARGET_DIR)/product/core_64_bit_only.mk)
 $(call inherit-product, $(SRC_TARGET_DIR)/product/generic_ramdisk.mk)
 $(call inherit-product, $(SRC_TARGET_DIR)/product/generic_no_telephony.mk)
