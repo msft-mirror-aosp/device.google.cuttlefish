@@ -85,6 +85,20 @@ Only the three quirks included above are recognized at this point:
         <Setting name="max-video-encoder-input-buffers" value="12" />
     </Settings>
 
+    <Decoders>
+        <MediaCodec name="c2.cuttlefish.hevc.decoder" type="video/hevc">
+            <Attribute name="software-codec" />
+            <Limit name="size" min="2x2" max="4096x4096" />
+            <Limit name="alignment" value="2x2" />
+            <Limit name="block-size" value="8x8" />
+            <Limit name="block-count" range="1-196608" />
+            <Limit name="blocks-per-second" range="1-2000000" />
+            <Limit name="bitrate" range="1-10000000" />
+            <Limit name="concurrent-instances" max="32" />
+            <Feature name="adaptive-playback" />
+        </MediaCodec>
+    </Decoders>
+
     <Include href="media_codecs_google_tv.xml" />
     <Include href="media_codecs_google_audio.xml" />
     <Include href="media_codecs_google_telephony.xml" />

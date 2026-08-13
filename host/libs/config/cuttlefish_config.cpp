@@ -16,6 +16,7 @@
 
 #include "host/libs/config/cuttlefish_config.h"
 
+#include <time.h>
 #include <algorithm>
 #include <climits>
 #include <cstdint>
@@ -26,7 +27,6 @@
 #include <iterator>
 #include <sstream>
 #include <string>
-#include <time.h>
 
 #include <android-base/strings.h>
 #include <json/json.h>
@@ -61,6 +61,10 @@ std::string DefaultEnvironmentPath(const char* environment_key,
                                    const char* default_value,
                                    const char* subpath) {
   return StringFromEnv(environment_key, default_value) + "/" + subpath;
+}
+
+bool EnableNetsimNfc(const CuttlefishConfig& config) {
+  return config.enable_host_nfc() && !config.enable_host_nfc_connector();
 }
 
 bool IsRestoring(const CuttlefishConfig& config) {
@@ -148,7 +152,8 @@ static constexpr char kGem5DebugFlags[] = "gem5_debug_flags";
 std::string CuttlefishConfig::gem5_debug_flags() const {
   return (*dictionary_)[kGem5DebugFlags].asString();
 }
-void CuttlefishConfig::set_gem5_debug_flags(const std::string& gem5_debug_flags) {
+void CuttlefishConfig::set_gem5_debug_flags(
+    const std::string& gem5_debug_flags) {
   (*dictionary_)[kGem5DebugFlags] = gem5_debug_flags;
 }
 
@@ -317,8 +322,6 @@ void CuttlefishConfig::set_casimir_rf_port(int port) {
 int CuttlefishConfig::casimir_rf_port() const {
   return (*dictionary_)[kCasimirRfPort].asInt();
 }
-
-
 
 static constexpr char kNetsimInstanceNum[] = "netsim_instance_num";
 int CuttlefishConfig::netsim_instance_num() const {
@@ -560,8 +563,8 @@ CuttlefishConfig::GetFromFile(const std::string& path) {
 }
 
 /*static*/ bool CuttlefishConfig::ConfigExists() {
-  auto config_file_path = StringFromEnv(kCuttlefishConfigEnvVarName,
-                                        GetGlobalConfigFileLink());
+  auto config_file_path =
+      StringFromEnv(kCuttlefishConfigEnvVarName, GetGlobalConfigFileLink());
   auto real_file_path = AbsolutePath(config_file_path.c_str());
   return FileExists(real_file_path);
 }
@@ -612,8 +615,7 @@ std::string CuttlefishConfig::assembly_dir() const {
   return AbsolutePath(root_dir() + "/assembly");
 }
 
-std::string CuttlefishConfig::AssemblyPath(
-    const std::string& file_name) const {
+std::string CuttlefishConfig::AssemblyPath(const std::string& file_name) const {
   return AbsolutePath(assembly_dir() + "/" + file_name);
 }
 
@@ -652,11 +654,13 @@ std::string CuttlefishConfig::EnvironmentsUdsPath(
   return AbsolutePath(environments_uds_dir() + "/" + file_name);
 }
 
-CuttlefishConfig::MutableInstanceSpecific CuttlefishConfig::ForInstance(int num) {
+CuttlefishConfig::MutableInstanceSpecific CuttlefishConfig::ForInstance(
+    int num) {
   return MutableInstanceSpecific(this, std::to_string(num));
 }
 
-CuttlefishConfig::InstanceSpecific CuttlefishConfig::ForInstance(int num) const {
+CuttlefishConfig::InstanceSpecific CuttlefishConfig::ForInstance(
+    int num) const {
   return InstanceSpecific(this, std::to_string(num));
 }
 
@@ -665,11 +669,13 @@ CuttlefishConfig::InstanceSpecific CuttlefishConfig::ForInstanceName(
   return ForInstance(InstanceFromString(name));
 }
 
-CuttlefishConfig::InstanceSpecific CuttlefishConfig::ForDefaultInstance() const {
+CuttlefishConfig::InstanceSpecific CuttlefishConfig::ForDefaultInstance()
+    const {
   return ForInstance(GetInstance());
 }
 
-std::vector<CuttlefishConfig::InstanceSpecific> CuttlefishConfig::Instances() const {
+std::vector<CuttlefishConfig::InstanceSpecific> CuttlefishConfig::Instances()
+    const {
   const auto& json = (*dictionary_)[kInstances];
   std::vector<CuttlefishConfig::InstanceSpecific> instances;
   for (const auto& name : json.getMemberNames()) {

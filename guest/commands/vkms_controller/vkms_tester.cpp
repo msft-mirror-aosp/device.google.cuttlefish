@@ -18,6 +18,7 @@
 
 #include <android-base/file.h>
 #include <android-base/properties.h>
+#include <android-base/scopeguard.h>
 #include <android-base/strings.h>
 #include <android-base/unique_fd.h>
 #include <cutils/properties.h>
@@ -162,17 +163,28 @@ VkmsTester::VkmsTester(size_t displaysCount,
 
   std::unordered_set<std::string> existing_cards = GetExistingDrmDevices();
 
+  bool vkms_setup_success = false;
+  auto stack_guard = android::base::make_scope_guard(
+      [&vkms_setup_success, &services_to_restart, this]() {
+        if (!vkms_setup_success) {
+          CleanUpConfigFs();
+        }
+        if (!StartDisplayStack(services_to_restart)) {
+          ALOGE("Failed to start display stack");
+        } else if (vkms_setup_success) {
+          this->mInitialized = true;
+        }
+      });
+
   if (!ToggleVkmsAsDisplayDriver(true) ||
       !SetupDisplays(displaysCount, builders) || !ToggleVkms(true)) {
     ALOGE("Failed to set up VKMS");
-    CleanUpConfigFs();
     return;
   }
 
   std::optional<std::string> new_card_opt = WaitForNewDrmDevice(existing_cards);
   if (!new_card_opt.has_value()) {
     ALOGE("Timed out waiting for new VKMS DRM card to appear");
-    CleanUpConfigFs();
     return;
   }
 
@@ -182,16 +194,12 @@ VkmsTester::VkmsTester(size_t displaysCount,
                                       std::chrono::milliseconds(5000))) {
     ALOGE("Failed to set vendor.hwc.drm.device property to %s",
           new_card.c_str());
-    CleanUpConfigFs();
     return;
   }
   ALOGI("Successfully detected and set vendor.hwc.drm.device to %s",
         new_card.c_str());
 
-  mInitialized = StartDisplayStack(services_to_restart);
-  if (!mInitialized) {
-    ALOGE("Failed to start display stack");
-  }
+  vkms_setup_success = true;
 }
 
 // static
@@ -373,7 +381,7 @@ bool VkmsTester::ToggleVkms(bool enable) {
 std::vector<std::string> VkmsTester::StopDisplayStack() {
   // We must stop the display stack before reconfiguring VKMS.
   // The correct order for stopping is reverse-dependency:
-  // Zygote -> Boot Animation -> SurfaceFlinger -> HWC.
+  // Zygote -> Boot Animation -> SurfaceFlinger -> HWC -> Allocator.
   //
   // CRITICAL: We dynamically track which services were actually 'running'
   // before we stopped them. This prevents us from unconditionally restarting
@@ -389,8 +397,12 @@ std::vector<std::string> VkmsTester::StopDisplayStack() {
   // triggers an uncontrolled restart cascade that races with our vkms_tester
   // configuration, resulting in system instability and flaky tests. By
   // gracefully stopping zygote first, we safely drain the UI framework stack.
-  std::vector<std::string> services = {"zygote_secondary", "zygote", "bootanim",
-                                       "surfaceflinger", "vendor.hwcomposer-3"};
+  std::vector<std::string> services = {"zygote_secondary",
+                                       "zygote",
+                                       "bootanim",
+                                       "surfaceflinger",
+                                       "vendor.hwcomposer-3",
+                                       "vendor.graphics.allocator"};
   std::vector<std::string> services_to_restart;
 
   for (const auto& service : services) {
@@ -415,7 +427,7 @@ std::vector<std::string> VkmsTester::StopDisplayStack() {
     ALOGI("Successfully stopped %s", service.c_str());
   }
 
-  // Reverse to get the correct start order: hwc -> sf -> bootanim
+  // Reverse to get the correct start order: allocator -> hwc -> sf -> bootanim
   std::reverse(services_to_restart.begin(), services_to_restart.end());
   return services_to_restart;
 }
@@ -604,8 +616,6 @@ void VkmsTester::CleanUpConfigFs() {
             drm_device.c_str());
     }
   }
-  // Give the kernel a longer time to release resources
-  std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
   // Clean up manually created relationships first under
   // possible_(crtcs/encoders). This is required before we started cleaning up
@@ -619,6 +629,7 @@ void VkmsTester::CleanUpConfigFs() {
 // every layer.
 void VkmsTester::ShutdownAndCleanUpVkms() {
   std::vector<std::string> services_to_restart = StopDisplayStack();
+
   CleanUpConfigFs();
   ToggleVkmsAsDisplayDriver(false);
   StartDisplayStack(services_to_restart);

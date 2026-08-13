@@ -100,6 +100,7 @@
 /vendor/bin/hw/android\.hardware\.drm-service\.widevine  u:object_r:hal_drm_widevine_exec:s0
 /vendor/bin/hw/android\.hardware\.drm@[0-9]+\.[0-9]+-service-lazy\.widevine  u:object_r:hal_drm_widevine_exec:s0
 /vendor/bin/hw/android\.hardware\.gatekeeper@1\.0-service\.software  u:object_r:hal_gatekeeper_default_exec:s0
+/vendor/bin/hw/android\.hardware\.media\.c2-service-cuttlefish u:object_r:mediacodec_exec:s0
 /vendor/bin/hw/android\.hardware\.health-service\.cuttlefish u:object_r:hal_health_default_exec:s0
 /vendor/bin/hw/android\.hardware\.health\.storage-service\.cuttlefish u:object_r:hal_health_storage_default_exec:s0
 /vendor/bin/hw/android\.hardware\.lights-service\.cuttlefish u:object_r:hal_light_cuttlefish_exec:s0

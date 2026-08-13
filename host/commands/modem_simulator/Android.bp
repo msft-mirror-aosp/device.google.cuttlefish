@@ -78,10 +78,26 @@ prebuilt_etc {
 }
 
 prebuilt_etc {
+    name: "iccprofile_for_sim1.xml",
+    vendor: true,
+    src: "files/iccprofile_for_sim1.xml",
+    filename: "iccprofile_for_sim1.xml",
+    sub_dir: "modem_simulator/files",
+}
+
+prebuilt_etc {
     name: "iccprofile_for_sim0_for_CtsCarrierApiTestCases.xml",
     vendor: true,
     src: "files/iccprofile_for_sim0_for_CtsCarrierApiTestCases.xml",
     filename: "iccprofile_for_sim0_for_CtsCarrierApiTestCases.xml",
+    sub_dir: "modem_simulator/files",
+}
+
+prebuilt_etc {
+    name: "iccprofile_for_sim1_for_CtsCarrierApiTestCases.xml",
+    vendor: true,
+    src: "files/iccprofile_for_sim1_for_CtsCarrierApiTestCases.xml",
+    filename: "iccprofile_for_sim1_for_CtsCarrierApiTestCases.xml",
     sub_dir: "modem_simulator/files",
 }
 
@@ -101,9 +117,23 @@ prebuilt_etc_host {
 }
 
 prebuilt_etc_host {
+    name: "iccprofile_for_sim1.xml_host",
+    src: "files/iccprofile_for_sim1.xml",
+    filename: "iccprofile_for_sim1.xml",
+    sub_dir: "modem_simulator/files",
+}
+
+prebuilt_etc_host {
     name: "iccprofile_for_sim0_for_CtsCarrierApiTestCases.xml_host",
     src: "files/iccprofile_for_sim0_for_CtsCarrierApiTestCases.xml",
     filename: "iccprofile_for_sim0_for_CtsCarrierApiTestCases.xml",
+    sub_dir: "modem_simulator/files",
+}
+
+prebuilt_etc_host {
+    name: "iccprofile_for_sim1_for_CtsCarrierApiTestCases.xml_host",
+    src: "files/iccprofile_for_sim1_for_CtsCarrierApiTestCases.xml",
+    filename: "iccprofile_for_sim1_for_CtsCarrierApiTestCases.xml",
     sub_dir: "modem_simulator/files",
 }
 
