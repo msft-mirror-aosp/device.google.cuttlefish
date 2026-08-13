@@ -27,6 +27,7 @@
 #include <log/log.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <system_error>
 
 #include <cassert>
 #include <chrono>  // NOLINT(build/c++11)
@@ -158,21 +159,22 @@ std::unique_ptr<VkmsTester> VkmsTester::CreateWithGenericConnectors(
 
 VkmsTester::VkmsTester(size_t displaysCount,
                        const std::vector<VkmsConnectorBuilder>& builders) {
-  std::vector<std::string> services_to_restart = StopDisplayStack();
+  auto display_guard = StopDisplayStack();
+  if (!display_guard) {
+    ALOGE("Failed to safely stop display stack; aborting VKMS setup.");
+    return;
+  }
+
   CleanUpConfigFs();
 
   std::unordered_set<std::string> existing_cards = GetExistingDrmDevices();
 
   bool vkms_setup_success = false;
-  auto stack_guard = android::base::make_scope_guard(
-      [&vkms_setup_success, &services_to_restart, this]() {
+  auto cleanup_guard =
+      android::base::make_scope_guard([&vkms_setup_success, this]() {
         if (!vkms_setup_success) {
           CleanUpConfigFs();
-        }
-        if (!StartDisplayStack(services_to_restart)) {
-          ALOGE("Failed to start display stack");
-        } else if (vkms_setup_success) {
-          this->mInitialized = true;
+          ToggleVkmsAsDisplayDriver(false);
         }
       });
 
@@ -200,6 +202,15 @@ VkmsTester::VkmsTester(size_t displaysCount,
         new_card.c_str());
 
   vkms_setup_success = true;
+
+  if (!display_guard->Start()) {
+    ALOGE("Failed to start display stack after successful VKMS setup");
+    vkms_setup_success = false;
+  }
+
+  if (vkms_setup_success) {
+    this->mInitialized = true;
+  }
 }
 
 // static
@@ -378,10 +389,10 @@ bool VkmsTester::ToggleVkms(bool enable) {
 }
 
 // static
-std::vector<std::string> VkmsTester::StopDisplayStack() {
+std::optional<VkmsTester::DisplayStackGuard> VkmsTester::StopDisplayStack() {
   // We must stop the display stack before reconfiguring VKMS.
   // The correct order for stopping is reverse-dependency:
-  // Zygote -> Boot Animation -> SurfaceFlinger -> HWC -> Allocator.
+  // Zygote -> Boot Animation -> SurfaceFlinger -> HWC.
   //
   // CRITICAL: We dynamically track which services were actually 'running'
   // before we stopped them. This prevents us from unconditionally restarting
@@ -397,12 +408,13 @@ std::vector<std::string> VkmsTester::StopDisplayStack() {
   // triggers an uncontrolled restart cascade that races with our vkms_tester
   // configuration, resulting in system instability and flaky tests. By
   // gracefully stopping zygote first, we safely drain the UI framework stack.
-  std::vector<std::string> services = {"zygote_secondary",
-                                       "zygote",
-                                       "bootanim",
-                                       "surfaceflinger",
-                                       "vendor.hwcomposer-3",
-                                       "vendor.graphics.allocator"};
+  //
+  // NOTE: We do not kill `vendor.graphics.allocator`. Native host tests (e.g.
+  // VkmsTestHwcWriteback) run multiple test cases in a single process.
+  // Bouncing the allocator breaks libui's static Binder cache, causing "-129
+  // EX_TRANSACTION_FAILED" on subsequent tests.
+  std::vector<std::string> services = {"zygote_secondary", "zygote", "bootanim",
+                                       "surfaceflinger", "vendor.hwcomposer-3"};
   std::vector<std::string> services_to_restart;
 
   for (const auto& service : services) {
@@ -412,24 +424,32 @@ std::vector<std::string> VkmsTester::StopDisplayStack() {
       ALOGI("Service %s not found, skipping", service.c_str());
       continue;
     }
-    if (state == "running" || state == "restarting") {
-      services_to_restart.push_back(service);
-    }
+    bool was_running = (state == "running" || state == "restarting");
+
     if (property_set("ctl.stop", service.c_str()) != 0) {
       ALOGE("Failed to set property ctl.stop to %s", service.c_str());
-      continue;
+      std::reverse(services_to_restart.begin(), services_to_restart.end());
+      StartDisplayStack(services_to_restart);
+      return std::nullopt;
     }
     if (!android::base::WaitForProperty("init.svc." + service, "stopped",
                                         std::chrono::seconds(15))) {
       ALOGE("Timed out waiting for %s to stop", service.c_str());
-      continue;
+      std::reverse(services_to_restart.begin(), services_to_restart.end());
+      StartDisplayStack(services_to_restart);
+      return std::nullopt;
+    }
+
+    if (was_running) {
+      services_to_restart.push_back(service);
     }
     ALOGI("Successfully stopped %s", service.c_str());
   }
 
-  // Reverse to get the correct start order: allocator -> hwc -> sf -> bootanim
+  // Reverse to get the correct start order: hwc -> sf -> bootanim
   std::reverse(services_to_restart.begin(), services_to_restart.end());
-  return services_to_restart;
+
+  return DisplayStackGuard(std::move(services_to_restart));
 }
 
 // static
@@ -628,15 +648,18 @@ void VkmsTester::CleanUpConfigFs() {
 // ConfigFS has special rules about deletion, so we need to clean up manually
 // every layer.
 void VkmsTester::ShutdownAndCleanUpVkms() {
-  std::vector<std::string> services_to_restart = StopDisplayStack();
-  auto stack_guard = android::base::make_scope_guard([&services_to_restart]() {
-    if (!StartDisplayStack(services_to_restart)) {
-      ALOGE("Failed to restart display stack during shutdown");
-    }
-  });
+  auto display_guard = StopDisplayStack();
+  if (!display_guard) {
+    ALOGE("Failed to safely stop display stack; aborting VKMS cleanup.");
+    return;
+  }
 
   CleanUpConfigFs();
   ToggleVkmsAsDisplayDriver(false);
+
+  if (!display_guard->Start()) {
+    ALOGE("Failed to restart display stack during shutdown");
+  }
 }
 
 // static
@@ -704,7 +727,19 @@ void VkmsTester::CleanUpDirAndChildren(const std::string& dirPath) {
       ec.clear();
     }
   }
-  std::filesystem::remove(dirPath, ec);
+  int retries = 50;  // Try for up to 1 second (50 * 20ms)
+  while (retries-- > 0) {
+    std::filesystem::remove(dirPath, ec);
+    if (!ec) {
+      break;
+    }
+    if (ec == std::errc::device_or_resource_busy) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    } else {
+      break;
+    }
+  }
+
   if (ec) {
     ALOGW("Failed to remove directory %s: %s", dirPath.c_str(),
           ec.message().c_str());
