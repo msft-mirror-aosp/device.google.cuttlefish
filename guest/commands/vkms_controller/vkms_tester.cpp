@@ -629,10 +629,14 @@ void VkmsTester::CleanUpConfigFs() {
 // every layer.
 void VkmsTester::ShutdownAndCleanUpVkms() {
   std::vector<std::string> services_to_restart = StopDisplayStack();
+  auto stack_guard = android::base::make_scope_guard([&services_to_restart]() {
+    if (!StartDisplayStack(services_to_restart)) {
+      ALOGE("Failed to restart display stack during shutdown");
+    }
+  });
 
   CleanUpConfigFs();
   ToggleVkmsAsDisplayDriver(false);
-  StartDisplayStack(services_to_restart);
 }
 
 // static
