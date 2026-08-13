@@ -17,6 +17,8 @@ digraph {
     host_confirmationui_out [color = "red", label = "internal/confui_fifo_vm.out", shape = "rectangle"]
     host_keymint_in [color = "blue", label = "internal/keymint_fifo_vm.in", shape = "rectangle"]
     host_keymint_out [color = "blue", label = "internal/keymint_fifo_vm.out", shape = "rectangle"]
+    host_weaver_in [color = "purple", label = "internal/weaver_fifo_vm.in", shape = "rectangle"]
+    host_weaver_out [color = "purple", label = "internal/weaver_fifo_vm.out", shape = "rectangle"]
   }
 
   subgraph cluster_android {
@@ -24,6 +26,7 @@ digraph {
     u_boot [label = "u-boot"]
     confirmationui [color = "red", label = "ConfirmationUI HAL"]
     gatekeeper [color = "green", label = "Gatekeeper HAL"]
+    weaver [color = "purple", label = "Weaver HAL"]
     subgraph cluster_keymint {
       graph[style=dotted]
       label = "One of:"
@@ -37,6 +40,7 @@ digraph {
         gatekeeper_console [color = "green", label = "/dev/hvc4", shape = "rectangle"]
         keymaster_console [color = "blue", label = "/dev/hvc3", shape = "rectangle"]
         keymint_console [color = "blue", label = "/dev/hvc11", shape = "rectangle"]
+        weaver_console [color = "purple", label = "/dev/hvc13", shape = "rectangle"]
     }
   }
 
@@ -60,5 +64,9 @@ digraph {
   secure_env -> host_keymint_out -> vmm [color = "blue", dir = "back"]
   secure_env -> host_keymint_in -> vmm [color = "blue"]
   vmm -> keymint_console -> keymint [color = "blue", dir = "both"]
+
+  secure_env -> host_weaver_out -> vmm [color = "purple", dir = "back"]
+  secure_env -> host_weaver_in -> vmm [color = "purple"]
+  vmm -> weaver_console -> weaver [color = "purple", dir = "both"]
 
 }
