@@ -23,6 +23,7 @@
 #include <string_view>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "edid_helper.h"  // NOLINT(build/include_subdir)
@@ -186,13 +187,52 @@ class VkmsTester {
   bool SetupDisplays(int displaysCount,
                      const std::vector<VkmsConnectorBuilder>& builders);
   static bool ToggleVkms(bool enable);
-  static std::vector<std::string> StopDisplayStack();
-  static bool StartDisplayStack(const std::vector<std::string>& services);
 
   static std::unordered_set<std::string> GetExistingDrmDevices();
   static std::optional<std::string> WaitForNewDrmDevice(
       const std::unordered_set<std::string>& existing_devices,
       std::chrono::milliseconds timeout = std::chrono::milliseconds(15000));
+
+  class DisplayStackGuard {
+   public:
+    explicit DisplayStackGuard(std::vector<std::string> services)
+        : services_(std::move(services)), started_(false) {}
+    ~DisplayStackGuard() {
+      if (!started_) {
+        StartDisplayStack(services_);
+      }
+    }
+
+    bool Start() {
+      started_ = true;
+      return StartDisplayStack(services_);
+    }
+
+    DisplayStackGuard(const DisplayStackGuard&) = delete;
+    DisplayStackGuard& operator=(const DisplayStackGuard&) = delete;
+
+    DisplayStackGuard(DisplayStackGuard&& other) noexcept
+        : services_(std::move(other.services_)),
+          started_(std::exchange(other.started_, true)) {}
+
+    DisplayStackGuard& operator=(DisplayStackGuard&& other) noexcept {
+      if (this != &other) {
+        if (!started_) {
+          StartDisplayStack(services_);
+        }
+        services_ = std::move(other.services_);
+        started_ = std::exchange(other.started_, true);
+      }
+      return *this;
+    }
+
+   private:
+    std::vector<std::string> services_;
+    bool started_;
+  };
+
+  static std::optional<DisplayStackGuard> StopDisplayStack();
+  static bool StartDisplayStack(const std::vector<std::string>& services);
 
   static bool CreateResource(DrmResource resource, int index);
   static bool SetCrtcWriteback(int crtcIndex, bool enable);
