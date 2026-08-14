@@ -24,7 +24,8 @@
 
 const char device[] = "/dev/hvc17";
 
-int main() {
+int main(int /* argc */, char** argv) {
+    android::base::InitLogging(argv);
     ABinderProcess_setThreadPoolMaxThreadCount(0);
     auto fd = cuttlefish::SharedFD::Open(device, O_RDWR);
     if (!fd->IsOpen()) {
