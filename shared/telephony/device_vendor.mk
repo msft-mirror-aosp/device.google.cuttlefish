@@ -22,6 +22,7 @@ $(call inherit-product, $(SRC_TARGET_DIR)/product/telephony_vendor.mk)
 
 # Include the package for Cuttlefish telephony satellite configurations.
 PRODUCT_PACKAGES += \
+    CFSatelliteService \
     cuttlefish_telephony_satellite_configs
 
 # Include the Soong namespace for Cuttlefish satellite telephony configurations.
