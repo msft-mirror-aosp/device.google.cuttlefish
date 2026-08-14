@@ -202,10 +202,7 @@ PRODUCT_PACKAGES += \
     cuttlefish_overlay_nfc_gsi \
     cuttlefish_overlay_settings_provider \
 
-#
-# Satellite vendor service for CF
-#
-PRODUCT_PACKAGES += CFSatelliteService
+
 
 # PRODUCT_AAPT_CONFIG and PRODUCT_AAPT_PREF_CONFIG are intentionally not set to
 # pick up every density resources.
