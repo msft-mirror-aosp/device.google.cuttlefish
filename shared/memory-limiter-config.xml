@@ -2,10 +2,9 @@
 <MemoryLimiterConfig>
   <version>1</version>
   <configList>
-    <!-- RAM minimums here don't use typical round numbers (8, 6, 4) to account
-         to account for MemTotal excluding a ~0.5G carveout from physical RAM. -->
+    <!-- RAM minimums account for MemTotal excluding carve-outs from physical RAM. -->
     <limitSet>
-      <!-- Limits for a device with at least 7.5G of ram: 5G/3G/3G/3G -->
+      <!-- Limits for 8GB RAM device (MemTotal >= 7.5GiB): 5G/3G/3G/3G -->
       <minimumRequiredMemTotal>7680</minimumRequiredMemTotal>
       <memVisible>5120</memVisible>
       <memNotVisible>3072</memNotVisible>
@@ -13,7 +12,7 @@
       <swapNotVisible>3072</swapNotVisible>
     </limitSet>
     <limitSet>
-      <!-- Limits for a device with at least 5.5G of ram: 4G/2G/2G/2G -->
+      <!-- Limits for 6GB RAM device (MemTotal >= 5.5GiB): 4G/2G/2G/2G -->
       <minimumRequiredMemTotal>5632</minimumRequiredMemTotal>
       <memVisible>4096</memVisible>
       <memNotVisible>2048</memNotVisible>
@@ -21,7 +20,7 @@
       <swapNotVisible>2048</swapNotVisible>
     </limitSet>
     <limitSet>
-      <!-- Limits for a device with at least 3.5G of ram: 3G/2G/2G/2G -->
+      <!-- Limits for 4GB RAM device (MemTotal >= 3.5GiB): 3G/2G/2G/2G -->
       <minimumRequiredMemTotal>3584</minimumRequiredMemTotal>
       <memVisible>3072</memVisible>
       <memNotVisible>2048</memNotVisible>
