@@ -25,6 +25,13 @@
         <default-restrictions no_factory_reset="true" no_remove_user="true"
                   no_modify_accounts="true" no_install_apps="true" no_install_unknown_sources="true"
                   no_uninstall_apps="true"/>
+        <!--
+          Enabling acceptSharedTokens on the GUEST user type is required to support Slim Profiles
+          (non-ephemeral guest users) that serve as the default passenger experience.
+          While standard ephemeral guest users (such as driver guests) will also inherit this
+          property by default, it has no functional impact on their behavior or capabilities.
+        -->
+        <user-properties acceptSharedTokens="true" />
     </full-type>
 
     <profile-type name="android.os.usertype.profile.CLONE"
