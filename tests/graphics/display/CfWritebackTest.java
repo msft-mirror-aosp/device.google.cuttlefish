@@ -18,6 +18,7 @@ package com.android.cuttlefish.tests;
 
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 import com.android.tradefed.log.LogUtil.CLog;
 import com.android.tradefed.testtype.DeviceJUnit4ClassRunner;
@@ -25,7 +26,7 @@ import com.android.tradefed.testtype.junit4.BaseHostJUnit4Test;
 import com.android.tradefed.util.CommandResult;
 import com.android.tradefed.util.CommandStatus;
 import com.android.tradefed.util.StreamUtil;
-import java.awt.Color;
+
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.FileInputStream;
@@ -95,7 +96,7 @@ public class CfWritebackTest extends BaseHostJUnit4Test {
                 BufferedImage image = ImageIO.read(is);
                 assertNotNull("Failed to read screenshot image from file", image);
 
-                verifyImageIsNotBlank(image, 10 /* tolerance */);
+                verifyImageIsNotBlack(image, 10 /* tolerance */);
             }
         } catch (Exception e) {
             CLog.e("Exception during test execution: %s", e.getMessage());
@@ -104,37 +105,38 @@ public class CfWritebackTest extends BaseHostJUnit4Test {
     }
 
     /**
-     * Verifies that the average color of a BufferedImage is not black.
+     * Verifies that the maximum color component of a BufferedImage is not black.
      *
      * @param image The image to check.
      * @param tolerance The acceptable value for an RGB component to be considered not black.
      */
-    private void verifyImageIsNotBlank(BufferedImage image, int tolerance) {
-        long totalRed = 0;
-        long totalGreen = 0;
-        long totalBlue = 0;
+    private void verifyImageIsNotBlack(BufferedImage image, int tolerance) {
         int width = image.getWidth();
         int height = image.getHeight();
-        int pixelCount = width * height;
+        int maxRed = 0;
+        int maxGreen = 0;
+        int maxBlue = 0;
 
-        // Sum up the color components of all pixels.
         for (int y = 0; y < height; y++) {
             for (int x = 0; x < width; x++) {
-                Color pixelColor = new Color(image.getRGB(x, y));
-                totalRed += pixelColor.getRed();
-                totalGreen += pixelColor.getGreen();
-                totalBlue += pixelColor.getBlue();
+                int rgb = image.getRGB(x, y);
+                int red = (rgb >> 16) & 0xFF;
+                int green = (rgb >> 8) & 0xFF;
+                int blue = rgb & 0xFF;
+
+                if (red > tolerance || green > tolerance || blue > tolerance) {
+                    // Short-circuit immediately once any component is sufficiently bright
+                    return;
+                }
+
+                maxRed = Math.max(maxRed, red);
+                maxGreen = Math.max(maxGreen, green);
+                maxBlue = Math.max(maxBlue, blue);
             }
         }
 
-        int avgRed = (int) (totalRed / pixelCount);
-        int avgGreen = (int) (totalGreen / pixelCount);
-        int avgBlue = (int) (totalBlue / pixelCount);
-
-        // Check if the average color is not black (i.e., at least one component is above tolerance).
-        boolean isNotBlack = avgRed > tolerance || avgGreen > tolerance || avgBlue > tolerance;
-        assertTrue(String.format("Image is black. Average color: R=%d, G=%d, B=%d. Tolerance: %d",
-                                 avgRed, avgGreen, avgBlue, tolerance),
-                   isNotBlack);
+        // If we didn't short-circuit, we scanned everything and it's practically black.
+        fail(String.format("Image is largely black. Max color: R=%d, G=%d, B=%d. Tolerance: %d",
+                                 maxRed, maxGreen, maxBlue, tolerance));
     }
 }

@@ -478,6 +478,10 @@ DEFINE_vec(protected_vm, fmt::format("{}", CF_DEFAULTS_PROTECTED_VM),
            "Boot in Protected VM mode");
 
 DEFINE_vec(mte, fmt::format("{}", CF_DEFAULTS_MTE), "Enable MTE");
+DEFINE_vec(enable_pkvm, fmt::format("{}", CF_DEFAULTS_ENABLE_PKVM),
+           "Provision the guest to run pKVM so it can host its own protected "
+           "VMs; requires a nested-virt capable host, --vm_manager=crosvm "
+           "and an arm64 guest.");
 
 DEFINE_vec(enable_audio, fmt::format("{}", CF_DEFAULTS_ENABLE_AUDIO),
            "Whether to play or capture audio");
@@ -1548,6 +1552,8 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
   std::vector<bool> protected_vm_vec = CF_EXPECT(GET_FLAG_BOOL_VALUE(
       protected_vm));
   std::vector<bool> mte_vec = CF_EXPECT(GET_FLAG_BOOL_VALUE(mte));
+  std::vector<bool> enable_pkvm_vec =
+      CF_EXPECT(GET_FLAG_BOOL_VALUE(enable_pkvm));
   std::vector<bool> enable_kernel_log_vec = CF_EXPECT(GET_FLAG_BOOL_VALUE(
       enable_kernel_log));
   std::vector<bool> kgdb_vec = CF_EXPECT(GET_FLAG_BOOL_VALUE(kgdb));
@@ -1830,6 +1836,14 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     instance.set_gem5_debug_file(gem5_debug_file_vec[instance_index]);
     instance.set_protected_vm(protected_vm_vec[instance_index]);
     instance.set_mte(mte_vec[instance_index]);
+
+    if (enable_pkvm_vec[instance_index]) {
+      CF_EXPECT_EQ(tmp_config_obj.vm_manager(), VmmMode::kCrosvm,
+                   "Only crosvm supports --enable_pkvm");
+      CF_EXPECT(guest_configs[instance_index].target_arch == Arch::Arm64,
+                "--enable_pkvm requires an arm64 guest");
+    }
+    instance.set_enable_pkvm(enable_pkvm_vec[instance_index]);
     instance.set_enable_kernel_log(enable_kernel_log_vec[instance_index]);
     if (!boot_slot_vec[instance_index].empty()) {
       instance.set_boot_slot(boot_slot_vec[instance_index]);

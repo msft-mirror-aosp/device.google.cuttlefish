@@ -282,6 +282,13 @@ PRODUCT_PACKAGES += \
     android.hidl.allocator@1.0-service
 
 #
+# Codec2 AIDL HAL
+#
+PRODUCT_PACKAGES += \
+    android.hardware.media.c2-service-cuttlefish
+
+
+#
 # Weaver aidl HAL
 #
 # TODO(b/262418065) Add a real weaver implementation
@@ -652,3 +659,7 @@ PRODUCT_PACKAGES += \
 # MemoryLimiter configuration.
 PRODUCT_COPY_FILES += \
         device/google/cuttlefish/shared/memory-limiter-config.xml:$(TARGET_COPY_OUT_VENDOR)/etc/memory-limiter-config.xml
+
+# Bind target-isolated native_omapi release config map for Cuttlefish
+PRODUCT_RELEASE_CONFIG_MAPS += build/release/native_omapi/release_config_map.textproto
+PRODUCT_RELEASE_CONFIG_MAPS += $(wildcard vendor/google_shared/build/release/native_omapi/release_config_map.textproto)

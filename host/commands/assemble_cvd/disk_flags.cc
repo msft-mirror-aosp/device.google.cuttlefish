@@ -388,6 +388,19 @@ std::vector<ImagePartition> android_composite_disk_config(
         .read_only = FLAGS_use_overlay,
     });
   }
+  const auto pvmfw_path = instance.images_dir() + "/pvmfw.img";
+  if (FileExists(pvmfw_path)) {
+    partitions.push_back(ImagePartition{
+        .label = "pvmfw_a",
+        .image_file_path = AbsolutePath(pvmfw_path),
+        .read_only = FLAGS_use_overlay,
+    });
+    partitions.push_back(ImagePartition{
+        .label = "pvmfw_b",
+        .image_file_path = AbsolutePath(pvmfw_path),
+        .read_only = FLAGS_use_overlay,
+    });
+  }
   partitions.push_back(ImagePartition{
       .label = "vendor_boot_a",
       .image_file_path = AbsolutePath(instance.new_vendor_boot_image()),
