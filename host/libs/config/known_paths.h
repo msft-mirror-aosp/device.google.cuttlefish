@@ -40,7 +40,6 @@ std::string EchoServerBinary();
 std::string GnssGrpcProxyBinary();
 std::string KernelLogMonitorBinary();
 std::string LogcatReceiverBinary();
-std::string MetricsBinary();
 std::string MkfsFat();
 std::string ModemSimulatorBinary();
 std::string NetsimdBinary();
