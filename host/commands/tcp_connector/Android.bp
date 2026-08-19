@@ -22,19 +22,6 @@ cc_binary {
     srcs: [
         "main.cpp",
     ],
-    shared_libs: [
-        "libbase",
-        "libcuttlefish_fs",
-        "libcuttlefish_utils",
-        "libjsoncpp",
-        "liblog",
-        "libprotobuf-cpp-full",
-    ],
-    static_libs: [
-        "libcuttlefish_host_config",
-        "libcuttlefish_guest_config_proto",
-        "libgflags",
-    ],
     target: {
         darwin: {
             enabled: true,
