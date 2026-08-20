@@ -656,10 +656,6 @@ PRODUCT_PACKAGES += \
 PRODUCT_PACKAGES += \
     excluded_hardware.prebuilt.xml
 
-# MemoryLimiter configuration.
-PRODUCT_COPY_FILES += \
-        device/google/cuttlefish/shared/memory-limiter-config.xml:$(TARGET_COPY_OUT_VENDOR)/etc/memory-limiter-config.xml
-
 # Bind target-isolated native_omapi release config map for Cuttlefish
 PRODUCT_RELEASE_CONFIG_MAPS += build/release/native_omapi/release_config_map.textproto
 PRODUCT_RELEASE_CONFIG_MAPS += $(wildcard vendor/google_shared/build/release/native_omapi/release_config_map.textproto)
