@@ -76,8 +76,6 @@ ControlEnvProxyServerComponent();
 Result<std::optional<MonitorCommand>> GnssGrpcProxyServer(
     const CuttlefishConfig::InstanceSpecific&, GrpcSocketCreator&);
 
-std::optional<MonitorCommand> MetricsService(const CuttlefishConfig&);
-
 fruit::Component<fruit::Required<
     const CuttlefishConfig, const CuttlefishConfig::EnvironmentSpecific,
     const CuttlefishConfig::InstanceSpecific, LogTeeCreator, WmediumdServer>>
