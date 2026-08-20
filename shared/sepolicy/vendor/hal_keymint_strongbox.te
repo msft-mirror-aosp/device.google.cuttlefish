@@ -6,8 +6,22 @@ init_daemon_domain(hal_keymint_strongbox)
 
 vndbinder_use(hal_keymint_strongbox)
 
-binder_call(hal_keymint_strongbox, secure_element)
-allow hal_keymint_strongbox secure_element_service:service_manager find;
+is_flag_enabled(RELEASE_NATIVE_OMAPI, `
+  use_omapi(hal_keymint_strongbox)
+')
+is_flag_disabled(RELEASE_NATIVE_OMAPI, `
+  is_flag_enabled(RELEASE_NATIVE_OMAPI_CUTTLEFISH, `
+    use_omapi(hal_keymint_strongbox)
+  ')
+')
+
+is_flag_disabled(RELEASE_NATIVE_OMAPI, `
+  is_flag_disabled(RELEASE_NATIVE_OMAPI_CUTTLEFISH, `
+    binder_call(hal_keymint_strongbox, secure_element)
+    allow hal_keymint_strongbox secure_element_service:service_manager find;
+  ')
+')
+
 
 get_prop(hal_keymint_strongbox, vendor_security_patch_level_prop);
 get_prop(hal_keymint_strongbox, vendor_boot_security_patch_level_prop)

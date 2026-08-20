@@ -2,3 +2,7 @@
 vendor_restricted_prop(vendor_aware_available_prop)
 
 vendor_restricted_prop(vendor_radio_prop)
+
+vendor_restricted_prop(vendor_minigbm_prop)
+get_prop(coredomain, vendor_minigbm_prop)
+get_prop(halserverdomain, vendor_minigbm_prop)

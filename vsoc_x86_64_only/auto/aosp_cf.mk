@@ -27,11 +27,11 @@ PRODUCT_USE_HSUM?=true
 # NOTE: This must be set before inheriting car_generic_system.mk
 USE_DEFAULT_HW_TIMEOUT_MULTIPLIER?=false
 
-# TODO: b/510265107 - Use a build flag instead of the hardcoded true value
-# (e.g. RELEASE_CAR_SDV_ENABLE_INTEGRATION)
-# NOTE: This must be set before inheriting car_generic_system.mk to allow the
-# inclusion of SDV components that go to system image
-ENABLE_SDV_INTEGRATION ?= true
+ifeq ($(RELEASE_CAR_SDV_ENABLE_INTEGRATION),true)
+    # NOTE: This must be set before inheriting car_generic_system.mk to allow the
+    # inclusion of SDV components that go to system image
+    ENABLE_SDV_INTEGRATION ?= true
+endif
 
 $(call inherit-product, $(SRC_TARGET_DIR)/product/core_64_bit_only.mk)
 $(call inherit-product, packages/services/Car/car_product/build/car_generic_system.mk)
