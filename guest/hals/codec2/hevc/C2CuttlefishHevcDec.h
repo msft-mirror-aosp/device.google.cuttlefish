@@ -19,8 +19,10 @@
 
 #include <inttypes.h>
 #include <atomic>
+#include <vector>
 
 #include <C2ComponentFactory.h>
+#include <Codec2BufferUtils.h>
 #include <SimpleC2Component.h>
 #include <ihevc_defs.h>
 #include <ihevc_typedefs.h>
@@ -84,6 +86,8 @@ struct C2CuttlefishHevcDec : public SimpleC2Component {
   iv_obj_t* mDecHandle;
   std::shared_ptr<C2GraphicBlock> mOutBlock;
   uint8_t* mOutBufferFlush;
+  std::vector<uint8_t> mConversionBuffer;
+  MediaImage2 mConversionBufferLayout;
 
   size_t mNumCores;
   IV_COLOR_FORMAT_T mIvColorformat;
