@@ -33,7 +33,8 @@ H4Packetizer::H4Packetizer(int fd, PacketReadCallback command_cb,
                            PacketReadCallback iso_cb,
                            ClientDisconnectCallback disconnect_cb)
     : uart_fd_(fd),
-      h4_parser_(command_cb, event_cb, acl_cb, sco_cb, iso_cb),
+      h4_parser_(command_cb, event_cb, acl_cb, sco_cb, iso_cb,
+                 true /* enable_recovery_state */),
       disconnect_cb_(std::move(disconnect_cb)) {}
 
 size_t H4Packetizer::Send(uint8_t type, const uint8_t* data, size_t length) {

@@ -1,0 +1,8 @@
+se_flags {
+    name: "cuttlefish_sepolicy_flags",
+    flags: [
+        "RELEASE_NATIVE_OMAPI",
+        "RELEASE_NATIVE_OMAPI_CUTTLEFISH",
+    ],
+    export_to: ["all_selinux_flags"],
+}

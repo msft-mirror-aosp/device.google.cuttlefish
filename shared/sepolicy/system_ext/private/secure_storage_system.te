@@ -27,13 +27,10 @@ allow rpmb_dev_wv_system rpmb_dev_wv_system_socket:sock_file rw_file_perms;
 allow rpmb_dev_wv_system rpmb_dev_system_socket:sock_file rw_file_perms;
 
 #============= storageproxyd_system ==============
-type storageproxyd_system, domain, coredomain;
 typeattribute storageproxyd_system unconstrained_vsock_violators;
-type storageproxyd_system_exec, exec_type, system_file_type, file_type;
 type secure_storage_persist_system_file, file_type, data_file_type, core_data_file_type;
 type secure_storage_system_file, file_type, data_file_type, core_data_file_type;
 
-init_daemon_domain(storageproxyd_system)
 allow storageproxyd_system metadata_file:dir { add_name create open read write };
 allow storageproxyd_system metadata_file:file { create getattr open read write };
 allow storageproxyd_system secure_storage_persist_system_file:dir rw_dir_perms;
@@ -46,6 +43,3 @@ allow storageproxyd_system self:vsock_socket { create_socket_perms_no_ioctl };
 
 unix_socket_connect(storageproxyd_system, rpmb_dev_system, rpmb_dev_system)
 unix_socket_connect(storageproxyd_system, rpmb_dev_wv_system, rpmb_dev_wv_system)
-
-# Allow storageproxyd_system access to gsi_public_metadata_file
-read_fstab(storageproxyd_system)
