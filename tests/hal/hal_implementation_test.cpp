@@ -453,6 +453,12 @@ TEST(Hal, AidlInterfacesImplemented) {
     for (const auto& [version, check] : expectedVersions) {
       if (check.knownMissing) {
         if (check.hasRegistration) {
+          // Allow android.se.omapi V2 during transition between Java (V1) and Native Rust (V2).
+          // Originally exempted in b/266870904.
+          // TODO(b/551869657): Remove once Rust OMAPI is default on all targets.
+          if (treePackage.name == "android.se.omapi" && version == 2) {
+            continue;
+          }
           ADD_FAILURE() << "Package in missing list, but available: "
                         << treePackage.name << " V" << version
                         << " which declares the following types:\n    "
