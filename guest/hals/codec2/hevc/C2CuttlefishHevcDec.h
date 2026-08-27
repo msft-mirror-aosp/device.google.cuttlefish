@@ -107,13 +107,23 @@ struct C2CuttlefishHevcDec : public SimpleC2Component {
     uint8_t transfer;
     uint8_t coeffs;
     uint8_t fullRange;
+    uint8_t videoSignalTypePresent;
+    uint8_t colourDescriptionPresent;
 
     // default color aspects
-    VuiColorAspects() : primaries(2), transfer(2), coeffs(2), fullRange(0) {}
+    VuiColorAspects()
+        : primaries(2),
+          transfer(2),
+          coeffs(2),
+          fullRange(0),
+          videoSignalTypePresent(0),
+          colourDescriptionPresent(0) {}
 
     bool operator==(const VuiColorAspects& o) const {
       return primaries == o.primaries && transfer == o.transfer &&
-             coeffs == o.coeffs && fullRange == o.fullRange;
+             coeffs == o.coeffs && fullRange == o.fullRange &&
+             videoSignalTypePresent == o.videoSignalTypePresent &&
+             colourDescriptionPresent == o.colourDescriptionPresent;
     }
   } mBitstreamColorAspects;
 
