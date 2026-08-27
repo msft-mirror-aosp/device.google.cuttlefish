@@ -134,26 +134,6 @@ Result<std::vector<std::string>> GetServiceList(
   return service_list;
 }
 
-Result<std::string> GetServerAddress(
-    const std::vector<std::string>& server_address_list,
-    const std::string& service_name) {
-  std::vector<std::string> candidates;
-  for (const auto& server_address : server_address_list) {
-    auto service_names = CF_EXPECT(GetServiceList(server_address));
-    for (auto& full_service_name : service_names) {
-      if (EndsWith(full_service_name, service_name)) {
-        candidates.emplace_back(server_address);
-        break;
-      }
-    }
-  }
-
-  CF_EXPECT(candidates.size() > 0, service_name + " is not found.");
-  CF_EXPECT(candidates.size() < 2, service_name + " is ambiguous.");
-
-  return candidates[0];
-}
-
 Result<std::string> GetFullServiceName(const std::string& server_address,
                                        const std::string& service_name) {
   std::vector<std::string> candidates;
@@ -178,6 +158,32 @@ Result<std::string> GetFullMethodName(const std::string& server_address,
   return full_service_name + "/" + method_name;
 }
 
+Result<std::string> GetServerAddress(
+    const std::vector<std::string>& server_address_list,
+    const std::string& service_name) {
+  std::vector<std::string> candidates;
+  for (const auto& server_address : server_address_list) {
+    auto service_names_res = GetServiceList(server_address);
+    if (!service_names_res.ok()) {
+      LOG(DEBUG) << "Skipping socket without gRPC reflection: "
+                 << server_address << " ("
+                 << service_names_res.error().Message() << ")";
+      continue;
+    }
+    for (auto& full_service_name : *service_names_res) {
+      if (EndsWith(full_service_name, service_name)) {
+        candidates.emplace_back(server_address);
+        break;
+      }
+    }
+  }
+
+  CF_EXPECT(candidates.size() > 0, service_name + " is not found.");
+  CF_EXPECT(candidates.size() < 2, service_name + " is ambiguous.");
+
+  return candidates[0];
+}
+
 Result<std::string> HandleLsCmd(
     const std::vector<std::string>& server_address_list,
     const std::vector<std::string>& args) {
@@ -188,7 +194,14 @@ Result<std::string> HandleLsCmd(
       for (const auto& server_address : server_address_list) {
         std::vector<std::string> grpc_arguments{"grpc_cli", "ls",
                                                 server_address};
-        command_output += CF_EXPECT(RunGrpcCommand(grpc_arguments));
+        auto command_output_res = RunGrpcCommand(grpc_arguments);
+        if (!command_output_res.ok()) {
+          LOG(DEBUG) << "Skipping socket without gRPC reflection during ls: "
+                     << server_address << " ("
+                     << command_output_res.error().Message() << ")";
+          continue;
+        }
+        command_output += *command_output_res;
       }
 
       Json::Value json;
