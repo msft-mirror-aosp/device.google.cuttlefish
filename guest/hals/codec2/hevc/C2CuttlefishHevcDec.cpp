@@ -27,6 +27,7 @@
 #include <android_media_swcodec_flags.h>
 #include <C2Debug.h>
 #include <C2PlatformSupport.h>
+#include <Codec2BufferUtils.h>
 #include <Codec2CommonUtils.h>
 #include <Codec2Mapper.h>
 #include <SimpleC2Interface.h>
@@ -43,6 +44,15 @@ constexpr char COMPONENT_NAME[] = "c2.cuttlefish.hevc.decoder";
 constexpr uint32_t kDefaultOutputDelay = 8;
 constexpr uint32_t kMaxOutputDelay = 16;
 constexpr size_t kMinInputBufferSize = 2 * 1024 * 1024;
+
+bool isPlanarYUV420(const C2GraphicView& view) {
+  const C2PlanarLayout& layout = view.layout();
+  return (IsI420(view) &&
+          layout.planes[C2PlanarLayout::PLANE_U].rowInc ==
+              layout.planes[C2PlanarLayout::PLANE_V].rowInc &&
+          layout.planes[C2PlanarLayout::PLANE_Y].rowInc ==
+              2 * layout.planes[C2PlanarLayout::PLANE_U].rowInc);
+}
 }  // namespace
 
 using ivdext_create_ip_t = ihevcd_cxa_create_ip_t;
@@ -590,9 +600,12 @@ bool C2CuttlefishHevcDec::setDecodeArgs(ivd_video_decode_ip_t* ps_decode_ip,
                                         uint32_t tsMarker) {
   uint32_t displayStride = mStride;
   if (outBuffer) {
-    C2PlanarLayout layout;
-    layout = outBuffer->layout();
-    displayStride = layout.planes[C2PlanarLayout::PLANE_Y].rowInc;
+    C2PlanarLayout layout = outBuffer->layout();
+    if (isPlanarYUV420(*outBuffer)) {
+      displayStride = layout.planes[C2PlanarLayout::PLANE_Y].rowInc;
+    } else {
+      displayStride = ALIGN128(mWidth);
+    }
   }
   uint32_t displayHeight = mHeight;
   size_t lumaSize = displayStride * displayHeight;
@@ -627,12 +640,26 @@ bool C2CuttlefishHevcDec::setDecodeArgs(ivd_video_decode_ip_t* ps_decode_ip,
             displayHeight);
       return false;
     }
-    ps_decode_ip->s_out_buffer.pu1_bufs[0] =
-        outBuffer->data()[C2PlanarLayout::PLANE_Y];
-    ps_decode_ip->s_out_buffer.pu1_bufs[1] =
-        outBuffer->data()[C2PlanarLayout::PLANE_U];
-    ps_decode_ip->s_out_buffer.pu1_bufs[2] =
-        outBuffer->data()[C2PlanarLayout::PLANE_V];
+    if (isPlanarYUV420(*outBuffer)) {
+      ps_decode_ip->s_out_buffer.pu1_bufs[0] =
+          outBuffer->data()[C2PlanarLayout::PLANE_Y];
+      ps_decode_ip->s_out_buffer.pu1_bufs[1] =
+          outBuffer->data()[C2PlanarLayout::PLANE_U];
+      ps_decode_ip->s_out_buffer.pu1_bufs[2] =
+          outBuffer->data()[C2PlanarLayout::PLANE_V];
+    } else {
+      size_t totalPlanarSize = lumaSize + 2 * chromaSize;
+      if (mConversionBuffer.size() < totalPlanarSize) {
+        mConversionBuffer.resize(totalPlanarSize);
+      }
+      mConversionBufferLayout = CreateYUV420PlanarMediaImage2(
+          mWidth, mHeight, mStride, mHeight);
+      ps_decode_ip->s_out_buffer.pu1_bufs[0] = mConversionBuffer.data();
+      ps_decode_ip->s_out_buffer.pu1_bufs[1] =
+          mConversionBuffer.data() + lumaSize;
+      ps_decode_ip->s_out_buffer.pu1_bufs[2] =
+          mConversionBuffer.data() + lumaSize + chromaSize;
+    }
   } else {
     ps_decode_ip->s_out_buffer.pu1_bufs[0] = mOutBufferFlush;
     ps_decode_ip->s_out_buffer.pu1_bufs[1] = mOutBufferFlush + lumaSize;
@@ -850,7 +877,7 @@ c2_status_t C2CuttlefishHevcDec::ensureDecoderState(
     mOutBlock.reset();
   }
   if (!mOutBlock) {
-    uint32_t format = HAL_PIXEL_FORMAT_YV12;
+    uint32_t format = HAL_PIXEL_FORMAT_YCBCR_420_888;
     C2MemoryUsage usage = {C2MemoryUsage::CPU_READ, C2MemoryUsage::CPU_WRITE};
     c2_status_t err = pool->fetchGraphicBlock(ALIGN128(mWidth), mHeight, format,
                                               usage, &mOutBlock);
@@ -867,8 +894,7 @@ c2_status_t C2CuttlefishHevcDec::ensureDecoderState(
 
 // TODO: can overall error checking be improved?
 // TODO: allow configuration of color format and usage for graphic buffers
-// instead
-//       of hard coding them to HAL_PIXEL_FORMAT_YV12
+// instead of hard coding them to HAL_PIXEL_FORMAT_YCBCR_420_888
 // TODO: pass coloraspects information to surface
 // TODO: test support for dynamic change in resolution
 // TODO: verify if the decoder sent back all frames
@@ -1042,6 +1068,17 @@ void C2CuttlefishHevcDec::process(const std::unique_ptr<C2Work>& work,
     (void)getVuiParams();
     hasPicture |= (1 == ps_decode_op->u4_frame_decoded_flag);
     if (ps_decode_op->u4_output_present) {
+      if (!isPlanarYUV420(wView)) {
+        status_t err =
+            ImageCopy(wView, mConversionBuffer.data(), &mConversionBufferLayout);
+        if (err != OK) {
+          ALOGE("Buffer conversion failed: %d", err);
+          mSignalledError = true;
+          work->workletsProcessed = 1u;
+          work->result = C2_CORRUPTED;
+          return;
+        }
+      }
       finishWork(ps_decode_op->u4_ts, work);
       configUpdateQueued =
           c2_cntr64_t(ps_decode_op->u4_ts) == work->input.ordinal.frameIndex;
@@ -1125,6 +1162,18 @@ c2_status_t C2CuttlefishHevcDec::drainInternal(
     }
     (void)ivdec_api_function(mDecHandle, ps_decode_ip, ps_decode_op);
     if (ps_decode_op->u4_output_present) {
+      if (!isPlanarYUV420(wView)) {
+        status_t err =
+            ImageCopy(wView, mConversionBuffer.data(), &mConversionBufferLayout);
+        if (err != OK) {
+          ALOGE("Buffer conversion failed: %d", err);
+          mSignalledError = true;
+          if (work) {
+            work->workletsProcessed = 1u;
+          }
+          return C2_CORRUPTED;
+        }
+      }
       if (work) {
         finishWork(ps_decode_op->u4_ts, work);
       }

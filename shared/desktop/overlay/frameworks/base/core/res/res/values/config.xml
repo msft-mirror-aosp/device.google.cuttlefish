@@ -22,4 +22,6 @@
   <integer name="config_multiuserMaximumUsers" translatable="false">4</integer>
   <bool name="config_isDesktopModeSupported" translatable="false">true</bool>
   <bool name="config_canInternalDisplayHostDesktops" translatable="false">true</bool>
+  <!-- Whether the default home settings should be shown. -->
+  <bool name="config_showDefaultHome" translatable="false">false</bool>
 </resources>

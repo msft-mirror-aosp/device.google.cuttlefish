@@ -124,7 +124,6 @@ cc_test_host {
         "libcuttlefish_guest_config_proto",
         "libprotobuf-cpp-full",
         "libcuttlefish_launch_cvd_proto",
-        "libcuttlefish_msg_queue",
         "libgflags",
         "libgmock",
     ],
