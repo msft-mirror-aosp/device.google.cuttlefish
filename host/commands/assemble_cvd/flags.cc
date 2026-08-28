@@ -1135,9 +1135,7 @@ Result<std::vector<bool>> GetFlagBoolValueForInstances(
     } else {
       if (flag_vec[instance_index] == "unset" || flag_vec[instance_index] == "\"unset\"") {
         std::string default_value = default_value_vec[0];
-        if (instance_index < default_value_vec.size() &&
-            default_value_vec[instance_index] != "unset" &&
-            default_value_vec[instance_index] != "\"unset\"") {
+        if (instance_index < default_value_vec.size()) {
           default_value = default_value_vec[instance_index];
         }
         value_vec[instance_index] = CF_EXPECT(ParseBool(default_value, flag_name));
@@ -1164,9 +1162,7 @@ Result<std::vector<int>> GetFlagIntValueForInstances(
     } else {
       if (flag_vec[instance_index] == "unset" || flag_vec[instance_index] == "\"unset\"") {
         std::string default_value = default_value_vec[0];
-        if (instance_index < default_value_vec.size() &&
-            default_value_vec[instance_index] != "unset" &&
-            default_value_vec[instance_index] != "\"unset\"") {
+        if (instance_index < default_value_vec.size()) {
           default_value = default_value_vec[instance_index];
         }
         CF_EXPECT(android::base::ParseInt(default_value,
@@ -1251,9 +1247,7 @@ Result<std::vector<std::string>> GetFlagStrValueForInstances(
     } else {
       if (flag_vec[instance_index] == "unset" || flag_vec[instance_index] == "\"unset\"") {
         std::string default_value = default_value_vec[0];
-        if (instance_index < default_value_vec.size() &&
-            default_value_vec[instance_index] != "unset" &&
-            default_value_vec[instance_index] != "\"unset\"") {
+        if (instance_index < default_value_vec.size()) {
           default_value = default_value_vec[instance_index];
         }
         value_vec[instance_index] = default_value;
