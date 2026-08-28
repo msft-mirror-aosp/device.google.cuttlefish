@@ -245,9 +245,7 @@ Result<void> ResolveInstanceFiles() {
     }
 
     if (instance_index < default_vvmtruststore_file_name.size()) {
-      if (default_vvmtruststore_file_name[instance_index].empty() ||
-          default_vvmtruststore_file_name[instance_index] == "unset" ||
-          default_vvmtruststore_file_name[instance_index] == "\"unset\"") {
+      if (default_vvmtruststore_file_name[instance_index].empty()) {
         vvmtruststore_path += comma_str;
       } else {
         vvmtruststore_path += comma_str + cur_system_image_dir + "/" +
