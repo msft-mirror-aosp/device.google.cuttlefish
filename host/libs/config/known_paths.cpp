@@ -95,8 +95,6 @@ std::string KernelLogMonitorBinary() {
 
 std::string LogcatReceiverBinary() { return HostBinaryPath("logcat_receiver"); }
 
-std::string MetricsBinary() { return HostBinaryPath("metrics"); }
-
 std::string MkfsFat() { return HostBinaryPath("mkfs.fat"); }
 
 std::string ModemSimulatorBinary() { return HostBinaryPath("modem_simulator"); }

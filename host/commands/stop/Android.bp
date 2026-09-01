@@ -34,8 +34,6 @@ cc_binary {
     ],
     static_libs: [
         "libcuttlefish_host_config",
-        "libcuttlefish_metrics",
-        "libcuttlefish_msg_queue",
         "libgflags",
     ],
     target: {
