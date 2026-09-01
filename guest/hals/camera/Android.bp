@@ -91,10 +91,10 @@ cc_library_shared {
         "camera.device@3.4-impl_headers",
         "camera.device@3.5-external-impl_headers",
         "camera.device@3.5-impl_headers",
+        "cuttlefish_common_headers",
     ],
     static_libs: [
         "android.hardware.camera.common@1.0-helper",
     ],
-    include_dirs: ["device/google/cuttlefish"],
     export_include_dirs: ["."],
 }
