@@ -109,3 +109,6 @@ PRODUCT_BUILD_GENERIC_OTA_PACKAGE := true
 PRODUCT_PACKAGES += \
     Launcher3QuickStep
 
+# Audio Managed SCO
+PRODUCT_PRODUCT_PROPERTIES += \
+    bluetooth.sco.managed_by_audio=true
