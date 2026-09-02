@@ -71,4 +71,13 @@
         <install-in user-type="FULL" />
         <install-in user-type="PROFILE" />
     </install-in-user-type>
+
+    <!-- Input Devices (InputDevices) -->
+    <install-in-user-type package="com.android.inputdevices">
+        <!-- Runs in system_server process and is needed on boot -->
+        <install-in user-type="SYSTEM" />
+        <install-in user-type="FULL" />
+        <!-- Provides keymaps needed by all profiles -->
+        <install-in user-type="PROFILE" />
+    </install-in-user-type>
 </config>
