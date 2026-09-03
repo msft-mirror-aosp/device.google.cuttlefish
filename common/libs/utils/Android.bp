@@ -117,7 +117,6 @@ cc_library {
         "liblog",
     ],
     defaults: ["cuttlefish_guest_only"],
-    include_dirs: ["device/google/cuttlefish"],
     export_include_dirs: ["."],
 }
 
