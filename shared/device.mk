@@ -300,6 +300,12 @@ PRODUCT_VENDOR_PROPERTIES += \
 PRODUCT_PACKAGES += \
     com.android.hardware.authsecret
 
+#
+# Wireless Power AIDL HAL
+#
+PRODUCT_PACKAGES += \
+    android.hardware.wireless_power-service.example
+
 ifndef LOCAL_AUDIO_PRODUCT_PACKAGE
 # Choose the audio HAL interfaces version which is the same as the system image uses.
 $(call soong_config_set, audio_hal, fcm_version, SYSTEM)
