@@ -197,7 +197,7 @@ class C2CuttlefishHevcDec::IntfImpl : public SimpleInterface<void>::BaseParams {
     addParameter(
         DefineParam(mCodedColorAspects, C2_PARAMKEY_VUI_COLOR_ASPECTS)
             .withDefault(new C2StreamColorAspectsInfo::input(
-                0u, C2Color::RANGE_LIMITED, C2Color::PRIMARIES_UNSPECIFIED,
+                0u, C2Color::RANGE_UNSPECIFIED, C2Color::PRIMARIES_UNSPECIFIED,
                 C2Color::TRANSFER_UNSPECIFIED, C2Color::MATRIX_UNSPECIFIED))
             .withFields(
                 {C2F(mCodedColorAspects, range)
@@ -600,8 +600,8 @@ bool C2CuttlefishHevcDec::setDecodeArgs(ivd_video_decode_ip_t* ps_decode_ip,
                                         uint32_t tsMarker) {
   uint32_t displayStride = mStride;
   if (outBuffer) {
-    C2PlanarLayout layout = outBuffer->layout();
     if (isPlanarYUV420(*outBuffer)) {
+      C2PlanarLayout layout = outBuffer->layout();
       displayStride = layout.planes[C2PlanarLayout::PLANE_Y].rowInc;
     } else {
       displayStride = ALIGN128(mWidth);
@@ -694,6 +694,10 @@ bool C2CuttlefishHevcDec::getVuiParams() {
   vuiColorAspects.transfer = s_get_vui_params_op.u1_transfer_characteristics;
   vuiColorAspects.coeffs = s_get_vui_params_op.u1_matrix_coefficients;
   vuiColorAspects.fullRange = s_get_vui_params_op.u1_video_full_range_flag;
+  vuiColorAspects.videoSignalTypePresent =
+      s_get_vui_params_op.u1_video_signal_type_present_flag;
+  vuiColorAspects.colourDescriptionPresent =
+      s_get_vui_params_op.u1_colour_description_present_flag;
 
   // convert vui aspects to C2 values if changed
   if (!(vuiColorAspects == mBitstreamColorAspects)) {
@@ -703,6 +707,14 @@ bool C2CuttlefishHevcDec::getVuiParams() {
     ColorUtils::convertIsoColorAspectsToCodecAspects(
         vuiColorAspects.primaries, vuiColorAspects.transfer,
         vuiColorAspects.coeffs, vuiColorAspects.fullRange, sfAspects);
+    if (!vuiColorAspects.colourDescriptionPresent) {
+      sfAspects.mPrimaries = ColorAspects::PrimariesUnspecified;
+      sfAspects.mTransfer = ColorAspects::TransferUnspecified;
+      sfAspects.mMatrixCoeffs = ColorAspects::MatrixUnspecified;
+    }
+    if (!vuiColorAspects.videoSignalTypePresent) {
+      sfAspects.mRange = ColorAspects::RangeUnspecified;
+    }
     if (!C2Mapper::map(sfAspects.mPrimaries, &codedAspects.primaries)) {
       codedAspects.primaries = C2Color::PRIMARIES_UNSPECIFIED;
     }

@@ -64,6 +64,9 @@ PRODUCT_COPY_FILES += \
     device/google/cuttlefish/shared/desktop/services/wifi/desktop-virtwifi-setup.sh:$(TARGET_COPY_OUT_VENDOR)/bin/desktop-virtwifi-setup.sh \
     device/google/cuttlefish/shared/desktop/services/wifi/desktop-virtwifi-setup.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/desktop-virtwifi-setup.rc
 
+PRODUCT_PACKAGES += \
+    DocumentsUIDesktopCuttlefishOverlay \
+    MediaProviderDesktopCuttlefishOverlay
 
 # Soong-only configuration for aosp_cf_x86_64_desktop
 ifeq ($(TARGET_PRODUCT),aosp_cf_x86_64_desktop)
