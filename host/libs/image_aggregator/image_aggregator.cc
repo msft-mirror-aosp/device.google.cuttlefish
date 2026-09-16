@@ -161,8 +161,7 @@ static_assert(sizeof(QCowHeader) == 72);
  */
 std::uint64_t ExpandedStorageSize(const std::string& file_path) {
   android::base::unique_fd fd(open(file_path.c_str(), O_RDONLY));
-  CHECK(fd.get() >= 0) << "Could not open \"" << file_path << "\""
-                       << strerror(errno);
+  CHECK(fd.ok()) << "Could not open \"" << file_path << "\"" << strerror(errno);
 
   std::uint64_t file_size = FileSize(file_path);
 
@@ -174,13 +173,13 @@ std::uint64_t ExpandedStorageSize(const std::string& file_path) {
     PLOG(FATAL) << "Fail to read: " << file_path;
     return 0;
   }
-  CHECK(lseek(fd, 0, SEEK_SET) != -1)
+  CHECK(lseek(fd.get(), 0, SEEK_SET) != -1)
       << "Fail to seek(\"" << file_path << "\")" << strerror(errno);
 
   // Composite disk image
   if (android::base::StartsWith(magic, CDISK_MAGIC)) {
     // seek to the beginning of proto message
-    CHECK(lseek(fd, CDISK_MAGIC.size(), SEEK_SET) != -1)
+    CHECK(lseek(fd.get(), CDISK_MAGIC.size(), SEEK_SET) != -1)
         << "Fail to seek(\"" << file_path << "\")" << strerror(errno);
     std::string message;
     if (!android::base::ReadFdToString(fd, &message)) {
@@ -207,7 +206,7 @@ std::uint64_t ExpandedStorageSize(const std::string& file_path) {
 
   // Android-Sparse
   if (auto sparse =
-          sparse_file_import(fd, /* verbose */ false, /* crc */ false);
+          sparse_file_import(fd.get(), /* verbose */ false, /* crc */ false);
       sparse) {
     auto size = sparse_file_len(sparse, false, true);
     sparse_file_destroy(sparse);
