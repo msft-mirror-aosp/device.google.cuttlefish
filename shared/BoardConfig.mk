@@ -32,7 +32,6 @@ else ifneq (,$(findstring cf_arm_tv_gtv,$(PRODUCT_NAME)))
 TARGET_KERNEL_USE ?= 6.12
 else ifneq (,$(filter cf_x86_64_desktop,$(PRODUCT_NAME)))
 TARGET_KERNEL_USE ?= $(RELEASE_KERNEL_CUTTLEFISH_X86_64_VERSION)
-TARGET_KERNEL_DIR ?= $(RELEASE_KERNEL_CUTTLEFISH_X86_64_DIR)
 else ifneq (,$(filter cf_arm64_desktop,$(PRODUCT_NAME)))
 TARGET_KERNEL_USE ?= $(RELEASE_KERNEL_CUTTLEFISH_ARM64_VERSION)
 TARGET_KERNEL_DIR ?= $(RELEASE_KERNEL_CUTTLEFISH_ARM64_DIR)
@@ -42,7 +41,7 @@ endif
 
 TARGET_KERNEL_ARCH ?= $(TARGET_ARCH)
 
-ifneq (,$(filter cf_x86_64_desktop cf_arm64_desktop,$(PRODUCT_NAME)))
+ifneq (,$(filter cf_arm64_desktop,$(PRODUCT_NAME)))
 SYSTEM_DLKM_SRC ?= device/google/desktop/cuttlefish-$(TARGET_KERNEL_ARCH)-kernels/$(TARGET_KERNEL_USE)/$(TARGET_KERNEL_DIR)/system_dlkm
 KERNEL_MODULES_PATH ?= device/google/desktop/cuttlefish-$(TARGET_KERNEL_ARCH)-kernels/$(TARGET_KERNEL_USE)/$(TARGET_KERNEL_DIR)/vendor_dlkm
 else
