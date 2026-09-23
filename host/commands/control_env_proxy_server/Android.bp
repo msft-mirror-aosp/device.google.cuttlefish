@@ -38,10 +38,6 @@ cc_library {
         "ControlEnvProxyServerProto_h",
     ],
     defaults: ["cuttlefish_host"],
-    include_dirs: [
-        "external/grpc-grpc/include",
-        "external/protobuf/src",
-    ],
 }
 
 cc_binary_host {
