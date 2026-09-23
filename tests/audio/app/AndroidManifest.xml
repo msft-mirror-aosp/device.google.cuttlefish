@@ -24,6 +24,10 @@
         <meta-data
             android:name="mobly-snippets"
             android:value="com.android.cuttlefish.audiotest.AudioFocusSnippet" />
+        <service
+            android:name=".DyingFocusHolderService"
+            android:exported="false"
+            android:process=":dying_focus_client" />
     </application>
 
     <instrumentation
