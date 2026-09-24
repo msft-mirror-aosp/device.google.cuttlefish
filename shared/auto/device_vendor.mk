@@ -213,6 +213,13 @@ GOOGLE_CAR_SERVICE_OVERLAY += CarServiceOverlayCuttleFishGoogle
 PRODUCT_PACKAGES += ConnectivityOverlayCuttleFish ConnectivityOverlayCuttleFishGoogle
 
 TARGET_BOARD_INFO_FILE ?= device/google/cuttlefish/shared/auto/android-info.txt
+# Use the cuttlefish-guest-config.txtpb in the same directory as this target's
+# android-info.txt. Targets not yet migrated have none, so they keep using
+# android-info.txt. Do not hardcode a path here: every automotive target
+# inherits this file, and the .txtpb overrides android-info.txt.
+TARGET_GUEST_CONFIG_FILE ?= \
+    $(wildcard $(dir $(TARGET_BOARD_INFO_FILE))cuttlefish-guest-config.txtpb)
+PRODUCT_ADDITIONAL_UPDATE_PACKAGE_FILES += $(TARGET_GUEST_CONFIG_FILE)
 BOARD_BOOTCONFIG += androidboot.hibernation_resume_device=259:3
 
 # Telephony: Use Minradio RIL instead of Cuttlefish RIL
