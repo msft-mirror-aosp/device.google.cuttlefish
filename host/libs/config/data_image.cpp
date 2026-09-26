@@ -250,19 +250,9 @@ Result<void> InitializeMiscImage(
   return {};
 }
 
-static bool GeneratedEspRequired(
-    const CuttlefishConfig::InstanceSpecific& instance) {
-  switch (instance.boot_flow()) {
-    case BootFlow::AndroidEfiLoader:
-      // Empty means a prebuilt android_esp image is used as-is.
-      return !instance.android_efi_loader().empty();
-    case BootFlow::ChromeOs:
-    case BootFlow::Linux:
-    case BootFlow::Fuchsia:
-      return true;
-    default:
-      return false;
-  }
+static bool EspRequiredForBootFlow(BootFlow flow) {
+  return flow == BootFlow::AndroidEfiLoader || flow == BootFlow::ChromeOs ||
+         flow == BootFlow::Linux || flow == BootFlow::Fuchsia;
 }
 
 static bool EspRequiredForAPBootFlow(APBootFlow ap_boot_flow) {
@@ -336,13 +326,13 @@ static bool BuildOSImage(const CuttlefishConfig::InstanceSpecific& instance) {
   switch (instance.boot_flow()) {
     case BootFlow::AndroidEfiLoader: {
       auto android_efi_loader =
-          AndroidEfiLoaderEspBuilder(instance.generated_esp_image_path());
+          AndroidEfiLoaderEspBuilder(instance.esp_image_path());
       android_efi_loader.EfiLoaderPath(instance.android_efi_loader())
           .Architecture(instance.target_arch());
       return android_efi_loader.Build();
     }
     case BootFlow::ChromeOs: {
-      auto linux = LinuxEspBuilder(instance.generated_esp_image_path());
+      auto linux = LinuxEspBuilder(instance.esp_image_path());
       InitChromeOsArgs(linux);
 
       linux.Root("/dev/vda3")
@@ -352,7 +342,7 @@ static bool BuildOSImage(const CuttlefishConfig::InstanceSpecific& instance) {
       return linux.Build();
     }
     case BootFlow::Linux: {
-      auto linux = LinuxEspBuilder(instance.generated_esp_image_path());
+      auto linux = LinuxEspBuilder(instance.esp_image_path());
       InitLinuxArgs(instance.target_arch(), linux);
 
       linux.Root("/dev/vda2")
@@ -366,7 +356,7 @@ static bool BuildOSImage(const CuttlefishConfig::InstanceSpecific& instance) {
       return linux.Build();
     }
     case BootFlow::Fuchsia: {
-      auto fuchsia = FuchsiaEspBuilder(instance.generated_esp_image_path());
+      auto fuchsia = FuchsiaEspBuilder(instance.esp_image_path());
       return fuchsia.Architecture(instance.target_arch())
           .Zedboot(instance.fuchsia_zedboot_path())
           .MultibootBinary(instance.fuchsia_multiboot_bin_path())
@@ -387,8 +377,10 @@ Result<void> InitializeEspImage(
     CF_EXPECT(BuildAPImage(config, instance));
   }
   const auto is_not_gem5 = config.vm_manager() != VmmMode::kGem5;
-  if (is_not_gem5 && GeneratedEspRequired(instance)) {
-    LOG(DEBUG) << "creating esp_image: " << instance.generated_esp_image_path();
+  const auto esp_required_for_boot_flow =
+      EspRequiredForBootFlow(instance.boot_flow());
+  if (is_not_gem5 && esp_required_for_boot_flow) {
+    LOG(DEBUG) << "creating esp_image: " << instance.esp_image_path();
     CF_EXPECT(BuildOSImage(instance));
   }
   return {};

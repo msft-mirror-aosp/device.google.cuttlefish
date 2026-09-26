@@ -107,9 +107,7 @@ DEFINE_string(
     "Location of system target zip file.");
 
 DEFINE_string(android_efi_loader, CF_DEFAULTS_ANDROID_EFI_LOADER,
-              "Location of android EFI loader for android efi load flow. An "
-              "ESP image is generated from it and used instead of a prebuilt "
-              "android_esp.img from the system image directory.");
+              "Location of android EFI loader for android efi load flow.");
 
 DEFINE_string(linux_kernel_path, CF_DEFAULTS_LINUX_KERNEL_PATH,
               "Location of linux kernel for cuttlefish otheros flow.");
@@ -311,7 +309,7 @@ std::vector<ImagePartition> chromeos_composite_disk_config(
   });
   partitions.emplace_back(ImagePartition{
       .label = "linux_esp",
-      .image_file_path = AbsolutePath(instance.generated_esp_image_path()),
+      .image_file_path = AbsolutePath(instance.esp_image_path()),
       .type = kEfiSystemPartition,
       .read_only = FLAGS_use_overlay,
   });
@@ -331,7 +329,7 @@ std::vector<ImagePartition> linux_composite_disk_config(
 
   partitions.push_back(ImagePartition{
       .label = "linux_esp",
-      .image_file_path = AbsolutePath(instance.generated_esp_image_path()),
+      .image_file_path = AbsolutePath(instance.esp_image_path()),
       .type = kEfiSystemPartition,
       .read_only = FLAGS_use_overlay,
   });
@@ -350,7 +348,7 @@ std::vector<ImagePartition> fuchsia_composite_disk_config(
 
   partitions.push_back(ImagePartition{
       .label = "fuchsia_esp",
-      .image_file_path = AbsolutePath(instance.generated_esp_image_path()),
+      .image_file_path = AbsolutePath(instance.esp_image_path()),
       .type = kEfiSystemPartition,
       .read_only = FLAGS_use_overlay,
   });
@@ -533,16 +531,14 @@ std::vector<ImagePartition> AndroidEfiLoaderCompositeDiskConfig(
       android_composite_disk_config(instance);
   // Cuttlefish uboot EFI bootflow by default looks at the first partition
   // for EFI application. Thus we put "android_esp" at the beginning.
-  const std::string esp_image_path = instance.android_efi_loader().empty()
-                                         ? instance.android_esp_image()
-                                         : instance.generated_esp_image_path();
-  partitions.insert(partitions.begin(),
-                    ImagePartition{
-                        .label = "android_esp",
-                        .image_file_path = AbsolutePath(esp_image_path),
-                        .type = kEfiSystemPartition,
-                        .read_only = FLAGS_use_overlay,
-                    });
+  partitions.insert(
+      partitions.begin(),
+      ImagePartition{
+          .label = "android_esp",
+          .image_file_path = AbsolutePath(instance.esp_image_path()),
+          .type = kEfiSystemPartition,
+          .read_only = FLAGS_use_overlay,
+      });
 
   return partitions;
 }
@@ -1041,18 +1037,6 @@ Result<void> DiskImageFlagsVectorization(
     // Repacking a boot.img changes boot_image and vendor_boot_image paths
     const CuttlefishConfig& const_config = const_cast<const CuttlefishConfig&>(config);
     const CuttlefishConfig::InstanceSpecific const_instance = const_config.ForInstance(num);
-    // Use the android_esp image prebuilt by the Android build, unless an EFI
-    // loader to generate it from was given or found, or another OS was
-    // requested.
-    const std::string prebuilt_esp_image =
-        system_image_dir[instance_index] + "/android_esp.img";
-    if ((config.vm_manager() == VmmMode::kCrosvm ||
-         config.vm_manager() == VmmMode::kQemu) &&
-        const_instance.boot_flow() ==
-            CuttlefishConfig::InstanceSpecific::BootFlow::Android &&
-        FileExists(prebuilt_esp_image)) {
-      instance.set_android_esp_image(prebuilt_esp_image);
-    }
     if (cur_kernel_path.size() && config.vm_manager() != VmmMode::kGem5) {
       const std::string new_boot_image_path =
           const_instance.PerInstancePath("boot_repacked.img");
