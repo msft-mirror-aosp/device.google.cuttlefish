@@ -538,8 +538,6 @@ class CuttlefishConfig {
       // Currently we have only one case when we cannot do it. When users
       // have ubuntu bionic which doesn't have monolith binaris in the
       // grub-efi-arm64-bin (for arm64) and grub-efi-ia32-bin (x86) deb packages.
-      // TODO(b/260337906): check is it possible to add grub binaries into the AOSP
-      // to deliver the proper grub environment
       // TODO(b/260338443): use grub-mkimage from grub-common in case we cannot overcome
       // legal issues
       LegacyDirect
