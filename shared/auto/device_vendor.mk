@@ -226,6 +226,7 @@ BOARD_BOOTCONFIG += androidboot.hibernation_resume_device=259:3
 TARGET_USES_CF_RILD := false
 PRODUCT_PACKAGES += com.android.hardware.radio.minradio.virtual
 PRODUCT_PACKAGES += ConnectivityOverlayMinradio
+PRODUCT_VENDOR_PROPERTIES += ro.telephony.default_network=33
 
 # Disable thread network
 CF_VENDOR_NO_THREADNETWORK := true
