@@ -17,6 +17,7 @@
 PRODUCT_MAKEFILES := \
 	aosp_cf_arm_minidroid:$(LOCAL_DIR)/vsoc_arm_minidroid/aosp_cf.mk \
 	aosp_cf_arm64_auto:$(LOCAL_DIR)/vsoc_arm64_only/auto/aosp_cf.mk \
+	aosp_cf_arm64_desktop:$(LOCAL_DIR)/vsoc_arm64_only/desktop/aosp_cf.mk \
 	aosp_cf_arm64_phone:$(LOCAL_DIR)/vsoc_arm64/phone/aosp_cf.mk \
 	aosp_cf_arm64_phone_vendor:$(LOCAL_DIR)/vsoc_arm64/phone/aosp_cf_vendor.mk \
 	aosp_cf_arm64_phone_pgagnostic:$(LOCAL_DIR)/vsoc_arm64_pgagnostic/phone/aosp_cf.mk \
@@ -55,6 +56,7 @@ PRODUCT_MAKEFILES := \
 
 COMMON_LUNCH_CHOICES := \
 	aosp_cf_arm64_auto-trunk_staging-userdebug \
+	aosp_cf_arm64_desktop-trunk_staging-userdebug \
 	aosp_cf_arm64_phone-trunk_staging-userdebug \
 	aosp_cf_riscv64_phone-trunk_staging-userdebug \
 	aosp_cf_x86_64_only_phone_hsum-trunk_staging-userdebug \
