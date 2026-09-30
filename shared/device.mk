@@ -492,12 +492,24 @@ PRODUCT_PACKAGES += $(LOCAL_THERMAL_HAL_PRODUCT_PACKAGE)
 #
 # NPU HAL
 #
-PRODUCT_PACKAGES += \
-    com.android.hardware.npu.cf
+ifeq ($(RELEASE_AIDL_USE_UNFROZEN),true)
+    PRODUCT_PACKAGES += \
+        android.hardware.npu-service.litert \
+        liblitert_dispatch_mock \
+        run-test-inference \
+        npu_test_model.tflite \
+        npu_test_input.inp \
+        npu_test_output.ref \
+        npu_test_config.textproto
+
+    PRODUCT_VENDOR_PROPERTIES += \
+        ro.vendor.npu.litert.dispatch_lib=liblitert_dispatch_mock.so \
+        ro.vendor.npu.litert.target_descriptor=android-cpu-tflite
 
 # Indicates that Cuttlefish has NPU support
 PRODUCT_COPY_FILES += \
     frameworks/native/data/etc/android.hardware.npu.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.npu.xml
+endif
 
 # USB
 PRODUCT_PACKAGES += \
