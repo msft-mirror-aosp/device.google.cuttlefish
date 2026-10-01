@@ -29,6 +29,11 @@ $(call inherit-product, device/google/cuttlefish/shared/swiftshader/device_vendo
 $(call inherit-product, device/google/cuttlefish/shared/sensors/device_vendor.mk)
 $(call inherit-product, device/google/cuttlefish/shared/device.mk)
 
+# Loads the camera HAL and which set of cameras is required. Desktop models a
+# single external webcam.
+$(call inherit-product, device/google/cuttlefish/shared/camera/device_vendor.mk)
+$(call inherit-product, device/google/cuttlefish/shared/camera/config/external.mk)
+
 PRODUCT_PACKAGES += \
     desktop_core_hardware.prebuilt.xml
 DEVICE_PACKAGE_OVERLAYS += device/google/cuttlefish/shared/desktop/overlay
