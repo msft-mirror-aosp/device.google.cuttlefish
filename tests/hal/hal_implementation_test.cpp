@@ -152,6 +152,7 @@ static const std::set<std::string> kAlwaysMissingAidl = {
     // Removed in b/409403322.
     "android.hardware.health.storage",
     // Deprecated
+    "android.hardware.identity",
     "android.hardware.neuralnetworks",
 };
 
@@ -160,12 +161,6 @@ static const std::set<std::string> kAlwaysMissingAidl = {
  * These must be accompanied by a bug and expected to be here temporarily.
  */
 static const std::vector<VersionedAidlPackage> kKnownMissingAidl = {
-    // Cuttlefish Identity Credential HAL implementation is currently
-    // stuck at version 3 while RKP support is being added. Will be
-    // updated soon.
-    {"android.hardware.identity.", 4, 266869317},
-    {"android.hardware.identity.", 5, 266869317},
-
     {"android.se.omapi.", 2, 266870904},
     {"android.hardware.soundtrigger3.", 5, 266941225},
     {"android.media.soundtrigger.", 5, 266941225},
