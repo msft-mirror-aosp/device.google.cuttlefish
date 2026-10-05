@@ -18,6 +18,8 @@ npu/
 │   └── 20260828/
 │       ├── arm64/
 │       │   └── liblitert_dispatch_mock.so
+│       ├── x86/
+│       │   └── liblitert_dispatch_mock.so
 │       └── x86_64/
 │           └── liblitert_dispatch_mock.so
 └── testdata/
@@ -29,7 +31,7 @@ npu/
 
 When dropping a new prebuilt:
 1. Create a new directory under `prebuilts/` named with the drop date (`YYYYMMDD`).
-2. Place the built `arm64` and `x86_64` `.so` files into their respective subdirectories.
+2. Place the built `arm64`, `x86`, and `x86_64` `.so` files into their respective subdirectories.
 3. Update `device/google/cuttlefish/npu/Android.bp` to point to the new versioned paths.
 
 ---
@@ -49,7 +51,7 @@ When building for the `/vendor` partition in Android, specific build options are
 2. **`--android_ndk_min_sdk_version=29`**:
    - Sets the NDK minimum API level to 29 (Android 10) to ensure API compatibility.
 
-3. **`--config=android_x86_64` / `--config=android_arm64`**:
+3. **`--config=android_x86_64` / `--config=android_x86` / `--config=android_arm64`**:
    - Selects the target architecture toolchain.
 
 4. **`-c opt`**:
@@ -73,14 +75,25 @@ blaze build -c opt \
 cp blaze-bin/third_party/odml/litert/litert/runtime/dispatch/mock/libLiteRtDispatchMock.so \
   <android_root>/device/google/cuttlefish/npu/prebuilts/<VERSION>/x86_64/liblitert_dispatch_mock.so
 
-# 3. Build for arm64 (Cuttlefish arm64 target)
+# 3. Build for x86 (Cuttlefish 32-bit x86 target)
+blaze build -c opt \
+  --config=android_x86 \
+  --android_ndk_min_sdk_version=29 \
+  --define=litert_android_no_jni=true \
+  //third_party/odml/litert/litert/runtime/dispatch/mock:LiteRtDispatchMock
+
+# 4. Copy the x86 binary to the prebuilts directory:
+cp blaze-bin/third_party/odml/litert/litert/runtime/dispatch/mock/libLiteRtDispatchMock.so \
+  <android_root>/device/google/cuttlefish/npu/prebuilts/<VERSION>/x86/liblitert_dispatch_mock.so
+
+# 5. Build for arm64 (Cuttlefish arm64 target)
 blaze build -c opt \
   --config=android_arm64 \
   --android_ndk_min_sdk_version=29 \
   --define=litert_android_no_jni=true \
   //third_party/odml/litert/litert/runtime/dispatch/mock:LiteRtDispatchMock
 
-# 4. Copy the arm64 binary to the prebuilts directory:
+# 6. Copy the arm64 binary to the prebuilts directory:
 cp blaze-bin/third_party/odml/litert/litert/runtime/dispatch/mock/libLiteRtDispatchMock.so \
   <android_root>/device/google/cuttlefish/npu/prebuilts/<VERSION>/arm64/liblitert_dispatch_mock.so
 ```
