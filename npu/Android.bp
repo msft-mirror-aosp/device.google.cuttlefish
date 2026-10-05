@@ -20,8 +20,11 @@ cc_prebuilt_library_shared {
     name: "liblitert_dispatch_mock",
     stem: "liblitert_dispatch_mock",
     vendor: true,
-    compile_multilib: "64",
+    compile_multilib: "first",
     arch: {
+        x86: {
+            srcs: ["prebuilts/20260828/x86/liblitert_dispatch_mock.so"],
+        },
         x86_64: {
             srcs: ["prebuilts/20260828/x86_64/liblitert_dispatch_mock.so"],
         },
