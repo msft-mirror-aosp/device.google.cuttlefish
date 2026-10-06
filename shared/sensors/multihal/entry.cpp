@@ -17,6 +17,13 @@
 #include <log/log.h>
 #include <multihal_sensors.h>
 #include <multihal_sensors_transport.h>
+#include <poll.h>
+
+#include <cerrno>
+#include <chrono>
+#include <cstring>
+#include <initializer_list>
+#include <vector>
 
 #include "common/libs/fs/shared_buf.h"
 #include "common/libs/transport/channel_sharedfd.h"
@@ -24,6 +31,62 @@
 using ::android::hardware::sensors::V2_1::implementation::ISensorsSubHal;
 
 namespace {
+
+// Discards all input pending on `fds` until none of them has received anything
+// for kQuietPeriodMs (or kMaxDrainTime has passed).
+void DrainUntilQuiet(std::initializer_list<cuttlefish::SharedFD> fds) {
+  constexpr int kQuietPeriodMs = 100;
+  constexpr auto kMaxDrainTime = std::chrono::seconds(2);
+
+  std::vector<cuttlefish::PollSharedFd> poll_fds;
+  poll_fds.reserve(fds.size());
+  for (const cuttlefish::SharedFD& fd : fds) {
+    poll_fds.push_back({.fd = fd, .events = POLLIN});
+  }
+
+  const auto deadline = std::chrono::steady_clock::now() + kMaxDrainTime;
+  size_t discarded = 0;
+  char buffer[4096];
+  while (std::chrono::steady_clock::now() < deadline) {
+    const int ready = cuttlefish::SharedFD::Poll(poll_fds, kQuietPeriodMs);
+    if (ready == 0) {
+      break;
+    }
+    if (ready < 0) {
+      if (errno == EINTR) {
+        continue;
+      }
+      LOG(ERROR) << "Failed to poll sensors channels: " << strerror(errno);
+      return;
+    }
+    for (cuttlefish::PollSharedFd& poll_fd : poll_fds) {
+      if (poll_fd.revents == 0) {
+        continue;
+      }
+      if (!(poll_fd.revents & POLLIN)) {
+        LOG(ERROR) << "Unexpected poll events on sensors channel: "
+                   << poll_fd.revents;
+        return;
+      }
+      // Doesn't block: the terminal is in raw mode (VMIN=1) and there are no
+      // other readers.
+      const ssize_t bytes_read = poll_fd.fd->Read(buffer, sizeof(buffer));
+      if (bytes_read < 0) {
+        LOG(ERROR) << "Failed to drain sensors channel: "
+                   << poll_fd.fd->StrError();
+        return;
+      }
+      if (bytes_read == 0) {
+        return;
+      }
+      discarded += bytes_read;
+    }
+  }
+
+  if (discarded > 0) {
+    LOG(INFO) << "Discarded " << discarded << " bytes of stale sensors data";
+  }
+}
 
 class VconsoleSensorsTransport : public goldfish::SensorsTransport {
  public:
@@ -157,6 +220,9 @@ extern "C" ISensorsSubHal* sensorsHalGetSubHal_2_1(uint32_t* version) {
     LOG(FATAL) << "Could not make " << kSensorsDataPath
                << " a raw terminal: " << data_fd->StrError();
   }
+
+  // Discard any stale sensor data left in the channels from before a reboot.
+  DrainUntilQuiet({control_fd, data_fd});
 
   // Leaking the memory intentionally to make sure this object is available
   // for other threads after main thread is terminated:

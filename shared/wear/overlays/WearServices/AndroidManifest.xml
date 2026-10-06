@@ -5,7 +5,7 @@
 
     <overlay
         android:targetPackage="com.google.wear.services"
-        android:targetName="WearServicesConfig"
+        android:targetName="WearServicesCustomization"
         android:isStatic="true"
         android:priority="0"
         android:resourcesMap="@xml/overlay"

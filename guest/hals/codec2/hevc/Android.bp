@@ -28,8 +28,8 @@ cc_library_static {
         "C2CuttlefishHevcDec.cpp",
     ],
 
-    include_dirs: [
-        "device/google/cuttlefish/guest/hals/codec2",
+    header_libs: [
+        "cuttlefish_common_headers",
     ],
 
     export_include_dirs: [
