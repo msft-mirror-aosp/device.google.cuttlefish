@@ -1,2 +1,3 @@
 config=phone
 gfxstream=unsupported
+output_audio_streams_count=2
