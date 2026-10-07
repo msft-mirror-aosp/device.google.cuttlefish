@@ -131,6 +131,12 @@ ifneq (,$(findstring auto, $(PRODUCT_NAME))$(findstring sdv, $(PRODUCT_NAME)))
 BOARD_VENDOR_RAMDISK_KERNEL_MODULES += $(wildcard $(KERNEL_MODULES_PATH)/virtio_mmio.ko)
 endif
 
+ifeq ($(BOARD_IS_AUTOMOTIVE), true)
+# Load virtio-media.ko in first stage init so that override_timestamp=true in
+# first_stage_modules.options is applied.
+BOARD_VENDOR_RAMDISK_KERNEL_MODULES += $(wildcard $(KERNEL_MODULES_PATH)/virtio-media.ko)
+endif
+
 # GKI >5.15 will have and require virtio_pci_legacy_dev.ko
 BOARD_VENDOR_RAMDISK_KERNEL_MODULES += $(wildcard $(SYSTEM_VIRTIO_PREBUILTS_PATH)/virtio_pci_legacy_dev.ko)
 # GKI >5.10 will have and require virtio_pci_modern_dev.ko
