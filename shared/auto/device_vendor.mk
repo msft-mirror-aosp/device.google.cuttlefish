@@ -234,6 +234,9 @@ CF_VENDOR_NO_THREADNETWORK := true
 # Disable light HAL
 LOCAL_ENABLE_LIGHT := false
 
+# Disable Contexthub HAL
+LOCAL_CONTEXTHUB_PRODUCT_PACKAGE :=
+
 # Wifi setup
 PRODUCT_PACKAGES += wifi_on
 

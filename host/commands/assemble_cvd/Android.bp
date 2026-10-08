@@ -48,6 +48,9 @@ cc_binary_host {
     header_libs: [
         "bootimg_headers",
     ],
+    extra_include_dir_deps: [
+        ":cuttlefish_avb_srcs",
+    ],
     shared_libs: [
         "libbase",
         "libcuttlefish_allocd_utils",
