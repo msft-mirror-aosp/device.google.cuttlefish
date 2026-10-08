@@ -35,6 +35,17 @@ constexpr int kVideoNodeIdOffset = 1;
 Result<std::string> DevNameToCameraId(const std::string& devName);
 Result<std::string> CameraIdToDevName(const std::string& cameraId);
 
+struct CtrlRange {
+  int32_t min;
+  int32_t max;
+  int32_t step;
+  int32_t default_value;
+};
+
+Result<std::optional<CtrlRange>> GetCtrlRange(borrowed_fd fd, uint32_t ctrl_id);
+Result<int64_t> GetCtrlValue(borrowed_fd fd, uint32_t ctrl_id);
+Result<void> SetCtrlValue(borrowed_fd fd, uint32_t ctrl_id, int64_t value);
+
 // Queries virtio-media "lens_facing" control value.
 Result<std::optional<int64_t>> LensFacingCtrl(borrowed_fd fd);
 

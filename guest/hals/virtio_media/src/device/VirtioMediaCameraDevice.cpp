@@ -698,6 +698,19 @@ status_t VirtioMediaCameraDevice::initDefaultCharsKeys(
 status_t VirtioMediaCameraDevice::initCameraControlsCharsKeys(
     int fd, ::android::hardware::camera::common::V1_0::helper::CameraMetadata*
                 metadata) {
+  auto gain_range_res =
+      cuttlefish::virtio_media::GetCtrlRange(fd, V4L2_CID_GAIN);
+  if (gain_range_res.ok() && gain_range_res.value().has_value()) {
+    auto gain_range = gain_range_res.value().value();
+    int32_t sensitivity_range[2] = {gain_range.min, gain_range.max};
+    UPDATE(ANDROID_SENSOR_INFO_SENSITIVITY_RANGE, sensitivity_range, 2);
+    ALOGI(
+        "%s: SENSOR_INFO_SENSITIVITY_RANGE set to [%d, %d] from V4L2_CID_GAIN",
+        __FUNCTION__, sensitivity_range[0], sensitivity_range[1]);
+  } else {
+    ALOGW("%s: V4L2_CID_GAIN not supported or failed to query", __FUNCTION__);
+  }
+
   // android.sensor.info.sensitivityRange   -> V4L2_CID_ISO_SENSITIVITY
   // android.sensor.info.exposureTimeRange  -> V4L2_CID_EXPOSURE_ABSOLUTE
   // android.sensor.info.maxFrameDuration   -> TBD
