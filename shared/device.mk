@@ -35,6 +35,39 @@ PRODUCT_VENDOR_PROPERTIES += \
 PRODUCT_SOONG_NAMESPACES += device/generic/goldfish # for audio, wifi and sensors
 PRODUCT_SOONG_NAMESPACES += device/google/cuttlefish/guest/services/wifi/regdb
 
+# Cuttlefish does not use SoC vendor BSP trees. Skip their Android.bp files so
+# Soong does not parse and analyze them. Products that need a subdirectory can
+# add it back with a longer, non-negated PRODUCT_SOURCE_ROOT_DIRS entry.
+PRODUCT_SOURCE_ROOT_DIRS += \
+    -device/amlogic/ \
+    -device/linaro/ \
+    -device/mediatek/ \
+    -device/panasonic/ \
+    -device/qcom/ \
+    -device/sei/ \
+    -device/skyworth/ \
+    -device/volvocars/ \
+    -hardware/amlogic/ \
+    -hardware/qcom/ \
+    -vendor/amlogic/ \
+    -vendor/intel/ \
+    -vendor/lge/ \
+    -vendor/mediatek/ \
+    -vendor/panasonic/ \
+    -vendor/qcom/ \
+    -vendor/sei/ \
+    -vendor/skyworth/ \
+    -vendor/auto/embedded/CarServiceGoogleRRO/ \
+    -vendor/google_devices/eos/ \
+    -vendor/google_devices/sw5100/ \
+    -vendor/google_shared/extended-reality/ar1/common/ \
+    -vendor/google/services/GoogleRil/native/ \
+    -vendor/google/apps/ModemService/native/modem_svc/ \
+    vendor/mediatek/t900/
+# vendor/mediatek/t900/ has no leading "-" on purpose: it re-includes that
+# subtree under the excluded vendor/mediatek/ (the longest matching prefix
+# wins), because cuttlefish phone modules reference it.
+
 PRODUCT_USE_DYNAMIC_PARTITIONS := true
 PRODUCT_SET_DEBUGFS_RESTRICTIONS := true
 
