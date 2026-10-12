@@ -32,7 +32,6 @@ constexpr uint8_t kKeyMintAppletAid[] = {0xa0, 0x00, 0x00, 0x00, 0x62, 0x03,
                                          0x02, 0x0c, 0x01, 0x01, 0x01};
 
 constexpr uint8_t kManageChannel[] = {0x00, 0x70, 0x00, 0x00, 0x01};
-constexpr uint8_t KM3_P1 = 0x60;
 constexpr int32_t kSuccess = 0x9000;
 constexpr char kLibJvm[] = "lib/server/libjvm.so";
 constexpr char kDefaultJavaPath[] = "/usr/lib/jvm/jdk-64";
@@ -151,6 +150,19 @@ Result<void> JCardSimInterface::PersonalizeKeymintApplet(JNIEnv* env) {
 
   // Call initialize method on JCardSimProxy
   env->CallVoidMethod(jcardsim_proxy_inst_, init_method);
+  CF_EXPECT(!env->ExceptionCheck(),
+            "Exception calling JCardSimProxy.initialize");
+
+  jmethodID get_p1_method =
+      env->GetMethodID(jcardsim_proxy_class, "getKeyMintP1", "()B");
+  CF_EXPECT(get_p1_method != nullptr, "getKeyMintP1 method not found");
+  keymint_p1_ = static_cast<uint8_t>(
+      env->CallByteMethod(jcardsim_proxy_inst_, get_p1_method));
+  CF_EXPECT(!env->ExceptionCheck(),
+            "Exception calling JCardSimProxy.getKeyMintP1");
+  LOG(INFO) << "Keymint P1 value from strongbox simulator: 0x" << std::hex
+            << static_cast<int>(keymint_p1_);
+
   return {};
 }
 
@@ -218,7 +230,7 @@ Result<void> JCardSimInterface::ProvisionPresharedSecret(JNIEnv* env) {
     std::vector<uint8_t> shared_secret_apdu = {
         static_cast<uint8_t>(0x80 | channel_number),  // CLA
         0x0F,                                         // INS
-        KM3_P1,                                       // P1
+        keymint_p1_,                                  // P1
         0x00,                                         // P2
         0x00,                                         // Lc - 0x000023
         0x00,

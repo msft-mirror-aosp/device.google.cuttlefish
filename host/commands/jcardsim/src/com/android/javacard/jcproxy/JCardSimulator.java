@@ -17,7 +17,7 @@
 package com.android.javacard.jcproxy;
 
 import com.android.cts.omapi.test.CtsAndroidOmapiTestApplet;
-import com.android.javacard.keymaster.KM3Applet;
+import com.android.javacard.keymaster.KM4Applet;
 
 import com.licel.jcardsim.smartcardio.CardSimulator;
 import com.licel.jcardsim.utils.AIDUtil;
@@ -64,11 +64,11 @@ public class JCardSimulator implements Simulator {
     }
 
     public static Class<? extends Applet> getKeyMintClass() {
-        return KM3Applet.class;
+        return KM4Applet.class;
     }
 
     public static short getKeyMintP1P2() {
-        return KM3Applet.P1P2;
+        return KM4Applet.P1P2;
     }
 
     private CardSimulator simulator;
