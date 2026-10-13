@@ -28,7 +28,7 @@ namespace cuttlefish {
 Result<std::optional<MonitorCommand>> UwbConnector(
     const CuttlefishConfig& config,
     const CuttlefishConfig::InstanceSpecific& instance) {
-  if (!config.enable_host_uwb()) {
+  if (!instance.enable_host_uwb_connector()) {
     return {};
   }
   std::vector<std::string> fifo_paths = {
@@ -38,9 +38,6 @@ Result<std::optional<MonitorCommand>> UwbConnector(
   std::vector<SharedFD> fifos;
   for (const auto& path : fifo_paths) {
     fifos.push_back(CF_EXPECT(CreateOrReuseAndDrainFifo(path, 0660)));
-  }
-  if (!instance.enable_host_uwb_connector()) {
-    return {};
   }
   return Command(HostBinaryPath("tcp_connector"))
       .AddParameter("-fifo_out=", fifos[0])
