@@ -1051,13 +1051,14 @@ Result<std::vector<MonitorCommand>> CrosvmManager::StartCommands(
                                       gpu_capture_logs);
 
     commands.emplace_back(std::move(gpu_capture_log_tee_cmd));
-    commands.emplace_back(std::move(gpu_capture_command));
+    commands.emplace_back(std::move(gpu_capture_command),
+                          ProcessCategory::kVmm);
   } else {
     crosvm_cmd.Cmd().RedirectStdIO(Subprocess::StdIOChannel::kStdOut,
                                    crosvm_logs);
     crosvm_cmd.Cmd().RedirectStdIO(Subprocess::StdIOChannel::kStdErr,
                                    crosvm_logs);
-    commands.emplace_back(std::move(crosvm_cmd.Cmd()), true);
+    commands.emplace_back(std::move(crosvm_cmd.Cmd()), ProcessCategory::kVmm);
   }
 
   return commands;

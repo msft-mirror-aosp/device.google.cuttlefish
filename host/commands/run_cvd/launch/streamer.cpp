@@ -26,6 +26,7 @@
 #include <fruit/fruit.h>
 
 #include "common/libs/fs/shared_fd.h"
+#include "common/libs/utils/files.h"
 #include "common/libs/utils/result.h"
 #include "host/commands/run_cvd/reporting.h"
 #include "host/libs/config/command_source.h"
@@ -167,12 +168,9 @@ class StreamerSockets : public virtual SetupFeature {
         instance_.PerInstanceInternalPath("confui_fifo_vm.in"),
         instance_.PerInstanceInternalPath("confui_fifo_vm.out"),
     };
-    for (const auto& path : fifo_files) {
-      unlink(path.c_str());
-    }
     std::vector<SharedFD> fds;
     for (const auto& path : fifo_files) {
-      fds.emplace_back(CF_EXPECT(SharedFD::Fifo(path, 0660)));
+      fds.emplace_back(CF_EXPECT(CreateOrReuseAndDrainFifo(path, 0660)));
     }
     confui_in_fd_ = fds[0];
     confui_out_fd_ = fds[1];
