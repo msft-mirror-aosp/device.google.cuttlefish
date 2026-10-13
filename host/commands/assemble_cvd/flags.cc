@@ -130,10 +130,10 @@ DEFINE_vec(initramfs_path, CF_DEFAULTS_INITRAMFS_PATH,
               "Path to the initramfs");
 DEFINE_string(extra_kernel_cmdline, CF_DEFAULTS_EXTRA_KERNEL_CMDLINE,
               "Additional flags to put on the kernel command line");
-DEFINE_string(extra_bootconfig_args, CF_DEFAULTS_EXTRA_BOOTCONFIG_ARGS,
-              "Space-separated list of extra bootconfig args. "
-              "Note: overwriting an existing bootconfig argument "
-              "requires ':=' instead of '='.");
+DEFINE_vec(extra_bootconfig_args, CF_DEFAULTS_EXTRA_BOOTCONFIG_ARGS,
+           "Space-separated list of extra bootconfig args. "
+           "Note: overwriting an existing bootconfig argument "
+           "requires ':=' instead of '='.");
 DEFINE_vec(guest_enforce_security,
            fmt::format("{}", CF_DEFAULTS_GUEST_ENFORCE_SECURITY),
            "Whether to run in enforcing mode (non permissive).");
@@ -1238,6 +1238,9 @@ Result<std::vector<int>> GetDataImageFlagOrGuestIntValueForInstances(
 Result<std::vector<std::string>> GetFlagStrValueForInstances(
     const std::string& flag_values, int32_t instances_size,
     const std::string& flag_name, std::map<std::string, std::string>& name_to_default_value) {
+  if (instances_size == 1) {
+    return std::vector<std::string>{flag_values};
+  }
   std::vector<std::string> flag_vec = android::base::Split(flag_values, ",");
   std::vector<std::string> value_vec(instances_size);
 
@@ -1545,6 +1548,8 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
 
   std::vector<std::string> extra_bootconfig_args_base64_vec =
       CF_EXPECT(GET_FLAG_STR_VALUE(extra_bootconfig_args_base64));
+  std::vector<std::string> extra_bootconfig_args_vec =
+      CF_EXPECT(GET_FLAG_STR_VALUE(extra_bootconfig_args));
 
   std::vector<bool> record_screen_vec = CF_EXPECT(GET_FLAG_BOOL_VALUE(
       record_screen));
@@ -1824,7 +1829,8 @@ Result<CuttlefishConfig> InitializeCuttlefishConfiguration(
     instance.set_enable_gnss_grpc_proxy(start_gnss_proxy_vec[instance_index]);
     instance.set_enable_bootanimation(enable_bootanimation_vec[instance_index]);
 
-    instance.set_extra_bootconfig_args(FLAGS_extra_bootconfig_args);
+    instance.set_extra_bootconfig_args(
+        extra_bootconfig_args_vec[instance_index]);
     if (!extra_bootconfig_args_base64_vec[instance_index].empty()) {
       std::vector<uint8_t> decoded_args;
       CF_EXPECT(DecodeBase64(extra_bootconfig_args_base64_vec[instance_index],
