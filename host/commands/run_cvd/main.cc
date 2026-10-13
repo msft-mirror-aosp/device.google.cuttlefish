@@ -19,6 +19,7 @@
 #include <build/version.h>
 #include <fruit/fruit.h>
 #include <gflags/gflags.h>
+#include <signal.h>
 #include <unistd.h>
 
 #include <fstream>
@@ -224,6 +225,7 @@ void ConfigureLogs(const CuttlefishConfig& config,
 Result<void> RunCvdMain(int argc, char** argv) {
   setenv("ANDROID_LOG_TAGS", "*:v", /* overwrite */ 0);
   ::android::base::InitLogging(argv, android::base::StderrLogger);
+  signal(SIGPIPE, SIG_IGN);
   google::ParseCommandLineFlags(&argc, &argv, false);
 
   CF_EXPECT(StdinValid(), "Invalid stdin");
