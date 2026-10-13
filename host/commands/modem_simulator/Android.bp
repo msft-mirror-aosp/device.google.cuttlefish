@@ -155,6 +155,9 @@ cc_test_host {
     include_dirs: [
         "device/google/cuttlefish/host/commands",
     ],
+    extra_include_dir_deps: [
+        "unittest/*.txt",
+    ],
     defaults: [
         "cuttlefish_host",
         "modem_simulator_base",
