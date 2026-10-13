@@ -21,6 +21,7 @@
 #include <fruit/fruit.h>
 
 #include "common/libs/fs/shared_fd.h"
+#include "common/libs/utils/files.h"
 #include "common/libs/utils/in_sandbox.h"
 #include "common/libs/utils/result.h"
 #include "host/libs/config/command_source.h"
@@ -42,7 +43,7 @@ Result<std::optional<MonitorCommand>> GnssGrpcProxyServer(
       instance.PerInstanceInternalPath("locationhvc_fifo_vm.out"),
   };
   for (const auto& path : fifo_paths) {
-    fifos.emplace_back(CF_EXPECT(SharedFD::Fifo(path, 0660)));
+    fifos.emplace_back(CF_EXPECT(CreateOrReuseAndDrainFifo(path, 0660)));
   }
 
   auto gnss_grpc_proxy_cmd =

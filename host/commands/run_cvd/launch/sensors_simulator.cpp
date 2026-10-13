@@ -14,14 +14,15 @@
 // limitations under the License.
 
 #include "host/commands/run_cvd/launch/launch.h"
+
+#include "common/libs/utils/files.h"
 #include "host/libs/config/known_paths.h"
 
 namespace cuttlefish {
 namespace {
 
 Result<SharedFD> CreateFifo(const std::string& path) {
-  unlink(path.c_str());
-  return SharedFD::Fifo(path, 0660);
+  return CreateOrReuseAndDrainFifo(path, 0660);
 }
 
 }  // namespace

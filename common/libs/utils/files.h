@@ -23,6 +23,7 @@
 #include <string>
 #include <vector>
 
+#include "common/libs/fs/shared_fd.h"
 #include "common/libs/utils/result.h"
 
 namespace cuttlefish {
@@ -123,5 +124,8 @@ struct InputPathForm {
  *  but SystemWideUserHome() call fails.
  */
 Result<std::string> EmulateAbsolutePath(const InputPathForm& path_info);
+
+Result<SharedFD> CreateOrReuseAndDrainFifo(const std::string& path,
+                                           mode_t mode);
 
 }  // namespace cuttlefish
