@@ -881,15 +881,17 @@ Result<SharedFD> CreateOrReuseAndDrainFifo(const std::string& path,
   CF_EXPECTF(ret->IsOpen(), "Failed to open '{}': '{}'", path, ret->StrError());
 
   if (existed) {
-    int flags = ret->Fcntl(F_GETFL, 0);
-    if (flags >= 0) {
-      ret->Fcntl(F_SETFL, flags | O_NONBLOCK);
-      char buf[4096];
-      while (ret->Read(buf, sizeof(buf)) > 0) {
-        // Reading while there is data to read
-      }
-      ret->Fcntl(F_SETFL, flags);
+    const int flags = ret->Fcntl(F_GETFL, 0);
+    CF_EXPECTF(flags >= 0, "Failed to get flags for '{}': {}", path,
+               ret->StrError());
+    CF_EXPECTF(ret->Fcntl(F_SETFL, flags | O_NONBLOCK) >= 0,
+               "Failed to set O_NONBLOCK for '{}': {}", path, ret->StrError());
+    char buf[4096];
+    while (ret->Read(buf, sizeof(buf)) > 0) {
+      // Reading while there is data to read
     }
+    CF_EXPECTF(ret->Fcntl(F_SETFL, flags) >= 0,
+               "Failed to restore flags for '{}': {}", path, ret->StrError());
   }
 
   return ret;

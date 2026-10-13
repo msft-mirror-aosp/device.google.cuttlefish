@@ -38,7 +38,7 @@ namespace cuttlefish {
 Result<std::optional<MonitorCommand>> BluetoothConnector(
     const CuttlefishConfig& config,
     const CuttlefishConfig::InstanceSpecific& instance) {
-  if (!instance.enable_host_bluetooth_connector()) {
+  if (!instance.has_bluetooth()) {
     return {};
   }
   std::vector<std::string> fifo_paths = {
@@ -48,6 +48,9 @@ Result<std::optional<MonitorCommand>> BluetoothConnector(
   std::vector<SharedFD> fifos;
   for (const auto& path : fifo_paths) {
     fifos.emplace_back(CF_EXPECT(CreateOrReuseAndDrainFifo(path, 0660)));
+  }
+  if (!instance.enable_host_bluetooth_connector()) {
+    return {};
   }
   return Command(TcpConnectorBinary())
       .AddParameter("-fifo_out=", fifos[0])
