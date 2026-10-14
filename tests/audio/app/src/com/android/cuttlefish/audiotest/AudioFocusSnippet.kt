@@ -16,6 +16,7 @@
 
 package com.android.cuttlefish.audiotest
 
+import android.Manifest
 import android.app.ActivityManager
 import android.content.Context
 import android.content.Intent
@@ -39,6 +40,29 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
+
+internal const val DEFAULT_CALLBACK_TIMEOUT_MS = 10_000L
+
+/**
+ * Adopts the required audio and telephony shell permissions once per instrumentation process and
+ * keeps them active for the lifetime of the process so co-loaded snippet classes do not drop each
+ * other's permissions.
+ */
+internal object SnippetShellPermissions {
+    private val adopted = AtomicBoolean(false)
+
+    fun ensureAdopted() {
+        if (adopted.compareAndSet(false, true)) {
+            InstrumentationRegistry.getInstrumentation()
+                .uiAutomation
+                .adoptShellPermissionIdentity(
+                    Manifest.permission.MODIFY_AUDIO_ROUTING,
+                    Manifest.permission.MODIFY_AUDIO_SETTINGS_PRIVILEGED,
+                    Manifest.permission.MODIFY_PHONE_STATE,
+                )
+        }
+    }
+}
 
 /**
  * [AudioManager.OnAudioFocusChangeListener] whose [toString] produces a deterministic,
@@ -85,7 +109,7 @@ class AudioFocusSnippet : Snippet {
     private val callbackIds = mutableMapOf<String, String>()
 
     init {
-        instrumentation.uiAutomation.adoptShellPermissionIdentity()
+        SnippetShellPermissions.ensureAdopted()
     }
 
     /**
@@ -300,7 +324,6 @@ class AudioFocusSnippet : Snippet {
     override fun shutdown() {
         killChildProcess()
         abandonAllAudioFocus()
-        instrumentation.uiAutomation.dropShellPermissionIdentity()
     }
 
     private companion object {
