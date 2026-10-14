@@ -69,3 +69,22 @@ python_test_host {
         ":CuttlefishAudioSnippet",
     ],
 }
+
+python_test_host {
+    name: "cuttlefish-audio-mode-session-test",
+    defaults: ["cuttlefish-audio-test-defaults"],
+    main: "audio_mode_session_test.py",
+    srcs: [
+        "audio_mode_session_test.py",
+    ],
+    test_config: "AudioModeSessionTest.xml",
+    test_suites: [
+        "general-tests",
+    ],
+    test_options: {
+        unit_test: false,
+    },
+    device_common_data: [
+        ":CuttlefishAudioSnippet",
+    ],
+}

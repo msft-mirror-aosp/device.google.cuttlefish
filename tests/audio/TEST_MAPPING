@@ -2,6 +2,9 @@
   "postsubmit": [
     {
       "name": "cuttlefish-audio-test"
+    },
+    {
+      "name": "cuttlefish-audio-mode-session-test"
     }
   ]
 }
