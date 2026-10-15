@@ -42,9 +42,6 @@
          name of a library .so file on the target device.
     -->
     <libraries>
-        <library name="aecsw" path="libaecsw.so"/>
-        <library name="agc1sw" path="libagc1sw.so"/>
-        <library name="agc2sw" path="libagc2sw.so"/>
         <library name="bassboostsw" path="libbassboostsw.so"/>
         <library name="bundle" path="libbundleaidl.so"/>
         <library name="downmix" path="libdownmixaidl.so"/>
@@ -52,7 +49,6 @@
         <library name="equalizersw" path="libequalizersw.so"/>
         <library name="haptic_generator" path="libhapticgeneratoraidl.so"/>
         <library name="loudness_enhancer" path="libloudnessenhanceraidl.so"/>
-        <library name="nssw" path="libnssw.so"/>
         <library name="env_reverbsw" path="libenvreverbsw.so"/>
         <library name="preset_reverbsw" path="libpresetreverbsw.so"/>
         <library name="reverb" path="libreverbaidl.so"/>
