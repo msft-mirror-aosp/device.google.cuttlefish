@@ -633,6 +633,27 @@ Flag GflagsCompatFlag(const std::string& name,
       });
 }
 
+Flag GflagsCompatFlag(const std::string& name, std::vector<unsigned>& value) {
+  return GflagsCompatFlag(name)
+      .Getter([&value]() { return fmt::format("{}", fmt::join(value, ",")); })
+      .Setter([&value](const FlagMatch& match) -> Result<void> {
+        if (match.value.empty()) {
+          value.clear();
+          return {};
+        }
+        std::vector<std::string> str_vals =
+            android::base::Split(match.value, ",");
+        value.clear();
+        for (const auto& str_val : str_vals) {
+          value.push_back(
+              CF_EXPECTF(ParseInteger<unsigned>(str_val),
+                         "Failed to parse \"{}\" as an unsigned integer",
+                         str_val));
+        }
+        return {};
+      });
+}
+
 Flag GflagsCompatFlag(const std::string& name, std::vector<bool>& value,
                       const bool def_val) {
   return GflagsCompatFlag(name)

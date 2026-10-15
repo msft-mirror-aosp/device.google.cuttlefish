@@ -34,9 +34,18 @@ struct MonitorEntry {
   std::unique_ptr<Command> cmd;
   std::unique_ptr<Subprocess> proc;
   bool is_critical;
+  ProcessCategory category;
+
+  MonitorEntry(Command command, ProcessCategory category)
+      : cmd(new Command(std::move(command))),
+        is_critical(category != ProcessCategory::kNonCriticalSupport),
+        category(category) {}
 
   MonitorEntry(Command command, bool is_critical)
-      : cmd(new Command(std::move(command))), is_critical(is_critical) {}
+      : cmd(new Command(std::move(command))),
+        is_critical(is_critical),
+        category(is_critical ? ProcessCategory::kCriticalSupport
+                             : ProcessCategory::kNonCriticalSupport) {}
 };
 
 // Launches and keeps track of subprocesses, decides response if they
@@ -72,6 +81,10 @@ class ProcessMonitor {
   // Resume all host subprocesses
   Result<void> ResumeMonitoredProcesses();
 
+  // Returns an open Pipe SharedFD which closes when the monitored processes
+  // experience an irregular exit, and the monitor stops all sub-processes.
+  SharedFD status() { return status_; }
+
  private:
   Result<void> StartSubprocesses(Properties& properties);
   Result<void> MonitorRoutine();
@@ -90,6 +103,8 @@ class ProcessMonitor {
   pid_t monitor_;
   std::optional<transport::SharedFdChannel> parent_channel_;
   std::optional<transport::SharedFdChannel> child_channel_;
+  SharedFD child_sock_;
+  SharedFD status_;
 
   /*
    * The lock that should be acquired when multiple threads
