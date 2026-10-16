@@ -45,3 +45,6 @@ PRODUCT_PACKAGES += \
     cuttlefish_go_phone_overlay_frameworks_base_core \
 
 TARGET_BOARD_INFO_FILE ?= device/google/cuttlefish/shared/go/android-info.txt
+ifneq (,$(findstring phone,$(TARGET_PRODUCT)))
+$(call soong_config_set_bool,cuttlefish_config,use_phone_audio_policy,true)
+endif

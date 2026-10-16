@@ -48,10 +48,10 @@ Every single test case is bracketed by automatic isolation hooks:
 3. **Interrupt with Transient Alarm**: A second client (`alarm_client`) requests transient focus (`USAGE_ALARM = 4`, `CONTENT_TYPE_SONIFICATION = 4`, `AUDIOFOCUS_GAIN_TRANSIENT = 2`).
    - **Expected Return**: `AUDIOFOCUS_REQUEST_GRANTED (1)`.
 4. **Verify Transient Focus Loss Callback**: `AudioService` dispatches `onAudioFocusChange(-2)` (`AUDIOFOCUS_LOSS_TRANSIENT`) to `media_client` on the main looper. The snippet posts a `SnippetEvent("onAudioFocusChange")` back to Mobly.
-   - **Assertion**: Event received within 5s with `clientId == "media_client"` and `focusChange == -2`.
+   - **Assertion**: Event received within 10s with `clientId == "media_client"` and `focusChange == -2`.
 5. **Abandon Transient Alarm**: `alarm_client` abandons its focus request.
 6. **Verify Focus Regain Callback**: `AudioService` automatically restores focus to `media_client` and dispatches `onAudioFocusChange(1)` (`AUDIOFOCUS_GAIN`).
-   - **Assertion**: Event received within 5s with `clientId == "media_client"` and `focusChange == 1`.
+   - **Assertion**: Event received within 10s with `clientId == "media_client"` and `focusChange == 1`.
 7. **Cleanup**: Unregisters `media_client` listener and abandons `media_client` focus.
 
 #### What to Look For in Terminal 1 (`adb logcat`):
@@ -111,9 +111,10 @@ Each of these 6 tests executes the exact same 4-stage verification loop:
 
 ---
 
-## 3. Healthy Run Output & Expected Timings
+## 3. Healthy Run Output & Expected Timings (4 Cores vs. 1 Core)
 
-A healthy execution on Cuttlefish completes all 9 tests in **~1.3 seconds total** ($70\text{ ms} - 270\text{ ms}$ per test):
+### 3.1 `cuttlefish-audio-test` (9 Audio Focus Tests)
+A healthy execution on Cuttlefish completes all 9 tests in **~1.5 seconds total on 4 cores** ($70\text{ ms} - 310\text{ ms}$ per test) and **~2.2 seconds total on 1 core**:
 
 ```text
 x86_64 cuttlefish-audio-test
@@ -128,18 +129,64 @@ x86_64 cuttlefish-audio-test (9 Tests)
 [7/9] CuttlefishAudioFocusTest#test_audio_focus_alarm: PASSED (111ms)
 [8/9] CuttlefishAudioFocusTest#test_audio_focus_notification: PASSED (147ms)
 [9/9] CuttlefishAudioFocusTest#test_audio_focus_game: PASSED (150ms)
-Summary (Test executed with 1 device.)
+```
 
--------
-x86_64 cuttlefish-audio-test: Passed: 9, Failed: 0, Ignored: 0, Assumption Failed: 0
+### 3.2 `cuttlefish-audio-mode-session-test` (4 VoIP `AudioModeSession` 5-Layer Routing Tests)
+A healthy execution completes all 4 tests in **~12.8 seconds total on 4 cores** and **~15.6 seconds total on 1 core**:
 
-All tests passed!
-Test Result uploaded to http://ab/I...
+```text
+x86_64 cuttlefish-audio-mode-session-test
+-----------------------------------------
+x86_64 cuttlefish-audio-mode-session-test (4 Tests)
+[1/4] CuttlefishVoipModeSessionTest#test_voip_mode_session_default_voice_vs_video_routing: PASSED (2.110s)
+[2/4] CuttlefishVoipModeSessionTest#test_voip_mode_session_mid_call_route_switching: PASSED (3.186s)
+[3/4] CuttlefishVoipModeSessionTest#test_voip_mode_session_preempted_by_cellular_call_and_restored: PASSED (3.410s)
+[4/4] CuttlefishVoipModeSessionTest#test_voip_mode_session_preempts_and_restores_media_playback: PASSED (4.048s)
 ```
 
 ---
 
-## 4. Failure Triage Matrix (What to Look For When a Test Fails)
+## 4. Standard Procedure: Running Time-Sensitive Load Tests with Simulated Suppressed Performance (`1 Core`)
+
+Non-premium or heavily contended cloud presubmit hosts can experience severe vCPU throttling. To proactively uncover timing assumptions, race conditions, or tight polling timeouts before submitting changes, always validate time-sensitive audio tests with the guest constrained to **a single online CPU core (`cpu0`)**.
+
+### Step 1 — Clean Up Stale Background `logcat` Processes
+If previous test runs were interrupted (`Ctrl+C` or killed Tradefed invocations), orphaned `logcat` processes may still be running inside the guest and consuming `cpu0` cycles:
+```bash
+export ANDROID_SERIAL=<device_ip>:<port>
+adb -s $ANDROID_SERIAL shell 'su 0 killall logcat 2>/dev/null || true'
+```
+
+### Step 2 — Constrain Cuttlefish Guest to 1 CPU Core (`nproc=1`)
+Use Linux CPU hotplug in sysfs to take `cpu1..cpuN` offline while keeping `cpu0` active:
+```bash
+adb -s $ANDROID_SERIAL shell 'su 0 sh -c "for f in /sys/devices/system/cpu/cpu[1-9]*/online; do [ -e \$f ] && echo 0 > \$f; done; cat /sys/devices/system/cpu/online; nproc"'
+```
+Verify that `cat /sys/devices/system/cpu/online` outputs `0` and `nproc` outputs `1`.
+
+### Step 3 — Run Multi-Iteration Stress Test (`--iterations 100`)
+Execute both test suites back-to-back or for 100 iterations to characterize the tail latency distribution:
+```bash
+# Single verification pass under 1-core constraint:
+ANDROID_SERIAL=$ANDROID_SERIAL atest -it cuttlefish-audio-mode-session-test cuttlefish-audio-test --request-upload-result
+
+# Full 100-iteration endurance & statistical benchmark:
+ANDROID_SERIAL=$ANDROID_SERIAL atest -it cuttlefish-audio-mode-session-test cuttlefish-audio-test --iterations 100 --request-upload-result
+```
+
+### Step 4 — Restore All Guest CPU Cores Online
+Always bring all vCPUs back online when finished:
+```bash
+adb -s $ANDROID_SERIAL shell 'su 0 sh -c "for f in /sys/devices/system/cpu/cpu[1-9]*/online; do [ -e \$f ] && echo 1 > \$f; done; cat /sys/devices/system/cpu/online; nproc"'
+```
+
+### Step 5 — Timeout & Polling Interval Sizing Rule
+- On a 1-core guest (`nproc=1`), real-time 48 kHz audio mixer threads (`AudioFlinger`), `system_server` (`AudioService`), `CuttlefishAudioSnippet`, and `adbd` (`dumpsys` inspection) contend for `cpu0` (verified across 100-iteration runs on 4-core `http://ab/I05100010640673808` and 1-core `http://ab/I35400010640768731`).
+- **Timeout Sizing Rule**: Polling helpers and asynchronous callback waits in time-sensitive audio tests (`DEFAULT_TIMEOUT_SEC`, `ROUTE_CONVERGENCE_TIMEOUT_SEC`, `FRAMES_ADVANCING_TIMEOUT_SEC`, `FOCUS_CALLBACK_TIMEOUT_SEC`, `DEFAULT_CALLBACK_TIMEOUT_MS`) must use at least a **`10.0s` timeout ceiling** and a **`>= 250ms` polling interval** (`DEFAULT_POLL_INTERVAL_SEC`) so `dumpsys` polling does not overload `cpu0` and single-core scheduling spikes do not cause false failures in presubmit.
+
+---
+
+## 5. Failure Triage Matrix (What to Look For When a Test Fails)
 
 If any test fails or hangs, match the failure message against the table below:
 
@@ -148,14 +195,15 @@ If any test fails or hangs, match the failure message against the table below:
 | **`Expected focus result 1 for <use_case>, got 0`** | Another high-priority exclusive focus owner (e.g. an active phone call, emergency alert, or external `AudioPolicy` focus lock) rejected the request. | Run `adb shell dumpsys audio` and inspect `Audio Focus stack entries` and `has focus policy:`. Check if another app or system service holds `AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE`. |
 | **`Expected CfAudioTest[<use_case>] in active focus stack`** | `requestAudioFocus` returned `1` (`GRANTED`), but the entry was immediately evicted or `MediaFocusControl` dump formatting changed. | Run `adb shell dumpsys audio \| grep -A 15 "Audio Focus stack entries"` to check whether the entry was preempted between the RPC return and `dumpsys`. |
 | **`Expected CfAudioTest[<use_case>] to be removed from active focus stack after abandon`** | `abandonAudioFocusRequest` failed to remove all focus entries for the package (orphaned `AudioFocusRequest`). | Check logcat for `abandonAudioFocus: clientId=... result=...` and verify no duplicate un-abandoned requests exist. |
-| **`CallbackHandlerTimeoutError: Timed out after waiting 5.0s for event 'onAudioFocusChange'`** in Test 1 | Main looper blocked on device, or `alarm_client` did not cause a focus change for `media_client`. | Check `adb logcat -s AudioFocusSnippet:V AudioSvc.FocusCtrl:V`. Confirm both `requestAudioFocus` calls returned `result=1` and check whether `onAudioFocusChange` fired on device. |
+| **`CallbackHandlerTimeoutError: Timed out after waiting 10.0s for event 'onAudioFocusChange'`** | Main looper blocked on device, or interrupting client did not cause a focus change for `media_client`. | Check `adb logcat -s AudioFocusSnippet:V AudioSvc.FocusCtrl:V`. Confirm both `requestAudioFocus` calls returned `result=1` and check whether `onAudioFocusChange` fired on device. |
+| **`Layer 2 (AudioPolicy) / Layer 5 (ALSA): expected AUDIO_DEVICE_OUT_EARPIECE / pcm1p to be RUNNING`** | Target device is not configured with `use_phone_audio_policy=true` and `output_audio_streams_count=2`. | Check `adb shell ls -l /proc/asound/card0/` for both `pcm0p` and `pcm1p`, and inspect `dumpsys media.audio_policy` for `Attached Devices: Speaker, Earpiece`. |
 | **Test fails during `setup_class` / `load_snippet`** | `CuttlefishAudioSnippet.apk` failed to install or `SnippetRunner` instrumentation crashed on startup. | Check `adb shell pm list instrumentation` for `com.android.cuttlefish.audiotest/com.google.android.mobly.snippet.SnippetRunner` and inspect crash logs in logcat (`AndroidRuntime:E`). |
 
 ---
 
-## 5. Collecting Logs & Artifacts for Bug Reports
+## 6. Collecting Logs & Artifacts for Bug Reports
 
-Whenever filing a bug for a failure in `cuttlefish-audio-test`, attach:
+Whenever filing a bug for a failure in `cuttlefish-audio-test` or `cuttlefish-audio-mode-session-test`, attach:
 1. **The AnTS Invocation URL** printed at the bottom of the `atest` run (`http://ab/I...`).
 2. **Local Mobly & Tradefed Logs** located at:
    ```bash
@@ -163,4 +211,4 @@ Whenever filing a bug for a failure in `cuttlefish-audio-test`, attach:
    ```
    Key files inside that directory:
    - `test_summary.yaml`: Full Mobly test records, stack traces, and timestamps.
-   - Device logcat & `dumpsys` artifacts captured automatically by Tradefed.
+   - Device logcat & `dumpsys` artifacts (`dumpsys_audio`, `dumpsys_audio_policy`, `dumpsys_audio_flinger`, `alsa_pcm_status`) captured automatically on failure.

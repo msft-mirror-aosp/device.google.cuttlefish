@@ -17,6 +17,7 @@
 import os
 import time
 
+import audio_stack_inspector
 from mobly import asserts
 from mobly import base_test
 from mobly import test_runner
@@ -32,8 +33,9 @@ AUDIO_FOCUS_LOGCAT_TAGS = ' '.join((
     'AudioSvc.FocusReq:V',
     'ActivityManager:I',
 ))
-FOCUS_CALLBACK_TIMEOUT_SEC = 5
-BINDER_DEATH_TIMEOUT_SEC = 10
+DEFAULT_TIMEOUT_SEC = audio_stack_inspector.DEFAULT_TIMEOUT_SEC
+FOCUS_CALLBACK_TIMEOUT_SEC = int(DEFAULT_TIMEOUT_SEC)
+BINDER_DEATH_TIMEOUT_SEC = int(DEFAULT_TIMEOUT_SEC)
 ON_AUDIO_FOCUS_CHANGE_EVENT = 'onAudioFocusChange'
 MEDIA_CLIENT_ID = 'media_client'
 ALARM_CLIENT_ID = 'alarm_client'
@@ -192,6 +194,7 @@ class CuttlefishAudioFocusTest(base_test.BaseTestClass):
   def teardown_class(self):
     if hasattr(self.dut, 'audio'):
       self.dut.unload_snippet('audio')
+    self.dut.services.stop_all()
 
   def pre_run(self):
     self.generate_tests(
@@ -220,7 +223,10 @@ class CuttlefishAudioFocusTest(base_test.BaseTestClass):
     return '\n'.join(stack_lines)
 
   def _wait_for_stack_without(
-      self, token: str, timeout_sec: float = 5.0
+      self,
+      token: str,
+      timeout_sec: float = DEFAULT_TIMEOUT_SEC,
+      poll_interval_sec: float = audio_stack_inspector.DEFAULT_POLL_INTERVAL_SEC,
   ) -> str:
     """Polls the live focus stack until `token` is absent or deadline expires."""
     deadline = time.monotonic() + timeout_sec
@@ -228,7 +234,7 @@ class CuttlefishAudioFocusTest(base_test.BaseTestClass):
       stack = self._get_active_focus_stack()
       if token not in stack or time.monotonic() >= deadline:
         return stack
-      time.sleep(0.1)
+      time.sleep(poll_interval_sec)
 
   def _verify_audio_focus_use_case(
       self,

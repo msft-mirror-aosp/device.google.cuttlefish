@@ -17,13 +17,47 @@ package {
     default_team: "trendy_team_android_media_audio_framework",
 }
 
+python_library_host {
+    name: "cuttlefish-audio-stack-inspector",
+    srcs: [
+        "audio_stack_inspector.py",
+    ],
+}
+
+python_test_host {
+    name: "cuttlefish-audio-stack-inspector-test",
+    main: "audio_stack_inspector_test.py",
+    srcs: [
+        "audio_stack_inspector_test.py",
+    ],
+    libs: [
+        "cuttlefish-audio-stack-inspector",
+    ],
+    auto_gen_config: true,
+    test_suites: [
+        "general-tests",
+    ],
+    test_options: {
+        unit_test: true,
+    },
+}
+
+python_defaults {
+    name: "cuttlefish-audio-test-defaults",
+    embedded_launcher: true,
+    libs: [
+        "cuttlefish-audio-stack-inspector",
+        "mobly",
+    ],
+}
+
 python_test_host {
     name: "cuttlefish-audio-test",
+    defaults: ["cuttlefish-audio-test-defaults"],
     main: "cuttlefish_audio_test.py",
     srcs: [
         "cuttlefish_audio_test.py",
     ],
-    embedded_launcher: true,
     test_config: "AndroidTest.xml",
     test_suites: [
         "general-tests",
@@ -34,7 +68,23 @@ python_test_host {
     device_common_data: [
         ":CuttlefishAudioSnippet",
     ],
-    libs: [
-        "mobly",
+}
+
+python_test_host {
+    name: "cuttlefish-audio-mode-session-test",
+    defaults: ["cuttlefish-audio-test-defaults"],
+    main: "audio_mode_session_test.py",
+    srcs: [
+        "audio_mode_session_test.py",
+    ],
+    test_config: "AudioModeSessionTest.xml",
+    test_suites: [
+        "general-tests",
+    ],
+    test_options: {
+        unit_test: false,
+    },
+    device_common_data: [
+        ":CuttlefishAudioSnippet",
     ],
 }

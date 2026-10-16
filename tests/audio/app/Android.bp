@@ -20,9 +20,10 @@ package {
 android_test_helper_app {
     name: "CuttlefishAudioSnippet",
     srcs: ["src/**/*.kt"],
-    sdk_version: "system_current",
+    platform_apis: true,
     manifest: "AndroidManifest.xml",
     static_libs: [
+        "android.media.audio-aconfig-java",
         "androidx.annotation_annotation",
         "androidx.test.core",
         "androidx.test.runner",
