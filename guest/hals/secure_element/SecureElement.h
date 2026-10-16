@@ -33,6 +33,7 @@ class SecureElement : public BnSecureElement {
     ScopedAStatus init(const std::shared_ptr<ISecureElementCallback>& client_callback) override;
     ScopedAStatus getAtr(std::vector<uint8_t>* aidl_return) override;
     ScopedAStatus reset() override;
+    ScopedAStatus resetWithReason(ResetReason reason) override;
     ScopedAStatus isCardPresent(bool* aidl_return) override;
     ScopedAStatus openBasicChannel(const std::vector<uint8_t>& aid, int8_t p2,
                                    std::vector<uint8_t>* aidl_return) override;
