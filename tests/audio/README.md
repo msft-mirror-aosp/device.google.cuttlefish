@@ -40,6 +40,7 @@ sequenceDiagram
 | [`AudioModeSessionTest.xml`](AudioModeSessionTest.xml) | Tradefed Configuration (`cuttlefish-audio-mode-session-test`) | Installs `CuttlefishAudioSnippet.apk` (`-r -g`) and runs the 5-layer VoIP `AudioModeSession` E2E test suite. |
 | [`audio_stack_inspector.py`](audio_stack_inspector.py) | `cuttlefish-audio-stack-inspector` (`python_library_host`) | Correlates 5 guest audio layers (`dumpsys audio`, `dumpsys media.audio_policy`, `dumpsys media.audio_flinger`, and `/proc/asound/card0/pcm*/sub0/status`). |
 | [`audio_stack_inspector_test.py`](audio_stack_inspector_test.py) | `cuttlefish-audio-stack-inspector-test` (`python_test_host`) | Host unit tests for `audio_stack_inspector.py` parsers and route convergence logic. |
+| [`audio_test_base.py`](audio_test_base.py) | `cuttlefish-audio-test-base` (`python_library_host`) | Shared Mobly base class (`CuttlefishAudioTestBase`) providing snippet initialization, `AudioStackInspector` wiring, 5-layer route assertion helpers (`_assert_5_layer_route`), per-test isolation, and failure diagnostics. |
 | [`cuttlefish_audio_test.py`](cuttlefish_audio_test.py) | `CuttlefishAudioFocusTest` | Data-driven Mobly test suite verifying focus acquisition, active stack state, and async callbacks. |
 | [`audio_mode_session_test.py`](audio_mode_session_test.py) | `CuttlefishVoipModeSessionTest` | E2E VoIP `AudioModeSession` routing, mid-call Speaker/Earpiece switching, media preemption, and cellular call (`MODE_IN_CALL`) preemption tests. |
 | [`app/Android.bp`](app/Android.bp) | `CuttlefishAudioSnippet` (`android_test_helper_app`) | On-device helper APK built with `platform_apis: true` and `mobly-snippet-lib`. |
@@ -81,7 +82,7 @@ sequenceDiagram
 
 ---
 
-## 4. Current Test Inventory (13 Tests Across 2 Modules)
+## 4. Current Test Inventory (14 Tests Across 2 Modules)
 
 ### 4.1 `cuttlefish-audio-test`: Data-Driven Single-Client Use-Case Matrix (`self.generate_tests`)
 
@@ -119,6 +120,7 @@ Every route assertion in `CuttlefishVoipModeSessionTest` validates all **5 guest
 
 | Test Method Name | Scenario Verified |
 | :--- | :--- |
+| `test_dumpsys_format_contract` | Fast presubmit format contract gate (~350 ms) that opens a brief `AudioModeSession` (`MODE_IN_COMMUNICATION`), starts `AudioTrack` playback, and verifies live `dumpsys audio`, `dumpsys media.audio_policy`, `dumpsys media.audio_flinger`, and `/proc/asound/card0/pcm*/sub0/status` outputs satisfy all `AudioStackInspector` section anchors and regex parsers. |
 | `test_voip_mode_session_default_voice_vs_video_routing` | Verifies `AudioModeSession` (`MODE_IN_COMMUNICATION`) with `isDisplayActiveUseCase=false` (voice VoIP) defaults to Built-In Earpiece (`CARD_0_DEV_1` / `pcm1p`), and toggling `setDisplayActiveUseCase(true)` (video VoIP) re-routes all 5 layers to Built-In Speaker (`CARD_0_DEV_0` / `pcm0p`). |
 | `test_voip_mode_session_mid_call_route_switching` | Verifies mid-call switching via `AudioModeSession.setRequestedRoute()` from Earpiece (`pcm1p`) $\rightarrow$ Speaker (`pcm0p`) $\rightarrow$ Earpiece (`pcm1p`) across all 5 guest audio layers. |
 | `test_voip_mode_session_preempts_and_restores_media_playback` | Starts `USAGE_MEDIA` playback with `AUDIOFOCUS_GAIN` on Speaker (`pcm0p`) $\rightarrow$ opens a VoIP `AudioModeSession` (`MODE_IN_COMMUNICATION`) $\rightarrow$ verifies media receives `AUDIOFOCUS_LOSS_TRANSIENT` (`-2`) and VoIP streams on Earpiece (`pcm1p`) $\rightarrow$ closes the VoIP session $\rightarrow$ verifies media receives `AUDIOFOCUS_GAIN` (`1`) and resumes streaming on Speaker (`pcm0p`). |

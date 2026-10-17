@@ -22,6 +22,10 @@ python_library_host {
     srcs: [
         "audio_stack_inspector.py",
     ],
+    libs: [
+        "core-python-protos",
+        "libprotobuf-python",
+    ],
 }
 
 python_test_host {
@@ -42,11 +46,23 @@ python_test_host {
     },
 }
 
+python_library_host {
+    name: "cuttlefish-audio-test-base",
+    srcs: [
+        "audio_test_base.py",
+    ],
+    libs: [
+        "cuttlefish-audio-stack-inspector",
+        "mobly",
+    ],
+}
+
 python_defaults {
     name: "cuttlefish-audio-test-defaults",
     embedded_launcher: true,
     libs: [
         "cuttlefish-audio-stack-inspector",
+        "cuttlefish-audio-test-base",
         "mobly",
     ],
 }

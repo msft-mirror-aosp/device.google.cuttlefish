@@ -14,32 +14,12 @@
 # limitations under the License.
 """Cuttlefish VoIP AudioModeSession Routing & Preemption E2E Test Suite."""
 
-import os
-
-import audio_stack_inspector
+import audio_test_base
 from mobly import asserts
-from mobly import base_test
 from mobly import test_runner
-from mobly.controllers import android_device
-from mobly.controllers.android_device_lib.services import logcat
 
-SNIPPET_PACKAGE = 'com.android.cuttlefish.audiotest'
-AUDIO_MODE_SESSION_LOGCAT_TAGS = ' '.join((
-    'AudioFocusSnippet:V',
-    'AudioModeSessionSnippet:V',
-    'AudioSvc:V',
-    'AudioSvc.FocusCtrl:V',
-    'AudioSvc.FocusReq:V',
-    'AudioSvc.ModeSession:V',
-    'AudioSvc.DeviceBroker:V',
-    'APM::AudioPolicyEngine:V',
-    'APM_AudioPolicyManager:V',
-))
-DEFAULT_TIMEOUT_SEC = audio_stack_inspector.DEFAULT_TIMEOUT_SEC
-FOCUS_CALLBACK_TIMEOUT_SEC = int(DEFAULT_TIMEOUT_SEC)
-ROUTE_CONVERGENCE_TIMEOUT_SEC = DEFAULT_TIMEOUT_SEC
-FRAMES_ADVANCING_TIMEOUT_SEC = DEFAULT_TIMEOUT_SEC
-ON_AUDIO_FOCUS_CHANGE_EVENT = 'onAudioFocusChange'
+FOCUS_CALLBACK_TIMEOUT_SEC = audio_test_base.FOCUS_CALLBACK_TIMEOUT_SEC
+ON_AUDIO_FOCUS_CHANGE_EVENT = audio_test_base.ON_AUDIO_FOCUS_CHANGE_EVENT
 
 MEDIA_CLIENT_ID = 'media_client'
 VOIP_SESSION_ID = 'whatsapp_voip'
@@ -47,192 +27,106 @@ CELLULAR_SESSION_ID = 'cellular_call'
 VOIP_STREAM_ID = 'voip_stream'
 MEDIA_STREAM_ID = 'media_stream'
 
-# Mirrors android.media.AudioAttributes / AudioManager / AudioDeviceInfo constants.
-USAGE_MEDIA = 1
-USAGE_VOICE_COMMUNICATION = 2
+USAGE_MEDIA = audio_test_base.USAGE_MEDIA
+USAGE_VOICE_COMMUNICATION = audio_test_base.USAGE_VOICE_COMMUNICATION
 
-CONTENT_TYPE_SPEECH = 1
-CONTENT_TYPE_MUSIC = 2
+CONTENT_TYPE_SPEECH = audio_test_base.CONTENT_TYPE_SPEECH
+CONTENT_TYPE_MUSIC = audio_test_base.CONTENT_TYPE_MUSIC
 
-AUDIOFOCUS_GAIN = 1
-AUDIOFOCUS_LOSS_TRANSIENT = -2
+AUDIOFOCUS_GAIN = audio_test_base.AUDIOFOCUS_GAIN
+AUDIOFOCUS_LOSS_TRANSIENT = audio_test_base.AUDIOFOCUS_LOSS_TRANSIENT
+AUDIOFOCUS_REQUEST_GRANTED = audio_test_base.AUDIOFOCUS_REQUEST_GRANTED
 
-AUDIOFOCUS_REQUEST_GRANTED = 1
+MODE_NORMAL = audio_test_base.MODE_NORMAL
+MODE_IN_CALL = audio_test_base.MODE_IN_CALL
+MODE_IN_COMMUNICATION = audio_test_base.MODE_IN_COMMUNICATION
 
-MODE_NORMAL = 0
-MODE_IN_CALL = 2
-MODE_IN_COMMUNICATION = 3
+TYPE_BUILTIN_EARPIECE = audio_test_base.TYPE_BUILTIN_EARPIECE
+TYPE_BUILTIN_SPEAKER = audio_test_base.TYPE_BUILTIN_SPEAKER
 
-TYPE_BUILTIN_EARPIECE = 1
-TYPE_BUILTIN_SPEAKER = 2
-
-SPEAKER_DEVICE_TOKEN = 'AUDIO_DEVICE_OUT_SPEAKER'
-EARPIECE_DEVICE_TOKEN = 'AUDIO_DEVICE_OUT_EARPIECE'
-SPEAKER_ADDRESS = 'CARD_0_DEV_0'
-EARPIECE_ADDRESS = 'CARD_0_DEV_1'
-SPEAKER_ALSA_DEV = 0
-EARPIECE_ALSA_DEV = 1
+SPEAKER_DEVICE_TOKEN = audio_test_base.SPEAKER_DEVICE_TOKEN
+EARPIECE_DEVICE_TOKEN = audio_test_base.EARPIECE_DEVICE_TOKEN
+SPEAKER_ADDRESS = audio_test_base.SPEAKER_ADDRESS
+EARPIECE_ADDRESS = audio_test_base.EARPIECE_ADDRESS
+SPEAKER_ALSA_DEV = audio_test_base.SPEAKER_ALSA_DEV
+EARPIECE_ALSA_DEV = audio_test_base.EARPIECE_ALSA_DEV
 
 
-class CuttlefishVoipModeSessionTest(base_test.BaseTestClass):
+class CuttlefishVoipModeSessionTest(audio_test_base.CuttlefishAudioTestBase):
   """E2E VoIP call routing and preemption tests using AudioModeSession."""
 
-  DUMPSYS_TARGETS = {
-      'dumpsys_audio': 'dumpsys audio',
-      'dumpsys_audio_policy': 'dumpsys media.audio_policy',
-      'dumpsys_audio_flinger': 'dumpsys media.audio_flinger',
-      'alsa_pcm_status': (
-          'head -n 20 /proc/asound/card0/pcm*/sub0/status 2>/dev/null || true'
-      ),
-  }
+  LOGCAT_SERVICE_NAME = 'audio_mode_session_logcat'
 
   def setup_class(self):
-    self.ads = self.register_controller(android_device)
-    self.dut = self.ads[0]
-    self.inspector = audio_stack_inspector.AudioStackInspector(self.dut)
-
-    features = self.dut.adb.shell('pm list features').decode(
-        'utf-8', errors='replace'
-    )
-    for non_phone_feature in (
-        'feature:android.hardware.type.automotive',
-        'feature:android.hardware.type.watch',
-        'feature:android.hardware.type.television',
-        'feature:android.hardware.type.pc',
-    ):
-      asserts.abort_class_if(
-          non_phone_feature in features,
-          f'Non-phone target ({non_phone_feature}); built-in Earpiece/Speaker'
-          ' VoIP routing suite only targets phone configurations.',
-      )
-
-    asserts.abort_class_if(
-        not self.inspector.has_alsa_playback_device(SPEAKER_ALSA_DEV)
-        or not self.inspector.has_alsa_playback_device(EARPIECE_ALSA_DEV),
-        'Multi-stream ALSA playback substreams (pcm0p and pcm1p) not present;'
-        ' requires phone config with output_audio_streams_count=2.',
-    )
-
-    dumpsys_audio = self.dut.adb.shell('dumpsys audio').decode(
-        'utf-8', errors='replace'
-    )
-    asserts.abort_class_if(
-        'has focus policy:true' in dumpsys_audio,
-        'External AudioFocusPolicy is active; standard AudioModeSession focus'
-        ' rules do not apply.',
-    )
-    asserts.abort_class_if(
-        'Multi Audio Focus enabled :true' in dumpsys_audio,
-        'Multi Audio Focus is enabled; standard single-focus preemption rules'
-        ' do not apply.',
-    )
-
-    self.dut.services.register(
-        'audio_mode_session_logcat',
-        logcat.Logcat,
-        configs=logcat.Config(
-            logcat_params=f'-s {AUDIO_MODE_SESSION_LOGCAT_TAGS}'
-        ),
-    )
-    self.dut.load_snippet('audio', SNIPPET_PACKAGE)
-
+    super().setup_class()
     asserts.abort_class_if(
         not self.dut.audio.isModeSessionSupported(),
         'AudioModeSession (Flags.fusedTelecomRouteApi) is disabled on device.',
     )
 
-    output_types = self.dut.audio.getOutputDeviceTypes()
-    asserts.abort_class_if(
-        TYPE_BUILTIN_EARPIECE not in output_types
-        or TYPE_BUILTIN_SPEAKER not in output_types,
-        f'Both TYPE_BUILTIN_EARPIECE ({TYPE_BUILTIN_EARPIECE}) and'
-        f' TYPE_BUILTIN_SPEAKER ({TYPE_BUILTIN_SPEAKER}) are required, got'
-        f' output device types: {output_types}',
+  def test_dumpsys_format_contract(self):
+    """Verifies live dumpsys format contracts for AudioService, APM, AF, and ALSA."""
+    focus_res = self.dut.audio.requestAudioFocus(
+        MEDIA_CLIENT_ID, USAGE_MEDIA, CONTENT_TYPE_MUSIC, AUDIOFOCUS_GAIN
+    )
+    asserts.assert_equal(focus_res, AUDIOFOCUS_REQUEST_GRANTED)
+
+    focus_stack = self.inspector.get_focus_stack()
+    asserts.assert_in(
+        f'CfAudioTest[{MEDIA_CLIENT_ID}]',
+        focus_stack,
+        'Expected MediaFocusControl active focus stack format to contain'
+        f' CfAudioTest[{MEDIA_CLIENT_ID}], got: {focus_stack!r}',
     )
 
-  def _cleanup_audio_state(self):
-    if not hasattr(self.dut, 'audio'):
-      return
-    for action in (
-        self.dut.audio.stopAllPlayback,
-        self.dut.audio.closeAllModeSessions,
-        self.dut.audio.killChildProcess,
-        self.dut.audio.abandonAllAudioFocus,
-    ):
-      try:
-        action()
-      except Exception:  # pylint: disable=broad-except
-        pass
+    routed_type = self.dut.audio.createModeSession(
+        VOIP_SESSION_ID, MODE_IN_COMMUNICATION, False
+    )
+    asserts.assert_equal(routed_type, TYPE_BUILTIN_EARPIECE)
 
-  def setup_test(self):
-    self._cleanup_audio_state()
+    self.dut.audio.startPlayback(
+        VOIP_STREAM_ID, USAGE_VOICE_COMMUNICATION, CONTENT_TYPE_SPEECH
+    )
 
-  def teardown_test(self):
-    self._cleanup_audio_state()
-
-  def on_fail(self, record):
-    del record
-    self.dut.services.create_output_excerpts_all(self.current_test_info)
-    for file_type, cmd in self.DUMPSYS_TARGETS.items():
-      filename = self.dut.generate_filename(
-          file_type, self.current_test_info, 'txt'
-      )
-      output_file = os.path.join(self.current_test_info.output_path, filename)
-      content = self.dut.adb.shell(cmd).decode('utf-8', errors='replace')
-      with open(output_file, 'w', encoding='utf-8') as f:
-        f.write(content)
-
-  def teardown_class(self):
-    if hasattr(self.dut, 'audio'):
-      self.dut.unload_snippet('audio')
-    self.dut.services.stop_all()
-
-  def _assert_5_layer_route(
-      self,
-      strategy_name: str,
-      expected_device_token: str,
-      expected_address: str,
-      expected_alsa_dev: int,
-      inactive_alsa_dev: int,
-      expected_mode: str,
-  ) -> audio_stack_inspector.AudioStackSnapshot:
-    """Verifies routing and active streaming across all 5 guest audio layers."""
-    converged, snap = self.inspector.wait_for_route(
-        strategy_name=strategy_name,
-        expected_device_token=expected_device_token,
-        expected_address=expected_address,
-        expected_alsa_dev=expected_alsa_dev,
-        inactive_alsa_devs=(inactive_alsa_dev,),
-        expected_mode=expected_mode,
-        timeout_sec=ROUTE_CONVERGENCE_TIMEOUT_SEC,
+    snap = self.inspector.snapshot()
+    asserts.assert_equal(snap.requested_mode, 'MODE_IN_COMMUNICATION')
+    asserts.assert_equal(snap.actual_mode, 'MODE_IN_COMMUNICATION')
+    asserts.assert_in(
+        'USAGE_VOICE_COMMUNICATION', snap.started_playback_usages
     )
     asserts.assert_true(
-        converged,
-        '5-layer route did not converge: '
-        + '; '.join(
-            self.inspector.find_route_mismatches(
-                snap,
-                strategy_name=strategy_name,
-                expected_device_token=expected_device_token,
-                expected_address=expected_address,
-                expected_alsa_dev=expected_alsa_dev,
-                inactive_alsa_devs=(inactive_alsa_dev,),
-                expected_mode=expected_mode,
-            )
+        any(
+            s.is_live
+            and s.has_focus
+            and s.mode == 'MODE_IN_COMMUNICATION'
+            and EARPIECE_ADDRESS in s.target_route
+            for s in snap.mode_sessions
         ),
+        'Expected AudioService dumpsys AudioModeSession block with'
+        f' MODE_IN_COMMUNICATION and {EARPIECE_ADDRESS}, got'
+        f' {snap.mode_sessions}',
     )
 
-    base_frames, latest_frames = self.inspector.wait_for_frames_advancing(
-        expected_device_token,
-        timeout_sec=FRAMES_ADVANCING_TIMEOUT_SEC,
+    asserts.assert_in('STRATEGY_PHONE', snap.strategies)
+    asserts.assert_in('STRATEGY_MEDIA', snap.strategies)
+    phone_strat = snap.strategies['STRATEGY_PHONE']
+    asserts.assert_in(EARPIECE_DEVICE_TOKEN, phone_strat.device_types)
+    asserts.assert_equal(phone_strat.address, EARPIECE_ADDRESS)
+
+    asserts.assert_true(
+        bool(snap.output_threads),
+        'Expected AudioFlinger dumpsys to report at least one OutputThread',
     )
-    asserts.assert_greater(
-        latest_frames,
-        base_frames,
-        f'Layer 4 (AudioFlinger): expected Frames written to advance on'
-        f' {expected_device_token} (base={base_frames}, latest={latest_frames})',
+    asserts.assert_true(
+        self.inspector.has_alsa_playback_device(SPEAKER_ALSA_DEV),
+        f'Expected ALSA playback device pcm{SPEAKER_ALSA_DEV}p to exist',
     )
-    return snap
+    asserts.assert_true(
+        self.inspector.has_alsa_playback_device(EARPIECE_ALSA_DEV),
+        f'Expected ALSA playback device pcm{EARPIECE_ALSA_DEV}p to exist',
+    )
+    asserts.assert_in(SPEAKER_ALSA_DEV, snap.alsa_playback_running)
+    asserts.assert_in(EARPIECE_ALSA_DEV, snap.alsa_playback_running)
 
   def test_voip_mode_session_default_voice_vs_video_routing(self):
     """Verifies AudioModeSession default routing for voice (Earpiece) vs video (Speaker)."""
