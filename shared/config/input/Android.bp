@@ -29,7 +29,6 @@ apex {
         // Set input_device.config_file.apex={apexname} sysprop
         "com.google.cf.input.config.rc",
         // Configs
-        "Desktop_Keyboard.idc",
         "Cuttlefish_Vhost_User_Multitouch_Touchpad_0.idc",
         "Cuttlefish_Vhost_User_Multitouch_Touchscreen_0.idc",
         "Cuttlefish_Vhost_User_Multitouch_Touchscreen_1.idc",
@@ -50,12 +49,6 @@ prebuilt_defaults {
     relative_install_path: "usr/idc",
     soc_specific: true,
     installable: false,
-}
-
-prebuilt_etc {
-    name: "Desktop_Keyboard.idc",
-    src: "Desktop_Keyboard.idc",
-    defaults: ["crosvm_idc_defaults"],
 }
 
 prebuilt_etc {

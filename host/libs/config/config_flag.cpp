@@ -16,11 +16,9 @@
 
 #include "host/libs/config/config_flag.h"
 
-#include <array>
 #include <fstream>
 #include <set>
 #include <string>
-#include <string_view>
 
 #include <android-base/file.h>
 #include <android-base/logging.h>
@@ -28,7 +26,6 @@
 #include <gflags/gflags.h>
 #include <json/json.h>
 
-#include "common/libs/utils/contains.h"
 #include "common/libs/utils/files.h"
 #include "common/libs/utils/flag_parser.h"
 #include "common/libs/utils/json.h"
@@ -125,14 +122,6 @@ class ConfigReader : public FlagFeature {
   std::set<std::string> allowed_config_presets_;
 };
 
-// TODO(b/543955575): apply to all flags. Previous attempts hit issues b/554046764
-bool ShouldPadWithUnset(std::string_view flag) {
-  static constexpr std::array kFlags = {
-    "gpu_mode",
-  };
-  return Contains(kFlags, flag);
-}
-
 class ConfigFlagImpl : public ConfigFlag {
  public:
   INJECT(ConfigFlagImpl(ConfigReader& cr, SystemImageDirFlag& s))
@@ -187,38 +176,15 @@ class ConfigFlagImpl : public ConfigFlag {
         } else {
           value = config_values[flag].asString();
         }
-        if (ShouldPadWithUnset(flag)) {
-          CF_EXPECTF(
-              value.find(',') == std::string::npos,
-              "Flag '--{}' contains commas in its preset value; vectorizing "
-              "with 'unset' across instances creates invalid syntax.",
-              flag);
-          auto [flag_values_it, _] =
-              flags.try_emplace(flag, configs_.size(), "unset");
-          auto& flag_values = flag_values_it->second;
-          flag_values[i] = value;
-        } else {
-          flags[flag].push_back(value);
-        }
+        flags[flag].push_back(value);
       }
     }
     for (const auto& [flag, values] : flags) {
       auto value = VectorizedFlagValue(values);
       args.insert(args.begin(), "--" + flag + "=" + value);
-      std::string default_value = value;
-      gflags::CommandLineFlagInfo flag_info;
-      if (gflags::GetCommandLineFlagInfo(flag.c_str(), &flag_info)) {
-        std::vector<std::string> default_values = values;
-        for (auto& v : default_values) {
-          if (v == "unset" || v == "\"unset\"") {
-            v = flag_info.default_value;
-          }
-        }
-        default_value = VectorizedFlagValue(default_values);
-      }
       // To avoid the flag forwarder from thinking this song is different from a
       // default. Should fail silently if the flag doesn't exist.
-      gflags::SetCommandLineOptionWithMode(flag.c_str(), default_value.c_str(),
+      gflags::SetCommandLineOptionWithMode(flag.c_str(), value.c_str(),
                                            SET_FLAGS_DEFAULT);
     }
     return {};

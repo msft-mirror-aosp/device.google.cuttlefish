@@ -10,9 +10,6 @@
     },
     {
       "name": "RebootRecoveryTest"
-    },
-    {
-      "name": "cuttlefish-audio-test"
     }
   ],
   "presubmit": [
@@ -65,7 +62,7 @@
       "name": "CtsAppSearchTestCases"
     },
     {
-      "name": "CtsNpuManagerTestCases"
+      "name": "NpuManagerPlatformTest"
     },
     {
       "name": "VtsAidlUsbHostTest"

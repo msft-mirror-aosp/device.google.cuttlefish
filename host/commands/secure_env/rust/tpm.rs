@@ -16,8 +16,8 @@
 //! Device trait implementations using the TPM.
 
 use kmr_common::{
-    Error, FallibleAllocExt, crypto, crypto::SHA256_DIGEST_LEN, km_err, vec_try,
-    vec_try_with_capacity,
+    crypto, crypto::SHA256_DIGEST_LEN, km_err, vec_try, vec_try_with_capacity, Error,
+    FallibleAllocExt,
 };
 use kmr_ta::device::DeviceHmac;
 
@@ -51,7 +51,11 @@ impl TpmHmac {
                 tag.len() as u32,
             )
         };
-        if rc == 0 { Ok(tag) } else { Err(km_err!(UnknownError, "HMAC calculation failed")) }
+        if rc == 0 {
+            Ok(tag)
+        } else {
+            Err(km_err!(UnknownError, "HMAC calculation failed"))
+        }
     }
 
     fn hkdf_expand(&self, info: &[u8], out_len: usize) -> Result<Vec<u8>, Error> {
@@ -113,11 +117,7 @@ impl kmr_ta::device::RetrieveKeyMaterial for Keys {
         Ok(crypto::aes::Key::Aes256(k).into())
     }
 
-    fn hmac_key_agreed(
-        &self,
-        _level: kmr_wire::sharedsecret::SecurityTrustLevel,
-        _key: &crypto::hmac::Key,
-    ) -> Option<Box<dyn DeviceHmac>> {
+    fn hmac_key_agreed(&self, _key: &crypto::hmac::Key) -> Option<Box<dyn DeviceHmac>> {
         // After `ISharedSecret` negotiation completes, the spec implies that the calculated HMAC
         // key should be used by subsequent device HMAC calculations.  However, this implementation
         // uses a TPM-HMAC key instead, so that HMAC calculations agree between KeyMint and
@@ -180,7 +180,7 @@ impl kmr_common::crypto::Hkdf for KeyDerivation {
                 return Err(km_err!(
                     UnknownError,
                     "unexpected root kek type used in key derivation"
-                ));
+                ))
             }
         };
         if key_material != ROOT_KEK_MARKER {

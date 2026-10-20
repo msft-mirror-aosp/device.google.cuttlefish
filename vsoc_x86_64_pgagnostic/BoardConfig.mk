@@ -47,6 +47,7 @@ AUDIOSERVER_MULTILIB := first
 -include device/google/cuttlefish/shared/camera/BoardConfig.mk
 -include device/google/cuttlefish/shared/gnss/BoardConfig.mk
 -include device/google/cuttlefish/shared/graphics/BoardConfig.mk
+-include device/google/cuttlefish/shared/identity/BoardConfig.mk
 -include device/google/cuttlefish/shared/reboot_escrow/BoardConfig.mk
 -include device/google/cuttlefish/shared/sensors/BoardConfig.mk
 -include device/google/cuttlefish/shared/swiftshader/BoardConfig.mk

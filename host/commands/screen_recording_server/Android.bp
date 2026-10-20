@@ -38,6 +38,10 @@ cc_library {
         "ScreenRecordingServerProto_h",
     ],
     defaults: ["cuttlefish_host"],
+    include_dirs: [
+        "external/grpc-grpc/include",
+        "external/protobuf/src",
+    ],
     target: {
         darwin: {
             enabled: true,

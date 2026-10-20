@@ -44,6 +44,10 @@ cc_library {
         "GnssGrpcProxyStub_h",
     ],
     defaults: ["cuttlefish_host"],
+    include_dirs: [
+        "external/grpc-grpc/include",
+        "external/protobuf/src",
+    ],
     target: {
         darwin: {
             enabled: true,

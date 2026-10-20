@@ -34,7 +34,7 @@
 #include <log/log.h>
 #include <media/stagefright/foundation/MediaDefs.h>
 
-#include "guest/hals/codec2/CuttlefishComponentStore.h"
+#include "CuttlefishComponentStore.h"
 
 namespace android {
 

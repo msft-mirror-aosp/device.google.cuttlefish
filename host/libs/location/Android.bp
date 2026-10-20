@@ -48,6 +48,10 @@ cc_library {
         "-Wno-unused-parameter",
     ],
     defaults: ["cuttlefish_host"],
+    include_dirs: [
+        "external/grpc-grpc/include",
+        "external/protobuf/src",
+    ],
     target: {
         darwin: {
             enabled: true,

@@ -25,6 +25,9 @@ cc_library {
     proto: {
         type: "lite",
         export_proto_headers: true,
+        include_dirs: [
+            "external/protobuf/src",
+        ],
     },
     defaults: ["cuttlefish_host"],
     target: {

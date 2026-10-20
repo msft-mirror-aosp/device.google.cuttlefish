@@ -25,11 +25,9 @@
 DEFAULT_TARGET_KERNEL_USE := 6.18
 
 ifneq (,$(findstring cf_gwear_arm,$(PRODUCT_NAME)))
-TARGET_KERNEL_USE ?= 6.12
+TARGET_KERNEL_USE ?= 6.6
 else ifneq (,$(findstring x86_tv,$(PRODUCT_NAME)))
 TARGET_KERNEL_USE ?= 6.1
-else ifneq (,$(findstring cf_arm_tv_gtv,$(PRODUCT_NAME)))
-TARGET_KERNEL_USE ?= 6.12
 else ifneq (,$(filter cf_x86_64_desktop,$(PRODUCT_NAME)))
 TARGET_KERNEL_USE ?= $(RELEASE_KERNEL_CUTTLEFISH_X86_64_VERSION)
 TARGET_KERNEL_DIR ?= $(RELEASE_KERNEL_CUTTLEFISH_X86_64_DIR)
@@ -129,12 +127,6 @@ BOARD_VENDOR_RAMDISK_KERNEL_MODULES += $(SYSTEM_VIRTIO_PREBUILTS_PATH)/vmw_vsock
 ifneq (,$(findstring auto, $(PRODUCT_NAME))$(findstring sdv, $(PRODUCT_NAME)))
 # Support arm64 Cuttlefish on-device deployment
 BOARD_VENDOR_RAMDISK_KERNEL_MODULES += $(wildcard $(KERNEL_MODULES_PATH)/virtio_mmio.ko)
-endif
-
-ifeq ($(BOARD_IS_AUTOMOTIVE), true)
-# Load virtio-media.ko in first stage init so that override_timestamp=true in
-# first_stage_modules.options is applied.
-BOARD_VENDOR_RAMDISK_KERNEL_MODULES += $(wildcard $(KERNEL_MODULES_PATH)/virtio-media.ko)
 endif
 
 # GKI >5.15 will have and require virtio_pci_legacy_dev.ko
@@ -399,9 +391,8 @@ BOARD_BUILD_SUPER_IMAGE_BY_DEFAULT := true
 BOARD_SUPER_IMAGE_IN_UPDATE_PACKAGE := true
 TARGET_RELEASETOOLS_EXTENSIONS := device/google/cuttlefish/shared
 
-# Generate a partial ota update package for partitions in vbmeta_system.
-# TODO(b/559321113): Exclude pvmfw until fetch_cvd extracts it during mixed instance provisioning.
-BOARD_PARTIAL_OTA_UPDATE_PARTITIONS_LIST := $(filter-out pvmfw,$(BOARD_AVB_VBMETA_SYSTEM)) vbmeta_system init_boot
+# Generate a partial ota update package for partitions in vbmeta_system
+BOARD_PARTIAL_OTA_UPDATE_PARTITIONS_LIST := $(BOARD_AVB_VBMETA_SYSTEM) vbmeta_system init_boot
 
 BOARD_BOOTLOADER_IN_UPDATE_PACKAGE := true
 BOARD_RAMDISK_USE_LZ4 := true
@@ -437,9 +428,9 @@ BOARD_KERNEL_CMDLINE += init=/init
 
 BOARD_BOOTCONFIG += androidboot.hardware=cutf_cvm
 
-# vsock transport is a module on some kernels and builtin on others. To maintain
-# the buffer size setting across these two configs, the setting remains in the
-# bootconfig AND also the modules.options file. See b/182417593 for context.
+# TODO(b/182417593): vsock transport is a module on some kernels and builtin
+# on others. To maintain the buffer size setting across these two configs,
+# the setting will remain in the bootconfig AND also the modules.options file.
 # Reduce slab size usage from virtio vsock to reduce slab fragmentation
 BOARD_BOOTCONFIG += \
     kernel.vmw_vsock_virtio_transport_common.virtio_transport_max_vsock_pkt_buf_size=16384

@@ -22,7 +22,7 @@ $(call inherit-product, device/google/cuttlefish/shared/desktop/aosp_device_vend
 #
 # All components inherited here go to product image (same as GSI product)
 #
-$(call inherit-product, $(SRC_TARGET_DIR)/product/desktop_product.mk)
+$(call inherit-product, $(SRC_TARGET_DIR)/product/aosp_product.mk)
 
 PRODUCT_FSTAB_PATH := device/google/cuttlefish/shared/desktop/fstab
 # Ika uses ndk-translation only like http://go/al-bt-config describes.

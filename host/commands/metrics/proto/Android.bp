@@ -36,6 +36,7 @@ cc_library_shared {
         type: "full",
         canonical_path_from_root: false,
         local_include_dirs: ["."],
+        include_dirs: ["external/protobuf/src"],
     },
 
     cppflags: [

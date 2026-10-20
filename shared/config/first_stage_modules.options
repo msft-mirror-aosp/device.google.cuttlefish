@@ -2,5 +2,3 @@
 options vmw_vsock_virtio_transport_common virtio_transport_max_vsock_pkt_buf_size=16384
 # TODO(b/176860479): Remove once goldfish and cuttlefish share a wifi implementation
 options mac80211_hwsim radios=0
-# Override V4L2 buffer timestamps from the host with the guest's monotonic clock
-options virtio_media override_timestamp=true

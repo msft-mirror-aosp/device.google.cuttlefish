@@ -350,7 +350,6 @@ ifeq ($(LOCAL_ENABLE_WIDEVINE),true)
 -include vendor/widevine/libwvdrmengine/apex/device/device.mk
 -include vendor/google/widevine/cdm/android/level3/generic/widevine_release_level3.mk
 
-ifneq ($(PRODUCT_IS_ATV),true)
 ifeq ($(RELEASE_WIDEVINE_CUTTLEFISH_L1),true)
     -include vendor/google/widevine/cdm/oemcrypto/opk/ports/linux/ta/common/wtpi_impl/test-only/device.mk
 endif
@@ -359,7 +358,6 @@ endif
 ifeq (,$(filter aosp_%,$(TARGET_PRODUCT)))
 ifeq ($(RELEASE_WIDEVINE_OEMCRYPTO_AIDL),true)
     -include vendor/google_shared/widevine/oemcrypto/oemcrypto/aidl/device.mk
-endif
 endif
 endif
 endif
@@ -492,24 +490,12 @@ PRODUCT_PACKAGES += $(LOCAL_THERMAL_HAL_PRODUCT_PACKAGE)
 #
 # NPU HAL
 #
-ifeq ($(RELEASE_AIDL_USE_UNFROZEN),true)
-    PRODUCT_PACKAGES += \
-        android.hardware.npu-service.litert \
-        liblitert_dispatch_mock \
-        run-test-inference \
-        npu_test_model.tflite \
-        npu_test_input.inp \
-        npu_test_output.ref \
-        npu_test_config.textproto
-
-    PRODUCT_VENDOR_PROPERTIES += \
-        ro.vendor.npu.litert.dispatch_lib=liblitert_dispatch_mock.so \
-        ro.vendor.npu.litert.target_descriptor=android-cpu-tflite
+PRODUCT_PACKAGES += \
+    com.android.hardware.npu.cf
 
 # Indicates that Cuttlefish has NPU support
 PRODUCT_COPY_FILES += \
     frameworks/native/data/etc/android.hardware.npu.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.npu.xml
-endif
 
 # USB
 PRODUCT_PACKAGES += \

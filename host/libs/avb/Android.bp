@@ -17,11 +17,6 @@ package {
     default_applicable_licenses: ["Android-Apache-2.0"],
 }
 
-filegroup {
-    name: "cuttlefish_avb_srcs",
-    srcs: ["avb.cpp"],
-}
-
 cc_library {
     name: "libcuttlefish_avb",
     srcs: [

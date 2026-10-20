@@ -2999,8 +2999,8 @@ int VirtioMediaCameraDeviceSession::OutputThread::cropAndScaleLocked(
       outLayout.yStride, static_cast<uint8_t*>(outLayout.cb), outLayout.cStride,
       static_cast<uint8_t*>(outLayout.cr), outLayout.cStride, outSz.width,
       outSz.height,
-      // kFilterNone is used to avoid performance loss during buffer scaling.
-      // See b/72261744 for context.
+      // TODO: b/72261744 see if we can use better filter without losing too
+      // much perf
       libyuv::FilterMode::kFilterNone);
 
   if (ret != 0) {

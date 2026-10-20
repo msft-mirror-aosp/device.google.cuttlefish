@@ -43,9 +43,6 @@ cc_library {
         "session.cc",
         "sign.cc",
     ],
-    extra_include_dir_deps: [
-        "*.ttf",
-    ],
     shared_libs: [
         "libbase",
         "libcn-cbor",

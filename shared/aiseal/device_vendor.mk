@@ -16,6 +16,7 @@
 
 # Cuttlefish-specific AiSeal configuration.
 
+ifeq ($(RELEASE_AISEAL_FRAMEWORK),true)
 PRODUCT_PACKAGES += android.software.aiseal.prebuilt.xml
 
 ifeq ($(RELEASE_AISEAL_WITH_APPSEARCH),true)
@@ -30,3 +31,4 @@ endif  # RELEASE_AISEAL_WITH_APPSEARCH
 
 # Protected VM is not supported in Cuttlefish, use nonprotected VM instead.
 PRODUCT_PRODUCT_PROPERTIES += service.aiseal.protected_vm=0
+endif  # RELEASE_AISEAL_FRAMEWORK
