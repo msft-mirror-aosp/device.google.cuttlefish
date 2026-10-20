@@ -35,5 +35,7 @@ $(call inherit-product, device/google/cuttlefish/shared/camera/device_vendor.mk)
 $(call inherit-product, device/google/cuttlefish/shared/camera/config/external.mk)
 
 PRODUCT_PACKAGES += \
-    desktop_core_hardware.prebuilt.xml
+    desktop_core_hardware.prebuilt.xml \
+    desktop_excluded_hardware.prebuilt.xml
+
 DEVICE_PACKAGE_OVERLAYS += device/google/cuttlefish/shared/desktop/overlay
