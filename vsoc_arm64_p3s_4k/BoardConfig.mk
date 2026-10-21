@@ -21,4 +21,4 @@
 -include device/google/cuttlefish/vsoc_arm64_pgagnostic/BoardConfig.mk
 
 # Boot 4KB userspace on 16KB kernel
-BOARD_KERNEL_CMDLINE += p3s=1
+BOARD_KERNEL_CMDLINE += p3s_4k=on

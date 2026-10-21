@@ -1,10 +1,6 @@
 <ExternalCamera>
     <Provider>
-        <!-- Ignore internal/dummy video devices (e.g. /dev/video0) so that only -->
-        <!-- the emulated cameras (/dev/video1 and etc) are surfaced. -->
-        <ignore>
-            <id>0</id>
-        </ignore>
+        <ignore/>
     </Provider>
     <!-- Device configuration tailored for emulated_camera_mplane (up to 1280x720 @ 30fps) -->
     <Device>
