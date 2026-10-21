@@ -431,9 +431,9 @@ BOARD_KERNEL_CMDLINE += init=/init
 
 BOARD_BOOTCONFIG += androidboot.hardware=cutf_cvm
 
-# TODO(b/182417593): vsock transport is a module on some kernels and builtin
-# on others. To maintain the buffer size setting across these two configs,
-# the setting will remain in the bootconfig AND also the modules.options file.
+# vsock transport is a module on some kernels and builtin on others. To maintain
+# the buffer size setting across these two configs, the setting remains in the
+# bootconfig AND also the modules.options file. See b/182417593 for context.
 # Reduce slab size usage from virtio vsock to reduce slab fragmentation
 BOARD_BOOTCONFIG += \
     kernel.vmw_vsock_virtio_transport_common.virtio_transport_max_vsock_pkt_buf_size=16384
