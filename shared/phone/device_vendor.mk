@@ -80,5 +80,7 @@ PRODUCT_VENDOR_PROPERTIES += \
 PRODUCT_PRODUCT_PROPERTIES += ro.appsearch.feature.enable_isolated_storage=true
 PRODUCT_PRODUCT_PROPERTIES += ro.enable.nonprotected_appsearch_vm=true
 
-# Enable pvmfw partition for Cuttlefish phone targets
+# Enable pvmfw partition for arm64 Cuttlefish phone targets (b/536088107)
+ifneq (,$(findstring arm64,$(TARGET_PRODUCT)))
 PRODUCT_BUILD_PVMFW_IMAGE := true
+endif

@@ -22,12 +22,14 @@
 #include <cstdlib>
 #include <future>
 #include <iostream>
+#include <set>
 #include <string>
 #include <thread>
 #include <vector>
 
-#include <android-base/strings.h>
 #include <android-base/logging.h>
+#include <android-base/parseint.h>
+#include <android-base/strings.h>
 
 #include "common/libs/fs/shared_fd.h"
 #include "common/libs/utils/environment.h"
@@ -174,12 +176,14 @@ void ReleaseAllocdResources(SharedFD allocd_sock, uint32_t session_id) {
 struct FlagVaules {
   std::int32_t wait_for_launcher;
   bool clear_instance_dirs;
+  std::vector<unsigned> instance_nums;
   bool helpxml;
 };
 
 FlagVaules GetFlagValues(int argc, char** argv) {
   std::int32_t wait_for_launcher = 5;
   bool clear_instance_dirs = false;
+  std::vector<unsigned> instance_nums;
   std::vector<Flag> flags;
   flags.emplace_back(
       GflagsCompatFlag("wait_for_launcher", wait_for_launcher)
@@ -189,6 +193,9 @@ FlagVaules GetFlagValues(int argc, char** argv) {
       GflagsCompatFlag("clear_instance_dirs", clear_instance_dirs)
           .Help("If provided, deletes the instance dir after attempting to "
                 "stop each instance."));
+  flags.emplace_back(
+      GflagsCompatFlag("instance_nums", instance_nums)
+          .Help("Comma-separated list of instance numbers to stop."));
   flags.emplace_back(HelpFlag(flags));
   bool helpxml = false;
   flags.emplace_back(HelpXmlFlag(flags, std::cout, helpxml));
@@ -199,22 +206,49 @@ FlagVaules GetFlagValues(int argc, char** argv) {
   CHECK(parse_res.has_value() || helpxml)
       << "Could not process command line flags.";
 
-  return {wait_for_launcher, clear_instance_dirs, helpxml};
+  return {wait_for_launcher, clear_instance_dirs, instance_nums, helpxml};
 }
 
 int StopCvdMain(const std::int32_t wait_for_launcher,
-                const bool clear_instance_dirs) {
+                const bool clear_instance_dirs,
+                const std::vector<unsigned>& instance_nums) {
   auto config = CuttlefishConfig::Get();
   if (!config) {
     LOG(ERROR) << "Failed to obtain config object";
     return FallBackStop(FallbackDirs());
   }
 
+  std::set<unsigned> instance_ids(instance_nums.begin(), instance_nums.end());
+
   int exit_code = 0;
   auto instances = config->Instances();
+
+  if (!instance_ids.empty() && !instances.empty()) {
+    unsigned first_instance_id;
+    if (android::base::ParseUint(instances[0].id(), &first_instance_id)) {
+      if (instance_ids.count(first_instance_id) > 0 &&
+          instance_ids.size() < instances.size()) {
+        LOG(ERROR) << "Stopping the first instance (ID: " << first_instance_id
+                   << ") is not allowed while other instances are remaining. "
+                   << "Stop the entire group instead.";
+        return 1;
+      }
+    }
+  }
+
   std::vector<std::future<int>> exit_state_futures;
   exit_state_futures.reserve(instances.size());
   for (const auto& instance : instances) {
+    unsigned id;
+    if (!android::base::ParseUint(instance.id(), &id)) {
+      LOG(ERROR) << "Failed to parse instance ID \"" << instance.id()
+                 << "\" as unsigned";
+      exit_code |= 1;
+      continue;
+    }
+    if (!instance_ids.empty() && instance_ids.count(id) == 0) {
+      continue;
+    }
     std::future<int> exit_code_from_thread = std::async(
         std::launch::async,
         [&instance, &config, &wait_for_launcher,
@@ -258,7 +292,7 @@ int StopCvdMain(const std::int32_t wait_for_launcher,
 int main(int argc, char** argv) {
   ::android::base::InitLogging(argv, android::base::StderrLogger);
 
-  const auto [wait_for_launcher, clear_instance_dirs, helpxml] =
+  const auto [wait_for_launcher, clear_instance_dirs, instance_nums, helpxml] =
       cuttlefish::GetFlagValues(argc, argv);
 
   if (helpxml) {
@@ -277,5 +311,6 @@ int main(int argc, char** argv) {
     cuttlefish::MetricsReceiver::LogMetricsVMStop();
   }
 
-  return cuttlefish::StopCvdMain(wait_for_launcher, clear_instance_dirs);
+  return cuttlefish::StopCvdMain(wait_for_launcher, clear_instance_dirs,
+                                 instance_nums);
 }

@@ -19,14 +19,12 @@ PRODUCT_PRODUCT_PROPERTIES += \
     persist.service.seek=fullaccess
 
 PRODUCT_COPY_FILES += \
-    device/google/cuttlefish/shared/omapi/hal_uuid_map_config.xml:$(TARGET_COPY_OUT_VENDOR)/etc/hal_uuid_map_config.xml
+    device/google/cuttlefish/shared/omapi/hal_uuid_map_config.xml:$(TARGET_COPY_OUT_VENDOR)/etc/hal_uuid_map_config.xml \
+    frameworks/native/data/etc/android.hardware.se.omapi.ese.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.se.omapi.ese.xml
 
 # Enable Java OMAPI if Native OMAPI is not enabled
 ifeq (,$(filter true,$(NATIVE_OMAPI)))
 # Enable Java OMAPI
-PRODUCT_COPY_FILES += \
-    frameworks/native/data/etc/android.hardware.se.omapi.ese.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.se.omapi.ese.xml
-
 DEVICE_PACKAGE_OVERLAYS += \
     device/google/cuttlefish/shared/omapi/overlay
 

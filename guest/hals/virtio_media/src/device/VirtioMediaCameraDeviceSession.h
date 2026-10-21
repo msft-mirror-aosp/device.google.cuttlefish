@@ -432,6 +432,8 @@ class VirtioMediaCameraDeviceSession
   std::mutex mAfTriggerLock;  // protect mAfTrigger
   bool mAfTrigger = false;
 
+  int32_t mCurrentSensitivity = -1;
+
   uint32_t mBlobBufferSize = 0;
 
   static HandleImporter sHandleImporter;

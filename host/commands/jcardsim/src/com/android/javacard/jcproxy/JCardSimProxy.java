@@ -34,6 +34,10 @@ public class JCardSimProxy {
         }
     }
 
+    public byte getKeyMintP1() {
+        return (byte) ((JCardSimulator.getKeyMintP1P2() >> 8) & 0xFF);
+    }
+
     public byte[] transmit(byte[] apdu) {
         try {
             return jcardSimulator.executeApdu(apdu);

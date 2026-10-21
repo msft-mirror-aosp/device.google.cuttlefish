@@ -22,6 +22,7 @@
 
 #include <fruit/fruit.h>
 
+#include "common/libs/utils/files.h"
 #include "common/libs/utils/result.h"
 #include "host/libs/config/command_source.h"
 #include "host/libs/config/cuttlefish_config.h"
@@ -35,7 +36,7 @@ Result<std::optional<MonitorCommand>> NfcConnector(
     const CuttlefishConfig& config,
     const CuttlefishConfig::EnvironmentSpecific& environment,
     const CuttlefishConfig::InstanceSpecific& instance) {
-  if (!config.enable_host_nfc_connector()) {
+  if (!config.enable_host_nfc()) {
     return {};
   }
   std::vector<std::string> fifo_paths = {
@@ -44,7 +45,10 @@ Result<std::optional<MonitorCommand>> NfcConnector(
   };
   std::vector<SharedFD> fifos;
   for (const auto& path : fifo_paths) {
-    fifos.emplace_back(CF_EXPECT(SharedFD::Fifo(path, 0660)));
+    fifos.emplace_back(CF_EXPECT(CreateOrReuseAndDrainFifo(path, 0660)));
+  }
+  if (!config.enable_host_nfc_connector()) {
+    return {};
   }
   return Command(TcpConnectorBinary())
       .AddParameter("-fifo_out=", fifos[0])

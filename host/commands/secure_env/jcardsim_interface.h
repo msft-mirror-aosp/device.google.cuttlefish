@@ -57,6 +57,7 @@ class JCardSimInterface {
   jobject jcardsim_proxy_inst_;
   jclass jcardsim_proxy_class_;
   JavaVM* jvm_;
+  uint8_t keymint_p1_ = 0;
 };
 
 }  // namespace cuttlefish

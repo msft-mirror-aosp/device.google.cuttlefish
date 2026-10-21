@@ -22,6 +22,7 @@
 
 #include <fruit/fruit.h>
 
+#include "common/libs/utils/files.h"
 #include "common/libs/utils/result.h"
 #include "host/commands/run_cvd/launch/snapshot_control_files.h"
 #include "host/libs/config/command_source.h"
@@ -56,7 +57,7 @@ Result<MonitorCommand> SecureEnv(
   };
   std::vector<SharedFD> fifos;
   for (const auto& path : fifo_paths) {
-    fifos.emplace_back(CF_EXPECT(SharedFD::Fifo(path, 0660)));
+    fifos.emplace_back(CF_EXPECT(CreateOrReuseAndDrainFifo(path, 0660)));
   }
   command.AddParameter("-keymaster_fd_out=", fifos[0]);
   command.AddParameter("-keymaster_fd_in=", fifos[1]);
