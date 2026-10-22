@@ -1,2 +1,5 @@
 # Enable audiocontrol to listen to power policy daemon.
 carpowerpolicy_callback_domain(hal_audiocontrol_default)
+
+# Allow audiocontrol to drive ALSA mixer controls for fade, balance, mute and ducking.
+hal_server_domain(hal_audiocontrol_default, hal_audio)

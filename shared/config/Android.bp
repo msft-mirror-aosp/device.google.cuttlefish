@@ -168,8 +168,16 @@ prebuilt_etc {
     name: "device_google_cuttlefish_shared_config_audio_policy",
     srcs: [
         "audio/policy/audio_policy_configuration.xml",
-        "audio/policy/primary_audio_policy_configuration.xml",
+    ] + select(soong_config_variable("cuttlefish_config", "use_phone_audio_policy"), {
+        true: ["audio/policy/phone_primary_audio_policy_configuration.xml"],
+        default: ["audio/policy/primary_audio_policy_configuration.xml"],
+    }) + [
         "audio/policy/bluetooth_with_le_audio_policy_configuration_7_0.xml",
+    ],
+    dsts: [
+        "audio_policy_configuration.xml",
+        "primary_audio_policy_configuration.xml",
+        "bluetooth_with_le_audio_policy_configuration_7_0.xml",
     ],
     vendor: true,
     enabled: select(soong_config_variable("cuttlefish_config", "use_audio_policy"), {
