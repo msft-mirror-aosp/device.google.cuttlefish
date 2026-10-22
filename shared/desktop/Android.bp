@@ -18,8 +18,8 @@ package {
 }
 
 prebuilt_etc {
-    name: "desktop_excluded_cellular_hardware_features.prebuilt.xml",
-    src: "desktop_excluded_cellular_hardware_features.xml",
+    name: "desktop_excluded_hardware.prebuilt.xml",
+    src: "desktop_excluded_hardware.xml",
     relative_install_path: "permissions",
     soc_specific: true,
 }
