@@ -26,6 +26,10 @@ import re
 import time
 from typing import Mapping, Sequence
 
+from frameworks.base.core.proto.android.media import audioattributes_pb2
+from frameworks.base.core.proto.android.server import audioservice_pb2
+from google.protobuf import message
+
 DEFAULT_TIMEOUT_SEC = 10.0
 DEFAULT_POLL_INTERVAL_SEC = 0.25
 _DUMP_EXCERPT_MAX_CHARS = 240
@@ -95,7 +99,15 @@ class AudioModeSessionInfo:
   has_focus: bool
   is_live: bool
   requested_route: str
-  applied_route: str
+  target_route: str
+
+
+@dataclasses.dataclass(frozen=True)
+class FocusConfig:
+  """MediaFocusControl configuration flags from `dumpsys audio`."""
+
+  has_focus_policy: bool
+  multi_audio_focus_enabled: bool
 
 
 @dataclasses.dataclass(frozen=True)
@@ -144,10 +156,9 @@ _MODE_SESSION_RE = re.compile(
     r'(?:[ \t]+(?!AudioModeSession\b).*\n)*?'
     r'\s+mode:\s*(\S+)\s*\(-?\d+\)\s*\n'
     r'\s+isDisplayActiveUseCase:\s*(true|false)\s*\n'
-    r'\s+lifecycle:\s*clientPaused=(true|false)\s+serverPaused=(true|false)'
-    r'\s+closed=(true|false)\s+hasFocus=(true|false)\s+isLive=(true|false)\s*\n'
-    r'\s+requestedRoute:\s*(.+)\n'
-    r'\s+appliedRoute:\s*(.+)',
+    r'\s+lifecycle:\s*clientPaused=(true|false)\s+(?:serverPaused|paused)=(true|false)'
+    r'\s+closed=(true|false)\s+hasFocus=(true|false)(?:\s+isLive=(true|false))?\s*\n'
+    r'\s+requestedRoute:\s*(.+)(?:\n[ \t]+(?:appliedRoute|targetRoute):\s*(.+))?',
     re.MULTILINE,
 )
 
@@ -182,6 +193,215 @@ _FRAMES_WRITTEN_RE = re.compile(r'^\s*Frames written:\s*(\d+)', re.MULTILINE)
 _ACTIVE_TRACKS_RE = re.compile(
     r'^\s*\d+\s+Tracks(?:\s+of which\s+(\d+)\s+are active)?', re.MULTILINE
 )
+_FOCUS_STACK_HEADER = 'Audio Focus stack entries (last is top of stack):'
+_FOCUS_STACK_TERMINATORS = (
+    'No external focus policy',
+    'External focus policy:',
+    ' Notify on duck:',
+)
+_BT_MAC_RE = re.compile(r'^[0-9A-Fa-f]{2}(?::[0-9A-Fa-f]{2}){5}$')
+
+
+def anonymize_bluetooth_address(address: str) -> str:
+  """Anonymizes a 6-octet Bluetooth MAC address to `XX:XX:XX:XX:EE:FF`."""
+  if _BT_MAC_RE.match(address):
+    return 'XX:XX:XX:XX' + address[11:]
+  return address
+
+
+def address_matches(actual: str, expected: str) -> bool:
+  """Returns True if `actual` matches `expected` or its anonymized MAC form."""
+  if not expected:
+    return True
+  anon_expected = anonymize_bluetooth_address(expected)
+  return expected in actual or anon_expected in actual
+
+
+def parse_focus_stack(dump: str) -> str:
+  """Extracts the active MediaFocusControl stack slice from `dumpsys audio`.
+
+  Slices strictly between `Audio Focus stack entries (last is top of stack):`
+  and the focus-stack terminator (`No external focus policy`,
+  `External focus policy:`, or ` Notify on duck:`) so historical `EventLogger`
+  entries in `dumpsys audio` are never matched.
+
+  Args:
+    dump: Full text output of `adb shell dumpsys audio`.
+
+  Returns:
+    Newline-joined active focus stack lines.
+
+  Raises:
+    ValueError: If the focus stack header or terminator is missing from `dump`.
+  """
+  _require_section_anchor(
+      dump, _FOCUS_STACK_HEADER, 'audio (MediaFocusControl stack)'
+  )
+  _, _, tail = dump.partition(_FOCUS_STACK_HEADER)
+  stack_lines: list[str] = []
+  found_terminator = False
+  for line in tail.splitlines():
+    if line.startswith(_FOCUS_STACK_TERMINATORS):
+      found_terminator = True
+      break
+    stack_lines.append(line)
+  if not found_terminator:
+    raise ValueError(
+        'Missing expected focus stack terminator'
+        f' {_FOCUS_STACK_TERMINATORS!r} in dumpsys audio'
+    )
+  return '\n'.join(stack_lines)
+
+
+def _format_usage_proto(usage_val: int) -> str:
+  try:
+    name = audioattributes_pb2.Usage.Name(usage_val)
+  except ValueError:
+    return f'USAGE_INVALID_{usage_val}'
+  return name if name.startswith('USAGE_') else f'USAGE_{name}'
+
+
+def _format_content_type_proto(content_val: int) -> str:
+  try:
+    name = audioattributes_pb2.ContentType.Name(content_val)
+  except ValueError:
+    return f'CONTENT_TYPE_INVALID_{content_val}'
+  return (
+      name if name.startswith('CONTENT_TYPE_') else f'CONTENT_TYPE_{name}'
+  )
+
+
+def _unwrap_optional_route(val: str) -> str:
+  if val.startswith('Optional[') and val.endswith(']'):
+    return val[9:-1]
+  return val
+
+
+def parse_focus_stack_proto(raw_bytes: bytes) -> str:
+  """Extracts active MediaFocusControl stack entries from `dumpsys audio --proto`."""
+  if not raw_bytes:
+    raise ValueError('Empty dumpsys audio --proto output')
+  try:
+    dump_proto = audioservice_pb2.AudioServiceDumpProto.FromString(raw_bytes)
+  except message.DecodeError as exc:
+    raise ValueError(
+        f'Invalid dumpsys audio --proto payload ({len(raw_bytes)} bytes,'
+        f' prefix={raw_bytes[:80]!r}): {exc}'
+    ) from exc
+  if not dump_proto.HasField('audio_mode'):
+    raise ValueError(
+        'Missing audio_mode field in dumpsys audio --proto output'
+        f' ({len(raw_bytes)} bytes, prefix={raw_bytes[:80]!r})'
+    )
+  mfc = dump_proto.media_focus_control
+  lines: list[str] = []
+  for req in mfc.focus_stack:
+    usage_name = _format_usage_proto(req.audio_attributes.usage)
+    content_name = _format_content_type_proto(
+        req.audio_attributes.content_type
+    )
+    lines.append(
+        f'pack: {req.package_name} -- client: {req.client_id} -- gain:'
+        f' {req.focus_gain} -- flags: {req.grant_flags} -- loss:'
+        f' {req.focus_loss_received} -- notified:'
+        f' {str(req.focus_loss_was_notified).lower()} -- uid:'
+        f' {req.calling_uid} -- attr: AudioAttributes: usage={usage_name}'
+        f' content={content_name} flags=0x{req.audio_attributes.flags:x} --'
+        f' sdk:{req.sdk_target}'
+    )
+  return '\n'.join(lines)
+
+
+def parse_focus_config(dump: str) -> FocusConfig:
+  """Extracts MediaFocusControl configuration flags from text `dumpsys audio`."""
+  _require_section_anchor(
+      dump, _FOCUS_STACK_HEADER, 'audio (MediaFocusControl config)'
+  )
+  return FocusConfig(
+      has_focus_policy='has focus policy:true' in dump
+      or 'External focus policy:' in dump,
+      multi_audio_focus_enabled='Multi Audio Focus enabled :true' in dump,
+  )
+
+
+def parse_focus_config_proto(raw_bytes: bytes) -> FocusConfig:
+  """Extracts MediaFocusControl configuration flags from `dumpsys audio --proto`."""
+  if not raw_bytes:
+    raise ValueError('Empty dumpsys audio --proto output')
+  try:
+    dump_proto = audioservice_pb2.AudioServiceDumpProto.FromString(raw_bytes)
+  except message.DecodeError as exc:
+    raise ValueError(
+        f'Invalid dumpsys audio --proto payload ({len(raw_bytes)} bytes,'
+        f' prefix={raw_bytes[:80]!r}): {exc}'
+    ) from exc
+  if not dump_proto.HasField('audio_mode'):
+    raise ValueError(
+        'Missing audio_mode field in dumpsys audio --proto output'
+        f' ({len(raw_bytes)} bytes, prefix={raw_bytes[:80]!r})'
+    )
+  mfc = dump_proto.media_focus_control
+  return FocusConfig(
+      has_focus_policy=mfc.has_focus_policy,
+      multi_audio_focus_enabled=mfc.multi_audio_focus_enabled,
+  )
+
+
+def parse_dumpsys_audio_proto(raw_bytes: bytes) -> dict[str, object]:
+  """Parses Layer 1 fields from `dumpsys audio --proto` (`AudioServiceDumpProto`)."""
+  if not raw_bytes:
+    raise ValueError('Empty dumpsys audio --proto output')
+  try:
+    dump_proto = audioservice_pb2.AudioServiceDumpProto.FromString(raw_bytes)
+  except message.DecodeError as exc:
+    raise ValueError(
+        f'Invalid dumpsys audio --proto payload ({len(raw_bytes)} bytes,'
+        f' prefix={raw_bytes[:80]!r}): {exc}'
+    ) from exc
+  if not dump_proto.HasField('audio_mode'):
+    raise ValueError(
+        'Missing audio_mode field in dumpsys audio --proto output'
+        f' ({len(raw_bytes)} bytes, prefix={raw_bytes[:80]!r})'
+    )
+  started_usages: list[str] = []
+  for player in dump_proto.playback_monitor.players:
+    if (
+        player.player_state
+        == audioservice_pb2.AudioPlaybackConfigurationProto.PLAYER_STATE_STARTED
+    ):
+      started_usages.append(
+          _format_usage_proto(player.audio_attributes.usage)
+      )
+  mode_sessions = tuple(
+      AudioModeSessionInfo(
+          short_id=s.short_id,
+          mode=s.mode,
+          is_display_active_use_case=s.is_display_active_use_case,
+          client_paused=s.client_paused,
+          server_paused=s.server_paused,
+          closed=s.closed,
+          has_focus=s.has_focus,
+          is_live=s.is_live,
+          requested_route=s.requested_route,
+          target_route=s.target_route,
+      )
+      for s in dump_proto.device_broker.mode_sessions
+  )
+  return {
+      'requested_mode': dump_proto.audio_mode.requested_mode,
+      'actual_mode': dump_proto.audio_mode.actual_mode,
+      'computed_preferred_comm_device': (
+          dump_proto.device_broker.computed_preferred_communication_device
+      ),
+      'applied_preferred_comm_device': (
+          dump_proto.device_broker.applied_preferred_communication_device
+      ),
+      'active_comm_device': (
+          dump_proto.device_broker.active_communication_device
+      ),
+      'started_playback_usages': tuple(started_usages),
+      'mode_sessions': mode_sessions,
+  }
 
 
 def parse_dumpsys_audio(dump: str) -> dict[str, object]:
@@ -192,29 +412,48 @@ def parse_dumpsys_audio(dump: str) -> dict[str, object]:
   comp_match = _COMP_COMM_RE.search(dump)
   appl_match = _APPL_COMM_RE.search(dump)
   act_comm_match = _ACT_COMM_RE.search(dump)
+  comp_comm = comp_match.group(1).strip() if comp_match else ''
   started_usages = tuple(_PLAYBACK_STARTED_RE.findall(dump))
   mode_sessions: list[AudioModeSessionInfo] = []
   for match in _MODE_SESSION_RE.finditer(dump):
+    client_paused = match.group(4) == 'true'
+    server_paused = match.group(5) == 'true'
+    closed = match.group(6) == 'true'
+    is_live = (
+        match.group(8) == 'true'
+        if match.group(8) is not None
+        else (not client_paused and not server_paused and not closed)
+    )
+    requested_route = _unwrap_optional_route(match.group(9).strip())
+    raw_target = (
+        _unwrap_optional_route(match.group(10).strip())
+        if match.group(10) is not None
+        else ''
+    )
+    if raw_target and raw_target not in ('Optional.empty', 'null', 'None'):
+      target_route = raw_target
+    elif requested_route not in ('', 'Optional.empty', 'null', 'None'):
+      target_route = requested_route
+    else:
+      target_route = comp_comm
     mode_sessions.append(
         AudioModeSessionInfo(
             short_id=match.group(1).strip(),
             mode=match.group(2).strip(),
             is_display_active_use_case=match.group(3) == 'true',
-            client_paused=match.group(4) == 'true',
-            server_paused=match.group(5) == 'true',
-            closed=match.group(6) == 'true',
+            client_paused=client_paused,
+            server_paused=server_paused,
+            closed=closed,
             has_focus=match.group(7) == 'true',
-            is_live=match.group(8) == 'true',
-            requested_route=match.group(9).strip(),
-            applied_route=match.group(10).strip(),
+            is_live=is_live,
+            requested_route=requested_route,
+            target_route=target_route,
         )
     )
   return {
       'requested_mode': req_match.group(1).strip() if req_match else '',
       'actual_mode': act_match.group(1).strip() if act_match else '',
-      'computed_preferred_comm_device': (
-          comp_match.group(1).strip() if comp_match else ''
-      ),
+      'computed_preferred_comm_device': comp_comm,
       'applied_preferred_comm_device': (
           appl_match.group(1).strip() if appl_match else ''
       ),
@@ -327,6 +566,23 @@ class AudioStackInspector:
   def _shell(self, cmd: str) -> str:
     return self._dut.adb.shell(cmd).decode('utf-8', errors='replace')
 
+  def _shell_bytes(self, cmd: str) -> bytes:
+    return self._dut.adb.shell(cmd)
+
+  def get_focus_stack(self) -> str:
+    """Reads `dumpsys audio --proto` (or text fallback) for active focus stack."""
+    raw = self._shell_bytes('dumpsys audio --proto')
+    if raw.lstrip().startswith(b'AudioService Dumpsys'):
+      return parse_focus_stack(raw.decode('utf-8', errors='replace'))
+    return parse_focus_stack_proto(raw)
+
+  def get_focus_config(self) -> FocusConfig:
+    """Reads `dumpsys audio --proto` (or text fallback) for focus config flags."""
+    raw = self._shell_bytes('dumpsys audio --proto')
+    if raw.lstrip().startswith(b'AudioService Dumpsys'):
+      return parse_focus_config(raw.decode('utf-8', errors='replace'))
+    return parse_focus_config_proto(raw)
+
   def has_alsa_playback_device(self, device_id: int, card_id: int = 0) -> bool:
     """Returns True if `/dev/snd/pcmC<card_id>D<device_id>p` exists."""
     dev_path = f'/dev/snd/pcmC{card_id}D{device_id}p'
@@ -400,7 +656,7 @@ class AudioStackInspector:
       capture_devices: Sequence[int] = (0,),
   ) -> AudioStackSnapshot:
     """Captures a correlated 5-layer snapshot across AudioService, APM, AF, and ALSA."""
-    audio_dump = self._shell('dumpsys audio')
+    audio_raw = self._shell_bytes('dumpsys audio --proto')
     policy_dump = self._shell('dumpsys media.audio_policy')
     flinger_dump = self._shell('dumpsys media.audio_flinger')
     alsa_play, alsa_cap = self.read_alsa_running_states(
@@ -408,7 +664,10 @@ class AudioStackInspector:
         capture_devices=capture_devices,
     )
 
-    layer1 = parse_dumpsys_audio(audio_dump)
+    if audio_raw.lstrip().startswith(b'AudioService Dumpsys'):
+      layer1 = parse_dumpsys_audio(audio_raw.decode('utf-8', errors='replace'))
+    else:
+      layer1 = parse_dumpsys_audio_proto(audio_raw)
     strategies, patches = parse_dumpsys_audio_policy(policy_dump)
     output_threads, input_threads = parse_dumpsys_audio_flinger(flinger_dump)
 
@@ -438,7 +697,7 @@ class AudioStackInspector:
       strategy_name: str,
       expected_device_token: str,
       expected_address: str,
-      expected_alsa_dev: int,
+      expected_alsa_dev: int | None = None,
       inactive_alsa_devs: Sequence[int] = (),
       expected_mode: str | None = None,
   ) -> list[str]:
@@ -450,13 +709,32 @@ class AudioStackInspector:
             f'Layer 1 (AudioService): expected Actual mode={expected_mode},'
             f' got {snap.actual_mode!r}'
         )
-      if expected_mode != 'MODE_NORMAL' and not any(
-          s.is_live and s.mode == expected_mode for s in snap.mode_sessions
-      ):
-        mismatches.append(
-            f'Layer 1 (AudioService): expected live AudioModeSession in'
-            f' {expected_mode}, got {snap.mode_sessions}'
-        )
+      if expected_mode != 'MODE_NORMAL':
+        if not any(
+            s.is_live
+            and s.mode == expected_mode
+            and bool(s.target_route)
+            and address_matches(s.target_route, expected_address)
+            for s in snap.mode_sessions
+        ):
+          mismatches.append(
+              f'Layer 1 (AudioService): expected live AudioModeSession in'
+              f' {expected_mode} with route matching {expected_address!r}, got'
+              f' {snap.mode_sessions}'
+          )
+        if (
+            not snap.applied_preferred_comm_device
+            or snap.applied_preferred_comm_device in ('null', 'None')
+            or not address_matches(
+                snap.applied_preferred_comm_device, expected_address
+            )
+        ):
+          mismatches.append(
+              'Layer 1 (AudioDeviceBroker):'
+              ' appliedPreferredCommunicationDevice'
+              f' {snap.applied_preferred_comm_device!r} != expected'
+              f' {expected_address!r}'
+          )
 
     strat = snap.strategies.get(strategy_name)
     if strat is None:
@@ -470,16 +748,23 @@ class AudioStackInspector:
             f'Layer 2 (AudioPolicy): expected {expected_device_token} in'
             f' {strategy_name} device_types, got {strat}'
         )
-      if strat.address != expected_address:
+      if expected_address and not address_matches(
+          strat.address, expected_address
+      ):
         mismatches.append(
             f'Layer 2 (AudioPolicy): expected {strategy_name} address'
             f' {expected_address!r}, got {strat.address!r}'
         )
 
-    if not any(expected_address in p.sink_device for p in snap.patches):
+    if not any(
+        expected_device_token in p.sink_device
+        and address_matches(p.sink_device, expected_address)
+        for p in snap.patches
+    ):
       mismatches.append(
           f'Layer 3 (AudioPatches): expected active patch to sink'
-          f' {expected_address}, got patches={snap.patches}'
+          f' {expected_device_token} ({expected_address!r}), got'
+          f' patches={snap.patches}'
       )
 
     if not any(
@@ -491,7 +776,9 @@ class AudioStackInspector:
           f' {expected_device_token}, got threads={snap.output_threads}'
       )
 
-    if not snap.alsa_playback_running.get(expected_alsa_dev, False):
+    if expected_alsa_dev is not None and not snap.alsa_playback_running.get(
+        expected_alsa_dev, False
+    ):
       mismatches.append(
           f'Layer 5 (ALSA): expected pcm{expected_alsa_dev}p to be RUNNING,'
           f' got {snap.alsa_playback_running}'
@@ -509,7 +796,7 @@ class AudioStackInspector:
       strategy_name: str,
       expected_device_token: str,
       expected_address: str,
-      expected_alsa_dev: int,
+      expected_alsa_dev: int | None = None,
       inactive_alsa_devs: Sequence[int] = (),
       expected_mode: str | None = None,
       timeout_sec: float = DEFAULT_TIMEOUT_SEC,
@@ -517,19 +804,32 @@ class AudioStackInspector:
   ) -> tuple[bool, AudioStackSnapshot]:
     """Polls until all 5 layers converge on the expected device route and ALSA stream."""
     deadline = time.monotonic() + timeout_sec
+    last_snap: AudioStackSnapshot | None = None
+    last_exc: ValueError | None = None
     while True:
-      last_snap = self.snapshot()
-      if not self.find_route_mismatches(
-          last_snap,
-          strategy_name=strategy_name,
-          expected_device_token=expected_device_token,
-          expected_address=expected_address,
-          expected_alsa_dev=expected_alsa_dev,
-          inactive_alsa_devs=inactive_alsa_devs,
-          expected_mode=expected_mode,
+      try:
+        last_snap = self.snapshot()
+        last_exc = None
+      except ValueError as exc:
+        last_exc = exc
+      if (
+          last_exc is None
+          and last_snap is not None
+          and not self.find_route_mismatches(
+              last_snap,
+              strategy_name=strategy_name,
+              expected_device_token=expected_device_token,
+              expected_address=expected_address,
+              expected_alsa_dev=expected_alsa_dev,
+              inactive_alsa_devs=inactive_alsa_devs,
+              expected_mode=expected_mode,
+          )
       ):
         return True, last_snap
       if time.monotonic() >= deadline:
+        if last_snap is None and last_exc is not None:
+          raise last_exc
+        assert last_snap is not None
         return False, last_snap
       time.sleep(poll_interval_sec)
 
@@ -540,20 +840,29 @@ class AudioStackInspector:
       poll_interval_sec: float = DEFAULT_POLL_INTERVAL_SEC,
   ) -> tuple[int, int]:
     """Polls AudioFlinger until `Frames written` advances on the routed output thread."""
-    baseline_snap = self.snapshot()
+    deadline = time.monotonic() + timeout_sec
     baseline_frames = 0
     target_io_handle = None
-    for io_handle, thread in baseline_snap.output_threads.items():
-      if not thread.standby and expected_device_token in thread.output_devices:
-        target_io_handle = io_handle
-        baseline_frames = thread.frames_written
-        break
+    try:
+      baseline_snap = self.snapshot()
+      for io_handle, thread in baseline_snap.output_threads.items():
+        if (
+            not thread.standby
+            and expected_device_token in thread.output_devices
+        ):
+          target_io_handle = io_handle
+          baseline_frames = thread.frames_written
+          break
+    except ValueError:
+      pass
 
-    deadline = time.monotonic() + timeout_sec
     latest_frames = baseline_frames
     while time.monotonic() < deadline:
       time.sleep(poll_interval_sec)
-      snap = self.snapshot()
+      try:
+        snap = self.snapshot()
+      except ValueError:
+        continue
       tracked = (
           snap.output_threads.get(target_io_handle)
           if target_io_handle is not None

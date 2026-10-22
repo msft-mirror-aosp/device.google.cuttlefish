@@ -14,10 +14,13 @@
 # limitations under the License.
 """Unit tests for the 5-layer Cuttlefish audio stack inspector."""
 
+import dataclasses
 import unittest
 from unittest import mock
 
 import audio_stack_inspector
+from frameworks.base.core.proto.android.media import audioattributes_pb2
+from frameworks.base.core.proto.android.server import audioservice_pb2
 
 
 SAMPLE_DUMPSYS_AUDIO = """\
@@ -98,6 +101,8 @@ class AudioStackInspectorTest(unittest.TestCase):
     self.assertEqual(
         parsed['started_playback_usages'], ('USAGE_VOICE_COMMUNICATION',)
     )
+    self.assertEqual(audioattributes_pb2.Usage.Name(17), 'CALL_ASSISTANT')
+    self.assertEqual(audioattributes_pb2.Usage.Name(1004), 'SPEAKER_CLEANUP')
     sessions = parsed['mode_sessions']
     self.assertEqual(len(sessions), 1)
     self.assertEqual(
@@ -112,7 +117,7 @@ class AudioStackInspectorTest(unittest.TestCase):
             has_focus=True,
             is_live=True,
             requested_route='Device(type: builtin_earpiece, addr: CARD_0_DEV_1)',
-            applied_route='Device(type: builtin_earpiece, addr: CARD_0_DEV_1)',
+            target_route='Device(type: builtin_earpiece, addr: CARD_0_DEV_1)',
         ),
     )
 
@@ -287,6 +292,470 @@ class AudioStackInspectorTest(unittest.TestCase):
     dut.adb.shell.assert_called_once()
     self.assertEqual(playback_running, {0: False, 1: True})
     self.assertEqual(capture_running, {0: True})
+
+  def test_parse_focus_stack_slices_live_stack_and_rejects_malformed_dumps(self):
+    sample_focus_dump = (
+        'MediaFocusControl:\n'
+        'Audio Focus stack entries (last is top of stack):\n'
+        '  source:android.os.BinderProxy@1 -- client:'
+        ' CfAudioTest[media_client]#1 -- gain: GAIN\n'
+        'No external focus policy\n'
+        ' Notify on duck: true\n'
+        'focus commands as seen by MediaFocusControl:\n'
+        '  requestAudioFocus() client: CfAudioTest[stale_historical_client]#9\n'
+    )
+    stack = audio_stack_inspector.parse_focus_stack(sample_focus_dump)
+    self.assertIn('CfAudioTest[media_client]#1', stack)
+    self.assertNotIn('CfAudioTest[stale_historical_client]#9', stack)
+
+    with self.assertRaisesRegex(
+        ValueError, r'Missing section anchor.*Audio Focus stack entries'
+    ):
+      audio_stack_inspector.parse_focus_stack('MediaFocusControl: empty')
+
+    with self.assertRaisesRegex(
+        ValueError, r'Missing expected focus stack terminator'
+    ):
+      audio_stack_inspector.parse_focus_stack(
+          'Audio Focus stack entries (last is top of stack):\n'
+          '  source:android.os.BinderProxy@1 -- client: CfAudioTest[media]#1\n'
+      )
+
+  def test_non_alsa_bluetooth_route_verifies_layers_and_inactive_alsa(self):
+    dut = mock.MagicMock()
+    inspector = audio_stack_inspector.AudioStackInspector(dut)
+    bt_addr = 'F0:F1:F2:F3:F4:F5'
+    bt_snap = audio_stack_inspector.AudioStackSnapshot(
+        requested_mode='MODE_NORMAL',
+        actual_mode='MODE_NORMAL',
+        computed_preferred_comm_device='None',
+        applied_preferred_comm_device='None',
+        active_comm_device='None',
+        started_playback_usages=('USAGE_MEDIA',),
+        mode_sessions=(),
+        strategies={
+            'STRATEGY_MEDIA': audio_stack_inspector.StrategyRoute(
+                name='STRATEGY_MEDIA',
+                device_types='AUDIO_DEVICE_OUT_BLUETOOTH_A2DP',
+                address=bt_addr,
+            ),
+        },
+        patches=(
+            audio_stack_inspector.AudioPatchInfo(
+                handle=42,
+                src_mix_port_id=31,
+                io_handle=29,
+                sink_device_port_id=12,
+                sink_device=f'AUDIO_DEVICE_OUT_BLUETOOTH_A2DP, @:{bt_addr}',
+            ),
+        ),
+        output_threads={
+            29: audio_stack_inspector.OutputThreadInfo(
+                io_handle=29,
+                standby=False,
+                output_devices='0x80 (AUDIO_DEVICE_OUT_BLUETOOTH_A2DP)',
+                frames_written=48000,
+                active_tracks=1,
+            ),
+        },
+        input_threads={},
+        alsa_playback_running={0: False, 1: False},
+        alsa_capture_running={0: False},
+    )
+    mismatches = inspector.find_route_mismatches(
+        bt_snap,
+        strategy_name='STRATEGY_MEDIA',
+        expected_device_token='AUDIO_DEVICE_OUT_BLUETOOTH_A2DP',
+        expected_address=bt_addr,
+        expected_alsa_dev=None,
+        inactive_alsa_devs=(0, 1),
+        expected_mode='MODE_NORMAL',
+    )
+    self.assertEqual(mismatches, [])
+
+    leaking_alsa_snap = dataclasses.replace(
+        bt_snap, alsa_playback_running={0: True, 1: False}
+    )
+    leak_mismatches = inspector.find_route_mismatches(
+        leaking_alsa_snap,
+        strategy_name='STRATEGY_MEDIA',
+        expected_device_token='AUDIO_DEVICE_OUT_BLUETOOTH_A2DP',
+        expected_address=bt_addr,
+        expected_alsa_dev=None,
+        inactive_alsa_devs=(0, 1),
+        expected_mode='MODE_NORMAL',
+    )
+    self.assertEqual(len(leak_mismatches), 1)
+    self.assertIn('expected pcm0p to be closed/inactive', leak_mismatches[0])
+
+  def test_parse_dumpsys_audio_proto_and_focus_stack_proto_roundtrip(self):
+    dump_proto = audioservice_pb2.AudioServiceDumpProto()
+    dump_proto.audio_mode.requested_mode = 'MODE_IN_COMMUNICATION'
+    dump_proto.audio_mode.actual_mode = 'MODE_IN_COMMUNICATION'
+    dump_proto.device_broker.computed_preferred_communication_device = (
+        'AudioDeviceAttributes: role:output type:builtin_earpiece'
+        ' addr:CARD_0_DEV_1'
+    )
+    dump_proto.device_broker.applied_preferred_communication_device = (
+        'AudioDeviceAttributes: role:output type:builtin_earpiece'
+        ' addr:CARD_0_DEV_1'
+    )
+    dump_proto.device_broker.active_communication_device = (
+        'AudioDeviceAttributes: role:output type:builtin_earpiece'
+        ' addr:CARD_0_DEV_1'
+    )
+    session = dump_proto.device_broker.mode_sessions.add()
+    session.short_id = '7f3a1b'
+    session.mode = 'MODE_IN_COMMUNICATION'
+    session.mode_int = 3
+    session.is_display_active_use_case = False
+    session.client_paused = False
+    session.server_paused = False
+    session.closed = False
+    session.has_focus = True
+    session.is_live = True
+    session.requested_route = (
+        'Device(type: builtin_earpiece, addr: CARD_0_DEV_1)'
+    )
+    session.target_route = 'Device(type: builtin_earpiece, addr: CARD_0_DEV_1)'
+
+    player = dump_proto.playback_monitor.players.add()
+    player.piid = 15
+    player.player_state = (
+        audioservice_pb2.AudioPlaybackConfigurationProto.PLAYER_STATE_STARTED
+    )
+    player.audio_attributes.usage = audioattributes_pb2.VOICE_COMMUNICATION
+
+    req = dump_proto.media_focus_control.focus_stack.add()
+    req.package_name = 'com.android.cuttlefish.audiotest'
+    req.client_id = 'CfAudioTest[media_client]#1'
+    req.focus_gain = 'GAIN'
+    req.calling_uid = 10142
+    req.audio_attributes.usage = audioattributes_pb2.MEDIA
+    req.audio_attributes.content_type = audioattributes_pb2.MUSIC
+    req.audio_attributes.flags = 0x1
+    req.sdk_target = 35
+
+    raw_bytes = dump_proto.SerializeToString()
+    parsed = audio_stack_inspector.parse_dumpsys_audio_proto(raw_bytes)
+    self.assertEqual(parsed['requested_mode'], 'MODE_IN_COMMUNICATION')
+    self.assertEqual(parsed['actual_mode'], 'MODE_IN_COMMUNICATION')
+    self.assertEqual(
+        parsed['started_playback_usages'], ('USAGE_VOICE_COMMUNICATION',)
+    )
+    self.assertEqual(audioattributes_pb2.Usage.Name(17), 'CALL_ASSISTANT')
+    self.assertEqual(audioattributes_pb2.Usage.Name(1004), 'SPEAKER_CLEANUP')
+    self.assertEqual(
+        audioattributes_pb2.ContentType.Name(1997), 'ULTRASOUND'
+    )
+    self.assertEqual(
+        parsed['mode_sessions'],
+        (
+            audio_stack_inspector.AudioModeSessionInfo(
+                short_id='7f3a1b',
+                mode='MODE_IN_COMMUNICATION',
+                is_display_active_use_case=False,
+                client_paused=False,
+                server_paused=False,
+                closed=False,
+                has_focus=True,
+                is_live=True,
+                requested_route=(
+                    'Device(type: builtin_earpiece, addr: CARD_0_DEV_1)'
+                ),
+                target_route=(
+                    'Device(type: builtin_earpiece, addr: CARD_0_DEV_1)'
+                ),
+            ),
+        ),
+    )
+
+    focus_stack = audio_stack_inspector.parse_focus_stack_proto(raw_bytes)
+    self.assertIn('CfAudioTest[media_client]#1', focus_stack)
+    self.assertIn('com.android.cuttlefish.audiotest', focus_stack)
+    self.assertIn(
+        'usage=USAGE_MEDIA content=CONTENT_TYPE_MUSIC flags=0x1', focus_stack
+    )
+    self.assertEqual(
+        audio_stack_inspector._format_usage_proto(99999), 'USAGE_INVALID_99999'
+    )
+    self.assertEqual(
+        audio_stack_inspector._format_content_type_proto(99999),
+        'CONTENT_TYPE_INVALID_99999',
+    )
+
+    with self.assertRaisesRegex(
+        ValueError, r"Can't find service: audio"
+    ):
+      audio_stack_inspector.parse_dumpsys_audio_proto(
+          b"Can't find service: audio\n"
+      )
+
+    # Empty focus stack (ProtoOutputStream omits 0-byte media_focus_control sub-message)
+    empty_focus_proto = audioservice_pb2.AudioServiceDumpProto()
+    empty_focus_proto.audio_mode.requested_mode = 'MODE_NORMAL'
+    empty_focus_proto.audio_mode.actual_mode = 'MODE_NORMAL'
+    self.assertEqual(
+        audio_stack_inspector.parse_focus_stack_proto(
+            empty_focus_proto.SerializeToString()
+        ),
+        '',
+    )
+    self.assertEqual(
+        audio_stack_inspector.parse_focus_config_proto(
+            empty_focus_proto.SerializeToString()
+        ),
+        audio_stack_inspector.FocusConfig(
+            has_focus_policy=False, multi_audio_focus_enabled=False
+        ),
+    )
+
+    dump_proto.media_focus_control.has_focus_policy = True
+    dump_proto.media_focus_control.multi_audio_focus_enabled = True
+    self.assertEqual(
+        audio_stack_inspector.parse_focus_config_proto(
+            dump_proto.SerializeToString()
+        ),
+        audio_stack_inspector.FocusConfig(
+            has_focus_policy=True, multi_audio_focus_enabled=True
+        ),
+    )
+    self.assertEqual(
+        audio_stack_inspector.parse_focus_config(
+            'Audio Focus stack entries (last is top of stack):\n'
+            '  has focus policy:true\n'
+            'Multi Audio Focus enabled :true\n'
+        ),
+        audio_stack_inspector.FocusConfig(
+            has_focus_policy=True, multi_audio_focus_enabled=True
+        ),
+    )
+
+  def test_parse_dumpsys_audio_post_route_selector_text_format(self):
+    post_route_selector_dump = """\
+## Audio mode:
+  - Requested mode = MODE_IN_COMMUNICATION
+  - Actual mode = MODE_IN_COMMUNICATION
+
+  Computed Preferred communication device: AudioDeviceAttributes: role:output type:builtin_earpiece addr:CARD_0_DEV_1
+
+  AudioModeSession [8a9b0c]:
+    package: com.android.cuttlefish.audiotest uid: 10142 pid: 4120
+    mode: MODE_IN_COMMUNICATION (3)
+    isDisplayActiveUseCase: false
+    lifecycle: clientPaused=false paused=false closed=false hasFocus=true isLive=true
+    requestedRoute: Optional.empty
+"""
+    parsed = audio_stack_inspector.parse_dumpsys_audio(post_route_selector_dump)
+    sessions = parsed['mode_sessions']
+    self.assertEqual(len(sessions), 1)
+    self.assertEqual(
+        sessions[0],
+        audio_stack_inspector.AudioModeSessionInfo(
+            short_id='8a9b0c',
+            mode='MODE_IN_COMMUNICATION',
+            is_display_active_use_case=False,
+            client_paused=False,
+            server_paused=False,
+            closed=False,
+            has_focus=True,
+            is_live=True,
+            requested_route='Optional.empty',
+            target_route=(
+                'AudioDeviceAttributes: role:output type:builtin_earpiece'
+                ' addr:CARD_0_DEV_1'
+            ),
+        ),
+    )
+
+    target_route_dump = """\
+## Audio mode:
+  - Requested mode = MODE_IN_COMMUNICATION
+  - Actual mode = MODE_IN_COMMUNICATION
+
+  AudioModeSession [8a9b0c]:
+    package: com.android.cuttlefish.audiotest uid: 10142 pid: 4120
+    mode: MODE_IN_COMMUNICATION (3)
+    isDisplayActiveUseCase: false
+    lifecycle: clientPaused=false paused=false closed=false hasFocus=true
+    requestedRoute: Optional.empty
+    targetRoute: Optional[Device(type: builtin_earpiece, addr: CARD_0_DEV_1)]
+"""
+    parsed_target = audio_stack_inspector.parse_dumpsys_audio(target_route_dump)
+    self.assertEqual(
+        parsed_target['mode_sessions'][0].target_route,
+        'Device(type: builtin_earpiece, addr: CARD_0_DEV_1)',
+    )
+
+  def test_find_route_mismatches_rejects_wrong_bt_profile_sharing_mac_address(
+      self,
+  ):
+    dut = mock.MagicMock()
+    inspector = audio_stack_inspector.AudioStackInspector(dut)
+    bt_addr = 'F0:F1:F2:F3:F4:F5'
+    snap = audio_stack_inspector.AudioStackSnapshot(
+        requested_mode='MODE_IN_COMMUNICATION',
+        actual_mode='MODE_IN_COMMUNICATION',
+        computed_preferred_comm_device=bt_addr,
+        applied_preferred_comm_device=bt_addr,
+        active_comm_device=bt_addr,
+        started_playback_usages=('USAGE_VOICE_COMMUNICATION',),
+        mode_sessions=(
+            audio_stack_inspector.AudioModeSessionInfo(
+                short_id='7f3a1b',
+                mode='MODE_IN_COMMUNICATION',
+                is_display_active_use_case=False,
+                client_paused=False,
+                server_paused=False,
+                closed=False,
+                has_focus=True,
+                is_live=True,
+                requested_route=bt_addr,
+                target_route=bt_addr,
+            ),
+        ),
+        strategies={
+            'STRATEGY_PHONE': audio_stack_inspector.StrategyRoute(
+                name='STRATEGY_PHONE',
+                device_types='AUDIO_DEVICE_OUT_BLUETOOTH_SCO',
+                address=bt_addr,
+            ),
+        },
+        patches=(
+            audio_stack_inspector.AudioPatchInfo(
+                handle=42,
+                src_mix_port_id=31,
+                io_handle=29,
+                sink_device_port_id=12,
+                sink_device=f'AUDIO_DEVICE_OUT_BLUETOOTH_A2DP, @:{bt_addr}',
+            ),
+        ),
+        output_threads={
+            29: audio_stack_inspector.OutputThreadInfo(
+                io_handle=29,
+                standby=False,
+                output_devices='0x10 (AUDIO_DEVICE_OUT_BLUETOOTH_SCO)',
+                frames_written=48000,
+                active_tracks=1,
+            ),
+        },
+        input_threads={},
+        alsa_playback_running={0: False, 1: False},
+        alsa_capture_running={0: False},
+    )
+    mismatches = inspector.find_route_mismatches(
+        snap,
+        strategy_name='STRATEGY_PHONE',
+        expected_device_token='AUDIO_DEVICE_OUT_BLUETOOTH_SCO',
+        expected_address=bt_addr,
+        expected_alsa_dev=None,
+        inactive_alsa_devs=(0, 1),
+        expected_mode='MODE_IN_COMMUNICATION',
+    )
+    self.assertEqual(len(mismatches), 1)
+    self.assertIn('Layer 3 (AudioPatches)', mismatches[0])
+
+    unapplied_broker_snap = dataclasses.replace(
+        snap, applied_preferred_comm_device=''
+    )
+    broker_mismatches = inspector.find_route_mismatches(
+        unapplied_broker_snap,
+        strategy_name='STRATEGY_PHONE',
+        expected_device_token='AUDIO_DEVICE_OUT_BLUETOOTH_SCO',
+        expected_address=bt_addr,
+        expected_alsa_dev=None,
+        inactive_alsa_devs=(0, 1),
+        expected_mode='MODE_IN_COMMUNICATION',
+    )
+    self.assertTrue(
+        any('Layer 1 (AudioDeviceBroker)' in m for m in broker_mismatches)
+    )
+
+    empty_target_session = dataclasses.replace(
+        snap.mode_sessions[0], target_route=''
+    )
+    empty_target_snap = dataclasses.replace(
+        snap, mode_sessions=(empty_target_session,)
+    )
+    empty_target_mismatches = inspector.find_route_mismatches(
+        empty_target_snap,
+        strategy_name='STRATEGY_PHONE',
+        expected_device_token='AUDIO_DEVICE_OUT_BLUETOOTH_SCO',
+        expected_address='',
+        expected_alsa_dev=None,
+        inactive_alsa_devs=(0, 1),
+        expected_mode='MODE_IN_COMMUNICATION',
+    )
+    self.assertTrue(
+        any('Layer 1 (AudioService)' in m for m in empty_target_mismatches)
+    )
+
+    # Verify anonymized MAC address ("XX:XX:XX:XX:F4:F5") matches full expected_address ("F0:F1:F2:F3:F4:F5")
+    self.assertEqual(
+        audio_stack_inspector.anonymize_bluetooth_address(bt_addr),
+        'XX:XX:XX:XX:F4:F5',
+    )
+    self.assertTrue(
+        audio_stack_inspector.address_matches(
+            'Route{output: DeviceIdentity{address: XX:XX:XX:XX:F4:F5}}',
+            bt_addr,
+        )
+    )
+
+    # Verify wait_for_route and wait_for_frames_advancing retry on transient ValueError
+    valid_snap = dataclasses.replace(
+        snap,
+        patches=(
+            audio_stack_inspector.AudioPatchInfo(
+                handle=42,
+                src_mix_port_id=31,
+                io_handle=29,
+                sink_device_port_id=12,
+                sink_device=f'AUDIO_DEVICE_OUT_BLUETOOTH_SCO, @:{bt_addr}',
+            ),
+        ),
+    )
+    inspector.snapshot = mock.MagicMock(
+        side_effect=[ValueError('transient decode error'), valid_snap]
+    )
+    converged, _ = inspector.wait_for_route(
+        strategy_name='STRATEGY_PHONE',
+        expected_device_token='AUDIO_DEVICE_OUT_BLUETOOTH_SCO',
+        expected_address=bt_addr,
+        expected_alsa_dev=None,
+        inactive_alsa_devs=(0, 1),
+        expected_mode='MODE_IN_COMMUNICATION',
+        timeout_sec=1.0,
+        poll_interval_sec=0.0,
+    )
+    self.assertTrue(converged)
+
+    advancing_snap = dataclasses.replace(
+        valid_snap,
+        output_threads={
+            29: audio_stack_inspector.OutputThreadInfo(
+                io_handle=29,
+                standby=False,
+                output_devices='0x10 (AUDIO_DEVICE_OUT_BLUETOOTH_SCO)',
+                frames_written=96000,
+                active_tracks=1,
+            ),
+        },
+    )
+    inspector.snapshot = mock.MagicMock(
+        side_effect=[
+            ValueError('transient baseline error'),
+            valid_snap,
+            ValueError('transient poll error'),
+            advancing_snap,
+        ]
+    )
+    base_frames, latest_frames = inspector.wait_for_frames_advancing(
+        'AUDIO_DEVICE_OUT_BLUETOOTH_SCO',
+        timeout_sec=1.0,
+        poll_interval_sec=0.0,
+    )
+    self.assertEqual((base_frames, latest_frames), (48000, 96000))
 
 
 if __name__ == '__main__':
