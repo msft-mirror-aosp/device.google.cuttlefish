@@ -124,6 +124,18 @@ ScopedAStatus SecureElement::reset() {
     return ScopedAStatus::ok();
 }
 
+ScopedAStatus SecureElement::resetWithReason(ResetReason reason) {
+    // The reason is advisory. jcardsim performs the same reset for every reason,
+    // including unrecognized values, which are treated as ResetReason::UNKNOWN.
+    LOG(INFO) << __func__ << " reason: " << toString(reason);
+    if (callback_ == nullptr) {
+        return ScopedAStatus::fromExceptionCode(EX_ILLEGAL_STATE);
+    }
+    callback_->onStateChange(false, "resetWithReason");
+    callback_->onStateChange(true, "resetWithReason");
+    return ScopedAStatus::ok();
+}
+
 ScopedAStatus SecureElement::transmit(const std::vector<uint8_t>& data,
                                       std::vector<uint8_t>* aidl_return) {
     if (callback_ == nullptr) {

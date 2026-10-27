@@ -245,7 +245,7 @@ PRODUCT_PACKAGES += \
 #
 
 ifeq ($(RELEASE_AIDL_USE_UNFROZEN),true)
-PRODUCT_SHIPPING_API_LEVEL := 37
+PRODUCT_SHIPPING_API_LEVEL := 38
 LOCAL_DEVICE_FCM_MANIFEST_FILE ?= device/google/cuttlefish/shared/config/manifest.xml
 else
 PRODUCT_SHIPPING_API_LEVEL := 37
@@ -332,6 +332,12 @@ PRODUCT_VENDOR_PROPERTIES += \
 #
 PRODUCT_PACKAGES += \
     com.android.hardware.authsecret
+
+#
+# Wireless Power AIDL HAL
+#
+PRODUCT_PACKAGES += \
+    android.hardware.wireless_power-service.example
 
 ifndef LOCAL_AUDIO_PRODUCT_PACKAGE
 # Choose the audio HAL interfaces version which is the same as the system image uses.

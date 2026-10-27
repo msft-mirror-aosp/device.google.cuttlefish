@@ -412,29 +412,6 @@ cvd_host_avb_testkey = [
     "cvd_avb_testkey_rsa4096",
 ]
 
-cvd_host_netsim_gui_assets = [
-    "netsim_ui_assets_grid-background.svg",
-    "netsim_ui_assets_hexagonal-background.png",
-    "netsim_ui_assets_netsim-logo-b.svg",
-    "netsim_ui_assets_netsim-logo.svg",
-    "netsim_ui_assets_polar-background.svg",
-    "netsim_ui_index.html",
-    "netsim_ui_js_cube-sprite.js",
-    "netsim_ui_js_customize-map-button.js",
-    "netsim_ui_js_device-dragzone.js",
-    "netsim_ui_js_device-dropzone.js",
-    "netsim_ui_js_device-info.js",
-    "netsim_ui_js_device-list.js",
-    "netsim_ui_js_device-map.js",
-    "netsim_ui_js_device-observer.js",
-    "netsim_ui_js_license-info.js",
-    "netsim_ui_js_navigation-bar.js",
-    "netsim_ui_js_netsim-app.js",
-    "netsim_ui_js_packet-info.js",
-    "netsim_ui_js_pyramid-sprite.js",
-    "netsim_ui_tslib",
-]
-
 // From Vulkan Loader documentation:
 //
 //   If "library_path" specifies a relative pathname, it is relative
@@ -531,7 +508,6 @@ cvd_host_package {
                 cvd_host_swiftshader_files +
                 cvd_host_lavapipe_files +
                 cvd_openwrt_images +
-                cvd_host_netsim_gui_assets +
                 cvd_debian_marker +
                 automotive_proxy_config +
                 automotive_vhal_prop_configs,

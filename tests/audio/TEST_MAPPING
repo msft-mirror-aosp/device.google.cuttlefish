@@ -1,7 +1,20 @@
 {
+  "presubmit": [
+    {
+      "name": "cuttlefish-audio-mode-session-test",
+      "options": [
+        {
+          "include-filter": "CuttlefishVoipModeSessionTest#test_dumpsys_format_contract"
+        }
+      ]
+    }
+  ],
   "postsubmit": [
     {
       "name": "cuttlefish-audio-test"
+    },
+    {
+      "name": "cuttlefish-audio-mode-session-test"
     }
   ]
 }

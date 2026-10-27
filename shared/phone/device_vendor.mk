@@ -71,6 +71,9 @@ PRODUCT_PACKAGES += \
     com.android.hardware.nfc
 
 TARGET_BOARD_INFO_FILE ?= device/google/cuttlefish/shared/phone/android-info.txt
+ifneq (,$(findstring phone,$(TARGET_PRODUCT)))
+$(call soong_config_set_bool,cuttlefish_config,use_phone_audio_policy,true)
+endif
 
 # Storage: for factory reset protection feature
 PRODUCT_VENDOR_PROPERTIES += \
